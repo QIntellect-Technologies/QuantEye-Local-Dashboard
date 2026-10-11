@@ -2681,7 +2681,9 @@
 
       <ul class="sidebar-menu">
         <li
+          id="menuItemReports"
           class="menu-item active"
+          data-module="attendance"
           onclick="switchTab('reports-view', this)"
           title="Attendance Reports"
         >
@@ -2690,6 +2692,7 @@
         </li>
         <li
           class="menu-item"
+          data-module="attendance"
           onclick="switchTab('dashboard-view', this)"
           title="Dashboard"
           style="display:none;"
@@ -2700,6 +2703,7 @@
         <li
           id="enrollMenuSidebarItem"
           class="menu-item"
+          data-module="attendance"
           onclick="switchTab('enroll-view', this)"
           title="Staff Enrollment"
           style="display:none;"
@@ -2708,7 +2712,9 @@
           <span>Staff Enrollment</span>
         </li>
         <li
+          id="menuItemStaff"
           class="menu-item"
+          data-module="attendance"
           onclick="switchTab('staff-view', this)"
           title="Staff Directory"
         >
@@ -2716,7 +2722,9 @@
           <span>Staff Directory</span>
         </li>
         <li
+          id="menuItemPayroll"
           class="menu-item"
+          data-module="payroll"
           onclick="switchTab('payroll-view', this)"
           title="Payroll"
         >
@@ -2724,7 +2732,9 @@
           <span>Payroll</span>
         </li>
         <li
+          id="menuItemLeaves"
           class="menu-item"
+          data-module="leave"
           onclick="switchTab('leaves-view', this)"
           title="Leave & Holiday Management"
         >
@@ -2732,7 +2742,9 @@
           <span>Leave &amp; Holidays</span>
         </li>
         <li
+          id="menuItemOvertime"
           class="menu-item"
+          data-module="overtime"
           onclick="switchTab('overtime-view', this)"
           title="Overtime Management"
         >
@@ -2740,7 +2752,9 @@
           <span>Overtime Management</span>
         </li>
         <li
+          id="menuItemShifts"
           class="menu-item"
+          data-module="shifts"
           onclick="switchTab('shifts-view', this)"
           title="Shift Management"
         >
@@ -2748,7 +2762,9 @@
           <span>Shift Management</span>
         </li>
         <li
+          id="menuItemLive"
           class="menu-item"
+          data-module="attendance"
           onclick="switchTab('live-view', this)"
           title="Live AI Attendance"
         >
@@ -2757,6 +2773,7 @@
         </li>
         <li
           class="menu-item"
+          data-module="attendance"
           onclick="switchTab('multi-view', this)"
           title="Multiple View Attendance"
           style="display:none;"
@@ -2766,6 +2783,7 @@
         </li>
         <li
           class="menu-item"
+          data-module="attendance"
           onclick="switchTab('locator-view', this)"
           title="Staff & Room Locator"
           style="display:none;"
@@ -6654,6 +6672,7 @@ async function fetchMultiLiveDetections() {
       // Initialize system on load
       window.onload = async () => {
         console.log("[*] Initializing system...");
+        try { await updateModuleEntitlements(); setInterval(updateModuleEntitlements, 5000); } catch(e) { console.error("updateModuleEntitlements error:", e); }
         addTerminalLine(
           "Dashboard interface loaded. Initializing backend APIs...",
           "system",
@@ -7387,7 +7406,85 @@ async function fetchMultiLiveDetections() {
         document.getElementById('payroll-view').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
+      window.entitledModules = { attendance: true, payroll: true, leave: true, overtime: true, shifts: true };
+
+      const VIEW_MODULE_MAP = {
+        'reports-view': 'attendance',
+        'staff-view': 'attendance',
+        'live-view': 'attendance',
+        'enroll-view': 'attendance',
+        'camera-detect-view': 'attendance',
+        'dashboard-view': 'attendance',
+        'multi-view': 'attendance',
+        'locator-view': 'attendance',
+        'payroll-view': 'payroll',
+        'leaves-view': 'leave',
+        'overtime-view': 'overtime',
+        'shifts-view': 'shifts'
+      };
+
+      function isViewEntitled(viewId) {
+        if (!viewId || viewId === 'settings-view') return true; // Settings is always entitled
+        const reqMod = VIEW_MODULE_MAP[viewId];
+        if (!reqMod) return true;
+        if (!window.entitledModules) return true;
+        return Boolean(window.entitledModules[reqMod]);
+      }
+
+      async function updateModuleEntitlements() {
+        try {
+          const res = await fetch('/api/integration/status');
+          if (!res.ok) return;
+          const data = await res.json();
+          if (!data.linked) {
+            window.entitledModules = { attendance: true, payroll: true, leave: true, overtime: true, shifts: true };
+          } else {
+            const lic = new Set(data.licensed_modules || []);
+            window.entitledModules = {
+              attendance: lic.has('attendance') || lic.has('employees') || lic.has('face-recognition') || lic.has('reports'),
+              payroll: lic.has('payroll'),
+              leave: lic.has('leave') || lic.has('leaves') || lic.has('leave-management') || lic.has('leave_management'),
+              overtime: lic.has('overtime') || lic.has('overtime-management') || lic.has('overtime_management'),
+              shifts: lic.has('shifts') || lic.has('shift') || lic.has('shift-management') || lic.has('shift_management')
+            };
+          }
+
+          // Update sidebar items visibility
+          document.querySelectorAll('.sidebar-menu .menu-item[data-module]').forEach(item => {
+            const mod = item.getAttribute('data-module');
+            if (window.entitledModules[mod]) {
+              item.style.display = '';
+            } else {
+              item.style.display = 'none';
+            }
+          });
+
+          // Settings is ALWAYS visible
+          const settingsItem = document.getElementById('settingsMenuSidebarItem');
+          if (settingsItem) settingsItem.style.display = '';
+
+          // If currently active view is not entitled, switch to the first entitled view
+          const currentActive = document.querySelector('.page-view.active');
+          const currentViewId = currentActive ? currentActive.id : 'reports-view';
+          if (!isViewEntitled(currentViewId)) {
+            if (window.entitledModules.attendance) switchTab('reports-view');
+            else if (window.entitledModules.payroll) switchTab('payroll-view');
+            else if (window.entitledModules.leave) switchTab('leaves-view');
+            else if (window.entitledModules.overtime) switchTab('overtime-view');
+            else if (window.entitledModules.shifts) switchTab('shifts-view');
+            else openSettingsWithAuth();
+          }
+        } catch (e) {
+          console.error("Failed to update module entitlements:", e);
+        }
+      }
+
       function switchTab(viewId, element) {
+        if (!isViewEntitled(viewId)) {
+          alert("This module is not included in your organization's subscription.");
+          return false;
+        }
+
         if (mobileSidebarQuery.matches) {
           document.body.classList.add('sidebar-collapsed');
           const sidebarToggle = document.querySelector('.sidebar-toggle');

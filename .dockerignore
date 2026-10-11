@@ -1,0 +1,17 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+*.db
+*.db-*
+attendance*.db
+database.db*
+logs/
+uploads/
+models/
+yolov8n.pt
+.vscode
+.playwright-mcp
+images/
+scratch/

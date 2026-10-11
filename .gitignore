@@ -74,3 +74,8 @@ backup/
 scratch/
 pilot_env/
 source_code_backup*.zip
+.playwright-mcp/
+yolov8n.pt
+config_integration.json
+!config_integration.example.json
+images/

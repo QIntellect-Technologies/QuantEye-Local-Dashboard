@@ -1,0 +1,22 @@
+{
+  "linked": false,
+  "organization_id": null,
+  "organization_name": null,
+  "branch_id": null,
+  "branch_name": null,
+  "branch_status": null,
+  "main_dashboard_url": "http://127.0.0.1:5100",
+  "license_id": null,
+  "license_status": null,
+  "license_start": null,
+  "license_expiry": null,
+  "licensed_modules": [
+    "attendance",
+    "shifts",
+    "leave",
+    "overtime",
+    "payroll"
+  ],
+  "last_sync_timestamp": null,
+  "local_instance_id": "LOC-INST-001"
+}
