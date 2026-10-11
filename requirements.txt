@@ -4,7 +4,7 @@ Flask-CORS
 Werkzeug
 
 # Scientific Computing
-numpy
+numpy==1.26.4
 
 
 # Computer Vision
@@ -20,4 +20,3 @@ SQLAlchemy==2.0.23
 
 # Utilities
 python-dotenv==1.0.0
-
