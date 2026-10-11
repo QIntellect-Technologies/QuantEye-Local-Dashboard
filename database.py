@@ -50,6 +50,28 @@ def init_db():
                 except sqlite3.OperationalError:
                     pass
 
+            # Create the base table before applying migrations that alter it.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS leave_types (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    code TEXT NOT NULL UNIQUE,
+                    yearly_allowance REAL DEFAULT 12.0,
+                    is_paid INTEGER DEFAULT 1,
+                    description TEXT,
+                    active INTEGER DEFAULT 1,
+                    allowance_period TEXT DEFAULT 'yearly',
+                    allowance_months INTEGER NOT NULL DEFAULT 12,
+                    half_leave_enabled INTEGER NOT NULL DEFAULT 0,
+                    half_leave_mode TEXT NOT NULL DEFAULT 'separate',
+                    half_leave_allowance_count INTEGER NOT NULL DEFAULT 0,
+                    half_leave_allowance_months INTEGER NOT NULL DEFAULT 12,
+                    half_leaves_per_quota_day INTEGER NOT NULL DEFAULT 2,
+                    half_leave_quota_type_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             try:
                 cursor.execute("SELECT allowance_period FROM leave_types LIMIT 1")
             except sqlite3.OperationalError:
@@ -181,28 +203,6 @@ def init_db():
             ]:
                 if column not in leave_request_columns:
                     cursor.execute(f"ALTER TABLE leave_requests ADD COLUMN {column} {column_type}")
-
-            # Leave types table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS leave_types (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    code TEXT NOT NULL UNIQUE,
-                    yearly_allowance REAL DEFAULT 12.0,
-                    is_paid INTEGER DEFAULT 1,
-                    description TEXT,
-                    active INTEGER DEFAULT 1,
-                    allowance_period TEXT DEFAULT 'yearly',
-                    allowance_months INTEGER NOT NULL DEFAULT 12,
-                    half_leave_enabled INTEGER NOT NULL DEFAULT 0,
-                    half_leave_mode TEXT NOT NULL DEFAULT 'separate',
-                    half_leave_allowance_count INTEGER NOT NULL DEFAULT 0,
-                    half_leave_allowance_months INTEGER NOT NULL DEFAULT 12,
-                    half_leaves_per_quota_day INTEGER NOT NULL DEFAULT 2,
-                    half_leave_quota_type_id INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
 
             # Seed default leave types if empty
             cursor.execute("SELECT COUNT(*) FROM leave_types")
