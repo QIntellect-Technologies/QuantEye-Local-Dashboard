@@ -270,6 +270,10 @@ def require_admin_session_for_app_data():
         '/api/health',
         '/api/admin/status',
         '/api/admin/verify-password',
+        '/api/admin/lock',
+        '/api/client/login',
+        '/api/login',
+        '/api/logout',
         '/api/integration/status',
         '/api/integration/sync',
         '/api/cameras',
@@ -2863,18 +2867,35 @@ def api_client_login():
             'user': username or org_name
         }), 200
 
-    # Local fallback for admin or default credentials
+    # Local fallback for admin or client credentials
     active_password = str(os.environ.get('ADMIN_CONFIG_PASSWORD', 'admin')).strip()
     if any(secrets.compare_digest(password, p) for p in (active_password, 'admin', 'Pass1234!', 'admin123')):
         session.clear()
         session['admin_unlocked'] = True
-        session['client_user'] = username or 'Admin'
+        
+        clean_user = username or 'Admin'
+        derived_org = 'Main Branch'
+        if '@' in clean_user:
+            raw_org = clean_user.split('@')[0].replace('.', ' ').replace('-', ' ').replace('_', ' ')
+            derived_org = ' '.join(word.capitalize() for word in raw_org.split())
+        elif username:
+            derived_org = username
+
+        session['client_user'] = clean_user
+        session['client_org'] = derived_org
+        
+        cfg = load_integration_config()
+        if derived_org != 'Main Branch':
+            cfg['organization_name'] = derived_org
+            cfg['linked'] = True
+        save_integration_config(cfg)
+
         return jsonify({
             'success': True,
-            'organization_name': 'Main Branch',
-            'branch_name': 'Main Branch',
-            'modules': ['attendance', 'shifts', 'leave', 'overtime', 'payroll'],
-            'user': username or 'Admin'
+            'organization_name': derived_org,
+            'branch_name': cfg.get('branch_name') or 'Main Branch',
+            'modules': cfg.get('licensed_modules', ['attendance', 'shifts', 'payroll']),
+            'user': clean_user
         }), 200
 
     return jsonify({'success': False, 'message': 'Invalid credentials. Please verify your email and password.'}), 401
