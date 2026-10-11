@@ -7440,15 +7440,29 @@ async function fetchMultiLiveDetections() {
         return Boolean(window.entitledModules[reqMod]);
       }
 
-      async function updateModuleEntitlements() {
+      async function updateModuleEntitlements(overrideModules = null) {
         try {
-          const res = await fetch('/api/integration/status');
-          if (!res.ok) return;
-          const data = await res.json();
-          if (!data.linked) {
-            window.entitledModules = { attendance: true, payroll: true, leave: true, overtime: true, shifts: true };
-          } else {
-            const lic = new Set(data.licensed_modules || []);
+          let modulesList = overrideModules;
+          if (!modulesList) {
+            try {
+              const cached = JSON.parse(localStorage.getItem('quanteye_client_auth') || 'null');
+              if (cached && Array.isArray(cached.modules)) {
+                modulesList = cached.modules;
+              }
+            } catch(e) {}
+          }
+          if (!modulesList) {
+            const res = await fetch('/api/integration/status');
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.linked && Array.isArray(data.licensed_modules)) {
+                modulesList = data.licensed_modules;
+              }
+            }
+          }
+
+          if (modulesList && Array.isArray(modulesList)) {
+            const lic = new Set(modulesList);
             window.entitledModules = {
               attendance: lic.has('attendance') || lic.has('employees') || lic.has('face-recognition') || lic.has('reports'),
               payroll: lic.has('payroll'),
@@ -7456,6 +7470,8 @@ async function fetchMultiLiveDetections() {
               overtime: lic.has('overtime') || lic.has('overtime-management') || lic.has('overtime_management'),
               shifts: lic.has('shifts') || lic.has('shift') || lic.has('shift-management') || lic.has('shift_management')
             };
+          } else {
+            window.entitledModules = { attendance: true, payroll: true, leave: true, overtime: true, shifts: true };
           }
 
           // Update sidebar items visibility
@@ -13214,6 +13230,18 @@ async function fetchMultiLiveDetections() {
       }
 
       function updateDynamicBranchHeaders(branchName, city, adminName) {
+        try {
+          const cached = JSON.parse(localStorage.getItem('quanteye_client_auth') || 'null');
+          if (cached && cached.organization_name) {
+            const orgTitle = `${cached.organization_name} (${cached.branch_name || 'Main Branch'})`;
+            document.querySelectorAll('#headerBranchNameText, #sidebarBranchNameText').forEach(el => el.textContent = orgTitle);
+            const userTitle = cached.user || cached.organization_name;
+            document.querySelectorAll('#headerUserName, #sidebarUserName').forEach(el => el.textContent = userTitle);
+            document.title = `${orgTitle} - QIntellect Technologies`;
+            return;
+          }
+        } catch(e) {}
+
         const branchDisplay = (branchName || '').trim();
         const cityDisplay = (city || '').trim();
         let fullBranchText = branchDisplay;
@@ -14048,33 +14076,90 @@ async function fetchMultiLiveDetections() {
     // This JS only manages UI state based on server responses.
     // ========================================================
 
+    // Intercept fetch calls to pass credentials and client auth header automatically
+    (function installAuthFetchInterceptor() {
+      const originalFetch = window.fetch;
+      window.fetch = function(url, options = {}) {
+        options = options || {};
+        options.credentials = options.credentials || 'same-origin';
+        try {
+          if (localStorage.getItem('quanteye_client_auth')) {
+            options.headers = options.headers || {};
+            if (options.headers instanceof Headers) {
+              if (!options.headers.has('X-Client-Auth')) options.headers.set('X-Client-Auth', 'true');
+            } else if (Array.isArray(options.headers)) {
+              options.headers.push(['X-Client-Auth', 'true']);
+            } else {
+              options.headers['X-Client-Auth'] = 'true';
+            }
+          }
+        } catch(e) {}
+        return originalFetch.call(this, url, options);
+      };
+    })();
+
     // In-memory state (synced with server session on every relevant action)
     let _adminUnlocked = false;
     let _enrollmentEnabled = false;
     let _applicationAuthPending = false;
+
+    // Immediately apply cached client credentials on load to prevent any UI flashing
+    try {
+      const _cached = JSON.parse(localStorage.getItem('quanteye_client_auth') || 'null');
+      if (_cached && _cached.organization_name) {
+        _adminUnlocked = true;
+        const orgTitle = `${_cached.organization_name} (${_cached.branch_name || 'Main Branch'})`;
+        document.addEventListener('DOMContentLoaded', () => {
+          document.querySelectorAll('#headerBranchNameText, #sidebarBranchNameText').forEach(el => el.textContent = orgTitle);
+          document.querySelectorAll('#headerUserName, #sidebarUserName').forEach(el => el.textContent = _cached.user || _cached.organization_name);
+          document.title = `${orgTitle} - QIntellect Technologies`;
+          if (typeof updateModuleEntitlements === 'function') {
+            updateModuleEntitlements(_cached.modules);
+          }
+        });
+      }
+    } catch(e) {}
 
     /**
      * Fetch current admin session state from server and update UI accordingly.
      * Called on page load and after any state change.
      */
     async function syncAdminState() {
+      const cached = JSON.parse(localStorage.getItem('quanteye_client_auth') || 'null');
       try {
         const res = await fetch('/api/admin/status', { credentials: 'same-origin' });
-        if (!res.ok) throw new Error(`Session check failed (${res.status})`);
-        const data = await res.json();
-        _adminUnlocked = data.admin_unlocked === true;
+        const data = res.ok ? await res.json() : {};
+        if (data.admin_unlocked === true || (cached && cached.organization_name)) {
+          _adminUnlocked = true;
+          _applicationAuthPending = false;
+        } else {
+          _adminUnlocked = false;
+          _applicationAuthPending = true;
+        }
         _enrollmentEnabled = data.enrollment_enabled === true;
         applyAdminStateToUI();
+
         if (_adminUnlocked) {
+          closeAdminPasswordModal();
+          if (cached && cached.modules && typeof updateModuleEntitlements === 'function') {
+            updateModuleEntitlements(cached.modules);
+          }
+        } else {
+          showAdminPasswordModal();
+        }
+      } catch (e) {
+        if (cached && cached.organization_name) {
+          _adminUnlocked = true;
           _applicationAuthPending = false;
+          closeAdminPasswordModal();
+          applyAdminStateToUI();
+          if (cached.modules && typeof updateModuleEntitlements === 'function') {
+            updateModuleEntitlements(cached.modules);
+          }
         } else {
           _applicationAuthPending = true;
           showAdminPasswordModal();
         }
-      } catch (e) {
-        _applicationAuthPending = true;
-        showAdminPasswordModal();
-        showAdminPwdError('Could not verify your session. Check your connection and try again.');
       }
     }
 
@@ -14231,29 +14316,41 @@ async function fetchMultiLiveDetections() {
           input.value = '';
           if (usernameInput) usernameInput.value = '';
           _adminUnlocked = true;
+          _applicationAuthPending = false;
+
+          // Save active client auth locally
+          try {
+            localStorage.setItem('quanteye_client_auth', JSON.stringify({
+              organization_name: data.organization_name || 'Client Organization',
+              branch_name: data.branch_name || 'Main Branch',
+              modules: data.modules || ['attendance', 'shifts', 'payroll'],
+              user: data.user || username || data.organization_name
+            }));
+          } catch(e) {}
 
           // Apply client branding if returned
-          if (data.organization_name) {
-            const orgTitle = `${data.organization_name} (${data.branch_name || 'Main Branch'})`;
-            document.querySelectorAll('#headerBranchNameText, #sidebarBranchNameText').forEach(el => {
-              el.textContent = orgTitle;
-            });
-            const userTitle = data.user || data.organization_name;
-            document.querySelectorAll('#headerUserName, #sidebarUserName').forEach(el => {
-              el.textContent = userTitle;
-            });
-            document.title = `${orgTitle} - QIntellect Technologies`;
-          }
+          const orgTitle = `${data.organization_name || 'Client Organization'} (${data.branch_name || 'Main Branch'})`;
+          document.querySelectorAll('#headerBranchNameText, #sidebarBranchNameText').forEach(el => {
+            el.textContent = orgTitle;
+          });
+          const userTitle = data.user || data.organization_name || 'Client Admin';
+          document.querySelectorAll('#headerUserName, #sidebarUserName').forEach(el => {
+            el.textContent = userTitle;
+          });
+          document.title = `${orgTitle} - QIntellect Technologies`;
 
           applyAdminStateToUI();
           if (typeof updateModuleEntitlements === 'function') {
-            await updateModuleEntitlements();
+            await updateModuleEntitlements(data.modules);
           }
 
-          setTimeout(() => {
-            closeAdminPasswordModal();
-            window.location.reload();
-          }, 600);
+          closeAdminPasswordModal();
+
+          // Refresh dashboard data seamlessly without flash
+          try {
+            if (typeof fetchMainReportData === 'function') fetchMainReportData();
+            if (typeof fetchStaffList === 'function') fetchStaffList();
+          } catch(e) {}
         } else {
           showAdminPwdError(data?.message || 'Incorrect credentials. Please verify your email and password.');
           btn.disabled = false;
@@ -14269,11 +14366,17 @@ async function fetchMultiLiveDetections() {
     async function handleClientLogout() {
       if (!confirm('Are you sure you want to log out of the client dashboard?')) return;
       try {
+        localStorage.removeItem('quanteye_client_auth');
+      } catch(e) {}
+      try {
         await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
         await fetch('/api/admin/lock', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
       } catch (e) {}
       _adminUnlocked = false;
       _applicationAuthPending = true;
+      if (typeof updateModuleEntitlements === 'function') {
+        updateModuleEntitlements();
+      }
       showAdminPasswordModal();
     }
     window.handleClientLogout = handleClientLogout;

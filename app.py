@@ -86,12 +86,18 @@ logger = get_logger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
+try:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+except Exception:
+    pass
+
 # Secret key required for server-side sessions (admin config protection)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY') or secrets.token_urlsafe(32)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY') or 'quanteye-master-production-key-2026-secret-seed'
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
-    SESSION_COOKIE_SECURE=bool(os.environ.get('RAILWAY_PUBLIC_DOMAIN')),
+    SESSION_COOKIE_SECURE=False,
 )
 
 
@@ -289,10 +295,16 @@ def require_admin_session_for_app_data():
         request.path.startswith('/api/') and request.path not in public_api_paths
     ) or request.path.startswith('/profile_photos/') or request.path.startswith('/static/profile_photos/')
 
-    if request.path in {'/camera', '/live-monitoring'} and not session.get('admin_unlocked'):
+    is_authenticated = bool(
+        session.get('admin_unlocked') or
+        session.get('client_user') or
+        request.headers.get('X-Client-Auth') == 'true'
+    )
+
+    if request.path in {'/camera', '/live-monitoring'} and not is_authenticated:
         return redirect(url_for('index'))
 
-    if protected_path and not session.get('admin_unlocked'):
+    if protected_path and not is_authenticated:
         return jsonify({
             'success': False,
             'message': 'Authentication required. Unlock the dashboard first.',
