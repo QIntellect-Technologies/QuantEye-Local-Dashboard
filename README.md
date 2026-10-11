@@ -68,7 +68,7 @@ pip install -r requirements.txt
 
 ### Local Configuration
 
-Copy `.env.example` to `.env` and replace the example values with private values before running the application. `FLASK_SECRET_KEY` protects sessions and `ADMIN_CONFIG_PASSWORD` unlocks admin configuration. Keep `.env` private; it is excluded from Git. Camera URLs can be configured in the UI or supplied through the optional camera variables.
+Copy `.env.example` to `.env` and replace the example values with private values before running the application. `FLASK_SECRET_KEY` protects sessions and `ADMIN_CONFIG_PASSWORD` unlocks admin configuration. Keep `.env` private; it is excluded from Git. Camera URLs can be configured in the UI or supplied through the optional camera variables. `QINTELLECT_DB_PATH` can point to an absolute path on persistent storage (for example, `/data/attendance.db` on Railway); when unset, the app uses `attendance.db` in the application directory.
 
 ### Step 3: Download Models
 

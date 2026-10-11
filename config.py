@@ -24,14 +24,15 @@ else:
 UPLOAD_FOLDER = APPDATA_DIR / 'uploads'
 MODELS_DIR = BUNDLE_DIR / 'models'
 
-# Support isolated DB filename if specified (defaults to attendance.db)
+# Allow deployments to place SQLite on persistent storage while keeping the local default.
 DB_FILENAME = os.environ.get('QINTELLECT_DB_NAME', 'attendance.db')
-DB_PATH = APPDATA_DIR / DB_FILENAME
+DB_PATH_OVERRIDE = os.environ.get('QINTELLECT_DB_PATH', '').strip()
+DB_PATH = Path(DB_PATH_OVERRIDE) if DB_PATH_OVERRIDE else APPDATA_DIR / DB_FILENAME
 LOG_DIR = APPDATA_DIR / 'logs'
 PROFILE_PHOTOS_DIR = APPDATA_DIR / 'profile_photos'
 
 # Create directories
-for folder in [UPLOAD_FOLDER, LOG_DIR, PROFILE_PHOTOS_DIR, APPDATA_DIR]:
+for folder in [UPLOAD_FOLDER, LOG_DIR, PROFILE_PHOTOS_DIR, APPDATA_DIR, DB_PATH.parent]:
     folder.mkdir(parents=True, exist_ok=True)
 
 # NOTE: We intentionally do NOT seed attendance.db from the bundle (_MEIPASS).
