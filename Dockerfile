@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    libgl1-gl ibsm6 \
+    libgl1 libsm6 \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
