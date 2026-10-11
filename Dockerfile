@@ -5,6 +5,7 @@ WORKDIR /app
 
 # Match Railway's configured public target port unless Railway provides PORT.
 ENV PORT=8080
+ENV FLASK_DEBUG=0
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

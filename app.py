@@ -23,7 +23,6 @@ if sys.stderr is None:
     sys.stderr = DummyStream()
 
 from flask import Flask, request, jsonify, render_template, send_from_directory, Response, redirect, url_for, session, send_file
-from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
 import secrets
@@ -89,7 +88,35 @@ logger = get_logger(__name__)
 app = Flask(__name__)
 # Secret key required for server-side sessions (admin config protection)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY') or secrets.token_urlsafe(32)
-CORS(app, supports_credentials=True)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=bool(os.environ.get('RAILWAY_PUBLIC_DOMAIN')),
+)
+
+
+@app.before_request
+def require_admin_session_for_app_data():
+    """Keep application APIs and employee photos behind the admin session."""
+    public_api_paths = {
+        '/api/health',
+        '/api/admin/status',
+        '/api/admin/verify-password',
+    }
+    protected_path = (
+        request.path.startswith('/api/') and request.path not in public_api_paths
+    ) or request.path.startswith('/profile_photos/') or request.path.startswith('/static/profile_photos/')
+
+    if request.path in {'/camera', '/live-monitoring'} and not session.get('admin_unlocked'):
+        return redirect(url_for('index'))
+
+    if protected_path and not session.get('admin_unlocked'):
+        return jsonify({
+            'success': False,
+            'message': 'Authentication required. Unlock the dashboard first.',
+        }), 401
+
+    return None
 
 # Ensure CUDA DLLs are discoverable for ONNX Runtime on Windows before any model is created.
 try:
@@ -2427,8 +2454,9 @@ def api_admin_verify_password():
     data = request.get_json() or {}
     password = data.get('password', '')
     if not _ADMIN_CONFIG_PASSWORD:
-        return jsonify({'success': False, 'message': 'Admin configuration password is not configured on this server.'}), 503
+        return jsonify({'success': False, 'message': 'Admin password is not configured on this server.'}), 503
     if secrets.compare_digest(str(password), _ADMIN_CONFIG_PASSWORD):
+        session.clear()
         session['admin_unlocked'] = True
         return jsonify({'success': True, 'message': 'Access granted'})
     return jsonify({'success': False, 'message': 'Incorrect password'}), 401
@@ -4869,4 +4897,5 @@ if __name__ == '__main__':
                 pass
         threading.Thread(target=_open_client_browser, daemon=True).start()
 
-    app.run(debug=False if getattr(sys, 'frozen', False) else True, host='0.0.0.0', port=port, use_reloader=False)
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    app.run(debug=debug and not getattr(sys, 'frozen', False), host='0.0.0.0', port=port, use_reloader=False)

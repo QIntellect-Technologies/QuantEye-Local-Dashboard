@@ -13862,11 +13862,11 @@ async function fetchMultiLiveDetections() {
             <i class="fa-solid fa-shield-halved" style="color:#fff; font-size:1.1em;"></i>
           </div>
           <div>
-            <div style="color:#e2e8f0; font-weight:800; font-size:1.05em;">Admin Configuration</div>
+            <div style="color:#e2e8f0; font-weight:800; font-size:1.05em;">Dashboard Access</div>
             <div style="color:#64748b; font-size:0.78em; margin-top:1px;">Authentication Required</div>
           </div>
         </div>
-        <button onclick="closeAdminPasswordModal()" style="background:none; border:none; color:#64748b; font-size:1.3em; cursor:pointer; padding:4px; border-radius:6px; transition:color 0.2s;" title="Cancel">
+        <button id="adminPasswordCloseBtn" onclick="closeAdminPasswordModal()" style="background:none; border:none; color:#64748b; font-size:1.3em; cursor:pointer; padding:4px; border-radius:6px; transition:color 0.2s;" title="Cancel">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
@@ -13874,7 +13874,7 @@ async function fetchMultiLiveDetections() {
       <!-- Modal Body -->
       <div style="padding:28px 24px;">
         <p style="color:#94a3b8; font-size:0.88em; margin:0 0 20px; line-height:1.5;">
-          This area is protected. Enter the admin password to access Configuration &amp; Settings.
+          Enter the admin password to access employee data, the dashboard, and configuration.
         </p>
 
         <div style="margin-bottom:8px;">
@@ -13907,7 +13907,7 @@ async function fetchMultiLiveDetections() {
           onclick="submitAdminPassword()"
           style="width:100%; margin-top:20px; padding:13px; background:linear-gradient(135deg,#1d4ed8,#3d9fd4); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.95em; cursor:pointer; transition:all 0.2s ease; display:flex; align-items:center; justify-content:center; gap:8px;"
         >
-          <i class="fa-solid fa-unlock-keyhole"></i> Unlock Configuration
+          <i class="fa-solid fa-unlock-keyhole"></i> Unlock Dashboard
         </button>
       </div>
     </div>
@@ -13930,6 +13930,7 @@ async function fetchMultiLiveDetections() {
     // In-memory state (synced with server session on every relevant action)
     let _adminUnlocked = false;
     let _enrollmentEnabled = false;
+    let _applicationAuthPending = false;
 
     /**
      * Fetch current admin session state from server and update UI accordingly.
@@ -13938,13 +13939,21 @@ async function fetchMultiLiveDetections() {
     async function syncAdminState() {
       try {
         const res = await fetch('/api/admin/status', { credentials: 'same-origin' });
-        if (!res.ok) return;
+        if (!res.ok) throw new Error(`Session check failed (${res.status})`);
         const data = await res.json();
         _adminUnlocked = data.admin_unlocked === true;
         _enrollmentEnabled = data.enrollment_enabled === true;
         applyAdminStateToUI();
+        if (_adminUnlocked) {
+          _applicationAuthPending = false;
+        } else {
+          _applicationAuthPending = true;
+          showAdminPasswordModal();
+        }
       } catch (e) {
-        // Silently fail — default state is locked
+        _applicationAuthPending = true;
+        showAdminPasswordModal();
+        showAdminPwdError('Could not verify your session. Check your connection and try again.');
       }
     }
 
@@ -14012,14 +14021,17 @@ async function fetchMultiLiveDetections() {
       const modal = document.getElementById('adminPasswordModal');
       modal.style.display = 'flex';
       document.getElementById('adminPasswordInput').value = '';
+      const closeButton = document.getElementById('adminPasswordCloseBtn');
+      if (closeButton) closeButton.style.display = _applicationAuthPending ? 'none' : '';
       const errDiv = document.getElementById('adminPasswordError');
       if (errDiv) errDiv.style.display = 'none';
       document.getElementById('adminUnlockBtn').disabled = false;
-      document.getElementById('adminUnlockBtn').innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Configuration';
+      document.getElementById('adminUnlockBtn').innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Dashboard';
       setTimeout(() => document.getElementById('adminPasswordInput').focus(), 100);
     }
 
     function closeAdminPasswordModal() {
+      if (_applicationAuthPending && !_adminUnlocked) return;
       document.getElementById('adminPasswordModal').style.display = 'none';
       document.getElementById('adminPasswordInput').value = '';
       _pendingSettingsElement = null;
@@ -14043,6 +14055,7 @@ async function fetchMultiLiveDetections() {
       const errDiv = document.getElementById('adminPasswordError');
       const errText = document.getElementById('adminPasswordErrorText');
       const password = input.value;
+      const unlockingApplication = _applicationAuthPending;
 
       if (!password) {
         showAdminPwdError('Please enter the admin password.');
@@ -14073,6 +14086,10 @@ async function fetchMultiLiveDetections() {
 
           setTimeout(() => {
             closeAdminPasswordModal();
+            if (unlockingApplication) {
+              window.location.reload();
+              return;
+            }
             // Navigate to settings
             const el = _pendingSettingsElement || document.getElementById('settingsMenuSidebarItem');
             switchTab('settings-view', el);
@@ -14081,12 +14098,12 @@ async function fetchMultiLiveDetections() {
         } else {
           showAdminPwdError(data.message || 'Incorrect password. Please try again.');
           btn.disabled = false;
-          btn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Configuration';
+          btn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Dashboard';
         }
       } catch (e) {
         showAdminPwdError('Connection error. Please try again.');
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Configuration';
+        btn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Dashboard';
       }
     }
 
@@ -14157,14 +14174,15 @@ async function fetchMultiLiveDetections() {
      */
     async function adminLockConfiguration() {
       try {
-        await fetch('/api/admin/lock', { method: 'POST', credentials: 'same-origin' });
-      } catch (e) { /* best-effort */ }
-      _adminUnlocked = false;
-      _enrollmentEnabled = false;
-      applyAdminStateToUI();
-      // Switch away from settings-view to reports-view
-      const reportsBtn = document.querySelector('.menu-item[title="Attendance Reports"]');
-      switchTab('reports-view', reportsBtn);
+        const response = await fetch('/api/admin/lock', { method: 'POST', credentials: 'same-origin' });
+        if (!response.ok) {
+          alert('Could not lock the dashboard. Please try again.');
+          return;
+        }
+        window.location.reload();
+      } catch (e) {
+        alert('Could not lock the dashboard. Check your connection and try again.');
+      }
     }
 
     // Close modal when clicking backdrop
