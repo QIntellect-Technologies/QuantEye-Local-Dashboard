@@ -2825,6 +2825,10 @@
           <i class="fa-solid fa-user-tie" style="color: #3d9fd4; font-size: 1.05em;"></i>
           <span id="sidebarUserName">Mr. Junaid</span>
         </div>
+        <button id="sidebarLogoutBtn" onclick="handleClientLogout()" title="Logout" style="width:100%; margin-top:8px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#dc2626; border-radius:6px; padding:6px 10px; font-size:0.8rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; transition:all 0.2s;">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span>Logout</span>
+        </button>
       </div>
     </div>
 
@@ -2852,6 +2856,11 @@
             <i class="fa-solid fa-user-tie"></i>
             <span class="header-user-name" id="headerUserName">Mr. Junaid</span>
           </div>
+          <span class="header-separator">|</span>
+          <button id="headerLogoutBtn" onclick="handleClientLogout()" title="Logout / Switch Client Organization" style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#dc2626; border-radius:6px; padding:4px 10px; font-size:0.8rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:all 0.2s;">
+            <i class="fa-solid fa-right-from-bracket"></i>
+            <span>Logout</span>
+          </button>
         </div>
       </header>
       <!-- ================= PAGE 1: DASHBOARD OVERVIEW ================= -->
@@ -13969,14 +13978,29 @@ async function fetchMultiLiveDetections() {
       </div>
 
       <!-- Modal Body -->
-      <div style="padding:28px 24px;">
-        <p style="color:#94a3b8; font-size:0.88em; margin:0 0 20px; line-height:1.5;">
-          Enter the admin password to access employee data, the dashboard, and configuration.
+      <div style="padding:24px 24px;">
+        <p style="color:#94a3b8; font-size:0.88em; margin:0 0 16px; line-height:1.5;">
+          Enter your client organization credentials to access your subscribed modules and dashboard.
         </p>
 
+        <div style="margin-bottom:12px;">
+          <label style="color:#cbd5e1; font-size:0.82em; font-weight:700; display:block; margin-bottom:6px;">
+            <i class="fa-solid fa-user" style="margin-right:6px; color:#3d9fd4;"></i>Username or Email
+          </label>
+          <input
+            type="text"
+            id="adminUsernameInput"
+            placeholder="e.g. helloworld@gmail.com"
+            onkeydown="if(event.key==='Enter') document.getElementById('adminPasswordInput').focus()"
+            style="width:100%; padding:11px 16px; background:#1e293b; border:1.5px solid #2d4a6a; border-radius:10px; color:#e2e8f0; font-size:0.95em; outline:none; box-sizing:border-box; transition:border-color 0.2s;"
+            onfocus="this.style.borderColor='#3d9fd4'"
+            onblur="this.style.borderColor='#2d4a6a'"
+          >
+        </div>
+
         <div style="margin-bottom:8px;">
-          <label style="color:#cbd5e1; font-size:0.82em; font-weight:700; display:block; margin-bottom:8px;">
-            <i class="fa-solid fa-key" style="margin-right:6px; color:#3d9fd4;"></i>Enter Password
+          <label style="color:#cbd5e1; font-size:0.82em; font-weight:700; display:block; margin-bottom:6px;">
+            <i class="fa-solid fa-key" style="margin-right:6px; color:#3d9fd4;"></i>Password
           </label>
           <div style="position:relative;">
             <input
@@ -13984,7 +14008,7 @@ async function fetchMultiLiveDetections() {
               id="adminPasswordInput"
               placeholder="••••••••••••"
               onkeydown="if(event.key==='Enter') submitAdminPassword()"
-              style="width:100%; padding:12px 44px 12px 16px; background:#1e293b; border:1.5px solid #2d4a6a; border-radius:10px; color:#e2e8f0; font-size:0.95em; outline:none; box-sizing:border-box; transition:border-color 0.2s;"
+              style="width:100%; padding:11px 44px 11px 16px; background:#1e293b; border:1.5px solid #2d4a6a; border-radius:10px; color:#e2e8f0; font-size:0.95em; outline:none; box-sizing:border-box; transition:border-color 0.2s;"
               onfocus="this.style.borderColor='#3d9fd4'"
               onblur="this.style.borderColor='#2d4a6a'"
             >
@@ -13996,15 +14020,15 @@ async function fetchMultiLiveDetections() {
 
         <div id="adminPasswordError" style="display:none; margin-top:10px; padding:10px 14px; background:#450a0a; border:1px solid #7f1d1d; border-radius:8px; color:#fca5a5; font-size:0.82em; display:flex; align-items:center; gap:8px;">
           <i class="fa-solid fa-circle-xmark"></i>
-          <span id="adminPasswordErrorText">Incorrect password. Please try again.</span>
+          <span id="adminPasswordErrorText">Incorrect credentials. Please try again.</span>
         </div>
 
         <button
           id="adminUnlockBtn"
           onclick="submitAdminPassword()"
-          style="width:100%; margin-top:20px; padding:13px; background:linear-gradient(135deg,#1d4ed8,#3d9fd4); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.95em; cursor:pointer; transition:all 0.2s ease; display:flex; align-items:center; justify-content:center; gap:8px;"
+          style="width:100%; margin-top:18px; padding:12px; background:linear-gradient(135deg,#1d4ed8,#3d9fd4); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.95em; cursor:pointer; transition:all 0.2s ease; display:flex; align-items:center; justify-content:center; gap:8px;"
         >
-          <i class="fa-solid fa-unlock-keyhole"></i> Unlock Dashboard
+          <i class="fa-solid fa-unlock-keyhole"></i> Sign In to Dashboard
         </button>
       </div>
     </div>
@@ -14147,62 +14171,112 @@ async function fetchMultiLiveDetections() {
     }
 
     async function submitAdminPassword() {
+      const usernameInput = document.getElementById('adminUsernameInput');
       const input = document.getElementById('adminPasswordInput');
       const btn = document.getElementById('adminUnlockBtn');
       const errDiv = document.getElementById('adminPasswordError');
       const errText = document.getElementById('adminPasswordErrorText');
+      const username = usernameInput ? usernameInput.value.trim() : '';
       const password = input.value;
       const unlockingApplication = _applicationAuthPending;
 
       if (!password) {
-        showAdminPwdError('Please enter the admin password.');
+        showAdminPwdError('Please enter your password.');
         return;
       }
 
       // Show loading state
       btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying...';
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...';
       if (errDiv) errDiv.style.display = 'none';
 
       try {
-        const res = await fetch('/api/admin/verify-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ password })
-        });
-        const data = await res.json();
+        let res = null, data = null;
 
-        if (res.ok && data.success) {
-          // Success
+        // 1. Try client login via /api/client/login
+        if (username) {
+          try {
+            res = await fetch('/api/client/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ username, password })
+            });
+            if (res.ok) {
+              data = await res.json();
+            }
+          } catch(e) {}
+        }
+
+        // 2. Fallback to /api/admin/verify-password
+        if (!data || !data.success) {
+          try {
+            const fbRes = await fetch('/api/admin/verify-password', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ password })
+            });
+            const fbData = await fbRes.json();
+            if (fbRes.ok && fbData.success) {
+              res = fbRes;
+              data = fbData;
+            }
+          } catch(e) {}
+        }
+
+        if (res && res.ok && data && data.success) {
           btn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Access Granted!';
           btn.style.background = 'linear-gradient(135deg,#065f46,#059669)';
           input.value = '';
+          if (usernameInput) usernameInput.value = '';
           _adminUnlocked = true;
+
+          // Apply client branding if returned
+          if (data.organization_name) {
+            const orgTitle = `${data.organization_name} (${data.branch_name || 'Main Branch'})`;
+            document.querySelectorAll('#headerBranchNameText, #sidebarBranchNameText').forEach(el => {
+              el.textContent = orgTitle;
+            });
+            const userTitle = data.user || data.organization_name;
+            document.querySelectorAll('#headerUserName, #sidebarUserName').forEach(el => {
+              el.textContent = userTitle;
+            });
+            document.title = `${orgTitle} - QIntellect Technologies`;
+          }
+
           applyAdminStateToUI();
+          if (typeof updateModuleEntitlements === 'function') {
+            await updateModuleEntitlements();
+          }
 
           setTimeout(() => {
             closeAdminPasswordModal();
-            if (unlockingApplication) {
-              window.location.reload();
-              return;
-            }
-            // Navigate to settings
-            const el = _pendingSettingsElement || document.getElementById('settingsMenuSidebarItem');
-            switchTab('settings-view', el);
-            _pendingSettingsElement = null;
+            window.location.reload();
           }, 600);
         } else {
-          showAdminPwdError(data.message || 'Incorrect password. Please try again.');
+          showAdminPwdError(data?.message || 'Incorrect credentials. Please verify your email and password.');
           btn.disabled = false;
-          btn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Dashboard';
+          btn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Sign In to Dashboard';
         }
       } catch (e) {
         showAdminPwdError('Connection error. Please try again.');
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Dashboard';
+        btn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Sign In to Dashboard';
       }
     }
+
+    async function handleClientLogout() {
+      if (!confirm('Are you sure you want to log out of the client dashboard?')) return;
+      try {
+        await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+        await fetch('/api/admin/lock', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+      } catch (e) {}
+      _adminUnlocked = false;
+      _applicationAuthPending = true;
+      showAdminPasswordModal();
+    }
+    window.handleClientLogout = handleClientLogout;
 
     function showAdminPwdError(msg) {
       const errDiv = document.getElementById('adminPasswordError');
