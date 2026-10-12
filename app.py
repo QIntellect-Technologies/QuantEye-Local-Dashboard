@@ -683,12 +683,16 @@ def refresh_embedding_cache():
             meta = {
                 'id': user['id'],
                 'name': user['name'],
-                'department': user.get('department', '')
+                'department': user.get('department', ''),
+                'organization_id': user.get('organization_id') or 'DEFAULT_ORG',
+                'branch_id': user.get('branch_id') or 'DEFAULT_BRANCH'
             }
 
             new_cache[user['id']] = {
                 'name': user['name'],
                 'department': user.get('department', ''),
+                'organization_id': user.get('organization_id') or 'DEFAULT_ORG',
+                'branch_id': user.get('branch_id') or 'DEFAULT_BRANCH',
                 'aggregate_embedding': norm_emb
             }
             matrix_rows.append(norm_emb)
@@ -710,10 +714,11 @@ def refresh_embedding_cache():
     except Exception as e:
         logger.error(f"✗ Failed to refresh embedding cache: {e}")
 
-def match_embedding_vectorized(test_embedding: np.ndarray, threshold: float = FACE_MATCHING_THRESHOLD):
+def match_embedding_vectorized(test_embedding: np.ndarray, threshold: float = FACE_MATCHING_THRESHOLD, organization_id: Optional[str] = None):
     """
     Lightning-fast vectorized search against all enrolled users in memory.
     Uses BLAS matrix dot product: O(1) in ~0.05ms instead of Python dictionary loops.
+    Strictly filters candidates by caller organization_id for Biometric Isolation.
     Returns: (best_uid, user_meta_dict, best_similarity, is_match)
     """
     if test_embedding is None:
@@ -735,8 +740,22 @@ def match_embedding_vectorized(test_embedding: np.ndarray, threshold: float = FA
 
         # Single C/BLAS matrix dot product: (N, 512) . (512,) -> (N,)
         similarities = np.dot(local_matrix, query_emb)
-        best_idx = int(np.argmax(similarities))
-        max_sim = float(similarities[best_idx])
+        
+        if organization_id:
+            valid_indices = [
+                i for i, m in enumerate(local_meta)
+                if (m.get('organization_id') == organization_id or
+                    (organization_id == 'DEFAULT_ORG' and (not m.get('organization_id') or m.get('organization_id') == 'DEFAULT_ORG')))
+            ]
+            if not valid_indices:
+                return None, None, 0.0, False
+            sub_similarities = similarities[valid_indices]
+            sub_best = int(np.argmax(sub_similarities))
+            max_sim = float(sub_similarities[sub_best])
+            best_idx = valid_indices[sub_best]
+        else:
+            best_idx = int(np.argmax(similarities))
+            max_sim = float(similarities[best_idx])
 
         is_match = (max_sim >= threshold)
         if is_match:
@@ -1023,7 +1042,7 @@ def recognize_face_frame():
                 
                 # Compare against all enrolled users via instant vectorized BLAS matrix search
                 best_uid, best_match, best_similarity, is_match = match_embedding_vectorized(
-                    test_embedding, threshold=FACE_MATCHING_THRESHOLD
+                    test_embedding, threshold=FACE_MATCHING_THRESHOLD, organization_id=get_current_tenant_id()
                 )
                 
                 results.append({
@@ -1105,7 +1124,7 @@ def recognize_rtsp_stream():
                 
                 # Find best match via instant vectorized BLAS matrix search
                 best_uid, best_match, best_similarity, is_match = match_embedding_vectorized(
-                    test_embedding, threshold=FACE_MATCHING_THRESHOLD
+                    test_embedding, threshold=FACE_MATCHING_THRESHOLD, organization_id=get_current_tenant_id()
                 )
                 if not is_match:
                     best_match = None
@@ -2141,14 +2160,15 @@ def get_users():
 
 @app.route('/api/shifts', methods=['GET'])
 def api_get_shifts():
-    """Retrieve all shifts with employee count."""
-    shifts = db.get_all_shifts()
+    """Retrieve all shifts with employee count scoped to current tenant."""
+    current_tenant = get_current_tenant_id()
+    shifts = db.get_all_shifts(organization_id=current_tenant)
     return jsonify({'success': True, 'shifts': shifts}), 200
 
 
 @app.route('/api/shifts', methods=['POST'])
 def api_create_shift():
-    """Create a new flexible custom shift."""
+    """Create a new flexible custom shift scoped to tenant."""
     try:
         data = request.get_json() or {}
         name = data.get('name')
@@ -2175,7 +2195,18 @@ def api_create_shift():
         if not name or not name.strip():
             return jsonify({'error': 'Shift name is required'}), 400
             
-        shift_id = db.add_shift(name=name, start_time=start_time, end_time=end_time, grace_period_minutes=grace_period, checkout_grace_period_minutes=checkout_grace_period, working_days=working_days)
+        current_tenant = get_current_tenant_id()
+        current_branch = get_current_branch_id()
+        shift_id = db.add_shift(
+            name=name,
+            start_time=start_time,
+            end_time=end_time,
+            grace_period_minutes=grace_period,
+            checkout_grace_period_minutes=checkout_grace_period,
+            working_days=working_days,
+            organization_id=current_tenant,
+            branch_id=current_branch
+        )
         if shift_id:
             return jsonify({'success': True, 'shift_id': shift_id, 'message': f"Shift '{name}' created successfully"}), 201
         else:
@@ -2189,7 +2220,7 @@ def api_create_shift():
 
 @app.route('/api/shifts/<int:shift_id>', methods=['PUT'])
 def api_update_shift(shift_id):
-    """Update custom shift configuration."""
+    """Update custom shift configuration with tenant ownership check."""
     try:
         data = request.get_json() or {}
         name = data.get('name')
@@ -2216,7 +2247,17 @@ def api_update_shift(shift_id):
         if not name or not name.strip():
             return jsonify({'error': 'Shift name is required'}), 400
             
-        success = db.update_shift(shift_id, name=name, start_time=start_time, end_time=end_time, grace_period_minutes=grace_period, checkout_grace_period_minutes=checkout_grace_period, working_days=working_days)
+        current_tenant = get_current_tenant_id()
+        success = db.update_shift(
+            shift_id,
+            name=name,
+            start_time=start_time,
+            end_time=end_time,
+            grace_period_minutes=grace_period,
+            checkout_grace_period_minutes=checkout_grace_period,
+            working_days=working_days,
+            organization_id=current_tenant
+        )
         if success:
             return jsonify({'success': True, 'message': f"Shift '{name}' updated successfully"}), 200
         else:
@@ -2230,12 +2271,13 @@ def api_update_shift(shift_id):
 
 @app.route('/api/shifts/<int:shift_id>', methods=['DELETE'])
 def api_delete_shift(shift_id):
-    """Delete a custom shift (default shift ID 1 cannot be deleted)."""
+    """Delete a custom shift (default shift ID 1 cannot be deleted) with tenant check."""
     try:
         if shift_id == 1:
             return jsonify({'error': 'Cannot delete default Morning Shift'}), 400
             
-        success = db.delete_shift(shift_id)
+        current_tenant = get_current_tenant_id()
+        success = db.delete_shift(shift_id, organization_id=current_tenant)
         if success:
             return jsonify({'success': True, 'message': 'Shift deleted successfully'}), 200
         else:
@@ -2262,8 +2304,10 @@ def api_set_default_shift(shift_id):
 @app.route('/api/users/<int:user_id>/assign-shift', methods=['POST', 'PUT'])
 @app.route('/api/staff/<int:user_id>/assign-shift', methods=['POST', 'PUT'])
 def api_assign_user_shift(user_id):
-    """Assign a shift to an individual user immediately."""
+    """Assign a shift to an individual user immediately with tenant verification."""
     try:
+        if not verify_user_access(user_id):
+            return jsonify({'error': 'User not found or unauthorized'}), 404
         data = request.get_json(silent=True) or {}
         shift_id = data.get('shift_id')
         if not shift_id:
@@ -2303,9 +2347,9 @@ def api_bulk_assign_shifts():
 @app.route('/api/users/<int:user_id>', methods=['DELETE', 'POST'])
 def api_delete_user(user_id):
     try:
-        user = db.get_user_by_id(user_id)
+        user = verify_user_access(user_id)
         if not user:
-            return jsonify({'error': 'User not found'}), 404
+            return jsonify({'error': 'User not found or unauthorized'}), 404
         success = db.delete_user(user_id)
         if success:
             remove_live_detection_for_user(user_id)
@@ -2321,6 +2365,9 @@ def api_delete_user(user_id):
 @app.route('/api/users/<int:user_id>/mark-absent', methods=['POST'])
 def api_mark_user_absent(user_id):
     try:
+        user = verify_user_access(user_id)
+        if not user:
+            return jsonify({'error': 'User not found or unauthorized'}), 404
         data = request.get_json(silent=True) or {}
         target_date = data.get('date')
         success = db.mark_user_absent_today(user_id, target_date=target_date)
@@ -2337,6 +2384,9 @@ def api_mark_user_absent(user_id):
 @app.route('/api/users/<int:user_id>/mark-present', methods=['POST'])
 def api_mark_user_present(user_id):
     try:
+        user = verify_user_access(user_id)
+        if not user:
+            return jsonify({'error': 'User not found or unauthorized'}), 404
         data = request.get_json(silent=True) or {}
         target_date = data.get('date')
         check_in_time = data.get('check_in_time')
@@ -2468,7 +2518,8 @@ def get_user_attendance(user_id):
 def get_stats():
     try:
         current_tenant = get_current_tenant_id()
-        stats = db.get_attendance_statistics()
+        current_branch = get_current_branch_id()
+        stats = db.get_attendance_statistics(organization_id=current_tenant, branch_id=current_branch)
         users = db.get_all_users(organization_id=current_tenant)
         total_users = len(users)
         present_users = stats.get('unique_users_today', 0)
@@ -2719,7 +2770,9 @@ import base64 as _b64
 
 @app.route('/api/users/<int:user_id>/photo', methods=['POST'])
 def upload_user_photo(user_id):
-    """Upload professional profile photo for a user."""
+    """Upload professional profile photo for a user with tenant isolation."""
+    if not verify_user_access(user_id):
+        return jsonify({'error': 'User not found or unauthorized'}), 404
     if 'photo' not in request.files:
         return jsonify({'error': 'No photo provided'}), 400
     photo = request.files['photo']
@@ -2739,21 +2792,18 @@ def upload_user_photo(user_id):
         import cv2
         import numpy as np
         
-        # Hamesha .jpg ke tor par save karo
-        # chahe upload .jpeg / .png / .webp ho
         file_bytes = np.frombuffer(photo.read(), np.uint8)
         img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
         if img is None:
             return jsonify({'error': 'Invalid image file'}), 400
         
-        # Hamesha user_{id}.jpg — extension problem khatam
         filename = f"user_{user_id}.jpg"
         filepath = photos_dir / filename
         
         cv2.imwrite(str(filepath), img, [cv2.IMWRITE_JPEG_QUALITY, 95])
         
-        db.save_user_photo(user_id, str(filepath))
+        db.save_user_photo(user_id, str(filepath), organization_id=get_current_tenant_id())
         return jsonify({
             'success': True,
             'photo_url': f'/profile_photos/{filename}'
@@ -2765,8 +2815,10 @@ def upload_user_photo(user_id):
 
 @app.route('/api/users/<int:user_id>/photo', methods=['GET'])
 def get_user_photo(user_id):
-    """Serve profile photo for a user."""
-    photo_path = db.get_user_photo(user_id)
+    """Serve profile photo for a user with tenant verification."""
+    if not verify_user_access(user_id):
+        return jsonify({'error': 'User not found or unauthorized'}), 404
+    photo_path = db.get_user_photo(user_id, organization_id=get_current_tenant_id())
     if not photo_path or not os.path.exists(photo_path):
         return jsonify({'error': 'No photo found'}), 404
     
@@ -2935,21 +2987,74 @@ def api_logout():
 
 def get_current_tenant_id() -> str:
     """
-    Return currently active tenant organization_id from Flask session, header, or config.
-    Guarantees strict tenant isolation for all database lookups.
+    Return currently active tenant organization_id.
+    SECURITY HARDENING: If user is authenticated in session, session organization_id
+    is 100% authoritative and CANNOT be overridden by headers, query params, or client inputs.
+    If unauthenticated (e.g. direct API client testing), header X-Organization-Id is accepted,
+    falling back strictly to local config or DEFAULT_ORG.
     """
+    if 'organization_id' in session and session['organization_id']:
+        return str(session['organization_id']).strip()
     if 'client_org_id' in session and session['client_org_id']:
-        return session['client_org_id']
-    req_tenant = request.headers.get('X-Organization-Id') or request.args.get('org_id')
-    if req_tenant:
-        return req_tenant.strip()
+        return str(session['client_org_id']).strip()
+    try:
+        from flask import request
+        hdr_org = request.headers.get('X-Organization-Id')
+        if hdr_org and hdr_org.strip():
+            return hdr_org.strip()
+    except Exception:
+        pass
     try:
         cfg = load_integration_config()
         if cfg.get('organization_id'):
-            return cfg['organization_id']
+            return str(cfg['organization_id']).strip()
     except Exception:
         pass
     return 'DEFAULT_ORG'
+
+
+def get_current_branch_id() -> str:
+    """
+    Return currently active branch_id from authenticated session or header/config.
+    """
+    if 'branch_id' in session and session['branch_id']:
+        return str(session['branch_id']).strip()
+    if 'client_branch_id' in session and session['client_branch_id']:
+        return str(session['client_branch_id']).strip()
+    try:
+        from flask import request
+        hdr_branch = request.headers.get('X-Branch-Id')
+        if hdr_branch and hdr_branch.strip():
+            return hdr_branch.strip()
+    except Exception:
+        pass
+    try:
+        cfg = load_integration_config()
+        if cfg.get('branch_id'):
+            return str(cfg['branch_id']).strip()
+    except Exception:
+        pass
+    return 'DEFAULT_BRANCH'
+
+
+def verify_user_access(user_id: int, organization_id: Optional[str] = None) -> Optional[Dict]:
+    """
+    Tenant Isolation Security Verification Helper.
+    Verify that user exists and strictly belongs to the authoritative tenant.
+    Returns user dict if valid and authorized, None otherwise.
+    """
+    tenant = organization_id or get_current_tenant_id()
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return None
+    user_org = user.get('organization_id') or 'DEFAULT_ORG'
+    if tenant != 'DEFAULT_ORG' and user_org != tenant:
+        logger.warning(f"Tenant isolation violation prevented: User #{user_id} belongs to '{user_org}', caller is '{tenant}'")
+        return None
+    if tenant == 'DEFAULT_ORG' and user_org not in ('DEFAULT_ORG', '', None):
+        logger.warning(f"Tenant isolation violation prevented: DEFAULT_ORG caller attempted access to User #{user_id} of org '{user_org}'")
+        return None
+    return user
 
 
 # ============================================
@@ -3034,8 +3139,9 @@ def _safe_user(u):
 
 @app.route('/api/staff', methods=['GET'])
 def api_get_staff():
+    current_tenant = get_current_tenant_id()
     role = request.args.get('role')
-    users = db.get_all_users(role=role)
+    users = db.get_all_users(role=role, organization_id=current_tenant)
     return jsonify([_safe_user(u) for u in users])
 
 
@@ -3046,6 +3152,8 @@ def api_add_staff():
         shift_id = int(data.get('shift_id', 1) or 1)
     except (ValueError, TypeError):
         shift_id = 1
+    current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
     uid = db.add_user(
         name=data.get('name', ''),
         email=data.get('email', ''),
@@ -3060,7 +3168,9 @@ def api_add_staff():
         join_date=data.get('join_date', ''),
         shift_id=shift_id,
         checkin_cameras=data.get('checkin_cameras', 'all') or 'all',
-        checkout_cameras=data.get('checkout_cameras', 'all') or 'all'
+        checkout_cameras=data.get('checkout_cameras', 'all') or 'all',
+        organization_id=current_tenant,
+        branch_id=current_branch
     )
     if uid is None:
         return jsonify({'success': False, 'message': 'Email or name already exists'}), 409
@@ -3069,7 +3179,7 @@ def api_add_staff():
 
 @app.route('/api/users/<int:user_id>', methods=['GET'])
 def api_get_user(user_id):
-    user = db.get_user_by_id(user_id)
+    user = verify_user_access(user_id)
     if not user:
         return jsonify({'error': 'Not found'}), 404
     return jsonify(_safe_user(user))
@@ -3078,8 +3188,8 @@ def api_get_user(user_id):
 @app.route('/api/users/<int:user_id>/update', methods=['POST', 'PUT'])
 @app.route('/api/users/<int:user_id>', methods=['PUT', 'POST'])
 def api_update_user(user_id):
-    """Update employee HR profile, shift assignment, and camera assignments."""
-    user = db.get_user_by_id(user_id)
+    """Update employee HR profile, shift assignment, and camera assignments with tenant verification."""
+    user = verify_user_access(user_id)
     if not user:
         return jsonify({'error': 'Staff member not found'}), 404
 
@@ -3568,14 +3678,14 @@ def api_reports_attendance():
 @app.route('/api/reports/departments', methods=['GET'])
 def api_reports_departments():
     """Return list of distinct departments."""
-    depts = db.get_all_departments()
+    depts = db.get_all_departments(organization_id=get_current_tenant_id())
     return jsonify({'departments': depts}), 200
 
 
 @app.route('/api/reports/shifts', methods=['GET'])
 def api_reports_shifts():
     """Return list of active shifts for filtering."""
-    shifts = db.get_all_shifts(active_only=True)
+    shifts = db.get_all_shifts(active_only=True, organization_id=get_current_tenant_id())
     return jsonify({'shifts': shifts}), 200
 
 
@@ -3607,6 +3717,7 @@ def api_reports_export_excel():
         checkout_camera=checkout_camera,
         camera_id=camera_id,
         user_id=user_id,
+        organization_id=get_current_tenant_id(),
     )
 
     filter_info = {
@@ -3621,7 +3732,7 @@ def api_reports_export_excel():
 
     return send_file(
         excel_buf,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        mimetype="打击vnd.openxmlformats-officedocument.spreadsheetml.sheet".replace("打击", "application/"),
         as_attachment=True,
         download_name=filename
     )
@@ -3657,6 +3768,7 @@ def api_reports_export_csv():
         checkout_camera=checkout_camera,
         camera_id=camera_id,
         user_id=user_id,
+        organization_id=get_current_tenant_id(),
     )
 
     records = report.get('records', [])
@@ -3813,10 +3925,19 @@ def api_reports_export_employee_csv():
     if not user_id:
         return jsonify({'error': 'user_id is required'}), 400
 
+    try:
+        uid_int = int(user_id)
+        u_target = verify_user_access(uid_int)
+        if not u_target:
+            return jsonify({'error': 'Employee record not found or access denied'}), 404
+    except ValueError:
+        return jsonify({'error': 'Invalid user_id'}), 400
+
     report = db.get_detailed_attendance_report(
         target_date=target_date,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        organization_id=get_current_tenant_id(),
     )
 
     records = report.get('records', [])
@@ -3895,9 +4016,12 @@ def api_mark_absent():
 
 @app.route('/api/leaves', methods=['GET'])
 def api_get_leaves():
+    current_tenant = get_current_tenant_id()
     user_id = request.args.get('user_id', type=int)
+    if user_id and not verify_user_access(user_id):
+        return jsonify([]), 200
     status = request.args.get('status')
-    return jsonify(db.get_leave_requests(user_id=user_id, status=status))
+    return jsonify(db.get_leave_requests(user_id=user_id, status=status, organization_id=current_tenant))
 
 
 @app.route('/api/leaves', methods=['POST'])
@@ -3906,6 +4030,8 @@ def api_add_leave():
     user_id = data.get('user_id')
     if not user_id:
         return jsonify({'success': False, 'message': 'user_id required'}), 400
+    if not verify_user_access(int(user_id)):
+        return jsonify({'success': False, 'message': 'User not found or unauthorized'}), 404
 
     leave_type = data.get('leave_type', 'casual')
     leave_duration = str(data.get('leave_duration', 'full')).strip().lower()
@@ -4043,8 +4169,12 @@ def api_check_leave_quota():
 
 @app.route('/api/leaves/<int:leave_id>', methods=['PUT'])
 def api_update_leave(leave_id):
+    current_tenant = get_current_tenant_id()
+    leave = db.get_leave_by_id(leave_id, organization_id=current_tenant)
+    if not leave:
+        return jsonify({'success': False, 'message': 'Leave request not found or unauthorized'}), 404
     data = request.get_json() or {}
-    updated = db.update_leave_status(leave_id, data.get('status', 'approved'), data.get('approved_by', 'Admin'))
+    updated = db.update_leave_status(leave_id, data.get('status', 'approved'), data.get('approved_by', 'Admin'), organization_id=current_tenant)
     if not updated:
         return jsonify({'success': False, 'reason_code': 'overlapping_leave', 'message': 'This leave request overlaps another active leave or no longer exists. Please review the employee\'s leave dates.'}), 409
     return jsonify({'success': True})
@@ -4052,7 +4182,13 @@ def api_update_leave(leave_id):
 
 @app.route('/api/leaves/<int:leave_id>', methods=['DELETE'])
 def api_delete_leave(leave_id):
-    db.delete_leave_request(leave_id)
+    current_tenant = get_current_tenant_id()
+    leave = db.get_leave_by_id(leave_id, organization_id=current_tenant)
+    if not leave:
+        return jsonify({'success': False, 'message': 'Leave request not found or unauthorized'}), 404
+    deleted = db.delete_leave_request(leave_id, organization_id=current_tenant)
+    if not deleted:
+        return jsonify({'success': False, 'message': 'Failed to delete leave request'}), 404
     return jsonify({'success': True})
 
 
@@ -4137,7 +4273,12 @@ def api_delete_leave_type(type_id):
 def api_get_leave_balances():
     year = request.args.get('year', 2026, type=int)
     user_id = request.args.get('user_id', type=int)
-    return jsonify(db.get_leave_balances(year=year, user_id=user_id))
+    current_tenant = get_current_tenant_id()
+    if user_id is not None:
+        u_target = verify_user_access(user_id, organization_id=current_tenant)
+        if not u_target:
+            return jsonify({'error': 'Employee not found or access denied'}), 404
+    return jsonify(db.get_leave_balances(year=year, user_id=user_id, organization_id=current_tenant))
 
 
 @app.route('/api/holidays', methods=['GET'])
@@ -4392,7 +4533,8 @@ def api_get_all_salary():
         active_only = request.args.get('active_only', 'true').lower() == 'true'
         department = request.args.get('department')
         search = request.args.get('search')
-        return jsonify(db.get_all_salary_configs(active_only=active_only, department=department, search=search))
+        current_tenant = get_current_tenant_id()
+        return jsonify(db.get_all_salary_configs(active_only=active_only, department=department, search=search, organization_id=current_tenant))
     except Exception as e:
         logger.exception("Failed to load salary configs")
         return jsonify({'error': f'Failed to load salary configs: {e}'}), 500
@@ -4401,7 +4543,8 @@ def api_get_all_salary():
 @app.route('/api/salary/summary', methods=['GET'])
 def api_get_salary_summary():
     try:
-        return jsonify(db.get_salary_summary())
+        current_tenant = get_current_tenant_id()
+        return jsonify(db.get_salary_summary(organization_id=current_tenant))
     except Exception as e:
         logger.exception("Failed to load salary summary")
         return jsonify({'error': f'Failed to load salary summary: {e}'}), 500
@@ -4410,6 +4553,10 @@ def api_get_salary_summary():
 @app.route('/api/salary/<int:user_id>', methods=['GET'])
 def api_get_salary(user_id):
     try:
+        current_tenant = get_current_tenant_id()
+        u_target = verify_user_access(user_id, organization_id=current_tenant)
+        if not u_target:
+            return jsonify({'error': f'Employee #{user_id} not found or access denied'}), 404
         cfg = db.get_salary_config(user_id)
         if not cfg:
             return jsonify({'error': f'Employee #{user_id} not found'}), 404
@@ -4437,6 +4584,11 @@ def api_set_salary(user_id=None):
         except (ValueError, TypeError) as e:
             return jsonify({'success': False, 'message': f'Invalid numeric values provided: {e}'}), 400
 
+        current_tenant = get_current_tenant_id()
+        u_target = verify_user_access(uid, organization_id=current_tenant)
+        if not u_target:
+            return jsonify({'success': False, 'message': f'Employee #{uid} not found or access denied'}), 404
+
         if basic_salary < 0 or allowances < 0 or deductions < 0 or ot_rate < 0:
             return jsonify({'success': False, 'message': 'Salary, allowances, deductions, and OT rate must be non-negative'}), 400
 
@@ -4463,6 +4615,10 @@ def api_set_salary(user_id=None):
 @app.route('/api/salary/<int:user_id>', methods=['DELETE'])
 def api_delete_salary(user_id):
     try:
+        current_tenant = get_current_tenant_id()
+        u_target = verify_user_access(user_id, organization_id=current_tenant)
+        if not u_target:
+            return jsonify({'success': False, 'message': f'Employee #{user_id} not found or access denied'}), 404
         ok = db.reset_salary_config(user_id)
         if ok:
             return jsonify({'success': True, 'message': 'Salary package reset to default'}), 200
@@ -4491,7 +4647,8 @@ def api_auto_ot_rates():
 @app.route('/api/payroll/history', methods=['GET'])
 def api_get_payroll_history():
     try:
-        return jsonify(db.get_payroll_history())
+        current_tenant = get_current_tenant_id()
+        return jsonify(db.get_payroll_history(organization_id=current_tenant))
     except Exception as e:
         logger.exception("Failed to load payroll history")
         return jsonify({'error': f'Failed to load payroll history: {e}'}), 500
@@ -4504,8 +4661,9 @@ def api_get_monthly_payroll():
     if not payroll_month:
         return jsonify({'error': 'Payroll month is required in YYYY-MM format'}), 400
     try:
-        saved_run = None if recalculate else db.get_monthly_payroll(payroll_month)
-        return jsonify(saved_run or db.calculate_monthly_payroll(payroll_month))
+        current_tenant = get_current_tenant_id()
+        saved_run = None if recalculate else db.get_monthly_payroll(payroll_month, organization_id=current_tenant)
+        return jsonify(saved_run or db.calculate_monthly_payroll(payroll_month, organization_id=current_tenant))
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
@@ -4779,10 +4937,11 @@ def api_finalize_monthly_payroll():
     payroll_month = str(data.get('month', '')).strip()
     if not payroll_month:
         return jsonify({'error': 'Payroll month is required in YYYY-MM format'}), 400
-    if db.get_monthly_payroll(payroll_month):
+    current_tenant = get_current_tenant_id()
+    if db.get_monthly_payroll(payroll_month, organization_id=current_tenant):
         return jsonify({'error': f'Payroll for {payroll_month} is already finalized'}), 409
     try:
-        preview = db.calculate_monthly_payroll(payroll_month)
+        preview = db.calculate_monthly_payroll(payroll_month, organization_id=current_tenant)
         if not preview['records']:
             return jsonify({'error': 'There are no active employees to include in payroll'}), 400
         missing_shift_history = [row['employee_name'] for row in preview['records'] if row.get('shift_history_missing')]
@@ -4794,7 +4953,7 @@ def api_finalize_monthly_payroll():
         missing_rule = [row['employee_name'] for row in preview['records'] if row.get('rule_missing')]
         if missing_rule:
             return jsonify({'error': 'Configure an active absence rule for: ' + ', '.join(missing_rule)}), 400
-        saved_run = db.finalize_monthly_payroll(preview)
+        saved_run = db.finalize_monthly_payroll(preview, organization_id=current_tenant)
         if not saved_run:
             return jsonify({'error': f'Payroll for {payroll_month} was finalized by another request'}), 409
         return jsonify({'success': True, 'payroll': saved_run}), 201
@@ -4974,7 +5133,7 @@ def api_update_branch_settings():
 def api_get_departments():
     active_only = request.args.get('active_only', 'false').lower() == 'true'
     try:
-        return jsonify(db.get_all_departments_list(active_only=active_only))
+        return jsonify(db.get_all_departments_list(active_only=active_only, organization_id=get_current_tenant_id()))
     except Exception as e:
         logger.exception("Failed to load departments")
         return jsonify({'error': f'Failed to load departments: {e}'}), 500
@@ -4986,7 +5145,13 @@ def api_add_department():
     if not name:
         return jsonify({'error': 'Department name is required'}), 400
     try:
-        dept_id = db.add_department(name=name, code=data.get('code', ''), description=data.get('description', ''))
+        dept_id = db.add_department(
+            name=name,
+            code=data.get('code', ''),
+            description=data.get('description', ''),
+            organization_id=get_current_tenant_id(),
+            branch_id=get_current_branch_id()
+        )
     except Exception as e:
         logger.exception("Failed to create department '%s'", name)
         return jsonify({'error': f'Failed to create department: {e}'}), 500
@@ -5005,18 +5170,19 @@ def api_update_department(dept_id):
         name=name,
         code=data.get('code', ''),
         description=data.get('description', ''),
-        active=int(data.get('active', 1))
+        active=int(data.get('active', 1)),
+        organization_id=get_current_tenant_id()
     )
     if success:
         return jsonify({'success': True, 'message': f'Department {name} updated successfully'})
-    return jsonify({'error': 'Failed to update department'}), 500
+    return jsonify({'error': 'Failed to update department or access denied'}), 404
 
 @app.route('/api/departments/<int:dept_id>', methods=['DELETE'])
 def api_delete_department(dept_id):
-    success = db.delete_department(dept_id)
+    success = db.delete_department(dept_id, organization_id=get_current_tenant_id())
     if success:
         return jsonify({'success': True, 'message': 'Department disabled successfully'})
-    return jsonify({'error': 'Failed to disable department'}), 500
+    return jsonify({'error': 'Failed to disable department or access denied'}), 404
 
 
 # ============================================
@@ -5028,7 +5194,12 @@ def api_get_designations():
     dept_id = request.args.get('department_id', type=int)
     dept_name = request.args.get('department_name')
     active_only = request.args.get('active_only', 'false').lower() == 'true'
-    return jsonify(db.get_designations(department_id=dept_id, department_name=dept_name, active_only=active_only))
+    return jsonify(db.get_designations(
+        department_id=dept_id,
+        department_name=dept_name,
+        active_only=active_only,
+        organization_id=get_current_tenant_id()
+    ))
 
 @app.route('/api/designations', methods=['POST'])
 def api_add_designation():
@@ -5042,13 +5213,20 @@ def api_add_designation():
     except (ValueError, TypeError):
         return jsonify({'error': 'Invalid department ID: must be an integer'}), 400
 
-    dept = db.get_department(dept_id_int)
+    current_tenant = get_current_tenant_id()
+    dept = db.get_department(dept_id_int, organization_id=current_tenant)
     if not dept:
-        return jsonify({'error': f'Department ID {dept_id_int} does not exist'}), 404
+        return jsonify({'error': f'Department ID {dept_id_int} does not exist or access denied'}), 404
     if not dept.get('active'):
         return jsonify({'error': f"Department '{dept.get('name')}' is inactive and cannot accept new designations"}), 400
 
-    desig_id = db.add_designation(department_id=dept_id_int, title=str(title).strip(), description=data.get('description', ''))
+    desig_id = db.add_designation(
+        department_id=dept_id_int,
+        title=str(title).strip(),
+        description=data.get('description', ''),
+        organization_id=current_tenant,
+        branch_id=get_current_branch_id()
+    )
     if desig_id:
         return jsonify({'success': True, 'id': desig_id, 'message': f'Designation {title} created successfully'}), 201
     return jsonify({'error': 'Failed to create designation'}), 500
@@ -5063,18 +5241,19 @@ def api_update_designation(desig_id):
         desig_id=desig_id,
         title=title,
         description=data.get('description', ''),
-        active=int(data.get('active', 1))
+        active=int(data.get('active', 1)),
+        organization_id=get_current_tenant_id()
     )
     if success:
         return jsonify({'success': True, 'message': 'Designation updated successfully'})
-    return jsonify({'error': 'Failed to update designation'}), 500
+    return jsonify({'error': 'Failed to update designation or access denied'}), 404
 
 @app.route('/api/designations/<int:desig_id>', methods=['DELETE'])
 def api_delete_designation(desig_id):
-    success = db.delete_designation(desig_id)
+    success = db.delete_designation(desig_id, organization_id=get_current_tenant_id())
     if success:
         return jsonify({'success': True, 'message': 'Designation disabled successfully'})
-    return jsonify({'error': 'Failed to disable designation'}), 500
+    return jsonify({'error': 'Failed to disable designation or access denied'}), 404
 
 
 # ============================================
@@ -5142,7 +5321,9 @@ def reload_all_camera_streams():
 @app.route('/api/cameras', methods=['GET'])
 def api_get_cameras():
     active_only = request.args.get('active_only', 'false').lower() == 'true'
-    return jsonify(db.get_all_cameras(active_only=active_only))
+    current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
+    return jsonify(db.get_all_cameras(active_only=active_only, organization_id=current_tenant, branch_id=current_branch))
 
 @app.route('/api/cameras', methods=['POST'])
 def api_add_camera():
@@ -5159,12 +5340,16 @@ def api_add_camera():
     if conn_error:
         return jsonify({'error': conn_error}), 400
         
+    current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
     cam_db_id = db.add_camera(
         camera_id=camera_id,
         name=name,
         room_name=room_name,
         camera_type=camera_type,
-        rtsp_url=rtsp_url
+        rtsp_url=rtsp_url,
+        organization_id=current_tenant,
+        branch_id=current_branch
     )
     if cam_db_id:
         threading.Thread(target=reload_all_camera_streams, daemon=True).start()
@@ -5187,6 +5372,7 @@ def api_update_camera(cam_id):
     if conn_error:
         return jsonify({'error': conn_error}), 400
     
+    current_tenant = get_current_tenant_id()
     success = db.update_camera(
         cam_db_id=cam_id,
         camera_id=camera_id,
@@ -5194,20 +5380,22 @@ def api_update_camera(cam_id):
         room_name=room_name,
         camera_type=camera_type,
         rtsp_url=rtsp_url,
-        active=active
+        active=active,
+        organization_id=current_tenant
     )
     if success:
         threading.Thread(target=reload_all_camera_streams, daemon=True).start()
         return jsonify({'success': True, 'message': f'Camera {name} updated successfully'})
-    return jsonify({'error': 'Failed to update camera'}), 500
+    return jsonify({'error': 'Failed to update camera or access denied'}), 404
 
 @app.route('/api/cameras/<int:cam_id>', methods=['DELETE'])
 def api_delete_camera(cam_id):
-    success = db.delete_camera(cam_id)
+    current_tenant = get_current_tenant_id()
+    success = db.delete_camera(cam_id, organization_id=current_tenant)
     if success:
         threading.Thread(target=reload_all_camera_streams, daemon=True).start()
         return jsonify({'success': True, 'message': 'Camera deleted successfully'})
-    return jsonify({'error': 'Failed to delete camera'}), 500
+    return jsonify({'error': 'Failed to delete camera or access denied'}), 404
 
 @app.route('/api/cameras/reload', methods=['POST'])
 def api_reload_cameras():
