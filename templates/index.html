@@ -7475,8 +7475,24 @@ async function fetchMultiLiveDetections() {
           }
 
           // Update sidebar items visibility
+          const internalHiddenTabs = ['dashboard-view', 'multi-view', 'locator-view'];
           document.querySelectorAll('.sidebar-menu .menu-item[data-module]').forEach(item => {
             const mod = item.getAttribute('data-module');
+            const clickAttr = item.getAttribute('onclick') || '';
+
+            // 1. Never expose experimental or internal hidden tabs on the client sidebar
+            if (internalHiddenTabs.some(tab => clickAttr.includes(tab))) {
+              item.style.display = 'none';
+              return;
+            }
+
+            // 2. Staff enrollment item is strictly controlled by admin enrollment toggle
+            if (item.id === 'enrollMenuSidebarItem') {
+              item.style.display = (typeof _enrollmentEnabled !== 'undefined' && _enrollmentEnabled && window.entitledModules[mod]) ? '' : 'none';
+              return;
+            }
+
+            // 3. Normal licensed modules
             if (window.entitledModules[mod]) {
               item.style.display = '';
             } else {
@@ -14178,7 +14194,7 @@ async function fetchMultiLiveDetections() {
 
       // Sidebar enrollment item
       if (enrollItem) {
-        enrollItem.style.display = _enrollmentEnabled ? '' : 'none';
+        enrollItem.style.display = (_enrollmentEnabled && (!window.entitledModules || window.entitledModules.attendance)) ? '' : 'none';
       }
 
       // Admin controls panel (only shown when unlocked)
