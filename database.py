@@ -1,12 +1,47 @@
 import sqlite3
 import json
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple, Any, Union
 from logger_config import get_logger
 from config import DB_PATH, ATTENDANCE_LOG_RETENTION_DAYS
 
 logger = get_logger(__name__)
+
+def _get_local_instance_id() -> str:
+    """Retrieve persistent local instance ID from config_integration.json or fallback."""
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_integration.json")
+    if os.path.exists(cfg_path):
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return str(data.get("local_instance_id") or "LOC-INST-001")
+        except Exception:
+            pass
+    return "LOC-INST-001"
+
+def enqueue_sync_outbox(
+    cursor: sqlite3.Cursor,
+    organization_id: str,
+    branch_id: str,
+    event_type: str,
+    payload: Dict[str, Any],
+    event_id: Optional[str] = None
+) -> str:
+    """
+    Transactionally enqueue an event into sync_outbox_queue.
+    Must be called within an active database transaction cursor.
+    """
+    ev_id = event_id or f"EVT-{uuid.uuid4().hex.upper()}"
+    inst_id = _get_local_instance_id()
+    cursor.execute('''
+        INSERT OR IGNORE INTO sync_outbox_queue (
+            event_id, organization_id, branch_id, local_instance_id,
+            event_type, payload_json, status, attempts, next_attempt_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP)
+    ''', (ev_id, organization_id, branch_id, inst_id, event_type, json.dumps(payload)))
+    return ev_id
 
 
 def init_db():
@@ -779,6 +814,32 @@ def init_db():
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_departments_org ON departments(organization_id, active)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_shifts_org ON shifts(organization_id, active)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_payroll_records_org ON payroll_records(organization_id)')
+
+            # =========================================================================
+            # PHASE 2.3 — LOCAL OUTBOX QUEUE (sync_outbox_queue)
+            # =========================================================================
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sync_outbox_queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT NOT NULL UNIQUE,
+                    organization_id TEXT NOT NULL,
+                    branch_id TEXT NOT NULL,
+                    local_instance_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    next_attempt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_attempt_at TIMESTAMP,
+                    last_error TEXT,
+                    synced_at TIMESTAMP
+                )
+            ''')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_outbox_status ON sync_outbox_queue(status)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_outbox_next_attempt ON sync_outbox_queue(next_attempt_at)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_outbox_event_id ON sync_outbox_queue(event_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_outbox_org_branch ON sync_outbox_queue(organization_id, branch_id)')
 
             conn.commit()
             
@@ -1792,12 +1853,39 @@ def log_attendance(user_id: int, detected_name: str, confidence: float, source: 
                  checkout_camera_id, checkout_location, attendance_time.strftime('%Y-%m-%d %H:%M:%S'),
                  u_org, u_branch)
             )
+            att_id = cursor.lastrowid
             if checkout_camera_id:
                 overtime_hours = _record_automatic_checkout_overtime(
                     cursor, user_id, detected_name, attendance_time
                 )
+
+            # PHASE 2.3: Transactional Outbox Enqueue
+            ev_id = f"ATT-{u_org}-{u_branch}-{att_id}-{int(attendance_time.timestamp())}"
+            payload = {
+                "local_attendance_id": att_id,
+                "user_id": user_id,
+                "detected_name": detected_name,
+                "confidence": float(confidence),
+                "source": source,
+                "location": location or "",
+                "device_id": device_id or "",
+                "checkout_camera_id": checkout_camera_id or "",
+                "checkout_location": checkout_location or "",
+                "timestamp": attendance_time.strftime('%Y-%m-%d %H:%M:%S'),
+                "organization_id": u_org,
+                "branch_id": u_branch
+            }
+            enqueue_sync_outbox(
+                cursor=cursor,
+                organization_id=u_org,
+                branch_id=u_branch,
+                event_type="CHECK_IN" if not checkout_camera_id else "CHECK_OUT",
+                payload=payload,
+                event_id=ev_id
+            )
+
             conn.commit()
-            logger.info(f"✓ Attendance logged for '{detected_name}' (User ID {user_id})")
+            logger.info(f"✓ Attendance logged for '{detected_name}' (User ID {user_id}) [Outbox: {ev_id}]")
             if checkout_camera_id and overtime_hours > 0:
                 logger.info(f"✓ Pending automatic overtime created for '{detected_name}': {overtime_hours:.2f} hour(s)")
             return True, "Attendance marked successfully"
@@ -3135,6 +3223,49 @@ def mark_user_present_today(
                 ot_existing = cursor.fetchone()
                 if ot_existing and (ot_existing[1] or 'pending').lower() == 'pending':
                     cursor.execute("DELETE FROM overtime WHERE id = ?", (ot_existing[0],))
+
+            # PHASE 2.3: Enqueue manual attendance into sync_outbox_queue
+            ev_in = f"ATT-{user_org}-{user_branch}-MAN-{user_id}-{actual_date}-IN"
+            enqueue_sync_outbox(
+                cursor=cursor,
+                organization_id=user_org,
+                branch_id=user_branch,
+                event_type="CHECK_IN",
+                payload={
+                    "user_id": user_id,
+                    "detected_name": name,
+                    "confidence": 1.0,
+                    "source": "manual",
+                    "timestamp": timestamp_val_in,
+                    "notes": notes,
+                    "marked_by": marked_by,
+                    "shift_id": shift_db_id,
+                    "organization_id": user_org,
+                    "branch_id": user_branch
+                },
+                event_id=ev_in
+            )
+            if co_clean:
+                ev_out = f"ATT-{user_org}-{user_branch}-MAN-{user_id}-{actual_date}-OUT"
+                enqueue_sync_outbox(
+                    cursor=cursor,
+                    organization_id=user_org,
+                    branch_id=user_branch,
+                    event_type="CHECK_OUT",
+                    payload={
+                        "user_id": user_id,
+                        "detected_name": name,
+                        "confidence": 1.0,
+                        "source": "manual",
+                        "timestamp": timestamp_val_out,
+                        "notes": notes,
+                        "marked_by": marked_by,
+                        "shift_id": shift_db_id,
+                        "organization_id": user_org,
+                        "branch_id": user_branch
+                    },
+                    event_id=ev_out
+                )
 
             conn.commit()
 

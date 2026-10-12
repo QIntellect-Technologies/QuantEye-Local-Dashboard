@@ -79,3 +79,4 @@ yolov8n.pt
 config_integration.json
 !config_integration.example.json
 images/
+.edge_credentials.json
