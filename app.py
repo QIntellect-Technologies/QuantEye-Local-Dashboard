@@ -5324,8 +5324,8 @@ def reload_all_camera_streams():
 @app.route('/api/cameras', methods=['GET'])
 def api_get_cameras():
     active_only = request.args.get('active_only', 'false').lower() == 'true'
-    current_tenant = get_current_tenant_id()
-    current_branch = get_current_branch_id()
+    current_tenant = request.args.get('organization_id') or get_current_tenant_id()
+    current_branch = request.args.get('branch_id') or get_current_branch_id()
     return jsonify(db.get_all_cameras(active_only=active_only, organization_id=current_tenant, branch_id=current_branch))
 
 @app.route('/api/cameras', methods=['POST'])
