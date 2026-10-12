@@ -236,12 +236,203 @@ class EdgeSyncWorker:
             self.mark_outbox_failed(record_ids, err_msg)
             return {"status": "offline", "synced": 0, "error": err_msg}
 
+    # =========================================================================
+    # PHASE 2.5: CLOUD -> EDGE DOWNSTREAM CONFIGURATION SYNCHRONIZATION
+    # =========================================================================
+
+    def send_heartbeat(self, software_version: str = "1.0.0") -> Optional[Dict[str, Any]]:
+        """Send periodic authenticated heartbeat and return cloud config version."""
+        token = self.authenticate_to_cloud()
+        if not token:
+            return None
+
+        url = f"{self.get_cloud_url()}/api/cloud/edge/heartbeat"
+        body = json.dumps({
+            "status": "online",
+            "software_version": software_version
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}"
+            }
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    return json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            logger.debug("Heartbeat failed: %s", e)
+        return None
+
+    def fetch_cloud_configuration(self) -> Optional[Dict[str, Any]]:
+        """Fetch authoritative branch configuration from Cloud using Edge JWT."""
+        token = self.authenticate_to_cloud()
+        if not token:
+            return None
+
+        url = f"{self.get_cloud_url()}/api/cloud/edge/config"
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}"
+            }
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                if resp.status == 200:
+                    return json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            logger.warning("Failed to fetch cloud configuration: %s", e)
+        return None
+
+    def apply_cloud_configuration(self, config: Dict[str, Any]) -> bool:
+        """
+        Validate and atomically apply cloud configuration locally:
+        1. Persist organization, branch, license, and module entitlement in config_integration.json.
+        2. Sync camera configuration into SQLite cameras table.
+        3. Trigger dynamic camera stream reload.
+        """
+        if not config or not isinstance(config, dict) or not config.get("success"):
+            return False
+
+        org_id = config.get("organization_id")
+        branch_id = config.get("branch_id")
+        cfg_ver = int(config.get("config_version") or 1)
+        cameras = config.get("cameras", [])
+        lic = config.get("license") or {}
+        modules = config.get("licensed_modules") or ["attendance"]
+
+        if not org_id or not branch_id:
+            logger.warning("Invalid cloud configuration: missing org_id or branch_id")
+            return False
+
+        # Step 1: Update config_integration.json
+        try:
+            cfg_data = {}
+            if os.path.exists(CONFIG_PATH):
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    cfg_data = json.load(f)
+            
+            cfg_data["linked"] = True
+            cfg_data["organization_id"] = org_id
+            cfg_data["organization_name"] = config.get("organization_name", cfg_data.get("organization_name"))
+            cfg_data["branch_id"] = branch_id
+            cfg_data["branch_name"] = config.get("branch_name", cfg_data.get("branch_name"))
+            cfg_data["branch_status"] = config.get("branch_status", "active")
+            cfg_data["license_id"] = lic.get("license_id", "LIC-DEFAULT")
+            cfg_data["license_status"] = lic.get("license_status", "active")
+            cfg_data["license_start"] = lic.get("starts_at")
+            cfg_data["license_expiry"] = lic.get("expires_at")
+            cfg_data["licensed_modules"] = modules
+            cfg_data["config_version"] = cfg_ver
+            cfg_data["last_sync_timestamp"] = datetime.now().isoformat()
+
+            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+                json.dump(cfg_data, f, indent=2)
+            logger.info("Updated local config_integration.json to version %d", cfg_ver)
+        except Exception as e:
+            logger.error("Failed to update config_integration.json: %s", e)
+            return False
+
+        # Step 2: Synchronize cameras in local SQLite
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cur = conn.cursor()
+                
+                # Retrieve existing camera IDs for this branch
+                cur.execute("""
+                    SELECT camera_id, id FROM cameras
+                    WHERE organization_id = ? AND branch_id = ?;
+                """, (org_id, branch_id))
+                existing = {row[0]: row[1] for row in cur.fetchall()}
+
+                incoming_cids = set()
+                for c in cameras:
+                    cid = str(c.get("camera_id") or c.get("id"))
+                    incoming_cids.add(cid)
+                    c_name = str(c.get("name") or c.get("camera_name") or cid)
+                    c_room = str(c.get("room_name") or c.get("location") or "Main Area")
+                    c_type = str(c.get("camera_type") or "rtsp")
+                    c_rtsp = str(c.get("rtsp_url") or "0")
+                    c_act = int(c.get("active", 1))
+
+                    if cid in existing:
+                        cur.execute("""
+                            UPDATE cameras
+                            SET name = ?, room_name = ?, camera_type = ?, rtsp_url = ?, active = ?
+                            WHERE id = ?;
+                        """, (c_name, c_room, c_type, c_rtsp, c_act, existing[cid]))
+                    else:
+                        cur.execute("""
+                            INSERT INTO cameras (camera_id, name, room_name, camera_type, rtsp_url, active, organization_id, branch_id)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                        """, (cid, c_name, c_room, c_type, c_rtsp, c_act, org_id, branch_id))
+
+                # Safely deactivate/remove cameras not in cloud config
+                for old_cid, old_id in existing.items():
+                    if old_cid not in incoming_cids:
+                        cur.execute("UPDATE cameras SET active = 0 WHERE id = ?;", (old_id,))
+                
+                conn.commit()
+                logger.info("Synchronized %d cameras in SQLite for branch %s", len(cameras), branch_id)
+        except Exception as e:
+            logger.error("Failed to update local SQLite cameras: %s", e)
+            return False
+
+        # Step 3: Trigger camera reload if reload function available and not in testing mode
+        if not os.environ.get("TESTING") and not os.environ.get("PYTEST_CURRENT_TEST"):
+            try:
+                import sys
+                if "app" in sys.modules and hasattr(sys.modules["app"], "reload_all_camera_streams"):
+                    threading.Thread(target=sys.modules["app"].reload_all_camera_streams, daemon=True).start()
+                    logger.info("Triggered reload_all_camera_streams() following config update.")
+            except Exception:
+                pass
+
+        return True
+
+    def check_and_apply_cloud_config(self) -> bool:
+        """Periodic check: fetches heartbeat/version, and applies config if newer."""
+        hb = self.send_heartbeat()
+        if not hb:
+            return False
+
+        cloud_ver = int(hb.get("config_version") or 1)
+        local_ver = 0
+        if os.path.exists(CONFIG_PATH):
+            try:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    local_ver = int(json.load(f).get("config_version") or 0)
+            except Exception:
+                pass
+
+        if cloud_ver != local_ver:
+            logger.info("Config version mismatch (Local: %d, Cloud: %d). Downloading...", local_ver, cloud_ver)
+            full_cfg = self.fetch_cloud_configuration()
+            if full_cfg:
+                return self.apply_cloud_configuration(full_cfg)
+        return False
+
     def run_loop(self, poll_interval: float = 3.0):
         seq = 1
+        config_counter = 0
         while not self._stop_event.is_set():
             try:
+                # 1. Edge -> Cloud Attendance sync
                 self.sync_batch(batch_sequence=seq)
                 seq += 1
+
+                # 2. Cloud -> Edge Config sync check every 5 iterations (~15s)
+                config_counter += 1
+                if config_counter >= 5:
+                    config_counter = 0
+                    self.check_and_apply_cloud_config()
             except Exception as e:
                 logger.error("Error in sync loop: %s", e)
             self._stop_event.wait(poll_interval)
@@ -259,3 +450,4 @@ class EdgeSyncWorker:
         if self._thread:
             self._thread.join(timeout=3)
             logger.info("EdgeSyncWorker background thread stopped.")
+
