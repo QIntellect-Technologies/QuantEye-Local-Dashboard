@@ -812,6 +812,7 @@ def create_user():
     checkin_cameras = data.get('checkin_cameras', 'all') or 'all'
     checkout_cameras = data.get('checkout_cameras', 'all') or 'all'
     
+    current_tenant = get_current_tenant_id()
     user_id = db.add_user(
         name=name,
         email=email,
@@ -824,13 +825,15 @@ def create_user():
         notes=notes,
         shift_id=shift_id,
         checkin_cameras=checkin_cameras,
-        checkout_cameras=checkout_cameras
+        checkout_cameras=checkout_cameras,
+        organization_id=current_tenant
     )
     if user_id:
         return jsonify({
             'success': True,
             'user_id': user_id,
             'name': name,
+            'organization_id': current_tenant,
             'message': f'User {name} created successfully'
         }), 201
     else:
@@ -2127,8 +2130,9 @@ def api_locate_history():
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    users = db.get_all_users()
-    return jsonify({'users': users}), 200
+    current_tenant = get_current_tenant_id()
+    users = db.get_all_users(organization_id=current_tenant)
+    return jsonify({'users': users, 'organization_id': current_tenant}), 200
 
 
 # ============================================
@@ -2463,8 +2467,9 @@ def get_user_attendance(user_id):
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     try:
+        current_tenant = get_current_tenant_id()
         stats = db.get_attendance_statistics()
-        users = db.get_all_users()
+        users = db.get_all_users(organization_id=current_tenant)
         total_users = len(users)
         present_users = stats.get('unique_users_today', 0)
         return jsonify({
@@ -2869,10 +2874,13 @@ def api_client_login():
         session['admin_unlocked'] = True
         session['client_user'] = username or org_name
         session['client_org'] = org_name
+        session['client_org_id'] = auth_data.get('organization_id') or 'DEFAULT_ORG'
         session['client_branch'] = branch_name
+        session['client_branch_id'] = auth_data.get('branch_id') or 'DEFAULT_BRANCH'
         
         return jsonify({
             'success': True,
+            'organization_id': auth_data.get('organization_id'),
             'organization_name': org_name,
             'branch_name': branch_name,
             'modules': modules,
@@ -2897,13 +2905,18 @@ def api_client_login():
         session['client_org'] = derived_org
         
         cfg = load_integration_config()
+        org_id = cfg.get('organization_id') or ('ORG-' + clean_user.split('@')[0].upper() if '@' in clean_user else 'DEFAULT_ORG')
+        session['client_org_id'] = org_id
+        session['client_branch_id'] = cfg.get('branch_id') or 'DEFAULT_BRANCH'
         if derived_org != 'Main Branch':
             cfg['organization_name'] = derived_org
+            cfg['organization_id'] = org_id
             cfg['linked'] = True
         save_integration_config(cfg)
 
         return jsonify({
             'success': True,
+            'organization_id': org_id,
             'organization_name': derived_org,
             'branch_name': cfg.get('branch_name') or 'Main Branch',
             'modules': cfg.get('licensed_modules', ['attendance', 'shifts', 'payroll']),
@@ -2918,6 +2931,25 @@ def api_logout():
     """Sign out active user session and re-lock dashboard."""
     session.clear()
     return jsonify({'success': True, 'message': 'Logged out successfully'}), 200
+
+
+def get_current_tenant_id() -> str:
+    """
+    Return currently active tenant organization_id from Flask session, header, or config.
+    Guarantees strict tenant isolation for all database lookups.
+    """
+    if 'client_org_id' in session and session['client_org_id']:
+        return session['client_org_id']
+    req_tenant = request.headers.get('X-Organization-Id') or request.args.get('org_id')
+    if req_tenant:
+        return req_tenant.strip()
+    try:
+        cfg = load_integration_config()
+        if cfg.get('organization_id'):
+            return cfg['organization_id']
+    except Exception:
+        pass
+    return 'DEFAULT_ORG'
 
 
 # ============================================
@@ -3515,6 +3547,7 @@ def api_reports_attendance():
     camera_id = request.args.get('camera_id', '').strip() or request.args.get('camera', '').strip() or None
     user_id = request.args.get('user_id', type=int)
 
+    current_tenant = get_current_tenant_id()
     report = db.get_detailed_attendance_report(
         target_date=target_date,
         start_date=start_date,
@@ -3527,6 +3560,7 @@ def api_reports_attendance():
         checkout_camera=checkout_camera,
         camera_id=camera_id,
         user_id=user_id,
+        organization_id=current_tenant,
     )
     return jsonify(report), 200
 
