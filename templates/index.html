@@ -25,8 +25,15 @@
     <script>
       (function() {
         try {
+          var isCloudEnv = {% if is_cloud is defined and is_cloud %}true{% else %}false{% endif %} || 
+                           window.location.hostname.includes('railway.app') || 
+                           window.location.hostname.includes('up.railway.app') || 
+                           window.location.port === '5100';
           var auth = JSON.parse(localStorage.getItem('quanteye_client_auth') || 'null');
           var css = '.menu-item[onclick*="dashboard-view"], .menu-item[onclick*="multi-view"], .menu-item[onclick*="locator-view"] { display: none !important; } ';
+          if (isCloudEnv) {
+            css += '#menuItemLive, #live-view, .menu-item[onclick*="live-view"] { display: none !important; } ';
+          }
           if (auth && Array.isArray(auth.modules)) {
             var lic = new Set(auth.modules);
             if (!lic.has('payroll')) css += '#menuItemPayroll { display: none !important; } ';
