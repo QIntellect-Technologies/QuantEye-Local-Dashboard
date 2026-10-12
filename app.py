@@ -1295,6 +1295,9 @@ class CameraStreamReader:
         while self.running:
             if not self.cap.isOpened():
                 if self.is_webcam:
+                    if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('IS_CLOUD') or os.name != 'nt':
+                        time.sleep(15)
+                        continue
                     logger.warning(f"[{self.camera_id}] Webcam closed. Re-opening with CAP_DSHOW...")
                     self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_DSHOW)
                 else:
