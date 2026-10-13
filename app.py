@@ -1065,13 +1065,27 @@ def api_sync_attendance_event():
 
     try:
         user_id = int(user_id)
+        # Parse edge node local timestamp
+        timestamp_str = data.get('timestamp')
+        att_time = None
+        if timestamp_str:
+            try:
+                att_time = datetime.fromisoformat(str(timestamp_str).replace('Z', ''))
+            except Exception:
+                pass
+        if att_time is None:
+            from datetime import timedelta
+            # Default to Pakistan Standard Time (UTC+5) for cloud deployments
+            att_time = datetime.utcnow() + timedelta(hours=5)
+
         # Log attendance in database with full shift & grace window calculation
         success, reason = db.log_attendance(
             user_id=user_id,
             detected_name=name,
             confidence=conf,
             source=f"node_cam_{cam_id}",
-            location=cam_name
+            location=cam_name,
+            attendance_time=att_time
         )
 
         # Also update in-memory live stream detections feed

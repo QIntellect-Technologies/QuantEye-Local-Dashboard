@@ -1954,10 +1954,12 @@ def _record_automatic_checkout_overtime(
     return overtime_hours
 
 
-def log_attendance(user_id: int, detected_name: str, confidence: float, source: str = 'camera', location: str | None = None, device_id: str | None = None, bypass_shift_check: bool = False, checkout_camera_id: str | None = None, checkout_location: str | None = None) -> Tuple[bool, str]:
+def log_attendance(user_id: int, detected_name: str, confidence: float, source: str = 'camera', location: str | None = None, device_id: str | None = None, bypass_shift_check: bool = False, checkout_camera_id: str | None = None, checkout_location: str | None = None, attendance_time: Optional[datetime] = None) -> Tuple[bool, str]:
     """Log attendance detection with room location, device ID, and shift grace period verification."""
+    if attendance_time is None:
+        attendance_time = datetime.now()
     if not bypass_shift_check:
-        allowed, reason, shift_info = check_user_shift_allowed(user_id)
+        allowed, reason, shift_info = check_user_shift_allowed(user_id, dt=attendance_time)
         if not allowed:
             logger.info(f"Skipped attendance log for '{detected_name}' (User ID {user_id}): {reason}")
             return False, reason
@@ -1966,10 +1968,9 @@ def log_attendance(user_id: int, detected_name: str, confidence: float, source: 
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            attendance_time = datetime.now()
             cursor.execute(
-                'DELETE FROM manual_absent WHERE user_id = ? AND date = date("now", "localtime")',
-                (user_id,)
+                'DELETE FROM manual_absent WHERE user_id = ? AND date = date(?)',
+                (user_id, attendance_time.strftime('%Y-%m-%d'))
             )
             cursor.execute("SELECT organization_id, branch_id FROM users WHERE id = ?", (user_id,))
             u_row = cursor.fetchone()
