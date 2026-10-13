@@ -1033,6 +1033,20 @@ def api_mark_user_trained(user_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/organizations/<org_id>/purge', methods=['POST', 'DELETE'])
+@app.route('/api/organizations/purge', methods=['POST'])
+def api_purge_organization(org_id=None):
+    """Purge all staff, embeddings, attendance, and camera data for an organization."""
+    if not org_id:
+        data = request.get_json(silent=True) or {}
+        org_id = data.get('organization_id')
+    if not org_id:
+        return jsonify({'success': False, 'error': 'organization_id required'}), 400
+    success = db.purge_organization_data(org_id)
+    refresh_embedding_cache()
+    return jsonify({'success': success, 'message': f'Organization {org_id} purged successfully'})
+
+
 @app.route('/api/sync/attendance-event', methods=['POST'])
 def api_sync_attendance_event():
     """

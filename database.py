@@ -50,11 +50,11 @@ def init_db():
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
 
-            # Users table
+            # Users table (scoped per organization)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
                     email TEXT,
                     phone TEXT,
                     department TEXT,
@@ -77,13 +77,67 @@ def init_db():
                 ("shift_id", "INTEGER DEFAULT 1"),
                 ("checkin_cameras", "TEXT DEFAULT 'all'"),
                 ("checkout_cameras", "TEXT DEFAULT 'all'"),
-                ("exit_date", "TEXT")
+                ("exit_date", "TEXT"),
+                ("organization_id", "TEXT DEFAULT 'DEFAULT_ORG'"),
+                ("branch_id", "TEXT DEFAULT 'DEFAULT_BRANCH'"),
+                ("face_trained", "INTEGER DEFAULT 0")
             ]:
                 try:
                     cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
                     conn.commit()
                 except sqlite3.OperationalError:
                     pass
+
+            # Multi-Tenant Migration: Remove legacy global UNIQUE constraint on users.name
+            try:
+                cursor.execute("PRAGMA index_list(users)")
+                indexes = cursor.fetchall()
+                has_global_name_unique = any(idx[2] == 1 for idx in indexes if 'name' in idx[1].lower() or 'autoindex' in idx[1].lower())
+                if has_global_name_unique:
+                    cursor.execute("PRAGMA table_info(users)")
+                    cols_info = cursor.fetchall()
+                    col_names = [c[1] for c in cols_info if c[1] != 'id']
+                    cols_str = ", ".join(col_names)
+                    cursor.execute("ALTER TABLE users RENAME TO _users_legacy_unique_old")
+                    cursor.execute("""
+                        CREATE TABLE users (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name TEXT NOT NULL,
+                            email TEXT,
+                            phone TEXT,
+                            department TEXT,
+                            enrollment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            active INTEGER DEFAULT 1,
+                            notes TEXT,
+                            photo_path TEXT,
+                            password TEXT DEFAULT '123456',
+                            role TEXT DEFAULT 'staff',
+                            cnic TEXT,
+                            position TEXT,
+                            salary REAL DEFAULT 0,
+                            join_date TEXT,
+                            shift_id INTEGER DEFAULT 1,
+                            checkin_cameras TEXT DEFAULT 'all',
+                            checkout_cameras TEXT DEFAULT 'all',
+                            exit_date TEXT,
+                            organization_id TEXT DEFAULT 'DEFAULT_ORG',
+                            branch_id TEXT DEFAULT 'DEFAULT_BRANCH',
+                            face_trained INTEGER DEFAULT 0
+                        )
+                    """)
+                    cursor.execute("PRAGMA table_info(_users_legacy_unique_old)")
+                    old_cols = set(c[1] for c in cursor.fetchall())
+                    common_cols = [c for c in col_names if c in old_cols]
+                    common_str = ", ".join(common_cols)
+                    cursor.execute(f"INSERT INTO users (id, {common_str}) SELECT id, {common_str} FROM _users_legacy_unique_old")
+                    cursor.execute("DROP TABLE _users_legacy_unique_old")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_org ON users(organization_id)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_name_org ON users(name, organization_id)")
+                    conn.commit()
+                    logger.info("✓ Multi-tenant migration applied: Removed global UNIQUE on users.name.")
+            except Exception as me:
+                logger.debug(f"Note on multi-tenant migration: {me}")
 
             # Create the base table before applying migrations that alter it.
             cursor.execute('''
@@ -873,35 +927,109 @@ def add_user(
         logger.warning("Attempted to add user with empty name")
         return None
 
+    clean_name = name.strip()
+    org_target = organization_id or 'DEFAULT_ORG'
+    branch_target = branch_id or 'DEFAULT_BRANCH'
+
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            
+            # 1. Multi-Tenant Check: Check if user with same name already exists in THIS organization
+            cursor.execute(
+                "SELECT id, active FROM users WHERE LOWER(TRIM(name)) = LOWER(?) AND (organization_id = ? OR organization_id IS NULL OR organization_id = '')",
+                (clean_name, org_target)
+            )
+            existing = cursor.fetchone()
+            if existing:
+                existing_id, is_active = existing
+                # If previously marked inactive or re-enrolling, re-activate with updated details
+                cursor.execute("""
+                    UPDATE users 
+                    SET active = 1, email = ?, phone = ?, department = ?, password = ?, role = ?,
+                        notes = ?, cnic = ?, position = ?, salary = ?, join_date = ?, shift_id = ?,
+                        checkin_cameras = ?, checkout_cameras = ?, organization_id = ?, branch_id = ?
+                    WHERE id = ?
+                """, (email, phone, department, password, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target, existing_id))
+                effective_from = join_date if join_date else None
+                if effective_from:
+                    try: datetime.strptime(effective_from, "%Y-%m-%d")
+                    except ValueError: effective_from = None
+                _record_employee_shift_history(cursor, existing_id, shift_id or 1, effective_from)
+                conn.commit()
+                logger.info(f"✓ Re-activated/Updated user '{clean_name}' for Org '{org_target}' (ID: {existing_id})")
+                return existing_id
+
+            # 2. Insert new user safely scoped to this organization
             cursor.execute(
                 '''INSERT INTO users
                    (name, email, phone, department, password, role, notes, cnic, position, salary, join_date, shift_id, checkin_cameras, checkout_cameras, organization_id, branch_id)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (name.strip(), email, phone, department, password, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH')
+                (clean_name, email, phone, department, password, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target)
             )
             user_id = cursor.lastrowid
             if user_id is None:
                 raise RuntimeError("Failed to create employee record")
             effective_from = join_date if join_date else None
             if effective_from:
-                try:
-                    datetime.strptime(effective_from, "%Y-%m-%d")
-                except ValueError:
-                    effective_from = None
+                try: datetime.strptime(effective_from, "%Y-%m-%d")
+                except ValueError: effective_from = None
             _record_employee_shift_history(cursor, user_id, shift_id or 1, effective_from)
             conn.commit()
 
-        logger.info(f"✓ User '{name}' created for Org '{organization_id or 'DEFAULT_ORG'}' (ID: {user_id}, Shift ID: {shift_id})")
+        logger.info(f"✓ User '{clean_name}' created for Org '{org_target}' (ID: {user_id}, Shift ID: {shift_id})")
         return user_id
-    except sqlite3.IntegrityError:
-        logger.warning(f"User '{name}' or email already exists")
+    except sqlite3.IntegrityError as ie:
+        logger.warning(f"Integrity check for user '{clean_name}' under Org '{org_target}': {ie}")
+        # As fail-safe, query existing ID if duplicate constraint triggered
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM users WHERE LOWER(TRIM(name)) = LOWER(?)", (clean_name,))
+                row = cursor.fetchone()
+                if row:
+                    return row[0]
+        except Exception:
+            pass
         return None
     except Exception as e:
         logger.error(f"Failed to add user: {e}")
         return None
+
+
+def purge_organization_data(organization_id: str) -> bool:
+    """
+    Completely purge all staff, embeddings, attendance logs, and camera configs
+    when an organization is deleted or wiped from the platform.
+    """
+    if not organization_id or organization_id in ('DEFAULT_ORG', ''):
+        return False
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            # 1. Delete embeddings
+            cursor.execute("""
+                DELETE FROM embeddings 
+                WHERE organization_id = ? 
+                   OR user_id IN (SELECT id FROM users WHERE organization_id = ?)
+            """, (organization_id, organization_id))
+            # 2. Delete attendance records
+            cursor.execute("""
+                DELETE FROM attendance 
+                WHERE user_id IN (SELECT id FROM users WHERE organization_id = ?)
+            """, (organization_id,))
+            # 3. Delete shifts
+            cursor.execute("DELETE FROM shifts WHERE organization_id = ?", (organization_id,))
+            # 4. Delete cameras
+            cursor.execute("DELETE FROM cameras WHERE organization_id = ?", (organization_id,))
+            # 5. Delete users
+            cursor.execute("DELETE FROM users WHERE organization_id = ?", (organization_id,))
+            conn.commit()
+        logger.info(f"✓ Purged all data for deleted organization '{organization_id}'")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to purge organization '{organization_id}': {e}")
+        return False
 
 
 def get_user_by_name(name: str) -> Optional[Dict]:
