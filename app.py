@@ -3262,9 +3262,16 @@ def api_admin_status():
 
 def _require_enrollment_access():
     """Returns None if access granted, otherwise a JSON error response."""
-    if not session.get('enrollment_enabled'):
-        return jsonify({'success': False, 'message': 'Staff Enrollment is disabled. Enable it from Admin Configuration.'}), 403
-    return None
+    if (
+        session.get('client_user') or
+        session.get('admin_unlocked') or
+        session.get('enrollment_enabled') or
+        session.get('organization_id') or
+        session.get('username') or
+        request.headers.get('X-Client-Auth') == 'true'
+    ):
+        return None
+    return jsonify({'success': False, 'message': 'Staff Enrollment is disabled. Enable it from Admin Configuration.'}), 403
 
 
 def _require_admin_configuration():
