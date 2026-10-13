@@ -946,7 +946,11 @@ def upload_enrollment_video():
                     logger.debug(f"Cleaned up video file: {filepath}")
             except Exception as e:
                 logger.warning(f"Failed to cleanup video: {e}")
-    
+    except Exception as e:
+        logger.error(f"Enrollment endpoint error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
 @app.route('/api/users/<int:user_id>/sync-embeddings', methods=['POST'])
 def api_sync_user_embeddings(user_id):
     """
