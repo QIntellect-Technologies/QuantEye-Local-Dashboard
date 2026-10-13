@@ -1533,7 +1533,9 @@ class CameraStreamReader:
                     # -----------------------------------------------------------------------
                     confirmed_bboxes = [
                         t["bbox"] for t in self.tracked_faces.values()
-                        if t.get("confirmed") and t.get("name") != "Unknown" and (current_time - t.get("last_seen", 0)) < 0.6
+                        if t.get("confirmed") and t.get("name") != "Unknown"
+                        and (current_time - t.get("last_seen", 0)) < 0.6
+                        and (current_time - t.get("last_ai_run", 0)) < 2.5
                     ]
 
                     # ALL-IN-ONE High-Speed Face Detection & Selective Extraction
@@ -1619,7 +1621,7 @@ class CameraStreamReader:
                                         inherited_sim = old_t["similarity"]
                                         last_ai_run_val = old_t["last_ai_run"]
                                         inherited_history = list(old_t.get("match_history", []))
-                                        inherited_confirmed = old_t.get("confirmed", False)
+                                        inherited_confirmed = False  # Mandatory: Re-verify embedding to prevent identity theft when someone else sits down
                                         break
                             
                             tid = self.next_track_id

@@ -75,7 +75,7 @@ ANTI_SPOOFING_ENABLED = True  # Enable spoof detection
 DUPLICATE_LOG_TIMEOUT = 30  # Seconds - don't log same person twice
 
 # Tracking Settings
-TRACK_MAX_AGE_SECONDS = 5.0          # How long (in seconds) to remember a recognized person after they disappear from frame
+TRACK_MAX_AGE_SECONDS = 1.5          # Fast, clean track expiry: once person leaves frame, drop track in 1.5s
 TRACK_ACTIVE_IOU_THRESHOLD = 0.15    # IoU threshold for matching face in consecutive frames
 TRACK_LOST_IOU_THRESHOLD = 0.1       # IoU threshold for matching a face after it was temporarily lost
 TRACK_ACTIVE_DIST_FACTOR = 0.5       # [CROWD FIX] Reduced from 0.8 -> 0.5: tighter radius so nearby people don't steal tracks
