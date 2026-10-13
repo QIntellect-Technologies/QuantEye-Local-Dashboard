@@ -284,6 +284,7 @@ def require_admin_session_for_app_data():
         '/api/integration/sync',
         '/api/cameras',
         '/api/attendance/edge-mark',
+        '/api/sync/attendance-event',
     }
 
     # Step 7: Check module entitlement first
@@ -987,6 +988,53 @@ def api_sync_user_embeddings(user_id):
         return jsonify({'success': True, 'synced_count': len(embeddings)}), 200
     except Exception as e:
         logger.error(f"Error syncing embeddings: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/sync/attendance-event', methods=['POST'])
+def api_sync_attendance_event():
+    """
+    Ingest live recognition event from edge node.
+    Performs tenant shift calculation, grace period checking, and logs attendance.
+    """
+    data = request.get_json(silent=True) or {}
+    user_id = data.get('user_id')
+    name = data.get('name')
+    conf = float(data.get('confidence', 0.9))
+    cam_name = data.get('camera_name', 'Live Camera')
+    cam_id = data.get('camera_id', '')
+
+    if not user_id or not name:
+        return jsonify({'success': False, 'error': 'Missing user_id or name'}), 400
+
+    try:
+        user_id = int(user_id)
+        # Log attendance in database with full shift & grace window calculation
+        success, reason = db.log_attendance(
+            user_id=user_id,
+            detected_name=name,
+            confidence=conf,
+            source=f"node_cam_{cam_id}",
+            location=cam_name
+        )
+
+        # Also update in-memory live stream detections feed
+        with cache_lock:
+            LATEST_STREAM_DETECTIONS.insert(0, {
+                'user_id': user_id,
+                'name': name,
+                'confidence': int(conf * 100),
+                'camera_name': cam_name,
+                'timestamp': datetime.now().strftime('%H:%M:%S'),
+                'time': datetime.now().strftime('%H:%M:%S'),
+                'source': cam_name
+            })
+            if len(LATEST_STREAM_DETECTIONS) > 50:
+                LATEST_STREAM_DETECTIONS.pop()
+
+        return jsonify({'success': True, 'attendance_logged': success, 'reason': reason}), 200
+    except Exception as e:
+        logger.error(f"Error in api_sync_attendance_event: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
