@@ -1078,6 +1078,10 @@ def api_sync_attendance_event():
             # Default to Pakistan Standard Time (UTC+5) for cloud deployments
             att_time = datetime.utcnow() + timedelta(hours=5)
 
+        event_type = data.get('event_type', 'CHECKIN')
+        checkout_cam = data.get('camera_id') if event_type == 'CHECKOUT' else None
+        checkout_loc = data.get('camera_name') if event_type == 'CHECKOUT' else None
+
         # Log attendance in database with full shift & grace window calculation
         success, reason = db.log_attendance(
             user_id=user_id,
@@ -1085,6 +1089,9 @@ def api_sync_attendance_event():
             confidence=conf,
             source=f"node_cam_{cam_id}",
             location=cam_name,
+            checkout_camera_id=checkout_cam,
+            checkout_location=checkout_loc,
+            bypass_shift_check=True,
             attendance_time=att_time
         )
 
