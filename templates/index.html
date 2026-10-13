@@ -5181,6 +5181,7 @@ async function fetchMultiLiveDetections() {
                 <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Email / Contact</th>
                 <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">CNIC</th>
                 <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Salary</th>
+                <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Training</th>
                 <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; text-align:right;">Actions</th>
               </tr>
             </thead>
@@ -11067,7 +11068,7 @@ async function fetchMultiLiveDetections() {
         renderTabStaffPaginationControls(pageNum, totalPages);
 
         if (!pageItems || pageItems.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:#64748b; padding:30px; font-size:0.85rem;">No staff records found.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; color:#64748b; padding:30px; font-size:0.85rem;">No staff records found.</td></tr>';
           return;
         }
 
@@ -11092,6 +11093,11 @@ async function fetchMultiLiveDetections() {
           const checkinBadges = formatCameraBadges(s.checkin_cameras, false);
           const checkoutBadges = formatCameraBadges(s.checkout_cameras, true);
           const isRowChecked = selectedStaffIds.has(s.id);
+
+          const isTrained = (s.embedding_count > 0 || s.has_embedding || s.face_trained);
+          const trainingBadge = isTrained
+            ? `<span style="display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:12px; font-size:0.72rem; font-weight:700; background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;"><i class="fa-solid fa-circle-check" style="font-size:0.7rem;"></i> Complete</span>`
+            : `<span style="display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:12px; font-size:0.72rem; font-weight:700; background:#fffbeb; color:#d97706; border:1px solid #fde68a;"><i class="fa-solid fa-hourglass-half" style="font-size:0.7rem;"></i> Pending</span>`;
 
           tr.innerHTML = `
             <td style="padding:9px 12px; text-align:center; vertical-align:middle;">
@@ -11129,6 +11135,7 @@ async function fetchMultiLiveDetections() {
             </td>
             <td style="padding:9px 12px; vertical-align:middle;"><span style="color:#475569; font-size:0.78rem; font-weight:500;">${s.cnic || '--'}</span></td>
             <td style="padding:9px 12px; vertical-align:middle;"><strong style="color:#16a34a; font-size:0.82rem; font-weight:700;">${salaryStr}</strong></td>
+            <td style="padding:9px 12px; vertical-align:middle;">${trainingBadge}</td>
             <td style="padding:9px 12px; text-align:right; vertical-align:middle;">
               <div style="display:inline-flex; gap:5px;">
                 <button onclick="openTabEditStaffModal(${s.id})" style="background:#f0f9ff; color:#0284c7; border:1px solid #bae6fd; padding:4px 9px; border-radius:5px; font-size:0.75rem; font-weight:600; cursor:pointer; transition:all 0.15s ease;" onmouseover="this.style.background='#e0f2fe'" onmouseout="this.style.background='#f0f9ff'"><i class="fa-solid fa-pen" style="margin-right:3px;"></i>Edit</button>

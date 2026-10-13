@@ -943,7 +943,8 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
                        COALESCE(u.checkin_cameras, 'all') as checkin_cameras,
                        COALESCE(u.checkout_cameras, 'all') as checkout_cameras,
                        COALESCE(u.organization_id, 'DEFAULT_ORG') as organization_id,
-                       COALESCE(u.branch_id, 'DEFAULT_BRANCH') as branch_id
+                       COALESCE(u.branch_id, 'DEFAULT_BRANCH') as branch_id,
+                       COALESCE((SELECT COUNT(*) FROM embeddings emb WHERE emb.user_id = u.id), 0) as embedding_count
                 FROM users u
                 LEFT JOIN shifts s ON COALESCE(u.shift_id, 1) = s.id
                 LEFT JOIN (
@@ -985,7 +986,9 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
             'shift_id': r[15], 'shift_name': r[16], 'shift_start': r[17],
             'shift_end': r[18], 'shift_grace': r[19],
             'checkin_cameras': r[20], 'checkout_cameras': r[21],
-            'organization_id': r[22], 'branch_id': r[23]
+            'organization_id': r[22], 'branch_id': r[23],
+            'embedding_count': r[24] if len(r) > 24 else 0,
+            'has_embedding': (r[24] > 0) if len(r) > 24 else False
         } for r in rows]
     except Exception as e:
         logger.error(f"Failed to get all users: {e}")
