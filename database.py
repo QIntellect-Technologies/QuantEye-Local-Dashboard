@@ -2364,6 +2364,7 @@ def get_detailed_attendance_report(
     late_time_threshold: str = "09:15:00",
     user_id: Optional[int] = None,
     organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate comprehensive department-wise, shift-wise, staff-wise, and camera-wise attendance reports.
@@ -2490,6 +2491,12 @@ def get_detailed_attendance_report(
                 else:
                     user_query += " AND u.organization_id = ?"
                     user_params.append(organization_id)
+            if branch_id and branch_id != 'all':
+                if branch_id == 'DEFAULT_BRANCH':
+                    user_query += " AND (u.branch_id = 'DEFAULT_BRANCH' OR u.branch_id IS NULL)"
+                else:
+                    user_query += " AND u.branch_id = ?"
+                    user_params.append(branch_id)
 
             user_query += " ORDER BY u.department ASC, u.name ASC"
             cursor.execute(user_query, user_params)
@@ -3939,23 +3946,32 @@ def delete_leave_type(type_id: int) -> bool:
         return False
 
 
-def get_company_holidays(year: Optional[int] = None) -> List[Dict]:
-    """Get company holidays optionally filtered by year."""
+def get_company_holidays(year: Optional[int] = None, organization_id: Optional[str] = None) -> List[Dict]:
+    """Get company holidays optionally filtered by year and organization."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+            query = "SELECT * FROM company_holidays WHERE 1=1"
+            params = []
             if year:
-                cursor.execute("SELECT * FROM company_holidays WHERE strftime('%Y', holiday_date) = ? ORDER BY holiday_date ASC", (str(year),))
-            else:
-                cursor.execute("SELECT * FROM company_holidays ORDER BY holiday_date ASC")
+                query += " AND strftime('%Y', holiday_date) = ?"
+                params.append(str(year))
+            if organization_id and organization_id != 'all':
+                if organization_id == 'DEFAULT_ORG':
+                    query += " AND (organization_id = 'DEFAULT_ORG' OR organization_id IS NULL)"
+                else:
+                    query += " AND (organization_id = ? OR organization_id IS NULL)"
+                    params.append(organization_id)
+            query += " ORDER BY holiday_date ASC"
+            cursor.execute(query, params)
             return [dict(r) for r in cursor.fetchall()]
     except Exception as e:
         logger.error(f"Get company holidays error: {e}")
         return []
 
 
-def get_company_holiday_in_range(start_date: str, end_date: str) -> Optional[Dict]:
+def get_company_holiday_in_range(start_date: str, end_date: str, organization_id: Optional[str] = None) -> Optional[Dict]:
     """Return the first company holiday that overlaps a leave date range."""
     try:
         range_start = datetime.strptime(start_date, '%Y-%m-%d').date()
@@ -3963,7 +3979,7 @@ def get_company_holiday_in_range(start_date: str, end_date: str) -> Optional[Dic
         if range_end < range_start:
             return None
 
-        holidays = get_company_holidays()
+        holidays = get_company_holidays(organization_id=organization_id)
         current_date = range_start
         while current_date <= range_end:
             current_iso = current_date.isoformat()
@@ -3990,16 +4006,19 @@ def get_company_holiday_in_range(start_date: str, end_date: str) -> Optional[Dic
         return None
 
 
-def add_company_holiday(name: str, holiday_date: str, end_date: str = None, description: str = '', is_recurring: int = 0) -> Optional[int]:
+def add_company_holiday(name: str, holiday_date: str, end_date: str = None, description: str = '', is_recurring: int = 0,
+                        organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> Optional[int]:
     """Add a new company holiday."""
     try:
         if not end_date:
             end_date = holiday_date
+        organization_id = organization_id or 'DEFAULT_ORG'
+        branch_id = branch_id or 'DEFAULT_BRANCH'
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO company_holidays (name, holiday_date, end_date, description, is_recurring) VALUES (?, ?, ?, ?, ?)",
-                (name, holiday_date, end_date, description, is_recurring)
+                "INSERT INTO company_holidays (name, holiday_date, end_date, description, is_recurring, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (name, holiday_date, end_date, description, is_recurring, organization_id, branch_id)
             )
             conn.commit()
             return cursor.lastrowid
@@ -4600,20 +4619,27 @@ def check_leave_quota(
 
 
 
-def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: float = 0.0, reason: str = '') -> Optional[int]:
+def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: float = 0.0, reason: str = '',
+                 organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> Optional[int]:
     """Record an overtime log."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            if not user_name:
-                cursor.execute("SELECT name FROM users WHERE id = ?", (user_id,))
-                user_row = cursor.fetchone()
-                if user_row:
+            cursor.execute("SELECT name, organization_id, branch_id FROM users WHERE id = ?", (user_id,))
+            user_row = cursor.fetchone()
+            if user_row:
+                if not user_name:
                     user_name = user_row[0]
+                if not organization_id:
+                    organization_id = user_row[1] or 'DEFAULT_ORG'
+                if not branch_id:
+                    branch_id = user_row[2] or 'DEFAULT_BRANCH'
+            organization_id = organization_id or 'DEFAULT_ORG'
+            branch_id = branch_id or 'DEFAULT_BRANCH'
             cursor.execute(
-                '''INSERT INTO overtime (user_id, user_name, ot_date, hours, reason)
-                   VALUES (?, ?, ?, ?, ?)''',
-                (user_id, user_name, ot_date, hours, reason)
+                '''INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, organization_id, branch_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (user_id, user_name, ot_date, hours, reason, organization_id, branch_id)
             )
             conn.commit()
             return cursor.lastrowid
@@ -4667,7 +4693,8 @@ def get_overtime_rate_preview(user_id: int, overtime_date: str) -> Optional[Dict
 
 def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                  department: Optional[str] = None, ot_date: Optional[str] = None,
-                 start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict]:
+                 start_date: Optional[str] = None, end_date: Optional[str] = None,
+                 organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict]:
     """Get overtime records optionally filtered by user_id, status, department, and date range."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -4702,6 +4729,18 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
             if end_date:
                 query += " AND o.ot_date <= ?"
                 params.append(end_date)
+            if organization_id and organization_id != 'all':
+                if organization_id == 'DEFAULT_ORG':
+                    query += " AND (COALESCE(o.organization_id, u.organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG' OR o.organization_id IS NULL OR u.organization_id IS NULL)"
+                else:
+                    query += " AND (o.organization_id = ? OR (o.organization_id IS NULL AND u.organization_id = ?))"
+                    params.extend([organization_id, organization_id])
+            if branch_id and branch_id != 'all':
+                if branch_id == 'DEFAULT_BRANCH':
+                    query += " AND (COALESCE(o.branch_id, u.branch_id, 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH' OR o.branch_id IS NULL OR u.branch_id IS NULL)"
+                else:
+                    query += " AND (o.branch_id = ? OR (o.branch_id IS NULL AND u.branch_id = ?))"
+                    params.extend([branch_id, branch_id])
             query += " ORDER BY o.ot_date DESC, o.created_at DESC"
             cursor.execute(query, params)
             overtime_rows = cursor.fetchall()

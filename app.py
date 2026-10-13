@@ -4459,7 +4459,8 @@ def api_get_leave_balances():
 @app.route('/api/holidays', methods=['GET'])
 def api_get_holidays():
     year = request.args.get('year', type=int)
-    return jsonify(db.get_company_holidays(year=year))
+    current_tenant = get_current_tenant_id()
+    return jsonify(db.get_company_holidays(year=year, organization_id=current_tenant))
 
 
 @app.route('/api/holidays', methods=['POST'])
@@ -4477,14 +4478,16 @@ def api_add_holiday():
         return jsonify({'success': False, 'message': 'Holiday dates must use YYYY-MM-DD format.'}), 400
     if holiday_end < holiday_start:
         return jsonify({'success': False, 'message': 'Holiday end date cannot be earlier than its start date.'}), 400
-    if any(holiday.get('holiday_date') == hdate for holiday in db.get_company_holidays()):
+    current_tenant = get_current_tenant_id()
+    if any(holiday.get('holiday_date') == hdate for holiday in db.get_company_holidays(organization_id=current_tenant)):
         return jsonify({'success': False, 'message': 'A holiday already starts on this date.'}), 409
     hid = db.add_company_holiday(
         name=name,
         holiday_date=hdate,
         end_date=edate,
         description=data.get('description', ''),
-        is_recurring=int(data.get('is_recurring', 0))
+        is_recurring=int(data.get('is_recurring', 0)),
+        organization_id=current_tenant,
     )
     if hid:
         return jsonify({'success': True, 'id': hid}), 201
@@ -4509,9 +4512,11 @@ def api_get_overtime():
     ot_date = request.args.get('ot_date')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    current_tenant = get_current_tenant_id()
     return jsonify(db.get_overtime(
         user_id=user_id, status=status, department=department,
-        ot_date=ot_date, start_date=start_date, end_date=end_date
+        ot_date=ot_date, start_date=start_date, end_date=end_date,
+        organization_id=current_tenant
     ))
 
 
@@ -4550,6 +4555,7 @@ def api_add_overtime():
         return jsonify({'success': False, 'error': f"Overtime limit exceeded: Maximum allowed is {limit_status['maximum_hours']:g} hours {limit_status['period_label']}."}), 400
     
     reason = str(data.get('reason') or '')
+    current_tenant = get_current_tenant_id()
 
     oid = db.add_overtime(
         user_id=int(user_id),
@@ -4557,6 +4563,7 @@ def api_add_overtime():
         ot_date=ot_date,
         hours=hours,
         reason=reason,
+        organization_id=current_tenant,
     )
     if not oid:
         return jsonify({'success': False, 'error': 'Failed to save overtime record'}), 500
