@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple, Any, Union
@@ -9,6 +10,138 @@ from config import DB_PATH, ATTENDANCE_LOG_RETENTION_DAYS
 from werkzeug.security import check_password_hash, generate_password_hash
 
 logger = get_logger(__name__)
+
+def _quote_sqlite_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+def _repair_legacy_user_foreign_key_references(cursor: sqlite3.Cursor) -> None:
+    """Repair child tables stranded by the legacy users-table rename migration."""
+    legacy_table = cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_users_legacy_unique_old'"
+    ).fetchone()
+    if legacy_table:
+        return
+
+    dependent_tables = cursor.execute(
+        """SELECT name, sql FROM sqlite_master
+           WHERE type = 'table' AND sql LIKE '%_users_legacy_unique_old%'"""
+    ).fetchall()
+    for table_name, create_sql in dependent_tables:
+        if not create_sql:
+            continue
+
+        repaired_sql = re.sub(
+            r'(?i)(REFERENCES\s+)(?:"_users_legacy_unique_old"|`_users_legacy_unique_old`|\[_users_legacy_unique_old\]|_users_legacy_unique_old)',
+            r'\1users',
+            create_sql,
+        )
+        if repaired_sql == create_sql:
+            continue
+
+        temporary_name = f"_quanteye_repair_{uuid.uuid4().hex}"
+        create_prefix = re.compile(
+            r'(?is)^(\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?)'
+            r'(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|\S+)'
+        )
+        repaired_sql, replacements = create_prefix.subn(
+            lambda match: f"{match.group(1)}{_quote_sqlite_identifier(temporary_name)}",
+            repaired_sql,
+            count=1,
+        )
+        if replacements != 1:
+            raise RuntimeError(f"Could not safely repair foreign keys for table {table_name}.")
+
+        saved_objects = cursor.execute(
+            """SELECT type, sql FROM sqlite_master
+               WHERE tbl_name = ? AND type IN ('index', 'trigger') AND sql IS NOT NULL
+               ORDER BY type, name""",
+            (table_name,),
+        ).fetchall()
+        columns = [
+            row[1]
+            for row in cursor.execute(
+                f"PRAGMA table_xinfo({_quote_sqlite_identifier(table_name)})"
+            ).fetchall()
+            if row[6] == 0
+        ]
+        if not columns:
+            raise RuntimeError(f"Could not determine stored columns for table {table_name}.")
+
+        quoted_columns = ", ".join(_quote_sqlite_identifier(column) for column in columns)
+        cursor.execute(repaired_sql)
+        cursor.execute(
+            f"INSERT INTO {_quote_sqlite_identifier(temporary_name)} ({quoted_columns}) "
+            f"SELECT {quoted_columns} FROM {_quote_sqlite_identifier(table_name)}"
+        )
+        cursor.execute(f"DROP TABLE {_quote_sqlite_identifier(table_name)}")
+        cursor.execute(
+            f"ALTER TABLE {_quote_sqlite_identifier(temporary_name)} "
+            f"RENAME TO {_quote_sqlite_identifier(table_name)}"
+        )
+        for _, object_sql in saved_objects:
+            cursor.execute(object_sql)
+
+
+def _remove_legacy_global_user_name_uniqueness(cursor: sqlite3.Cursor) -> None:
+    """Rebuild users without its legacy global name uniqueness constraint."""
+    indexes = cursor.execute("PRAGMA index_list(users)").fetchall()
+    has_global_name_unique = any(
+        index[2] == 1 and ("name" in index[1].lower() or "autoindex" in index[1].lower())
+        for index in indexes
+    )
+    if not has_global_name_unique:
+        return
+
+    cursor.execute("ALTER TABLE users RENAME TO _users_legacy_unique_old")
+    cursor.execute("""
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT,
+            phone TEXT,
+            department TEXT,
+            enrollment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            active INTEGER DEFAULT 1,
+            notes TEXT,
+            photo_path TEXT,
+            password TEXT,
+            password_hash TEXT,
+            role TEXT DEFAULT 'staff',
+            cnic TEXT,
+            position TEXT,
+            salary REAL DEFAULT 0,
+            join_date TEXT,
+            shift_id INTEGER DEFAULT 1,
+            checkin_cameras TEXT DEFAULT 'all',
+            checkout_cameras TEXT DEFAULT 'all',
+            exit_date TEXT,
+            organization_id TEXT DEFAULT 'DEFAULT_ORG',
+            branch_id TEXT DEFAULT 'DEFAULT_BRANCH',
+            face_trained INTEGER DEFAULT 0
+        )
+    """)
+    old_columns = {
+        row[1]
+        for row in cursor.execute("PRAGMA table_info(_users_legacy_unique_old)").fetchall()
+    }
+    current_columns = [
+        row[1]
+        for row in cursor.execute("PRAGMA table_info(users)").fetchall()
+        if row[1] != "id" and row[1] in old_columns
+    ]
+    if not current_columns:
+        raise RuntimeError("Could not determine common columns while migrating users.")
+
+    column_sql = ", ".join(_quote_sqlite_identifier(column) for column in current_columns)
+    cursor.execute(
+        f"INSERT INTO users (id, {column_sql}) "
+        f"SELECT id, {column_sql} FROM _users_legacy_unique_old"
+    )
+    cursor.execute("DROP TABLE _users_legacy_unique_old")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_org ON users(organization_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_name_org ON users(name, organization_id)")
 
 
 def _migrate_payroll_run_tenant_uniqueness(cursor: sqlite3.Cursor) -> None:
@@ -125,6 +258,9 @@ def init_db():
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            cursor.execute("PRAGMA legacy_alter_table = ON")
+            _repair_legacy_user_foreign_key_references(cursor)
 
             # Users table (scoped per organization)
             cursor.execute('''
@@ -194,57 +330,11 @@ def init_db():
                     )
             conn.commit()
 
-            # Multi-Tenant Migration: Remove legacy global UNIQUE constraint on users.name
-            try:
-                cursor.execute("PRAGMA index_list(users)")
-                indexes = cursor.fetchall()
-                has_global_name_unique = any(idx[2] == 1 for idx in indexes if 'name' in idx[1].lower() or 'autoindex' in idx[1].lower())
-                if has_global_name_unique:
-                    cursor.execute("PRAGMA table_info(users)")
-                    cols_info = cursor.fetchall()
-                    col_names = [c[1] for c in cols_info if c[1] != 'id']
-                    cols_str = ", ".join(col_names)
-                    cursor.execute("ALTER TABLE users RENAME TO _users_legacy_unique_old")
-                    cursor.execute("""
-                        CREATE TABLE users (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            name TEXT NOT NULL,
-                            email TEXT,
-                            phone TEXT,
-                            department TEXT,
-                            enrollment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            active INTEGER DEFAULT 1,
-                            notes TEXT,
-                            photo_path TEXT,
-                            password TEXT,
-                            password_hash TEXT,
-                            role TEXT DEFAULT 'staff',
-                            cnic TEXT,
-                            position TEXT,
-                            salary REAL DEFAULT 0,
-                            join_date TEXT,
-                            shift_id INTEGER DEFAULT 1,
-                            checkin_cameras TEXT DEFAULT 'all',
-                            checkout_cameras TEXT DEFAULT 'all',
-                            exit_date TEXT,
-                            organization_id TEXT DEFAULT 'DEFAULT_ORG',
-                            branch_id TEXT DEFAULT 'DEFAULT_BRANCH',
-                            face_trained INTEGER DEFAULT 0
-                        )
-                    """)
-                    cursor.execute("PRAGMA table_info(_users_legacy_unique_old)")
-                    old_cols = set(c[1] for c in cursor.fetchall())
-                    common_cols = [c for c in col_names if c in old_cols]
-                    common_str = ", ".join(common_cols)
-                    cursor.execute(f"INSERT INTO users (id, {common_str}) SELECT id, {common_str} FROM _users_legacy_unique_old")
-                    cursor.execute("DROP TABLE _users_legacy_unique_old")
-                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_org ON users(organization_id)")
-                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_name_org ON users(name, organization_id)")
-                    conn.commit()
-                    logger.info("✓ Multi-tenant migration applied: Removed global UNIQUE on users.name.")
-            except Exception as me:
-                logger.debug(f"Note on multi-tenant migration: {me}")
+            # Repair volumes affected by the old parent-table rename migration,
+            # then safely remove the legacy global UNIQUE constraint.
+            _repair_legacy_user_foreign_key_references(cursor)
+            _remove_legacy_global_user_name_uniqueness(cursor)
+            conn.commit()
 
             # Create the base table before applying migrations that alter it.
             cursor.execute('''

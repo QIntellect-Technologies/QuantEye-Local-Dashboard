@@ -142,5 +142,86 @@ class PayrollTenantMigrationTests(unittest.TestCase):
                 )
 
 
+class UserNameMigrationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="quanteye-user-migration-")
+        self.db_path = os.path.join(self.temp_dir.name, "legacy-users.db")
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_repairs_persisted_foreign_keys_to_missing_legacy_users_table(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.executescript("""
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    organization_id TEXT,
+                    branch_id TEXT
+                );
+                CREATE TABLE attendance (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES _users_legacy_unique_old(id)
+                );
+                INSERT INTO users (id, name, organization_id, branch_id)
+                VALUES (3, 'Existing Employee', 'ORG-A', 'BR-A1');
+                INSERT INTO attendance (id, user_id) VALUES (9, 3);
+            """)
+
+            db._repair_legacy_user_foreign_key_references(conn.cursor())
+            conn.execute("PRAGMA foreign_keys = ON")
+
+            self.assertEqual(
+                conn.execute("PRAGMA foreign_key_list(attendance)").fetchone()[2],
+                "users",
+            )
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self.assertEqual(
+                conn.execute("SELECT id, user_id FROM attendance").fetchone(),
+                (9, 3),
+            )
+
+    def test_new_users_rebuild_preserves_child_foreign_keys(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.executescript("""
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    organization_id TEXT,
+                    branch_id TEXT
+                );
+                CREATE TABLE attendance (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                );
+                INSERT INTO users (id, name, organization_id, branch_id)
+                VALUES (3, 'Existing Employee', 'ORG-A', 'BR-A1');
+                INSERT INTO attendance (id, user_id) VALUES (9, 3);
+            """)
+
+            conn.execute("PRAGMA legacy_alter_table = ON")
+            db._remove_legacy_global_user_name_uniqueness(conn.cursor())
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+            self.assertEqual(
+                conn.execute("PRAGMA foreign_key_list(attendance)").fetchone()[2],
+                "users",
+            )
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+            conn.execute(
+                "INSERT INTO users (name, organization_id, branch_id) VALUES (?, ?, ?)",
+                ("Existing Employee", "ORG-B", "BR-B1"),
+            )
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM users WHERE name = 'Existing Employee'").fetchone()[0],
+                2,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
