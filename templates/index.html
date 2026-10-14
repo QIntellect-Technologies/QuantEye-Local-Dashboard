@@ -1669,48 +1669,99 @@
         color: #94a3b8;
       }
 
-      #enroll-view .terminal-wrapper {
-        background: #ffffff;
-        border: 1px solid var(--enroll-line);
-        border-radius: 14px;
-        padding: 0;
-        box-shadow: 0 10px 28px rgba(23, 48, 66, 0.07);
-        overflow: hidden;
+      #enroll-view .enrollment-register-grid {
+        max-width: 960px;
       }
 
-      #enroll-view .terminal-header {
-        background: #eef7f6;
-        border: 0;
-        border-bottom: 1px solid var(--enroll-line);
-        border-radius: 0;
-        color: #48616d;
-        padding: 13px 18px;
+      #enroll-view .enrollment-surface {
+        padding: 28px 32px !important;
       }
 
-      #enroll-view .terminal-log {
-        background: #ffffff;
-        border: 0;
-        border-radius: 0;
-        box-shadow: none;
-        color: #48616d;
-        min-height: 350px;
-        max-height: 480px;
+      #enroll-view .enrollment-surface h2 {
+        font-size: 1.12rem;
+        font-weight: 800;
+        margin: 0 0 6px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
 
-      #enroll-view .terminal-log .system {
-        color: #3b7d79;
+      #enroll-view .enrollment-hint {
+        font-size: 0.86rem;
+        color: #64748b;
+        margin: 0 0 22px;
+        line-height: 1.5;
       }
 
-      #enroll-view .terminal-log .success {
-        color: #16845b;
+      #enroll-view .enrollment-section {
+        margin: 0 0 22px;
+        padding: 18px 18px 8px;
+        border: 1px solid #e8f0f2;
+        border-radius: 12px;
+        background: #fbfefe;
       }
 
-      #enroll-view .terminal-log .warning {
-        color: #a16207;
+      #enroll-view .enrollment-section-title {
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #5b7480;
+        margin: 0 0 14px;
       }
 
-      #enroll-view .terminal-log .error-line {
-        color: #b93636;
+      #enroll-view #enrollmentMessage {
+        margin-bottom: 16px;
+      }
+
+      #enroll-view #enrollmentMessage .success,
+      #enroll-view #enrollmentMessage .error,
+      #enroll-view #enrollmentMessage .info {
+        margin-bottom: 0;
+        border-radius: 10px;
+      }
+
+      #enroll-view #enrollmentMessage .success {
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        color: #047857;
+      }
+
+      #enroll-view #enrollmentMessage .error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #b91c1c;
+      }
+
+      #enroll-view .enrollment-surface .form-label {
+        font-weight: 700;
+        color: #173042;
+        font-size: 0.82rem;
+        margin-bottom: 6px;
+      }
+
+      #enroll-view .enrollment-surface .form-control,
+      #enroll-view .enrollment-surface .form-select {
+        min-height: 42px;
+        border: 1.5px solid #cfe8f7;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 0.88rem;
+        background: #ffffff !important;
+      }
+
+      #enroll-view .enrollment-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 8px;
+      }
+
+      #enroll-view .enrollment-actions .btn {
+        min-height: 44px;
+        padding: 10px 22px;
+        font-weight: 700;
+        border-radius: 10px;
+        width: auto;
       }
 
       #enroll-view .directory-table,
@@ -3020,242 +3071,102 @@
         <div class="page-header">
           <div class="page-header-text">
             <h1><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Staff Enrollment</h1>
-            <p class="page-subtitle">Register and manage staff identity and attendance information.</p>
-          </div>
-          <div class="page-header-actions">
-            <div class="system-status">
-              <span class="status-dot"></span>
-              <span>Enrollment Active</span>
-            </div>
+            <p class="page-subtitle">Register a new staff profile for this branch.</p>
           </div>
         </div>
 
-        <div class="grid-2col">
-          <!-- Enrollment Profile Input -->
-          <div
-            class="card enrollment-surface p-4 mb-4"
-          >
-            <h2><i class="fa-solid fa-id-card"></i> 1. Create Staff Profile</h2>
+        <div class="enrollment-register-grid">
+          <div class="card enrollment-surface mb-4">
+            <h2><i class="fa-solid fa-id-card"></i> Register Staff</h2>
+            <p class="enrollment-hint">Enter the employee details below. Face enrollment is completed on the branch desktop client after this profile is saved.</p>
+            <input type="hidden" id="userIdEnroll" value="" />
             <div id="enrollmentMessage"></div>
 
-            <div class="row g-3 mb-3">
-              <div class="col-md-6">
-                <label class="form-label font-weight-bold">Full Name *</label>
-                <input
-                  type="text"
-                  class="form-control"
-                  id="enrollName"
-                  placeholder="e.g. Imran Khalid"
-                  required
-                />
+            <div class="enrollment-section">
+              <p class="enrollment-section-title">Personal information</p>
+              <div class="row g-3 mb-2">
+                <div class="col-md-6">
+                  <label class="form-label" for="enrollName">Full Name *</label>
+                  <input type="text" class="form-control" id="enrollName" placeholder="Full name" required autocomplete="name" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="enrollEmail">Email Address</label>
+                  <input type="email" class="form-control" id="enrollEmail" placeholder="name@company.com" autocomplete="email" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="enrollPhone">Phone Number</label>
+                  <input type="text" class="form-control" id="enrollPhone" placeholder="03xx-xxxxxxx" autocomplete="tel" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="enrollCNIC">CNIC / National ID</label>
+                  <input type="text" class="form-control" id="enrollCNIC" placeholder="xxxxx-xxxxxxx-x" />
+                </div>
               </div>
+            </div>
 
-              <div class="col-md-6">
-                <label class="form-label">Email Address</label>
-                <input
-                  type="email"
-                  class="form-control"
-                  id="enrollEmail"
-                  placeholder="e.g. imran@example.com"
-                />
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Phone Number</label>
-                <input
-                  type="text"
-                  class="form-control"
-                  id="enrollPhone"
-                  placeholder="e.g. 0300-1234567"
-                />
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label" style="font-weight:700; color:#173042; font-size:0.85em; margin-bottom:6px; display:block;">
-                  <i class="fa-solid fa-business-time" style="color:#3d9fd4; margin-right:4px;"></i> Assigned Shift *
-                </label>
-                <select class="form-select enterprise-select" id="enrollShiftId" style="background:#ffffff; border:1.5px solid #cfe8f7; border-radius:10px; padding:10px 14px; font-size:0.88rem; color:#1e293b; font-weight:600; width:100%;">
-                  <option value="1">Morning Shift (09:00 AM - 05:00 PM | 15m Grace)</option>
-                </select>
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label" style="font-weight:700; color:#173042; font-size:0.85em; margin-bottom:6px; display:block;">
-                  <i class="fa-solid fa-sitemap" style="color:#3d9fd4; margin-right:4px;"></i> Department *
-                </label>
-                <select
-                  class="form-select enterprise-select"
-                  id="enrollDepartment"
-                  onchange="onEnrollDeptChange(this.value)"
-                  required
-                  style="background:#ffffff; border:1.5px solid #cfe8f7; border-radius:10px; padding:10px 14px; font-size:0.88rem; color:#1e293b; font-weight:600; width:100%;"
-                >
-                  <option value="">Select Department...</option>
-                </select>
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label" style="font-weight:700; color:#173042; font-size:0.85em; margin-bottom:6px; display:block;">
-                  <i class="fa-solid fa-id-badge" style="color:#3d9fd4; margin-right:4px;"></i> Designation / Position *
-                </label>
-                <select
-                  class="form-select enterprise-select"
-                  id="enrollPosition"
-                  required
-                  style="background:#ffffff; border:1.5px solid #cfe8f7; border-radius:10px; padding:10px 14px; font-size:0.88rem; color:#1e293b; font-weight:600; width:100%;"
-                >
-                  <option value="">Select Department First...</option>
-                </select>
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label" style="font-weight:700; color:#173042; font-size:0.85em; margin-bottom:6px; display:block;">
-                  <i class="fa-solid fa-id-card" style="color:#3d9fd4; margin-right:4px;"></i> CNIC / National ID
-                </label>
-                <input
-                  type="text"
-                  class="form-control"
-                  id="enrollCNIC"
-                  placeholder="e.g. 35202-1234567-1"
-                  style="border:1.5px solid #cfe8f7; border-radius:10px; padding:10px 14px; font-size:0.88rem;"
-                />
-              </div>
-
-              {% if not is_client_session or client_module_entitlements.payroll %}
-              <div class="col-md-6 payroll-only-ui">
-                <label class="form-label" style="font-weight:700; color:#173042; font-size:0.85em; margin-bottom:6px; display:block;">
-                  <i class="fa-solid fa-sack-dollar" style="color:#10b981; margin-right:4px;"></i> Basic Salary (PKR)
-                </label>
-                <input
-                  type="number"
-                  class="form-control"
-                  id="enrollSalary"
-                  placeholder="e.g. 75000"
-                  min="0"
-                  style="border:1.5px solid #cfe8f7; border-radius:10px; padding:10px 14px; font-size:0.88rem;"
-                />
-              </div>
-              {% endif %}
-
-              <div class="col-md-6">
-                <label class="form-label" style="font-weight:700; color:#173042; font-size:0.85em; margin-bottom:6px; display:block;">
-                  <i class="fa-regular fa-calendar-check" style="color:#3d9fd4; margin-right:4px;"></i> Joining Date
-                </label>
-                <input
-                  type="date"
-                  class="form-control"
-                  id="enrollJoinDate"
-                  style="border:1.5px solid #cfe8f7; border-radius:10px; padding:10px 14px; font-size:0.88rem;"
-                />
-              </div>
-
-              <!-- Camera Permissions for Strict Attendance -->
-              <div class="col-md-6">
-                <label class="form-label" style="font-weight:700; color:#173042; font-size:0.85em; margin-bottom:6px; display:block;">
-                  <i class="fa-solid fa-camera" style="color:#059669; margin-right:4px;"></i> Check-In Camera(s) *
-                </label>
-                <div id="enrollCheckinCamerasWrapper" class="custom-camera-select-wrapper" data-target="enrollCheckinCameras" data-type="checkin">
-                  <select class="form-select enterprise-select" id="enrollCheckinCameras" multiple size="3" style="display:none;">
-                    <option value="all" selected>All Active Cameras (Default)</option>
+            <div class="enrollment-section">
+              <p class="enrollment-section-title">Role and assignment</p>
+              <div class="row g-3 mb-2">
+                {% if not is_client_session or client_module_entitlements.shifts %}
+                <div class="col-md-6 settings-shifts-only">
+                  <label class="form-label" for="enrollShiftId">Assigned Shift *</label>
+                  <select class="form-select" id="enrollShiftId">
+                    <option value="1">Morning Shift (09:00 AM - 05:00 PM | 15m Grace)</option>
                   </select>
                 </div>
-                <small class="text-muted" style="display:block; font-size:0.75em; margin-top:4px;">
-                  Select authorized Check-In camera(s) or leave default for all.
-                </small>
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label" style="font-weight:700; color:#173042; font-size:0.85em; margin-bottom:6px; display:block;">
-                  <i class="fa-solid fa-camera-rotate" style="color:#dc2626; margin-right:4px;"></i> Check-Out Camera(s) *
-                </label>
-                <div id="enrollCheckoutCamerasWrapper" class="custom-camera-select-wrapper" data-target="enrollCheckoutCameras" data-type="checkout">
-                  <select class="form-select enterprise-select" id="enrollCheckoutCameras" multiple size="3" style="display:none;">
-                    <option value="all" selected>All Active Cameras (Default)</option>
+                {% endif %}
+                <div class="col-md-6">
+                  <label class="form-label" for="enrollDepartment">Department *</label>
+                  <select class="form-select" id="enrollDepartment" onchange="onEnrollDeptChange(this.value)" required>
+                    <option value="">Select department</option>
                   </select>
                 </div>
-                <small class="text-muted" style="display:block; font-size:0.75em; margin-top:4px;">
-                  Select authorized Check-Out camera(s) or leave default for all.
-                </small>
-              </div>
-            </div>
-
-            <button
-              class="btn btn-primary shadow shadow-sm w-100"
-              onclick="createEnrollUser()"
-              style="margin-bottom: 25px; padding: 12px; font-weight: 700;"
-            >
-              <i class="fa-solid fa-user-plus"></i> Initialize Profile &amp; Save Profile
-            </button>
-
-            <h2>
-              <i class="fa-solid fa-circle-play"></i> 2. Upload Enrollment Video
-            </h2>
-
-            <div class="form-group">
-              <label>Associated Profile User ID</label>
-              <input
-                type="number"
-                class="form-control bg-dark text-white border-secondary"
-                id="userIdEnroll"
-                placeholder="Auto-filled after profile initialization"
-              />
-            </div>
-
-            <div class="form-group">
-              <label>Upload Video (Max 15-30s)</label>
-              <div
-                class="dropzone-container"
-                onclick="document.getElementById('videoFile').click()"
-              >
-                <i class="fa-solid fa-video-slash dropzone-icon"></i>
-                <div class="dropzone-text">
-                  Click to choose a video file or Drag & Drop here
+                <div class="col-md-6">
+                  <label class="form-label" for="enrollPosition">Designation / Position *</label>
+                  <select class="form-select" id="enrollPosition" required>
+                    <option value="">Select department first</option>
+                  </select>
                 </div>
-                <input
-                  type="file"
-                  class="form-control bg-dark text-white border-secondary"
-                  id="videoFile"
-                  accept="video/*"
-                  style="display: none"
-                  onchange="updateDropzoneLabel(this)"
-                />
+                {% if not is_client_session or client_module_entitlements.payroll %}
+                <div class="col-md-6 payroll-only-ui">
+                  <label class="form-label" for="enrollSalary">Basic Salary (PKR)</label>
+                  <input type="number" class="form-control" id="enrollSalary" placeholder="0" min="0" />
+                </div>
+                {% endif %}
+                <div class="col-md-6">
+                  <label class="form-label" for="enrollJoinDate">Joining Date</label>
+                  <input type="date" class="form-control" id="enrollJoinDate" />
+                </div>
               </div>
             </div>
 
-            <button
-              class="btn btn-primary shadow-sm"
-              onclick="uploadEnrollmentVideo()"
-            >
-              <i class="fa-solid fa-microchip"></i> Extract & Train Biometrics
-            </button>
-          </div>
-
-          <!-- AI Progress log Console terminal -->
-          <div class="terminal-wrapper">
-            <div class="terminal-header">
-              <span class="terminal-dot td-red"></span>
-              <span class="terminal-dot td-yellow"></span>
-              <span class="terminal-dot td-green"></span>
-              <span style="margin-left: 5px"
-                >AI Biometric Pipeline Monitor</span
-              >
-            </div>
-            <div class="terminal-log" id="terminalLog">
-              <div class="system">
-                [SYSTEM INITIALIZATION] Monitor Online. Waiting for
-                enrollment...
+            <div class="enrollment-section">
+              <p class="enrollment-section-title">Camera access</p>
+              <div class="row g-3 mb-2">
+                <div class="col-md-6">
+                  <label class="form-label">Check-In Camera(s)</label>
+                  <div id="enrollCheckinCamerasWrapper" class="custom-camera-select-wrapper" data-target="enrollCheckinCameras" data-type="checkin">
+                    <select class="form-select" id="enrollCheckinCameras" multiple size="3" style="display:none;">
+                      <option value="all" selected>All Active Cameras (Default)</option>
+                    </select>
+                  </div>
+                  <small class="text-muted" style="display:block; font-size:0.75em; margin-top:4px;">Leave default to allow all cameras.</small>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Check-Out Camera(s)</label>
+                  <div id="enrollCheckoutCamerasWrapper" class="custom-camera-select-wrapper" data-target="enrollCheckoutCameras" data-type="checkout">
+                    <select class="form-select" id="enrollCheckoutCameras" multiple size="3" style="display:none;">
+                      <option value="all" selected>All Active Cameras (Default)</option>
+                    </select>
+                  </div>
+                  <small class="text-muted" style="display:block; font-size:0.75em; margin-top:4px;">Leave default to allow all cameras.</small>
+                </div>
               </div>
             </div>
-            <div style="margin-top: 10px; text-align: right">
-              <button
-                onclick="
-                  document.getElementById('terminalLog').innerHTML =
-                    '<div class=\'system\'>[SYSTEM] Console Cleared.</div>'
-                "
-                class="btn-outline"
-                style="width: auto; padding: 6px 14px; font-size: 0.8em"
-              >
-                Clear Console
+
+            <div class="enrollment-actions">
+              <button class="btn btn-primary" type="button" onclick="createEnrollUser()">
+                <i class="fa-solid fa-user-plus"></i> Register Staff
               </button>
             </div>
           </div>
@@ -7852,14 +7763,12 @@ async function fetchMultiLiveDetections() {
         const checkout_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("enrollCheckoutCameras")) : 'all';
 
         if (!name) {
-          showMessage("enrollmentMessage", "Name is required", "error");
-          addTerminalLine("Create Profile Aborted: Name is empty.", "error-line");
+          showMessage("enrollmentMessage", "Full name is required.", "error");
           return;
         }
 
         const btn = document.querySelector('button[onclick="createEnrollUser()"]');
-        const restoreBtn = setButtonLoading(btn, 'Creating Profile...');
-        addTerminalLine(`Creating user profile '${name}' (${department} - ${position})...`, "system");
+        const restoreBtn = setButtonLoading(btn, 'Registering...');
 
         try {
           const resp = await fetch(`${API_BASE}/enroll/create-user`, {
@@ -7870,19 +7779,25 @@ async function fetchMultiLiveDetections() {
           const data = await resp.json();
 
           if (resp.ok) {
-            document.getElementById("userIdEnroll").value = data.user_id;
-            showMessage("enrollmentMessage", `Profile Created: ${data.message}`, "success");
-            addTerminalLine(`[OK] User '${name}' created. ID assigned: ${data.user_id}`, "success");
-            showAppToast(data.message || `Staff profile '${name}' created — now upload enrollment video`, 'success', 5000);
+            const userIdField = document.getElementById("userIdEnroll");
+            if (userIdField) userIdField.value = data.user_id;
+            showMessage("enrollmentMessage", data.message || `Staff profile '${name}' registered.`, "success");
+            showAppToast(data.message || `Staff profile '${name}' registered.`, 'success', 5000);
+            ["enrollName", "enrollEmail", "enrollPhone", "enrollCNIC", "enrollSalary", "enrollJoinDate"].forEach((id) => {
+              const field = document.getElementById(id);
+              if (field) field.value = "";
+            });
+            const dept = document.getElementById("enrollDepartment");
+            const pos = document.getElementById("enrollPosition");
+            if (dept) dept.value = "";
+            if (pos) { pos.innerHTML = '<option value="">Select department first</option>'; }
             if (typeof loadStaffDirectory === 'function') loadStaffDirectory();
           } else {
-            showMessage("enrollmentMessage", data.error || 'Failed to create profile', "error");
-            addTerminalLine(`[FAIL] Profile failed: ${data.error}`, "error-line");
-            showAppToast(data.error || 'Failed to create profile', 'error');
+            showMessage("enrollmentMessage", data.error || 'Failed to register staff.', "error");
+            showAppToast(data.error || 'Failed to register staff.', 'error');
           }
         } catch (e) {
           showMessage("enrollmentMessage", `Error: ${e.message}`, "error");
-          addTerminalLine(`[FAIL] Connection Error: ${e.message}`, "error-line");
           showAppToast(`Error: ${e.message}`, 'error');
         } finally {
           restoreBtn();
@@ -7891,8 +7806,10 @@ async function fetchMultiLiveDetections() {
 
       // Upload Enrollment video & process frames
       async function uploadEnrollmentVideo() {
-        const userId = document.getElementById("userIdEnroll").value;
-        const videoFile = document.getElementById("videoFile").files[0];
+        const userIdField = document.getElementById("userIdEnroll");
+        const videoInput = document.getElementById("videoFile");
+        const userId = userIdField ? userIdField.value : "";
+        const videoFile = videoInput && videoInput.files ? videoInput.files[0] : null;
 
         if (!userId) {
           showMessage(

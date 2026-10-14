@@ -659,6 +659,17 @@ class Layer2ModuleFirstPaintTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/settings/payroll/overtime-rules").status_code, 403)
         self.assertEqual(self.client.get("/api/payroll-settings/scoped-rules/half-leave").status_code, 403)
 
+    def test_cloud_staff_enrollment_page_omits_video_training_console(self):
+        self._login_session(["attendance", "shifts"])
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn("Register Staff", html)
+        self.assertNotIn("Upload Enrollment Video", html)
+        self.assertNotIn("AI Biometric Pipeline Monitor", html)
+        self.assertNotIn("Extract & Train Biometrics", html)
+        self.assertNotIn("Clear Console", html)
+        self.assertNotIn("Associated Profile User ID", html)
+        self.assertNotIn("Click to choose a video file", html)
+
     def test_staff_enrollment_requires_handover_key_then_lock_hides_it(self):
         self._login_session(["attendance", "shifts"])
         html = self.client.get("/").get_data(as_text=True)
