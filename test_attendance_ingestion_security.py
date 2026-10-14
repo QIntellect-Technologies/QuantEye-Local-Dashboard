@@ -1,4 +1,5 @@
 import os
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -209,6 +210,40 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             ).fetchone()
         self.assertEqual(count, 1)
         self.assertEqual(trained, 1)
+
+    def test_integration_embedding_download_requires_service_key_and_exact_branch(self):
+        endpoint = "/api/integration/employees/102/embeddings?organization_id=ORG-ALPHA&branch_id=BR-ALPHA-2"
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.execute(
+                "DELETE FROM embeddings WHERE user_id = 102 AND organization_id = ? AND branch_id = ?",
+                ("ORG-ALPHA", "BR-ALPHA-2"),
+            )
+            conn.execute(
+                "INSERT INTO embeddings (user_id, embedding, organization_id, branch_id) "
+                "VALUES (?, ?, ?, ?)",
+                (102, json.dumps([0.25] * 512).encode("utf-8"), "ORG-ALPHA", "BR-ALPHA-2"),
+            )
+
+        with patch.dict(os.environ, {"LOCAL_DASHBOARD_API_KEY": "unit-test-integration-key-0123456789"}):
+            unauthorized = self.client.get(endpoint)
+            wrong_branch = self.client.get(
+                endpoint.replace("BR-ALPHA-2", "BR-ALPHA-1"),
+                headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
+            )
+            response = self.client.get(
+                endpoint,
+                headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
+            )
+
+        self.assertEqual(unauthorized.status_code, 401)
+        self.assertEqual(wrong_branch.status_code, 404)
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["is_trained"])
+        self.assertEqual(payload["user_id"], 102)
+        self.assertEqual(payload["organization_id"], "ORG-ALPHA")
+        self.assertEqual(payload["branch_id"], "BR-ALPHA-2")
+        self.assertEqual(payload["embeddings"], [[0.25] * 512])
 
     def test_shift_staff_counts_are_scoped_to_current_organization_and_branch(self):
         with self.client.session_transaction() as session:

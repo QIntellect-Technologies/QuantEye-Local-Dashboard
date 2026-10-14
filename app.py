@@ -3130,6 +3130,69 @@ def integration_sync_employee_embeddings(user_id):
         return jsonify({'success': False, 'error': 'Could not save employee face embeddings.'}), 500
 
 
+@app.route('/api/integration/employees/<int:user_id>/embeddings', methods=['GET'])
+def integration_get_employee_embeddings(user_id):
+    """Return face templates for one active employee in the requested branch."""
+    integration_key = os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()
+    if len(integration_key) < 32:
+        return jsonify({'success': False, 'message': 'Integration authentication is not securely configured.'}), 503
+    supplied_key = request.headers.get('X-Integration-Key', '')
+    if not secrets.compare_digest(supplied_key, integration_key):
+        return jsonify({'success': False, 'message': 'Integration authentication required.'}), 401
+
+    organization_id = request.args.get('organization_id', '').strip()
+    branch_id = request.args.get('branch_id', '').strip()
+    if not organization_id or not branch_id:
+        return jsonify({'success': False, 'message': 'Organization and branch are required.'}), 400
+
+    try:
+        with sqlite3.connect(db.DB_PATH) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT id FROM users
+                WHERE id = ? AND organization_id = ? AND branch_id = ? AND active = 1
+                """,
+                (user_id, organization_id, branch_id),
+            )
+            if not cur.fetchone():
+                return jsonify({'success': False, 'message': 'Employee was not found in this active branch.'}), 404
+
+            rows = cur.execute(
+                """
+                SELECT embedding FROM embeddings
+                WHERE user_id = ? AND organization_id = ? AND branch_id = ?
+                ORDER BY id
+                LIMIT 20
+                """,
+                (user_id, organization_id, branch_id),
+            ).fetchall()
+
+        vectors = []
+        for (embedding_blob,) in rows:
+            try:
+                vector = np.asarray(json.loads(embedding_blob.decode('utf-8')), dtype=np.float32)
+            except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+                logger.exception("Stored biometric template is invalid for employee %s.", user_id)
+                return jsonify({'success': False, 'message': 'Stored biometric templates are invalid.'}), 500
+            if vector.shape != (512,) or not np.isfinite(vector).all():
+                logger.error("Stored biometric template has an invalid shape for employee %s.", user_id)
+                return jsonify({'success': False, 'message': 'Stored biometric templates are invalid.'}), 500
+            vectors.append(vector.tolist())
+
+        return jsonify({
+            'success': True,
+            'organization_id': organization_id,
+            'branch_id': branch_id,
+            'user_id': user_id,
+            'embeddings': vectors,
+            'is_trained': bool(vectors),
+        }), 200
+    except Exception:
+        logger.exception("Could not retrieve biometric templates for employee %s.", user_id)
+        return jsonify({'success': False, 'error': 'Could not retrieve employee face templates.'}), 500
+
+
 @app.route('/api/integration/edge-sync-state', methods=['GET'])
 def integration_edge_sync_state():
     """Expose current-branch manual absence overrides to the authenticated Main relay."""

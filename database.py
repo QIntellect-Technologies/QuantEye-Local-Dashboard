@@ -401,6 +401,32 @@ def init_db():
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
             ''')
+            for column, column_type in [
+                ("organization_id", "TEXT"),
+                ("branch_id", "TEXT"),
+            ]:
+                try:
+                    cursor.execute(f"ALTER TABLE embeddings ADD COLUMN {column} {column_type}")
+                except sqlite3.OperationalError as error:
+                    if "duplicate column name" not in str(error).lower():
+                        raise
+
+            cursor.execute("""
+                UPDATE embeddings
+                SET organization_id = COALESCE(
+                    (SELECT organization_id FROM users WHERE users.id = embeddings.user_id),
+                    'DEFAULT_ORG'
+                )
+                WHERE organization_id IS NULL OR organization_id = ''
+            """)
+            cursor.execute("""
+                UPDATE embeddings
+                SET branch_id = COALESCE(
+                    (SELECT branch_id FROM users WHERE users.id = embeddings.user_id),
+                    'DEFAULT_BRANCH'
+                )
+                WHERE branch_id IS NULL OR branch_id = ''
+            """)
 
             # Attendance logs migration
             cursor.execute('''
