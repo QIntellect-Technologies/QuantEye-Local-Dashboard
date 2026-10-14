@@ -252,7 +252,11 @@ def check_module_entitlement_for_request():
                 '/api/admin/status', '/api/admin/verify-password', '/api/admin/lock',
                 '/api/login', '/api/client/login', '/api/logout', '/api/change-password'}:
         return None
-    if path.startswith('/api/settings/') or path.startswith('/api/departments') or path.startswith('/api/designations'):
+    # Branch profile, departments, and designations stay available for licensed ops.
+    # Payroll/overtime settings are gated below with the matching module.
+    if path.startswith('/api/departments') or path.startswith('/api/designations'):
+        return None
+    if path == '/api/settings/branch' or path.startswith('/api/settings/branch'):
         return None
     if path.startswith('/static/') or path.startswith('/c/'):
         return None
@@ -291,10 +295,20 @@ def check_module_entitlement_for_request():
         if path.startswith('/api/users') and not path.endswith('/assign-shift'):
             return _forbidden_module_response('attendance')
 
-    # 2. Payroll module routes
+    # 2. Payroll module routes (including Settings payroll tabs)
+    if path.startswith('/api/settings/payroll'):
+        overtime_settings = 'overtime' in path
+        if overtime_settings and not has_overtime:
+            return _forbidden_module_response('overtime')
+        if not overtime_settings and not has_payroll:
+            return _forbidden_module_response('payroll')
     if not has_payroll:
         if path in {'/payroll', '/payroll-view'} or path.startswith('/api/payroll') or path.startswith('/api/salary') or path.startswith('/api/payroll-settings'):
             return _forbidden_module_response('payroll')
+    elif path.startswith('/api/payroll-settings/scoped-rules/half-leave') and not has_leave:
+        return _forbidden_module_response('leave')
+    elif path.startswith('/api/payroll-settings/scoped-rules/overtime-limit') and not has_overtime:
+        return _forbidden_module_response('overtime')
 
     # 3. Leave Management module routes
     if not has_leave:
@@ -312,6 +326,14 @@ def check_module_entitlement_for_request():
             return _forbidden_module_response('shifts')
 
     return None
+
+
+def is_company_portal_page(path: str) -> bool:
+    """True for the unique client URL /c/<portal_slug>/ — this must render HTML, never JSON 401."""
+    if path in {'/c', '/c/'}:
+        return True
+    parts = [segment for segment in str(path or '').split('/') if segment]
+    return len(parts) == 2 and parts[0] == 'c'
 
 
 @app.before_request
@@ -336,6 +358,8 @@ def require_admin_session_for_app_data():
     }
 
     if request.method == 'OPTIONS' or request.path.startswith('/static/'):
+        return None
+    if is_company_portal_page(request.path):
         return None
 
     # Step 7: Check module entitlement first

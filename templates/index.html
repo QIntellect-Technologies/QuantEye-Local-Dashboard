@@ -42,11 +42,11 @@
     </script>
     {% if is_client_session %}
     <style id="server-rendered-client-entitlements">
-      {% if not client_module_entitlements.attendance %}.sidebar-menu .menu-item[data-module="attendance"] { display: none !important; } #reports-view, #staff-view, #live-view, #enroll-view { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.payroll %}.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; } #payroll-view { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.leave %}.sidebar-menu .menu-item[data-module="leave"] { display: none !important; } #leaves-view { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; } #overtime-view { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.shifts %}.sidebar-menu .menu-item[data-module="shifts"] { display: none !important; } #shifts-view { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.attendance %}.sidebar-menu .menu-item[data-module="attendance"] { display: none !important; } #reports-view, #staff-view, #live-view, #enroll-view, #cameras-tab { display: none !important; } .settings-nav-btn[data-settings-module="attendance"] { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.payroll %}.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; } #payroll-view, #payroll-rules-tab, #payroll-calendar-tab, #salary-config-tab { display: none !important; } .settings-nav-btn[data-settings-module="payroll"], .payroll-only-ui { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.leave %}.sidebar-menu .menu-item[data-module="leave"] { display: none !important; } #leaves-view { display: none !important; } .settings-leave-only { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; } #overtime-view { display: none !important; } .settings-overtime-only { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.shifts %}.sidebar-menu .menu-item[data-module="shifts"] { display: none !important; } #shifts-view { display: none !important; } .settings-shifts-only { display: none !important; }{% endif %}
     </style>
     <script>
       window.clientSessionModules = {{ client_licensed_modules|tojson }};
@@ -3121,7 +3121,8 @@
                 />
               </div>
 
-              <div class="col-md-6">
+              {% if not is_client_session or client_module_entitlements.payroll %}
+              <div class="col-md-6 payroll-only-ui">
                 <label class="form-label" style="font-weight:700; color:#173042; font-size:0.85em; margin-bottom:6px; display:block;">
                   <i class="fa-solid fa-sack-dollar" style="color:#10b981; margin-right:4px;"></i> Basic Salary (PKR)
                 </label>
@@ -3134,6 +3135,7 @@
                   style="border:1.5px solid #cfe8f7; border-radius:10px; padding:10px 14px; font-size:0.88rem;"
                 />
               </div>
+              {% endif %}
 
               <div class="col-md-6">
                 <label class="form-label" style="font-weight:700; color:#173042; font-size:0.85em; margin-bottom:6px; display:block;">
@@ -5074,20 +5076,24 @@ async function fetchMultiLiveDetections() {
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">CNIC / National ID</label>
               <input type="text" class="form-control" id="editCNIC" placeholder="e.g. 35202-1234567-1" style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
-            <div class="col-md-6">
+            {% if not is_client_session or client_module_entitlements.payroll %}
+            <div class="col-md-6 payroll-only-ui">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Basic Salary (PKR)</label>
               <input type="number" min="0" class="form-control" id="editSalary" placeholder="e.g. 75000" style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
+            {% endif %}
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Joining Date</label>
               <input type="date" class="form-control" id="editJoinDate" style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
-            <div class="col-md-6">
+            {% if not is_client_session or client_module_entitlements.shifts %}
+            <div class="col-md-6 settings-shifts-only">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Assigned Shift</label>
               <select class="form-select" id="editShiftId" style="border-color: #cfe8f7; font-size: 0.9em;">
                 <option value="1">Morning Shift (09:00 AM - 05:00 PM | 15m Grace)</option>
               </select>
             </div>
+            {% endif %}
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Notes / Remarks</label>
               <input type="text" class="form-control" id="editNotes" placeholder="Optional notes or remarks" style="border-color: #cfe8f7; font-size: 0.9em;" />
@@ -5210,7 +5216,9 @@ async function fetchMultiLiveDetections() {
                 <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Check-Out Camera(s)</th>
                 <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Email / Contact</th>
                 <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">CNIC</th>
-                <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Salary</th>
+                {% if not is_client_session or client_module_entitlements.payroll %}
+                <th class="payroll-only-ui" style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Salary</th>
+                {% endif %}
                 <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Training</th>
                 <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; text-align:right;">Actions</th>
               </tr>
@@ -5320,18 +5328,22 @@ async function fetchMultiLiveDetections() {
       <button class="btn btn-sm settings-nav-btn" onclick="switchSettingsTab('desigs-tab', this)" style="border-radius: 8px; font-weight: 700;">
         <i class="fa-solid fa-id-badge"></i> Designation Management
       </button>
-      <button class="btn btn-sm settings-nav-btn" onclick="switchSettingsTab('cameras-tab', this)" style="border-radius: 8px; font-weight: 700;">
+      {% if not is_client_session or client_module_entitlements.attendance %}
+      <button class="btn btn-sm settings-nav-btn" data-settings-module="attendance" onclick="switchSettingsTab('cameras-tab', this)" style="border-radius: 8px; font-weight: 700;">
         <i class="fa-solid fa-video"></i> Camera Management
       </button>
-      <button class="btn btn-sm settings-nav-btn" onclick="switchSettingsTab('payroll-rules-tab', this)" style="border-radius: 8px; font-weight: 700;">
+      {% endif %}
+      {% if not is_client_session or client_module_entitlements.payroll %}
+      <button class="btn btn-sm settings-nav-btn" data-settings-module="payroll" onclick="switchSettingsTab('payroll-rules-tab', this)" style="border-radius: 8px; font-weight: 700;">
         <i class="fa-solid fa-percent"></i> Payroll Rules
       </button>
-      <button class="btn btn-sm settings-nav-btn" onclick="switchSettingsTab('payroll-calendar-tab', this)" style="border-radius: 8px; font-weight: 700;">
+      <button class="btn btn-sm settings-nav-btn" data-settings-module="payroll" onclick="switchSettingsTab('payroll-calendar-tab', this)" style="border-radius: 8px; font-weight: 700;">
         <i class="fa-solid fa-calendar-days"></i> Payroll Calendar
       </button>
-      <button id="salaryConfigNavBtn" class="btn btn-sm settings-nav-btn" onclick="switchSettingsTab('salary-config-tab', this)" style="border-radius: 8px; font-weight: 700;">
+      <button id="salaryConfigNavBtn" class="btn btn-sm settings-nav-btn" data-settings-module="payroll" onclick="switchSettingsTab('salary-config-tab', this)" style="border-radius: 8px; font-weight: 700;">
         <i class="fa-solid fa-file-invoice-dollar"></i> Employee Salary Structure
       </button>
+      {% endif %}
     </div>
 
     <!-- TAB 1: BRANCH & ORGANIZATION SETTINGS -->
@@ -5458,6 +5470,7 @@ async function fetchMultiLiveDetections() {
       </div>
     </div>
 
+    {% if not is_client_session or client_module_entitlements.attendance %}
     <!-- TAB 4: CAMERA MANAGEMENT -->
     <div id="cameras-tab" class="settings-sub-tab" style="display: none;">
       <div class="card p-4 shadow-sm" style="background: #ffffff; border: 1px solid #cfe8f7; border-radius: 16px;">
@@ -5483,7 +5496,9 @@ async function fetchMultiLiveDetections() {
         </div>
       </div>
     </div>
+    {% endif %}
 
+    {% if not is_client_session or client_module_entitlements.payroll %}
     <!-- TAB 5: PAYROLL RULES -->
     <div id="payroll-rules-tab" class="settings-sub-tab" style="display: none;">
       <div class="card p-4 shadow-sm" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:16px;">
@@ -5494,7 +5509,8 @@ async function fetchMultiLiveDetections() {
           <span style="font-size:0.82em; color:#64748b;">Choose a percentage or fixed PKR deduction for each absence range. Active ranges cannot overlap.</span>
         </div>
 
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
+        {% if not is_client_session or client_module_entitlements.leave %}
+        <div class="settings-leave-only" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div>
             <div style="font-weight:700; color:#173042;">Unpaid Leave Payroll Deduction</div>
             <div style="font-size:0.82em; color:#64748b;">When enabled, approved unpaid leave reduces salary by the employee's daily rate.</div>
@@ -5506,7 +5522,7 @@ async function fetchMultiLiveDetections() {
           </label>
         </div>
 
-        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
+        <div class="settings-leave-only" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div style="flex:1; min-width:240px;">
             <div style="font-weight:700; color:#173042;">Half Leave Setup</div>
             <div id="halfLeaveQuotaDescription" style="font-size:0.82em; color:#64748b;">How would you like to handle half leaves? You can use each leave type's own rules, set a limit for the whole month, or convert them into full days off.</div>
@@ -5566,8 +5582,10 @@ async function fetchMultiLiveDetections() {
             </div>
           </div>
         </div>
+        {% endif %}
 
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
+        {% if not is_client_session or client_module_entitlements.overtime %}
+        <div class="settings-overtime-only" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div style="flex:1; min-width:260px;">
             <div style="font-weight:700; color:#173042;">Maximum Overtime</div>
             <div style="font-size:0.82em; color:#64748b;">Set a maximum OT amount for each employee. OT over the limit stays pending so an admin can approve or reject it. Set the limit to 0 to turn it off.</div>
@@ -5643,7 +5661,7 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
 
-        <div style="padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
+        <div class="settings-overtime-only" style="padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div style="font-weight:700; color:#173042;">Overtime Day Premiums</div>
           <div style="font-size:0.82em; color:#64748b; margin:3px 0 10px;">Premium is added to the employee's regular OT rate. Enter 100% for double OT; 50% adds half of the regular rate.</div>
           <div style="display:flex; gap:14px; flex-wrap:wrap;">
@@ -5725,6 +5743,7 @@ async function fetchMultiLiveDetections() {
             </div>
           </div>
         </div>
+        {% endif %}
 
         <form id="payrollRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); savePayrollRule();">
           <input id="payrollRuleId" type="hidden" value="">
@@ -5732,7 +5751,9 @@ async function fetchMultiLiveDetections() {
             Rule applies to
             <select id="payrollRuleBasis" class="form-select" onchange="updatePayrollRuleBasis()">
               <option value="absence">Unexcused absence days</option>
+              {% if not is_client_session or client_module_entitlements.leave %}
               <option value="half_leave">Half-leave occurrences</option>
+              {% endif %}
             </select>
           </label>
           <label for="payrollRuleMin" class="payroll-rule-field">
@@ -5974,6 +5995,8 @@ async function fetchMultiLiveDetections() {
         </div>
       </div>
     </div>
+
+    {% endif %}
 
     <!-- ======== ADMIN CONTROLS PANEL (visible only when unlocked) ======== -->
     <div id="adminControlsPanel" style="display:none; margin-top: 32px;">
@@ -6754,7 +6777,7 @@ async function fetchMultiLiveDetections() {
         try { loadEnrolledUsers(); } catch(e) { console.error("loadEnrolledUsers error:", e); }
         try { loadTabStaffDirectory(); } catch(e) { console.error("loadTabStaffDirectory error:", e); }
         try { if (typeof loadCameraAssignmentDropdowns === 'function') loadCameraAssignmentDropdowns(); } catch(e) { console.error("loadCameraAssignmentDropdowns error:", e); }
-        try { if (typeof loadShiftsList === 'function') loadShiftsList(); } catch(e) { console.error("loadShiftsList error:", e); }
+        try { if (window.entitledModules && window.entitledModules.shifts && typeof loadShiftsList === 'function') loadShiftsList(); } catch(e) { console.error("loadShiftsList error:", e); }
         try { if (typeof loadBranchSettings === 'function') loadBranchSettings(); } catch(e) { console.error("loadBranchSettings error:", e); }
         try { if (typeof loadDepartmentDropdowns === 'function') loadDepartmentDropdowns(); } catch(e) { console.error("loadDepartmentDropdowns error:", e); }
         try { if (typeof loadLiveCameras === 'function') loadLiveCameras(); } catch(e) { console.error("loadLiveCameras error:", e); }
@@ -7494,11 +7517,39 @@ async function fetchMultiLiveDetections() {
       };
 
       function isViewEntitled(viewId) {
-        if (!viewId || viewId === 'settings-view') return true; // Settings is always entitled
+        if (!viewId || viewId === 'settings-view') return true;
         const reqMod = VIEW_MODULE_MAP[viewId];
         if (!reqMod) return true;
         if (!window.entitledModules) return !Array.isArray(window.clientSessionModules);
         return Boolean(window.entitledModules[reqMod]);
+      }
+
+      const SETTINGS_TAB_MODULE = {
+        'branch-tab': null,
+        'depts-tab': null,
+        'desigs-tab': null,
+        'cameras-tab': 'attendance',
+        'payroll-rules-tab': 'payroll',
+        'payroll-calendar-tab': 'payroll',
+        'salary-config-tab': 'payroll'
+      };
+
+      function isSettingsTabEntitled(tabId) {
+        const reqMod = SETTINGS_TAB_MODULE[tabId];
+        if (!reqMod) return true;
+        if (!window.entitledModules) return !Array.isArray(window.clientSessionModules);
+        return Boolean(window.entitledModules[reqMod]);
+      }
+
+      function applySettingsTabEntitlements() {
+        document.querySelectorAll('.settings-nav-btn[data-settings-module]').forEach((btn) => {
+          const mod = btn.getAttribute('data-settings-module');
+          btn.style.display = (window.entitledModules && window.entitledModules[mod]) ? '' : 'none';
+        });
+        if (typeof currentSettingsTab !== 'undefined' && currentSettingsTab && !isSettingsTabEntitled(currentSettingsTab)) {
+          const branchBtn = document.querySelector(".settings-nav-btn[onclick*=\"'branch-tab'\"]");
+          switchSettingsTab('branch-tab', branchBtn);
+        }
       }
 
       async function updateModuleEntitlements(overrideModules = null) {
@@ -7549,9 +7600,9 @@ async function fetchMultiLiveDetections() {
             }
           });
 
-          // Settings is ALWAYS visible
           const settingsItem = document.getElementById('settingsMenuSidebarItem');
           if (settingsItem) settingsItem.style.display = '';
+          applySettingsTabEntitlements();
 
           // If currently active view is not entitled, switch to the first entitled view
           const currentActive = document.querySelector('.page-view.active');
@@ -8954,7 +9005,9 @@ async function fetchMultiLiveDetections() {
         document.getElementById("editNotes").value = user.notes || "";
         document.getElementById("editPosition").value = cleanVal(user.position);
         document.getElementById("editCNIC").value = cleanVal(user.cnic);
-        document.getElementById("editSalary").value = Number(user.salary) > 0 ? user.salary : "";
+        if (document.getElementById("editSalary")) {
+          document.getElementById("editSalary").value = Number(user.salary) > 0 ? user.salary : "";
+        }
         document.getElementById("editJoinDate").value = cleanVal(user.join_date);
         if (document.getElementById("editShiftId")) {
           document.getElementById("editShiftId").value = user.shift_id || 1;
@@ -9059,7 +9112,7 @@ async function fetchMultiLiveDetections() {
         const notes = document.getElementById("editNotes").value.trim();
         const position = document.getElementById("editPosition").value.trim();
         const cnic = document.getElementById("editCNIC").value.trim();
-        const salary = document.getElementById("editSalary").value;
+        const salary = document.getElementById("editSalary") ? document.getElementById("editSalary").value : "";
         const join_date = document.getElementById("editJoinDate").value;
         const shift_id = document.getElementById("editShiftId") ? parseInt(document.getElementById("editShiftId").value) : 1;
         const checkin_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("editCheckinCameras")) : 'all';
@@ -11089,7 +11142,8 @@ async function fetchMultiLiveDetections() {
         renderTabStaffPaginationControls(pageNum, totalPages);
 
         if (!pageItems || pageItems.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; color:#64748b; padding:30px; font-size:0.85rem;">No staff records found.</td></tr>';
+          const staffColSpan = (window.entitledModules && window.entitledModules.payroll) ? 11 : 10;
+          tbody.innerHTML = `<tr><td colspan="${staffColSpan}" style="text-align:center; color:#64748b; padding:30px; font-size:0.85rem;">No staff records found.</td></tr>`;
           return;
         }
 
@@ -11155,7 +11209,7 @@ async function fetchMultiLiveDetections() {
               </div>
             </td>
             <td style="padding:9px 12px; vertical-align:middle;"><span style="color:#475569; font-size:0.78rem; font-weight:500;">${s.cnic || '--'}</span></td>
-            <td style="padding:9px 12px; vertical-align:middle;"><strong style="color:#16a34a; font-size:0.82rem; font-weight:700;">${salaryStr}</strong></td>
+            ${window.entitledModules && window.entitledModules.payroll ? `<td class="payroll-only-ui" style="padding:9px 12px; vertical-align:middle;"><strong style="color:#16a34a; font-size:0.82rem; font-weight:700;">${salaryStr}</strong></td>` : ''}
             <td style="padding:9px 12px; vertical-align:middle;">${trainingBadge}</td>
             <td style="padding:9px 12px; text-align:right; vertical-align:middle;">
               <div style="display:inline-flex; gap:5px;">
@@ -11943,6 +11997,10 @@ async function fetchMultiLiveDetections() {
       let cachedPayrollCalendarUsers = [];
 
       function switchSettingsTab(tabId, btn) {
+        if (!isSettingsTabEntitled(tabId)) {
+          alert("This settings section is not included in your organization's subscription.");
+          return false;
+        }
         currentSettingsTab = tabId;
         document.querySelectorAll('.settings-nav-btn').forEach(b => {
           b.classList.remove('active');
@@ -11998,18 +12056,19 @@ async function fetchMultiLiveDetections() {
           refreshButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Refreshing...';
         }
         try {
-          const results = await Promise.allSettled([
+          const refreshJobs = [
             loadBranchSettings(),
             loadDepartmentsTable(),
             loadDesignationsTable(),
-            loadCamerasGrid(),
-            loadPayrollRules(),
-            loadPayrollSettings(),
-            loadPayrollCalendar(),
-            loadSalaryConfigs(),
-            loadDepartmentDropdowns(),
-            loadLiveCameras()
-          ]);
+            loadDepartmentDropdowns()
+          ];
+          if (window.entitledModules && window.entitledModules.attendance) {
+            refreshJobs.push(loadCamerasGrid(), loadLiveCameras());
+          }
+          if (window.entitledModules && window.entitledModules.payroll) {
+            refreshJobs.push(loadPayrollRules(), loadPayrollSettings(), loadPayrollCalendar(), loadSalaryConfigs());
+          }
+          const results = await Promise.allSettled(refreshJobs);
           const failures = results.filter(result => result.status === 'rejected').length;
           if (showRefreshState && typeof showAppToast === 'function') {
             showAppToast(failures ? `${failures} settings section(s) failed to refresh.` : 'Settings refreshed.', failures ? 'error' : 'success');
@@ -12165,16 +12224,20 @@ async function fetchMultiLiveDetections() {
         const overtimeMaxHours = document.getElementById('overtimeMaxHours');
         const overtimeMaxPeriod = document.getElementById('overtimeMaxPeriod');
         const overtimeLimitMessage = document.getElementById('overtimeLimitSettingsMessage');
-        if (!toggle) return;
-        toggle.disabled = true;
-        loadHalfLeaveSpecificRules();
-        updateHalfLeaveRuleScopeOptions();
+        if (!toggle && !overtimeMaxHours && !document.getElementById('payrollRuleForm')) return;
+        if (toggle) toggle.disabled = true;
+        if (toggle) {
+          loadHalfLeaveSpecificRules();
+          updateHalfLeaveRuleScopeOptions();
+        }
         try {
           const response = await fetch(`${API_BASE}/settings/payroll`, { cache: 'no-store' });
           const settings = await response.json();
           if (!response.ok) throw new Error(settings.error || 'Failed to load payroll settings');
-          toggle.checked = Boolean(settings.deduct_unpaid_leave);
-          toggle.dataset.saved = String(toggle.checked);
+          if (toggle) {
+            toggle.checked = Boolean(settings.deduct_unpaid_leave);
+            toggle.dataset.saved = String(toggle.checked);
+          }
           if (quotaMode) quotaMode.value = settings.half_leave_quota_mode || 'category';
           if (conversionCount) {
             conversionCount.value = settings.half_leaves_per_quota_day || 2;
@@ -12196,18 +12259,20 @@ async function fetchMultiLiveDetections() {
               ? `Current limit: ${maxHours} hours ${settings.overtime_max_period === 'per_entry' ? 'per OT entry' : `per ${settings.overtime_max_period || 'day'}`}.`
               : 'No OT hour limit is active.';
           }
-          if (message) {
+          if (message && toggle) {
             const unpaidPolicy = toggle.checked ? 'Unpaid days are deducted from payroll.' : 'Unpaid days are not deducted from payroll.';
             const halfLeavePolicy = describeHalfLeaveQuotaMode(quotaMode?.value || 'category', conversionCount?.value || 2);
             message.textContent = `${unpaidPolicy} ${halfLeavePolicy}`;
           }
-          await loadOvertimePremiumRules();
-          await loadSpecificOvertimeLimitRules();
-          updateOvertimeLimitRuleScopeOptions();
+          if (window.entitledModules && window.entitledModules.overtime) {
+            await loadOvertimePremiumRules();
+            await loadSpecificOvertimeLimitRules();
+            updateOvertimeLimitRuleScopeOptions();
+          }
         } catch (error) {
           if (message) message.textContent = error.message;
         } finally {
-          toggle.disabled = false;
+          if (toggle) toggle.disabled = false;
         }
       }
 
@@ -14158,6 +14223,7 @@ async function fetchMultiLiveDetections() {
 
     // In-memory state (synced with server session on every relevant action)
     let _adminUnlocked = false;
+    let _clientAuthenticated = false;
     let _enrollmentEnabled = false;
     let _applicationAuthPending = document.body.classList.contains('auth-required');
 
@@ -14172,6 +14238,7 @@ async function fetchMultiLiveDetections() {
         const data = await res.json();
         const clientAuthenticated = data.client_authenticated === true || data.is_client_session === true;
         _adminUnlocked = data.admin_unlocked === true;
+        _clientAuthenticated = clientAuthenticated;
         _applicationAuthPending = data.authenticated !== true;
         _enrollmentEnabled = data.enrollment_enabled === true;
         document.body.classList.toggle('auth-required', _applicationAuthPending);
@@ -14184,6 +14251,7 @@ async function fetchMultiLiveDetections() {
         }
       } catch (e) {
         _adminUnlocked = false;
+        _clientAuthenticated = false;
         _applicationAuthPending = true;
         document.body.classList.add('auth-required');
         showAdminPasswordModal();
@@ -14241,12 +14309,12 @@ async function fetchMultiLiveDetections() {
      * If locked → show password modal.
      */
     function openSettingsWithAuth(element) {
-      if (_adminUnlocked) {
+      if (_adminUnlocked || _clientAuthenticated || !_applicationAuthPending) {
         switchTab('settings-view', element);
-      } else {
-        _pendingSettingsElement = element;
-        showAdminPasswordModal();
+        return;
       }
+      _pendingSettingsElement = element;
+      showAdminPasswordModal();
     }
     let _pendingSettingsElement = null;
 
@@ -14342,7 +14410,8 @@ async function fetchMultiLiveDetections() {
           btn.style.background = 'linear-gradient(135deg,#065f46,#059669)';
           input.value = '';
           if (usernameInput) usernameInput.value = '';
-          _adminUnlocked = true;
+          _adminUnlocked = Boolean(data.admin_unlocked);
+          _clientAuthenticated = Boolean(data.client_authenticated || data.is_client_session);
           _applicationAuthPending = false;
 
           document.body.classList.remove('auth-required');
@@ -14366,7 +14435,8 @@ async function fetchMultiLiveDetections() {
         const response = await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
         if (!response.ok) throw new Error(`Logout failed (HTTP ${response.status}).`);
         localStorage.removeItem('quanteye_client_auth');
-        window.location.replace('/');
+        const portalSlug = String(window.companyPortalSlug || '').trim();
+        window.location.replace(portalSlug ? `/c/${portalSlug}/` : '/');
       } catch (error) {
         alert(error.message || 'Logout failed. Please try again.');
         _adminUnlocked = false;

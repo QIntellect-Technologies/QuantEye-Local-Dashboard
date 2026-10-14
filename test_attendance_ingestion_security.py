@@ -470,6 +470,18 @@ class Layer1IdentityTests(unittest.TestCase):
         for row in staff.get_json():
             self.assertEqual(row.get("organization_id"), "ORG-A")
 
+    def test_unique_company_url_renders_login_html_when_logged_out(self):
+        guest = app_module.app.test_client()
+        for path in (
+            "/c/qintellect-technologies-org415278/",
+            "/c/qintellect-technologies-org415278",
+        ):
+            page = guest.get(path)
+            self.assertEqual(page.status_code, 200, path)
+            self.assertIn("text/html", page.content_type)
+            self.assertNotIn(b"Unlock the dashboard first", page.data)
+            self.assertIn(b"window.companyPortalSlug", page.data)
+
     def test_two_client_sessions_stay_isolated_after_refresh(self):
         auth_a = self._authenticate_payload(
             "ORG-A", "BR-A", ["attendance", "shifts"], "Org A", "Branch A"
@@ -588,6 +600,11 @@ class Layer2ModuleFirstPaintTests(unittest.TestCase):
             self.assertNotIn('id="menuItemPayroll"', html)
             self.assertNotIn('id="menuItemLeaves"', html)
             self.assertNotIn('id="menuItemOvertime"', html)
+            self.assertNotIn('id="payroll-rules-tab"', html)
+            self.assertNotIn('id="payroll-calendar-tab"', html)
+            self.assertNotIn('id="salary-config-tab"', html)
+            self.assertNotIn("Attendance-Based Deduction Rules", html)
+            self.assertNotIn("Employee Salary Structure &amp; Compensation Packages", html)
             self.assertIn("payroll: false", html)
             self.assertIn("leave: false", html)
             self.assertIn("overtime: false", html)
@@ -601,6 +618,20 @@ class Layer2ModuleFirstPaintTests(unittest.TestCase):
         self.assertNotIn('id="menuItemLeaves"', html)
         self.assertNotIn('id="menuItemOvertime"', html)
         self.assertIn("payroll: true", html)
+        self.assertIn('id="payroll-rules-tab"', html)
+        self.assertIn("Payroll Rules", html)
+        self.assertNotIn("Half Leave Setup", html)
+        self.assertNotIn("Maximum Overtime", html)
+        self.assertNotIn("Overtime Day Premiums", html)
+
+    def test_payroll_plus_leave_and_overtime_shows_connected_settings(self):
+        self._login_session(["attendance", "shifts", "payroll", "leave", "overtime"])
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn("Half Leave Setup", html)
+        self.assertIn("Maximum Overtime", html)
+        self.assertIn("Overtime Day Premiums", html)
+        self.assertIn('id="menuItemLeaves"', html)
+        self.assertIn('id="menuItemOvertime"', html)
 
     def test_unlicensed_payroll_url_and_api_are_forbidden(self):
         self._login_session(["attendance", "shifts"])
@@ -615,6 +646,18 @@ class Layer2ModuleFirstPaintTests(unittest.TestCase):
         self.assertEqual(leaves.status_code, 403)
         overtime = self.client.get("/api/overtime")
         self.assertEqual(overtime.status_code, 403)
+        self.assertEqual(self.client.get("/api/settings/payroll").status_code, 403)
+        self.assertEqual(self.client.get("/api/salary").status_code, 403)
+        self.assertEqual(self.client.get("/api/payroll-settings/scoped-rules/half-leave").status_code, 403)
+        self.assertEqual(self.client.get("/api/settings/payroll/overtime-rules").status_code, 403)
+        branch = self.client.get("/api/settings/branch")
+        self.assertEqual(branch.status_code, 200)
+
+    def test_payroll_settings_api_allows_payroll_but_not_unlicensed_leave_or_overtime(self):
+        self._login_session(["attendance", "shifts", "payroll"])
+        self.assertEqual(self.client.get("/api/settings/payroll").status_code, 200)
+        self.assertEqual(self.client.get("/api/settings/payroll/overtime-rules").status_code, 403)
+        self.assertEqual(self.client.get("/api/payroll-settings/scoped-rules/half-leave").status_code, 403)
 
     def test_unlinked_file_does_not_grant_all_modules_to_client_session(self):
         self._login_session(["attendance"])
