@@ -132,6 +132,32 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             headers["X-Client-Auth"] = "true"
         return self.client.post(path, json=payload, headers=headers)
 
+    def test_integration_camera_endpoint_requires_service_key(self):
+        missing_key = self.client.get(
+            "/api/integration/cameras?organization_id=ORG-ALPHA&branch_id=BR-ALPHA-1"
+        )
+        invalid_key = self.client.get(
+            "/api/integration/cameras?organization_id=ORG-ALPHA&branch_id=BR-ALPHA-1",
+            headers={"X-Integration-Key": "incorrect"},
+        )
+        self.assertEqual(missing_key.status_code, 401)
+        self.assertEqual(invalid_key.status_code, 401)
+
+    @patch.object(db, "get_all_cameras")
+    def test_integration_camera_endpoint_scopes_to_requested_tenant(self, get_all_cameras):
+        get_all_cameras.return_value = [{"camera_id": "camera-a", "rtsp_url": "rtsp://example.test/a"}]
+        response = self.client.get(
+            "/api/integration/cameras?organization_id=ORG-ALPHA&branch_id=BR-ALPHA-2",
+            headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["cameras"], get_all_cameras.return_value)
+        get_all_cameras.assert_called_once_with(
+            active_only=True,
+            organization_id="ORG-ALPHA",
+            branch_id="BR-ALPHA-2",
+        )
+
     def test_unauthenticated_and_forged_client_headers_are_rejected(self):
         payload = self._payload()
         self.assertEqual(

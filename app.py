@@ -195,7 +195,7 @@ def check_module_entitlement_for_request():
 
     # Settings, auth, and integration endpoints are ALWAYS allowed
     if path in {'/', '/api/health', '/api/integration/status', '/api/integration/sync',
-                '/api/integration/edge-sync-state',
+                '/api/integration/edge-sync-state', '/api/integration/cameras',
                 '/api/admin/status', '/api/admin/verify-password', '/api/admin/lock',
                 '/api/login', '/api/client/login', '/api/logout', '/api/change-password'}:
         return None
@@ -301,6 +301,7 @@ def require_admin_session_for_app_data():
         '/api/integration/status',
         '/api/integration/sync',
         '/api/integration/edge-sync-state',
+        '/api/integration/cameras',
         '/api/attendance/edge-mark',
         '/api/sync/attendance-event',
     }
@@ -2981,6 +2982,35 @@ def integration_sync():
     except Exception as e:
         logger.error(f"Error in /api/integration/sync: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/integration/cameras', methods=['GET'])
+def integration_get_cameras():
+    """Return one branch's active camera configuration to the authenticated control plane."""
+    integration_key = os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()
+    if len(integration_key) < 32:
+        return jsonify({'success': False, 'message': 'Integration authentication is not securely configured.'}), 503
+    supplied_key = request.headers.get('X-Integration-Key', '')
+    if not secrets.compare_digest(supplied_key, integration_key):
+        return jsonify({'success': False, 'message': 'Integration authentication required.'}), 401
+
+    organization_id = request.args.get('organization_id', '').strip()
+    branch_id = request.args.get('branch_id', '').strip()
+    if not organization_id or not branch_id:
+        return jsonify({'success': False, 'message': 'Organization and branch are required.'}), 400
+
+    cameras = db.get_all_cameras(
+        active_only=True,
+        organization_id=organization_id,
+        branch_id=branch_id,
+    )
+    return jsonify({
+        'success': True,
+        'organization_id': organization_id,
+        'branch_id': branch_id,
+        'cameras': cameras,
+        'count': len(cameras),
+    }), 200
 
 
 @app.route('/api/integration/edge-sync-state', methods=['GET'])
