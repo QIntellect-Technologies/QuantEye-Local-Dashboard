@@ -45,6 +45,9 @@ def _migrate_payroll_run_tenant_uniqueness(cursor: sqlite3.Cursor) -> None:
 
     cursor.execute("DROP TRIGGER IF EXISTS prevent_finalized_payroll_run_update")
     cursor.execute("DROP TRIGGER IF EXISTS prevent_finalized_payroll_run_delete")
+    cursor.execute("DROP TRIGGER IF EXISTS prevent_finalized_payroll_record_insert")
+    cursor.execute("DROP TRIGGER IF EXISTS prevent_finalized_payroll_record_update")
+    cursor.execute("DROP TRIGGER IF EXISTS prevent_finalized_payroll_record_delete")
     cursor.execute("""
         CREATE TABLE payroll_runs_scoped (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

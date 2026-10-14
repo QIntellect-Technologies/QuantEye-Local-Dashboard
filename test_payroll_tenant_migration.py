@@ -53,16 +53,44 @@ class PayrollTenantMigrationTests(unittest.TestCase):
                     employee_name TEXT NOT NULL,
                     FOREIGN KEY(payroll_run_id) REFERENCES payroll_runs(id)
                 );
+                CREATE TRIGGER prevent_finalized_payroll_record_insert
+                BEFORE INSERT ON payroll_records
+                WHEN EXISTS (
+                    SELECT 1 FROM payroll_runs
+                    WHERE id = NEW.payroll_run_id AND status = 'Finalized'
+                )
+                BEGIN
+                    SELECT RAISE(ABORT, 'Finalized payroll records are immutable');
+                END;
+                CREATE TRIGGER prevent_finalized_payroll_record_update
+                BEFORE UPDATE ON payroll_records
+                WHEN EXISTS (
+                    SELECT 1 FROM payroll_runs
+                    WHERE id = OLD.payroll_run_id AND status = 'Finalized'
+                )
+                BEGIN
+                    SELECT RAISE(ABORT, 'Finalized payroll records are immutable');
+                END;
+                CREATE TRIGGER prevent_finalized_payroll_record_delete
+                BEFORE DELETE ON payroll_records
+                WHEN EXISTS (
+                    SELECT 1 FROM payroll_runs
+                    WHERE id = OLD.payroll_run_id AND status = 'Finalized'
+                )
+                BEGIN
+                    SELECT RAISE(ABORT, 'Finalized payroll records are immutable');
+                END;
                 INSERT INTO payroll_runs (
                     id, payroll_month, period_start, period_end, employee_count,
                     total_basic_salary, total_deduction, total_net_salary,
-                    total_allowances, total_overtime, organization_id, branch_id
+                    total_allowances, total_overtime, organization_id, branch_id, status
                 ) VALUES (
                     7, '2026-10', '2026-10-01', '2026-10-31', 1,
-                    5000, 100, 4900, 250, 50, 'ORG-A', 'BR-A1'
+                    5000, 100, 4900, 250, 50, 'ORG-A', 'BR-A1', 'Processing'
                 );
                 INSERT INTO payroll_records (payroll_run_id, employee_id, employee_name)
                 VALUES (7, 10, 'Existing Employee');
+                UPDATE payroll_runs SET status = 'Finalized' WHERE id = 7;
                 CREATE TABLE payroll_runs_scoped (id INTEGER PRIMARY KEY);
             """)
 
@@ -81,6 +109,17 @@ class PayrollTenantMigrationTests(unittest.TestCase):
                 "SELECT payroll_run_id, employee_id, employee_name FROM payroll_records"
             ).fetchone()
             self.assertEqual(saved_record, (7, 10, "Existing Employee"))
+            trigger_names = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+                )
+            }
+            self.assertTrue({
+                "prevent_finalized_payroll_record_insert",
+                "prevent_finalized_payroll_record_update",
+                "prevent_finalized_payroll_record_delete",
+            }.issubset(trigger_names))
             self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
 
             for organization_id, branch_id in (
