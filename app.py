@@ -196,6 +196,7 @@ def check_module_entitlement_for_request():
     # Settings, auth, and integration endpoints are ALWAYS allowed
     if path in {'/', '/api/health', '/api/integration/status', '/api/integration/sync',
                 '/api/integration/edge-sync-state', '/api/integration/cameras',
+                '/api/integration/employees',
                 '/api/admin/status', '/api/admin/verify-password', '/api/admin/lock',
                 '/api/login', '/api/client/login', '/api/logout', '/api/change-password'}:
         return None
@@ -302,6 +303,7 @@ def require_admin_session_for_app_data():
         '/api/integration/sync',
         '/api/integration/edge-sync-state',
         '/api/integration/cameras',
+        '/api/integration/employees',
         '/api/attendance/edge-mark',
         '/api/sync/attendance-event',
     }
@@ -3010,6 +3012,37 @@ def integration_get_cameras():
         'branch_id': branch_id,
         'cameras': cameras,
         'count': len(cameras),
+    }), 200
+
+
+@app.route('/api/integration/employees', methods=['GET'])
+def integration_get_employees():
+    """Return branch-scoped employee profiles to the authenticated control plane."""
+    integration_key = os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()
+    if len(integration_key) < 32:
+        return jsonify({'success': False, 'message': 'Integration authentication is not securely configured.'}), 503
+    supplied_key = request.headers.get('X-Integration-Key', '')
+    if not secrets.compare_digest(supplied_key, integration_key):
+        return jsonify({'success': False, 'message': 'Integration authentication required.'}), 401
+
+    organization_id = request.args.get('organization_id', '').strip()
+    branch_id = request.args.get('branch_id', '').strip()
+    if not organization_id or not branch_id:
+        return jsonify({'success': False, 'message': 'Organization and branch are required.'}), 400
+
+    employees = db.get_all_users(
+        organization_id=organization_id,
+        branch_id=branch_id,
+    )
+    return jsonify({
+        'success': True,
+        'organization_id': organization_id,
+        'branch_id': branch_id,
+        'employees': [{
+            **employee,
+            'employee_code': employee.get('notes') or f"EMP-{employee['id']}",
+        } for employee in employees],
+        'count': len(employees),
     }), 200
 
 

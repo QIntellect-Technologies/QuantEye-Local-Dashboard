@@ -158,6 +158,28 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             branch_id="BR-ALPHA-2",
         )
 
+    def test_integration_employee_endpoint_requires_service_key_and_scopes_branch(self):
+        endpoint = "/api/integration/employees?organization_id=ORG-ALPHA&branch_id=BR-ALPHA-2"
+        with patch.dict(os.environ, {"LOCAL_DASHBOARD_API_KEY": "unit-test-integration-key-0123456789"}):
+            unauthorized = self.client.get(endpoint)
+            with patch.object(db, "get_all_users", return_value=[{
+                "id": 102,
+                "name": "Aaron Alpha",
+                "notes": "EMP-102",
+            }]) as get_all_users:
+                response = self.client.get(
+                    endpoint,
+                    headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
+                )
+
+        self.assertEqual(unauthorized.status_code, 401)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["employees"][0]["employee_code"], "EMP-102")
+        get_all_users.assert_called_once_with(
+            organization_id="ORG-ALPHA",
+            branch_id="BR-ALPHA-2",
+        )
+
     def test_unauthenticated_and_forged_client_headers_are_rejected(self):
         payload = self._payload()
         self.assertEqual(
