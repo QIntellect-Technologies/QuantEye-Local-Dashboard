@@ -350,11 +350,12 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
         for user_id in (101, 102, 201):
             self.assertTrue(db.mark_user_absent_today(user_id))
 
-        missing_key = self.client.get("/api/integration/edge-sync-state")
+        endpoint = "/api/integration/edge-sync-state?organization_id=ORG-ALPHA&branch_id=BR-ALPHA-1"
+        missing_key = self.client.get(endpoint)
         self.assertEqual(missing_key.status_code, 401)
 
         response = self.client.get(
-            "/api/integration/edge-sync-state",
+            endpoint,
             headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
         )
         self.assertEqual(response.status_code, 200)
@@ -362,6 +363,12 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
         self.assertEqual(data["organization_id"], "ORG-ALPHA")
         self.assertEqual(data["branch_id"], "BR-ALPHA-1")
         self.assertEqual(data["manual_absent_user_ids"], [101])
+
+        missing_branch = self.client.get(
+            "/api/integration/edge-sync-state?organization_id=ORG-ALPHA",
+            headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
+        )
+        self.assertEqual(missing_branch.status_code, 400)
 
 
 if __name__ == "__main__":

@@ -3195,7 +3195,7 @@ def integration_get_employee_embeddings(user_id):
 
 @app.route('/api/integration/edge-sync-state', methods=['GET'])
 def integration_edge_sync_state():
-    """Expose current-branch manual absence overrides to the authenticated Main relay."""
+    """Expose the branch selected by the authenticated Main Dashboard relay."""
     integration_key = os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()
     if len(integration_key) < 32:
         return jsonify({'success': False, 'error': 'Integration authentication is not securely configured.'}), 503
@@ -3203,16 +3203,10 @@ def integration_edge_sync_state():
     if not secrets.compare_digest(supplied_key, integration_key):
         return jsonify({'success': False, 'error': 'Integration authentication required.'}), 401
 
-    cfg = load_integration_config()
-    organization_id = str(cfg.get('organization_id') or '').strip()
-    branch_id = str(cfg.get('branch_id') or '').strip()
-    if (
-        not cfg.get('linked')
-        or not organization_id
-        or not branch_id
-        or str(cfg.get('branch_status') or 'active').lower() != 'active'
-    ):
-        return jsonify({'success': False, 'error': 'Local instance has no active tenant binding.'}), 403
+    organization_id = request.args.get('organization_id', '').strip()
+    branch_id = request.args.get('branch_id', '').strip()
+    if not organization_id or not branch_id:
+        return jsonify({'success': False, 'error': 'Organization and branch are required.'}), 400
 
     try:
         absent_user_ids = db.get_manual_absent_user_ids_today(organization_id, branch_id)

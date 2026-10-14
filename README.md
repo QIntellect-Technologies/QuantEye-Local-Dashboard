@@ -2,7 +2,7 @@
 
 A complete AI-powered attendance system using **InsightFace** for face embeddings and **YOLOv8** for face detection. Users enroll by uploading a 15-second video, embeddings are extracted and trained, then real-time recognition works via camera, RTSP streams (NVR/DVR), or uploaded photos.
 
-For connected Client Nodes, branch-scoped employee records and face templates are relayed through Main Dashboard. Trained templates can be retrieved only with the server-to-server integration key and an exact organization/branch match, allowing a reinstalled node to restore cloud-trained recognition profiles.
+For connected Client Nodes, branch-scoped employee records, face templates, and attendance overrides are relayed through Main Dashboard. The authenticated Main Dashboard supplies the exact organization and branch for each request; trained templates can be retrieved only with the server-to-server integration key and matching employee ownership, allowing a reinstalled node to restore cloud-trained recognition profiles.
 
 ---
 
