@@ -18,11 +18,13 @@ import os
 import json
 import sqlite3
 import numpy as np
+from datetime import date
 
 # Ensure path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 import database as db
+import app as app_module
 from app import app, refresh_embedding_cache, match_embedding_vectorized
 
 results = []
@@ -44,6 +46,8 @@ def setup_test_data():
         
         # 1. Clean existing test entities
         cursor.execute("DELETE FROM attendance WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA')")
+        cursor.execute("DELETE FROM overtime WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA')")
+        cursor.execute("DELETE FROM company_holidays WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA')")
         cursor.execute("DELETE FROM leave_requests WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA')")
         cursor.execute("DELETE FROM embeddings WHERE user_id IN (SELECT id FROM users WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA') OR name IN ('Alice Alpha1', 'Aaron Alpha2', 'Bob Beta1', 'Trojan User'))")
         cursor.execute("DELETE FROM employee_shift_history WHERE user_id IN (SELECT id FROM users WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA') OR name IN ('Alice Alpha1', 'Aaron Alpha2', 'Bob Beta1', 'Trojan User'))")
@@ -113,6 +117,37 @@ def setup_test_data():
     # 8. Attendance Records
     db.log_attendance(user_a1, "Alice Alpha1", 0.99, source="cam_alpha_1", bypass_shift_check=True)
     db.log_attendance(user_b1, "Bob Beta1", 0.98, source="cam_beta_1", bypass_shift_check=True)
+    payroll_date = date.today().isoformat()
+    overtime_a1 = db.add_overtime(
+        user_a1, "Alice Alpha1", payroll_date, 2.0, "Alpha branch 1",
+        organization_id="ORG-ALPHA", branch_id="BR-ALPHA-1",
+    )
+    overtime_a2 = db.add_overtime(
+        user_a2, "Aaron Alpha2", payroll_date, 3.0, "Alpha branch 2",
+        organization_id="ORG-ALPHA", branch_id="BR-ALPHA-2",
+    )
+    overtime_b1 = db.add_overtime(
+        user_b1, "Bob Beta1", payroll_date, 4.0, "Beta branch 1",
+        organization_id="ORG-BETA", branch_id="BR-BETA-1",
+    )
+    with sqlite3.connect(db.DB_PATH) as conn:
+        conn.executemany(
+            "UPDATE overtime SET status = 'approved' WHERE id = ?",
+            [(overtime_a1,), (overtime_a2,), (overtime_b1,)],
+        )
+
+    holiday_alpha = db.add_company_holiday(
+        "Alpha Branch 1 Holiday", payroll_date, organization_id="ORG-ALPHA",
+        branch_id="BR-ALPHA-1",
+    )
+    holiday_alpha_branch2 = db.add_company_holiday(
+        "Alpha Branch 2 Holiday", "2026-10-20", organization_id="ORG-ALPHA",
+        branch_id="BR-ALPHA-2",
+    )
+    holiday_beta = db.add_company_holiday(
+        "Beta Holiday", "2026-10-21", organization_id="ORG-BETA",
+        branch_id="BR-BETA-1",
+    )
 
     # 9. Leave Request
     leave_a1 = db.add_leave_request(user_a1, "Alice Alpha1", "Vacation", "2026-10-15", "2026-10-16", reason="Vacation")
@@ -133,6 +168,12 @@ def setup_test_data():
         "cam_b1": cam_b1,
         "leave_a1": leave_a1,
         "leave_b1": leave_b1,
+        "overtime_a1": overtime_a1,
+        "overtime_a2": overtime_a2,
+        "overtime_b1": overtime_b1,
+        "holiday_alpha": holiday_alpha,
+        "holiday_alpha_branch2": holiday_alpha_branch2,
+        "holiday_beta": holiday_beta,
         "vec_a": vec_a,
         "vec_b": vec_b
     }
@@ -140,6 +181,15 @@ def setup_test_data():
     return fixtures
 
 def run_tests():
+    if not db.init_db():
+        raise RuntimeError("Could not initialize the isolated tenant-test database.")
+    app_module.load_integration_config = lambda: {
+        "linked": False,
+        "organization_id": None,
+        "branch_id": None,
+        "licensed_modules": list(app_module.CANONICAL_MODULES),
+        "local_instance_id": "LOC-TEST-INSTANCE",
+    }
     fixtures = setup_test_data()
     app.config['TESTING'] = True
     client = app.test_client()
@@ -323,53 +373,254 @@ def run_tests():
                 actual_org = row[0]
                 actual_branch = row[1]
 
-    passed_dim7 = (actual_org == "ORG-ALPHA")
+    passed_dim7 = (actual_org == "ORG-ALPHA" and actual_branch == "BR-ALPHA-1")
     record(
         "Write Payload Tampering Resistance",
         "7. Write-Operation Isolation",
         passed_dim7,
-        f"Payload contained 'ORG-BETA', but DB record was safely assigned: '{actual_org}'"
+        f"Payload tenant/branch spoof ignored; DB binding is '{actual_org}' / '{actual_branch}'"
     )
 
     # ----------------------------------------------------
     # DIMENSION 8: Session / Auth Security
     # Test: Session immutability and unauthenticated fallback
     # ----------------------------------------------------
-    # Clear session to test unauthenticated header fallback
+    # Clear session to verify forged client and tenant headers do not authenticate.
     with client.session_transaction() as sess:
         sess.clear()
     
-    # Request with unauthenticated header X-Organization-Id: ORG-BETA
+    # Request with unauthenticated X-Client-Auth and tenant headers must be rejected.
     res_unauth = client.get('/api/users', headers={'X-Organization-Id': 'ORG-BETA', 'X-Client-Auth': 'true'})
-    res_unauth_data = res_unauth.get_json() or {}
-    unauth_users = res_unauth_data.get('users', []) if isinstance(res_unauth_data, dict) else res_unauth_data
-    has_b_unauth = any(u.get('id') == fixtures['user_b1'] for u in unauth_users)
-    has_a_unauth = any(u.get('id') == fixtures['user_a1'] for u in unauth_users)
-    
-    passed_dim8 = (has_b_unauth and not has_a_unauth)
+    passed_dim8 = res_unauth.status_code == 401
     record(
-        "Unauthenticated Tenant Scoping",
+        "Forged Client Header Rejected",
         "8. Session / Auth Security",
         passed_dim8,
-        f"Unauthenticated request with X-Organization-Id: ORG-BETA retrieved Beta users: {has_b_unauth}, Alpha users: {has_a_unauth}"
+        f"Forged X-Client-Auth request returned HTTP {res_unauth.status_code} (expected 401)"
     )
 
     # ----------------------------------------------------
     # DIMENSION 9: Regression Testing (Standalone DEFAULT_ORG)
     # Test: Legacy requests with no session and no headers safely default to DEFAULT_ORG
     # ----------------------------------------------------
-    res_legacy = client.get('/api/users', headers={'X-Client-Auth': 'true'})
-    res_legacy_data = res_legacy.get_json() or {}
-    legacy_users = res_legacy_data.get('users', []) if isinstance(res_legacy_data, dict) else res_legacy_data
-    # Should not crash, and should not expose ORG-ALPHA or ORG-BETA users
-    exposed_alpha = any(u.get('id') == fixtures['user_a1'] for u in legacy_users)
-    exposed_beta = any(u.get('id') == fixtures['user_b1'] for u in legacy_users)
-    passed_dim9 = (res_legacy.status_code == 200 and not exposed_alpha and not exposed_beta)
+    res_legacy = client.get('/api/users')
+    passed_dim9 = res_legacy.status_code == 401
     record(
-        "Standalone DEFAULT_ORG Regression Protection",
+        "Unauthenticated Request Rejected",
         "9. Regression Testing",
         passed_dim9,
-        f"Default standalone request returned {len(legacy_users)} records, 0 Alpha/Beta leaked."
+        f"Request without a session returned HTTP {res_legacy.status_code} (expected 401)"
+    )
+
+    # ----------------------------------------------------
+    # DIMENSION 11: Branch-Scoped Employees, Holidays, and Overtime
+    # ----------------------------------------------------
+    def authenticate_scope(organization_id, branch_id):
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess['admin_unlocked'] = True
+            sess['organization_id'] = organization_id
+            sess['branch_id'] = branch_id
+
+    authenticate_scope("ORG-ALPHA", "BR-ALPHA-1")
+    branch_users_response = client.get(
+        "/api/users",
+        headers={"X-Organization-Id": "ORG-BETA", "X-Branch-Id": "BR-BETA-1"},
+    )
+    branch_users = (branch_users_response.get_json() or {}).get("users", [])
+    branch_users_scoped = (
+        branch_users_response.status_code == 200
+        and any(user.get('id') == fixtures['user_a1'] for user in branch_users)
+        and not any(user.get('id') in (fixtures['user_a2'], fixtures['user_b1']) for user in branch_users)
+    )
+
+    branch_overtime = client.get("/api/overtime").get_json() or []
+    branch_overtime_scoped = (
+        any(row.get('id') == fixtures['overtime_a1'] for row in branch_overtime)
+        and not any(row.get('id') in (fixtures['overtime_a2'], fixtures['overtime_b1']) for row in branch_overtime)
+    )
+
+    foreign_overtime_create = client.post("/api/overtime", json={
+        "user_id": fixtures['user_b1'],
+        "ot_date": date.today().isoformat(),
+        "hours": 1,
+        "reason": "forged employee",
+    })
+    foreign_overtime_update = client.put(
+        f"/api/overtime/{fixtures['overtime_b1']}",
+        json={"status": "rejected"},
+    )
+    foreign_overtime_delete = client.delete(f"/api/overtime/{fixtures['overtime_b1']}")
+    other_branch_overtime_update = client.put(
+        f"/api/overtime/{fixtures['overtime_a2']}",
+        json={"status": "rejected"},
+    )
+    other_branch_overtime_delete = client.delete(f"/api/overtime/{fixtures['overtime_a2']}")
+
+    holidays = client.get("/api/holidays").get_json() or []
+    holidays_scoped = (
+        any(row.get('id') == fixtures['holiday_alpha'] for row in holidays)
+        and not any(row.get('id') in (fixtures['holiday_alpha_branch2'], fixtures['holiday_beta']) for row in holidays)
+    )
+    foreign_holiday_delete = client.delete(f"/api/holidays/{fixtures['holiday_beta']}")
+    other_branch_holiday_delete = client.delete(f"/api/holidays/{fixtures['holiday_alpha_branch2']}")
+    foreign_records_unchanged = (
+        foreign_overtime_update.status_code == 404
+        and foreign_overtime_delete.status_code == 404
+        and other_branch_overtime_update.status_code == 404
+        and other_branch_overtime_delete.status_code == 404
+        and foreign_holiday_delete.status_code == 200
+        and foreign_holiday_delete.get_json().get('success') is False
+        and other_branch_holiday_delete.status_code == 200
+        and other_branch_holiday_delete.get_json().get('success') is False
+        and db.get_overtime_by_id(fixtures['overtime_b1']) is not None
+        and db.get_overtime_by_id(fixtures['overtime_a2']) is not None
+    )
+    record(
+        "Tenant/Branch Scoped Data and ID Operations",
+        "11. Tenant / Branch Isolation",
+        branch_users_scoped and branch_overtime_scoped and holidays_scoped and foreign_records_unchanged
+        and foreign_overtime_create.status_code == 404,
+        f"users={branch_users_scoped}, overtime={branch_overtime_scoped}, holidays={holidays_scoped}, IDOR rejected={foreign_records_unchanged}, foreign employee OT HTTP={foreign_overtime_create.status_code}"
+    )
+
+    # A valid scoped operation remains available.
+    valid_overtime = client.post("/api/overtime", json={
+        "user_id": fixtures['user_a1'],
+        "ot_date": date.today().isoformat(),
+        "hours": 1,
+        "reason": "valid branch request",
+    })
+    valid_holiday = client.post("/api/holidays", json={
+        "name": "Valid Alpha Branch Holiday",
+        "holiday_date": "2026-12-22",
+    })
+    record(
+        "Valid Authenticated Tenant Operations",
+        "12. Authentication Regression",
+        valid_overtime.status_code == 201 and valid_holiday.status_code == 201,
+        f"overtime HTTP={valid_overtime.status_code}, holiday HTTP={valid_holiday.status_code}"
+    )
+
+    # ----------------------------------------------------
+    # DIMENSION 13: Payroll organization and branch scope
+    # ----------------------------------------------------
+    payroll_month = date.today().strftime("%Y-%m")
+    payroll_alpha_1 = db.calculate_monthly_payroll(
+        payroll_month, organization_id="ORG-ALPHA", branch_id="BR-ALPHA-1"
+    )
+    payroll_alpha_2 = db.calculate_monthly_payroll(
+        payroll_month, organization_id="ORG-ALPHA", branch_id="BR-ALPHA-2"
+    )
+    payroll_beta = db.calculate_monthly_payroll(
+        payroll_month, organization_id="ORG-BETA", branch_id="BR-BETA-1"
+    )
+    alpha_1_records = payroll_alpha_1.get('records', []) if isinstance(payroll_alpha_1, dict) else payroll_alpha_1
+    alpha_2_records = payroll_alpha_2.get('records', []) if isinstance(payroll_alpha_2, dict) else payroll_alpha_2
+    beta_records = payroll_beta.get('records', []) if isinstance(payroll_beta, dict) else payroll_beta
+    alpha_1_by_id = {row.get('employee_id'): row for row in alpha_1_records}
+    alpha_2_by_id = {row.get('employee_id'): row for row in alpha_2_records}
+    beta_by_id = {row.get('employee_id'): row for row in beta_records}
+    payroll_scoped = (
+        set(alpha_1_by_id) == {fixtures['user_a1'], created_id}
+        and set(alpha_2_by_id) == {fixtures['user_a2']}
+        and set(beta_by_id) == {fixtures['user_b1']}
+        and bool(alpha_1_records)
+        and bool(alpha_2_records)
+        and bool(beta_records)
+        and alpha_1_by_id[fixtures['user_a1']].get('overtime_hours') == 2.0
+        and alpha_2_by_id[fixtures['user_a2']].get('overtime_hours') == 3.0
+        and beta_by_id[fixtures['user_b1']].get('overtime_hours') == 4.0
+    )
+    record(
+        "Payroll Employee and Overtime Scope",
+        "13. Payroll Branch Isolation",
+        payroll_scoped,
+        f"Org-A/Branch-1 employees={len(alpha_1_records)}, Branch-2={len(alpha_2_records)}, Org-B={len(beta_records)}; OT hours scoped={payroll_scoped}"
+    )
+
+    # ----------------------------------------------------
+    # DIMENSION 14: Password hashing and tenant binding
+    # ----------------------------------------------------
+    strong_password = "LocalDashboard!TestPassword2026"
+    auth_user_id = db.add_user(
+        name="Auth Regression User",
+        email="auth-regression@alpha.example",
+        password=strong_password,
+        organization_id="ORG-ALPHA",
+        branch_id="BR-ALPHA-1",
+    )
+    with sqlite3.connect(db.DB_PATH) as conn:
+        stored_password, stored_hash = conn.execute(
+            "SELECT password, password_hash FROM users WHERE id = ?",
+            (auth_user_id,),
+        ).fetchone()
+    login_response = client.post("/api/login", json={
+        "email": "auth-regression@alpha.example",
+        "password": strong_password,
+    })
+    wrong_password_response = client.post("/api/login", json={
+        "email": "auth-regression@alpha.example",
+        "password": "123456",
+    })
+    other_user_password_response = client.post("/api/change-password", json={
+        "user_id": fixtures['user_a1'],
+        "new_password": "AnotherStrongPassword2026!",
+    })
+    record(
+        "Password Hashing and Authenticated Tenant Context",
+        "14. Password Security",
+        auth_user_id is not None
+        and stored_password is None
+        and stored_hash
+        and login_response.status_code == 200
+        and wrong_password_response.status_code == 401
+        and other_user_password_response.status_code == 403
+        and client.get("/api/users", headers={"X-Organization-Id": "ORG-BETA"}).get_json().get("organization_id") == "ORG-ALPHA",
+        f"plaintext cleared={stored_password is None}, hash stored={bool(stored_hash)}, valid login HTTP={login_response.status_code}, invalid HTTP={wrong_password_response.status_code}, cross-user password change HTTP={other_user_password_response.status_code}"
+    )
+
+    # ----------------------------------------------------
+    # DIMENSION 15: Main Dashboard integration sync authentication
+    # ----------------------------------------------------
+    original_integration_key = os.environ.pop('LOCAL_DASHBOARD_API_KEY', None)
+    original_config_saver = app_module.save_integration_config
+    saved_configs = []
+    app_module.save_integration_config = lambda config: saved_configs.append(dict(config)) or True
+    integration_payload = {
+        "organization_id": "ORG-ALPHA",
+        "organization_name": "Alpha Organization",
+        "branch_id": "BR-ALPHA-1",
+        "branch_name": "Alpha Branch 1",
+        "licensed_modules": ["attendance", "payroll"],
+    }
+    unconfigured_sync = client.post("/api/integration/sync", json=integration_payload)
+    os.environ['LOCAL_DASHBOARD_API_KEY'] = "Group2-Integration-Test-Key-2026-Secure"
+    forged_sync = client.post(
+        "/api/integration/sync",
+        json=integration_payload,
+        headers={"X-Integration-Key": "not-the-shared-key"},
+    )
+    valid_sync = client.post(
+        "/api/integration/sync",
+        json=integration_payload,
+        headers={"X-Integration-Key": os.environ['LOCAL_DASHBOARD_API_KEY']},
+    )
+    app_module.save_integration_config = original_config_saver
+    if original_integration_key is None:
+        os.environ.pop('LOCAL_DASHBOARD_API_KEY', None)
+    else:
+        os.environ['LOCAL_DASHBOARD_API_KEY'] = original_integration_key
+    record(
+        "Authenticated Main-to-Local Integration Sync",
+        "15. Integration Authentication",
+        unconfigured_sync.status_code == 503
+        and forged_sync.status_code == 401
+        and valid_sync.status_code == 200
+        and bool(saved_configs)
+        and saved_configs[-1].get('organization_id') == "ORG-ALPHA"
+        and saved_configs[-1].get('branch_id') == "BR-ALPHA-1",
+        f"unconfigured HTTP={unconfigured_sync.status_code}, forged HTTP={forged_sync.status_code}, valid HTTP={valid_sync.status_code}"
     )
 
     # ----------------------------------------------------
@@ -412,6 +663,8 @@ def run_tests():
     with sqlite3.connect(db.DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM attendance WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA')")
+        cursor.execute("DELETE FROM overtime WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA')")
+        cursor.execute("DELETE FROM company_holidays WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA')")
         cursor.execute("DELETE FROM leave_requests WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA')")
         cursor.execute("DELETE FROM embeddings WHERE user_id IN (SELECT id FROM users WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA') OR name IN ('Alice Alpha1', 'Aaron Alpha2', 'Bob Beta1', 'Trojan User'))")
         cursor.execute("DELETE FROM employee_shift_history WHERE user_id IN (SELECT id FROM users WHERE organization_id IN ('ORG-ALPHA', 'ORG-BETA') OR name IN ('Alice Alpha1', 'Aaron Alpha2', 'Bob Beta1', 'Trojan User'))")
@@ -426,3 +679,5 @@ def run_tests():
 
 if __name__ == '__main__':
     run_tests()
+    if any(not result['passed'] for result in results):
+        sys.exit(1)

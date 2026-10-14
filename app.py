@@ -26,6 +26,7 @@ from flask import Flask, request, jsonify, render_template, send_from_directory,
 from werkzeug.utils import secure_filename
 import os
 import secrets
+import hashlib
 import json
 import base64
 import threading
@@ -34,6 +35,7 @@ import queue
 import webbrowser
 from typing import Dict, List, Optional, Tuple, Any
 import sqlite3
+import uuid
 import numpy as np
 from datetime import datetime
 from pathlib import Path
@@ -94,11 +96,24 @@ except Exception:
     pass
 
 # Secret key required for server-side sessions (admin config protection)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY') or 'quanteye-master-production-key-2026-secret-seed'
+_configured_secret_key = os.environ.get('FLASK_SECRET_KEY')
+_production_runtime = os.environ.get('FLASK_ENV') == 'production' or bool(os.environ.get('RAILWAY_ENVIRONMENT')) or os.environ.get('APP_ENV', '').lower() == 'production'
+if not _configured_secret_key:
+    if _production_runtime:
+        raise RuntimeError("FLASK_SECRET_KEY must be configured in production.")
+    _configured_secret_key = secrets.token_urlsafe(48)
+    logger.warning("FLASK_SECRET_KEY is not configured; sessions will not survive a process restart.")
+app.secret_key = _configured_secret_key
+if _production_runtime and len(app.secret_key) < 32:
+    raise RuntimeError("FLASK_SECRET_KEY must contain at least 32 characters in production.")
+if _production_runtime and len(os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()) < 32:
+    raise RuntimeError("LOCAL_DASHBOARD_API_KEY must contain at least 32 characters in production.")
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
-    SESSION_COOKIE_SECURE=False,
+    SESSION_COOKIE_SECURE=bool(
+        _production_runtime
+    ),
 )
 
 
@@ -180,6 +195,7 @@ def check_module_entitlement_for_request():
 
     # Settings, auth, and integration endpoints are ALWAYS allowed
     if path in {'/', '/api/health', '/api/integration/status', '/api/integration/sync',
+                '/api/integration/edge-sync-state',
                 '/api/admin/status', '/api/admin/verify-password', '/api/admin/lock',
                 '/api/login', '/api/client/login', '/api/logout', '/api/change-password'}:
         return None
@@ -273,7 +289,8 @@ def check_module_entitlement_for_request():
 @app.before_request
 def require_admin_session_for_app_data():
     """Keep application APIs and employee photos behind the admin session."""
-    public_api_paths = {
+    public_paths = {
+        '/',
         '/api/health',
         '/api/admin/status',
         '/api/admin/verify-password',
@@ -283,10 +300,13 @@ def require_admin_session_for_app_data():
         '/api/logout',
         '/api/integration/status',
         '/api/integration/sync',
-        '/api/cameras',
+        '/api/integration/edge-sync-state',
         '/api/attendance/edge-mark',
         '/api/sync/attendance-event',
     }
+
+    if request.method == 'OPTIONS' or request.path.startswith('/static/'):
+        return None
 
     # Step 7: Check module entitlement first
     entitlement_error = check_module_entitlement_for_request()
@@ -294,14 +314,12 @@ def require_admin_session_for_app_data():
         return entitlement_error
 
     protected_path = (
-        request.path.startswith('/api/') and request.path not in public_api_paths
-    ) or request.path.startswith('/profile_photos/') or request.path.startswith('/static/profile_photos/')
-
-    is_authenticated = bool(
-        session.get('admin_unlocked') or
-        session.get('client_user') or
-        request.headers.get('X-Client-Auth') == 'true'
+        request.path not in public_paths
+        or request.path.startswith('/profile_photos/')
+        or request.path.startswith('/static/profile_photos/')
     )
+
+    is_authenticated = bool(session.get('admin_unlocked') or session.get('client_user'))
 
     if request.path in {'/camera', '/live-monitoring'} and not is_authenticated:
         return redirect(url_for('index'))
@@ -847,7 +865,8 @@ def create_user():
         shift_id=shift_id,
         checkin_cameras=checkin_cameras,
         checkout_cameras=checkout_cameras,
-        organization_id=current_tenant
+        organization_id=current_tenant,
+        branch_id=get_current_branch_id(),
     )
     if user_id:
         return jsonify({
@@ -1047,6 +1066,82 @@ def api_purge_organization(org_id=None):
     return jsonify({'success': success, 'message': f'Organization {org_id} purged successfully'})
 
 
+def _prepare_attendance_ingestion(data):
+    integration_key = os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()
+    supplied_key = request.headers.get('X-Integration-Key', '')
+    if len(integration_key) < 32 or not secrets.compare_digest(supplied_key, integration_key):
+        return None, (jsonify({'success': False, 'error': 'Integration authentication required'}), 401)
+
+    cfg = load_integration_config()
+    organization_id = str(cfg.get('organization_id') or '').strip()
+    branch_id = str(cfg.get('branch_id') or '').strip()
+    if (
+        not cfg.get('linked')
+        or not organization_id
+        or not branch_id
+        or str(cfg.get('branch_status') or 'active').lower() != 'active'
+    ):
+        return None, (jsonify({'success': False, 'error': 'Local instance has no active tenant binding'}), 403)
+
+    if (
+        str(data.get('organization_id') or '').strip() != organization_id
+        or str(data.get('branch_id') or '').strip() != branch_id
+    ):
+        return None, (jsonify({'success': False, 'error': 'Attendance event tenant does not match this instance'}), 403)
+
+    try:
+        event_id = str(uuid.UUID(str(data.get('event_id') or '').strip()))
+        user_id = int(data.get('user_id'))
+    except (ValueError, TypeError, AttributeError):
+        return None, (jsonify({'success': False, 'error': 'Valid event_id and user_id are required'}), 400)
+
+    with sqlite3.connect(db.DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        user = conn.execute(
+            'SELECT id, name FROM users '
+            'WHERE id = ? AND organization_id = ? AND branch_id = ? AND active = 1',
+            (user_id, organization_id, branch_id),
+        ).fetchone()
+    if not user:
+        return None, (jsonify({'success': False, 'error': 'Employee is not active in the bound branch'}), 403)
+
+    detected_name = str(data.get('name') or data.get('detected_name') or '').strip()
+    if not detected_name or detected_name.casefold() != str(user['name']).strip().casefold():
+        return None, (jsonify({'success': False, 'error': 'Employee identity does not match the bound employee record'}), 403)
+
+    normalized = dict(data)
+    normalized['event_id'] = event_id
+    normalized['user_id'] = user_id
+    normalized['name'] = str(user['name'])
+    normalized['organization_id'] = organization_id
+    normalized['branch_id'] = branch_id
+    normalized.pop('bypass_shift_check', None)
+    hash_payload = {key: value for key, value in normalized.items() if key != 'event_id'}
+    payload_hash = hashlib.sha256(
+        json.dumps(hash_payload, sort_keys=True, separators=(',', ':'), default=str).encode('utf-8')
+    ).hexdigest()
+
+    try:
+        receipt = db.begin_attendance_ingestion(event_id, payload_hash)
+    except Exception:
+        logger.exception('Unable to claim attendance event receipt')
+        return None, (jsonify({'success': False, 'error': 'Attendance event could not be accepted'}), 500)
+    normalized['_receipt_state'] = receipt['state']
+    if receipt['state'] == 'duplicate':
+        normalized['_receipt_response'] = receipt['response']
+        normalized['_receipt_status'] = receipt['status']
+    return normalized, None
+
+
+def _finish_attendance_ingestion(event_id, response, status_code):
+    try:
+        db.complete_attendance_ingestion(event_id, response, status_code)
+    except Exception:
+        logger.exception('Unable to complete attendance event receipt')
+        return jsonify({'success': False, 'error': 'Attendance event result could not be persisted'}), 500
+    return jsonify(response), status_code
+
+
 @app.route('/api/sync/attendance-event', methods=['POST'])
 def api_sync_attendance_event():
     """
@@ -1054,9 +1149,25 @@ def api_sync_attendance_event():
     Performs tenant shift calculation, grace period checking, and logs attendance.
     """
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Invalid attendance event'}), 400
+    data, auth_error = _prepare_attendance_ingestion(data)
+    if auth_error:
+        return auth_error
+    if data['_receipt_state'] == 'duplicate':
+        return jsonify(data['_receipt_response']), data['_receipt_status']
+    if data['_receipt_state'] == 'processing':
+        return jsonify({'success': False, 'error': 'Attendance event is already being processed'}), 409
+    if data['_receipt_state'] == 'conflict':
+        return jsonify({'success': False, 'error': 'event_id was already used with a different payload'}), 409
+    event_id = data['event_id']
     user_id = data.get('user_id')
     name = data.get('name')
-    conf = float(data.get('confidence', 0.9))
+    try:
+        conf = float(data.get('confidence', 0.9))
+    except (TypeError, ValueError):
+        db.abandon_attendance_ingestion(event_id)
+        return jsonify({'success': False, 'error': 'Invalid confidence value'}), 400
     cam_name = data.get('camera_name', 'Live Camera')
     cam_id = data.get('camera_id', '')
 
@@ -1109,8 +1220,14 @@ def api_sync_attendance_event():
             if len(LATEST_STREAM_DETECTIONS) > 50:
                 LATEST_STREAM_DETECTIONS.pop()
 
-        return jsonify({'success': True, 'attendance_logged': success, 'reason': reason}), 200
+        return _finish_attendance_ingestion(event_id, {
+            'success': True,
+            'attendance_logged': success,
+            'reason': reason,
+            'event_id': event_id,
+        }, 200)
     except Exception as e:
+        db.abandon_attendance_ingestion(event_id)
         logger.error(f"Error in api_sync_attendance_event: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -2318,7 +2435,10 @@ def api_locate_history():
 @app.route('/api/users', methods=['GET'])
 def get_users():
     current_tenant = get_current_tenant_id()
-    users = db.get_all_users(organization_id=current_tenant)
+    users = db.get_all_users(
+        organization_id=current_tenant,
+        branch_id=get_current_branch_id(),
+    )
     return jsonify({'users': users, 'organization_id': current_tenant}), 200
 
 
@@ -2778,6 +2898,13 @@ def integration_sync():
     Receive organization, branch, license, and module entitlement from Main Dashboard.
     Persist ONLY in config_integration.json. NEVER write into attendance.db.
     """
+    integration_key = os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()
+    if len(integration_key) < 32:
+        return jsonify({'success': False, 'message': 'Integration authentication is not securely configured.'}), 503
+    supplied_key = request.headers.get('X-Integration-Key', '')
+    if not secrets.compare_digest(supplied_key, integration_key):
+        return jsonify({'success': False, 'message': 'Integration authentication required.'}), 401
+
     try:
         payload = request.get_json(silent=True) or {}
         if not payload:
@@ -2829,16 +2956,67 @@ def integration_sync():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
+@app.route('/api/integration/edge-sync-state', methods=['GET'])
+def integration_edge_sync_state():
+    """Expose current-branch manual absence overrides to the authenticated Main relay."""
+    integration_key = os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()
+    if len(integration_key) < 32:
+        return jsonify({'success': False, 'error': 'Integration authentication is not securely configured.'}), 503
+    supplied_key = request.headers.get('X-Integration-Key', '')
+    if not secrets.compare_digest(supplied_key, integration_key):
+        return jsonify({'success': False, 'error': 'Integration authentication required.'}), 401
+
+    cfg = load_integration_config()
+    organization_id = str(cfg.get('organization_id') or '').strip()
+    branch_id = str(cfg.get('branch_id') or '').strip()
+    if (
+        not cfg.get('linked')
+        or not organization_id
+        or not branch_id
+        or str(cfg.get('branch_status') or 'active').lower() != 'active'
+    ):
+        return jsonify({'success': False, 'error': 'Local instance has no active tenant binding.'}), 403
+
+    try:
+        absent_user_ids = db.get_manual_absent_user_ids_today(organization_id, branch_id)
+    except Exception:
+        logger.exception('Could not load current-branch manual absence overrides.')
+        return jsonify({'success': False, 'error': 'Attendance state is temporarily unavailable.'}), 500
+
+    return jsonify({
+        'success': True,
+        'organization_id': organization_id,
+        'branch_id': branch_id,
+        'date': datetime.now().strftime('%Y-%m-%d'),
+        'manual_absent_user_ids': absent_user_ids,
+    }), 200
+
+
 @app.route('/api/attendance/edge-mark', methods=['POST'])
 def api_edge_mark_attendance():
     """
-    Direct attendance marking endpoint for Edge AI Node / Main Dashboard sync.
-    Directly logs check-in / check-out into the existing attendance table so reports update immediately.
+    Accept an authenticated Main Dashboard relay and process it within the bound tenant.
     """
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Invalid attendance event'}), 400
+    data, auth_error = _prepare_attendance_ingestion(data)
+    if auth_error:
+        return auth_error
+    if data['_receipt_state'] == 'duplicate':
+        return jsonify(data['_receipt_response']), data['_receipt_status']
+    if data['_receipt_state'] == 'processing':
+        return jsonify({'success': False, 'error': 'Attendance event is already being processed'}), 409
+    if data['_receipt_state'] == 'conflict':
+        return jsonify({'success': False, 'error': 'event_id was already used with a different payload'}), 409
+    event_id = data['event_id']
     user_id = data.get('user_id')
     detected_name = data.get('name') or data.get('detected_name') or 'Unknown'
-    confidence = float(data.get('confidence', 0.85))
+    try:
+        confidence = float(data.get('confidence', 0.85))
+    except (TypeError, ValueError):
+        db.abandon_attendance_ingestion(event_id)
+        return jsonify({'success': False, 'error': 'Invalid confidence value'}), 400
     camera_id = data.get('camera_id') or 'edge_node'
     camera_name = data.get('camera_name') or 'Live AI Camera'
     source = data.get('source') or f"camera_{camera_id}"
@@ -2846,22 +3024,7 @@ def api_edge_mark_attendance():
     checkout_cam_id = data.get('checkout_camera_id')
     checkout_loc = data.get('checkout_location')
 
-    if not user_id:
-        # Try resolving user_id from detected_name
-        try:
-            with sqlite3.connect(db.DB_PATH) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT id FROM users WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 1", (detected_name.strip(),))
-                row = cursor.fetchone()
-                if row:
-                    user_id = row[0]
-        except Exception:
-            pass
-
-    if not user_id:
-        return jsonify({'success': False, 'error': f"Employee '{detected_name}' not found in staff directory"}), 404
-
-    bypass_shift = bool(data.get('bypass_shift_check', False))
+    bypass_shift = False
     if bypass_shift:
         success, msg = db.log_attendance(
             user_id=int(user_id),
@@ -2883,26 +3046,37 @@ def api_edge_mark_attendance():
             }), 201
         return jsonify({'success': False, 'message': msg}), 400
 
-    status, msg = process_user_attendance_event(
-        user_id=int(user_id),
-        name=detected_name,
-        confidence=confidence,
-        source=source,
-        location=location,
-        camera_id=camera_id
-    )
+    try:
+        status, msg = process_user_attendance_event(
+            user_id=int(user_id),
+            name=detected_name,
+            confidence=confidence,
+            source=source,
+            location=location,
+            camera_id=camera_id
+        )
+    except Exception:
+        db.abandon_attendance_ingestion(event_id)
+        logger.exception('Error processing authenticated edge attendance event')
+        return jsonify({'success': False, 'error': 'Attendance event processing failed'}), 500
 
     if status in ("CHECKIN", "CHECKOUT", "PRESENT_ACTIVE"):
-        return jsonify({
+        return _finish_attendance_ingestion(event_id, {
             'success': True,
             'status': status,
             'message': msg,
             'user_id': user_id,
             'name': detected_name,
-            'timestamp': datetime.now().isoformat()
-        }), 201
+            'timestamp': datetime.now().isoformat(),
+            'event_id': event_id,
+        }, 201)
 
-    return jsonify({'success': False, 'status': status, 'message': msg}), 400
+    return _finish_attendance_ingestion(event_id, {
+        'success': False,
+        'status': status,
+        'message': msg,
+        'event_id': event_id,
+    }, 400)
 
 
 @app.route('/api/init', methods=['POST'])
@@ -3007,28 +3181,19 @@ def serve_profile_photo_direct(filename):
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.get_json() or {}
-    email = data.get('email', data.get('username', '')).strip()
-    password = data.get('password', '').strip()
+    email = str(data.get('email', data.get('username', ''))).strip()
+    password = str(data.get('password', ''))
     if not email or not password:
         return jsonify({'success': False, 'message': 'Email and password required'}), 400
     user = db.authenticate_user(email, password)
     if not user:
-        active_password = str(os.environ.get('ADMIN_CONFIG_PASSWORD', 'admin')).strip()
-        allowed_passwords = {active_password, 'admin', 'Pass1234!'}
-        if any(secrets.compare_digest(password, p) for p in allowed_passwords):
-            session.clear()
-            session['admin_unlocked'] = True
-            safe = {
-                'id': 1,
-                'name': email.split('@')[0].capitalize(),
-                'email': email,
-                'role': 'Admin',
-                'active': 1
-            }
-            return jsonify({'success': True, 'user': safe})
         return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
+    session.clear()
     session['admin_unlocked'] = True
-    safe = {k: v for k, v in user.items() if k != 'password'}
+    session['user_id'] = user['id']
+    session['organization_id'] = user.get('organization_id') or 'DEFAULT_ORG'
+    session['branch_id'] = user.get('branch_id') or 'DEFAULT_BRANCH'
+    safe = {k: v for k, v in user.items() if k not in {'password', 'password_hash'}}
     return jsonify({'success': True, 'user': safe})
 
 
@@ -3036,10 +3201,22 @@ def api_login():
 def api_change_password():
     data = request.get_json() or {}
     user_id = data.get('user_id')
-    new_pass = data.get('new_password', '')
+    new_pass = str(data.get('new_password', ''))
     if not user_id or not new_pass:
         return jsonify({'success': False}), 400
-    db.change_password(int(user_id), new_pass)
+    if len(new_pass) < 14:
+        return jsonify({'success': False, 'message': 'Password must be at least 14 characters.'}), 400
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Invalid user ID.'}), 400
+    session_user_id = session.get('user_id')
+    if session_user_id is not None and int(session_user_id) != user_id:
+        return jsonify({'success': False, 'message': 'You may only change your own password.'}), 403
+    if not verify_user_access(user_id):
+        return jsonify({'success': False, 'message': 'Employee not found or access denied.'}), 404
+    if not db.change_password(user_id, new_pass):
+        return jsonify({'success': False, 'message': 'Password could not be updated.'}), 500
     return jsonify({'success': True})
 
 
@@ -3050,9 +3227,9 @@ def api_client_login():
     Validates against Main Dashboard to fetch licensed modules and updates integration config.
     """
     data = request.get_json() or {}
-    username = (data.get('username') or data.get('email') or '').strip()
-    password = (data.get('password') or '').strip()
-    branch_key = (data.get('branch_key') or '').strip()
+    username = str(data.get('username') or data.get('email') or '').strip()
+    password = str(data.get('password') or '')
+    branch_key = str(data.get('branch_key') or '').strip()
 
     if not username and not branch_key:
         return jsonify({'success': False, 'message': 'Username/Email or Branch Key required'}), 400
@@ -3062,6 +3239,7 @@ def api_client_login():
     auth_data = None
     try:
         import urllib.request
+        import urllib.error
         req = urllib.request.Request(
             f"{main_url}/api/client/authenticate",
             data=json.dumps({"username": username, "password": password, "branch_key": branch_key}).encode('utf-8'),
@@ -3070,77 +3248,52 @@ def api_client_login():
         )
         with urllib.request.urlopen(req, timeout=4.0) as resp:
             auth_data = json.loads(resp.read().decode('utf-8'))
-    except Exception as e:
-        logger.warning(f"Main dashboard auth request failed: {e}")
+    except urllib.error.HTTPError as e:
+        logger.info("Main Dashboard rejected client login with HTTP %s", e.code)
+        return jsonify({'success': False, 'message': 'Invalid client credentials or activation key.'}), 401
+    except Exception:
+        logger.exception("Main dashboard auth service is unavailable")
+        return jsonify({'success': False, 'message': 'Client authentication service is unavailable.'}), 502
 
     if auth_data and auth_data.get('success'):
         org_name = auth_data.get('organization_name', 'Client Organization')
         branch_name = auth_data.get('branch_name', 'Main Branch')
         modules = auth_data.get('modules', ['attendance', 'shifts', 'payroll'])
+        organization_id = str(auth_data.get('organization_id') or '').strip()
+        branch_id = str(auth_data.get('branch_id') or '').strip()
+        if not organization_id or not branch_id:
+            return jsonify({'success': False, 'message': 'Authentication service returned an invalid tenant binding.'}), 502
         
         # Save client organization integration config
         cfg = load_integration_config()
         cfg['linked'] = True
-        cfg['organization_id'] = auth_data.get('organization_id')
+        cfg['organization_id'] = organization_id
         cfg['organization_name'] = org_name
-        cfg['branch_id'] = auth_data.get('branch_id')
+        cfg['branch_id'] = branch_id
         cfg['branch_name'] = branch_name
         cfg['branch_status'] = 'active'
         cfg['licensed_modules'] = modules
         cfg['last_sync_timestamp'] = datetime.now().isoformat()
-        save_integration_config(cfg)
+        if not save_integration_config(cfg):
+            return jsonify({'success': False, 'message': 'Could not persist client organization binding.'}), 500
         
         session.clear()
         session['admin_unlocked'] = True
         session['client_user'] = username or org_name
         session['client_org'] = org_name
-        session['client_org_id'] = auth_data.get('organization_id') or 'DEFAULT_ORG'
+        session['client_org_id'] = organization_id
+        session['organization_id'] = organization_id
         session['client_branch'] = branch_name
-        session['client_branch_id'] = auth_data.get('branch_id') or 'DEFAULT_BRANCH'
+        session['client_branch_id'] = branch_id
+        session['branch_id'] = branch_id
         
         return jsonify({
             'success': True,
-            'organization_id': auth_data.get('organization_id'),
+            'organization_id': organization_id,
             'organization_name': org_name,
             'branch_name': branch_name,
             'modules': modules,
             'user': username or org_name
-        }), 200
-
-    # Local fallback for admin or client credentials
-    active_password = str(os.environ.get('ADMIN_CONFIG_PASSWORD', 'admin')).strip()
-    if any(secrets.compare_digest(password, p) for p in (active_password, 'admin', 'Pass1234!', 'admin123')):
-        session.clear()
-        session['admin_unlocked'] = True
-        
-        clean_user = username or 'Admin'
-        derived_org = 'Main Branch'
-        if '@' in clean_user:
-            raw_org = clean_user.split('@')[0].replace('.', ' ').replace('-', ' ').replace('_', ' ')
-            derived_org = ' '.join(word.capitalize() for word in raw_org.split())
-        elif username:
-            derived_org = username
-
-        session['client_user'] = clean_user
-        session['client_org'] = derived_org
-        
-        cfg = load_integration_config()
-        org_id = cfg.get('organization_id') or ('ORG-' + clean_user.split('@')[0].upper() if '@' in clean_user else 'DEFAULT_ORG')
-        session['client_org_id'] = org_id
-        session['client_branch_id'] = cfg.get('branch_id') or 'DEFAULT_BRANCH'
-        if derived_org != 'Main Branch':
-            cfg['organization_name'] = derived_org
-            cfg['organization_id'] = org_id
-            cfg['linked'] = True
-        save_integration_config(cfg)
-
-        return jsonify({
-            'success': True,
-            'organization_id': org_id,
-            'organization_name': derived_org,
-            'branch_name': cfg.get('branch_name') or 'Main Branch',
-            'modules': cfg.get('licensed_modules', ['attendance', 'shifts', 'payroll']),
-            'user': clean_user
         }), 200
 
     return jsonify({'success': False, 'message': 'Invalid credentials. Please verify your email and password.'}), 401
@@ -3158,26 +3311,16 @@ def get_current_tenant_id() -> str:
     Return currently active tenant organization_id.
     SECURITY HARDENING: If user is authenticated in session, session organization_id
     is 100% authoritative and CANNOT be overridden by headers, query params, or client inputs.
-    If unauthenticated (e.g. direct API client testing), header X-Organization-Id is accepted,
-    falling back strictly to local config or DEFAULT_ORG.
+    Caller-provided headers are never an authority. Unlinked standalone installs use
+    their local default tenant; linked installs use server-persisted integration config.
     """
     if 'organization_id' in session and session['organization_id']:
         return str(session['organization_id']).strip()
     if 'client_org_id' in session and session['client_org_id']:
         return str(session['client_org_id']).strip()
-    try:
-        from flask import request
-        hdr_org = request.headers.get('X-Organization-Id')
-        if hdr_org and hdr_org.strip():
-            return hdr_org.strip()
-    except Exception:
-        pass
-    try:
-        cfg = load_integration_config()
-        if cfg.get('organization_id'):
-            return str(cfg['organization_id']).strip()
-    except Exception:
-        pass
+    cfg = load_integration_config()
+    if cfg.get('linked') and cfg.get('organization_id'):
+        return str(cfg['organization_id']).strip()
     return 'DEFAULT_ORG'
 
 
@@ -3189,19 +3332,9 @@ def get_current_branch_id() -> str:
         return str(session['branch_id']).strip()
     if 'client_branch_id' in session and session['client_branch_id']:
         return str(session['client_branch_id']).strip()
-    try:
-        from flask import request
-        hdr_branch = request.headers.get('X-Branch-Id')
-        if hdr_branch and hdr_branch.strip():
-            return hdr_branch.strip()
-    except Exception:
-        pass
-    try:
-        cfg = load_integration_config()
-        if cfg.get('branch_id'):
-            return str(cfg['branch_id']).strip()
-    except Exception:
-        pass
+    cfg = load_integration_config()
+    if cfg.get('linked') and cfg.get('branch_id'):
+        return str(cfg['branch_id']).strip()
     return 'DEFAULT_BRANCH'
 
 
@@ -3216,11 +3349,13 @@ def verify_user_access(user_id: int, organization_id: Optional[str] = None) -> O
     if not user:
         return None
     user_org = user.get('organization_id') or 'DEFAULT_ORG'
-    if tenant != 'DEFAULT_ORG' and user_org != tenant:
+    if user_org != tenant:
         logger.warning(f"Tenant isolation violation prevented: User #{user_id} belongs to '{user_org}', caller is '{tenant}'")
         return None
-    if tenant == 'DEFAULT_ORG' and user_org not in ('DEFAULT_ORG', '', None):
-        logger.warning(f"Tenant isolation violation prevented: DEFAULT_ORG caller attempted access to User #{user_id} of org '{user_org}'")
+    branch = get_current_branch_id()
+    user_branch = user.get('branch_id') or 'DEFAULT_BRANCH'
+    if user_branch != branch:
+        logger.warning(f"Branch isolation violation prevented: User #{user_id} belongs to '{user_branch}', caller is '{branch}'")
         return None
     return user
 
@@ -3230,18 +3365,17 @@ def verify_user_access(user_id: int, organization_id: Optional[str] = None) -> O
 # ============================================
 
 # Set ADMIN_CONFIG_PASSWORD in the local environment; never commit the value.
-_ADMIN_CONFIG_PASSWORD = os.environ.get('ADMIN_CONFIG_PASSWORD', 'admin')
+_ADMIN_CONFIG_PASSWORD = os.environ.get('ADMIN_CONFIG_PASSWORD')
 
 @app.route('/api/admin/verify-password', methods=['POST'])
 def api_admin_verify_password():
     """Verify admin config password server-side. Sets session flag on success."""
     data = request.get_json() or {}
     password = str(data.get('password', '')).strip()
-    active_password = str(_ADMIN_CONFIG_PASSWORD or 'admin').strip()
-    
-    # Accept standard admin password, client password Pass1234!, or configured env password
-    allowed_passwords = {active_password, 'admin', 'Pass1234!'}
-    if any(secrets.compare_digest(password, p) for p in allowed_passwords):
+    if not _ADMIN_CONFIG_PASSWORD or len(_ADMIN_CONFIG_PASSWORD) < 16:
+        logger.error("ADMIN_CONFIG_PASSWORD is missing or shorter than 16 characters.")
+        return jsonify({'success': False, 'message': 'Admin password is not securely configured.'}), 503
+    if secrets.compare_digest(password, _ADMIN_CONFIG_PASSWORD):
         session.clear()
         session['admin_unlocked'] = True
         return jsonify({'success': True, 'message': 'Access granted'})
@@ -3290,8 +3424,7 @@ def _require_enrollment_access():
         session.get('admin_unlocked') or
         session.get('enrollment_enabled') or
         session.get('organization_id') or
-        session.get('username') or
-        request.headers.get('X-Client-Auth') == 'true'
+        session.get('username')
     ):
         return None
     return jsonify({'success': False, 'message': 'Staff Enrollment is disabled. Enable it from Admin Configuration.'}), 403
@@ -3309,14 +3442,19 @@ def _require_admin_configuration():
 # ============================================
 
 def _safe_user(u):
-    return {k: v for k, v in u.items() if k != 'password'} if u else {}
+    return {k: v for k, v in u.items() if k not in {'password', 'password_hash'}} if u else {}
 
 
 @app.route('/api/staff', methods=['GET'])
 def api_get_staff():
     current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
     role = request.args.get('role')
-    users = db.get_all_users(role=role, organization_id=current_tenant)
+    users = db.get_all_users(
+        role=role,
+        organization_id=current_tenant,
+        branch_id=current_branch,
+    )
     return jsonify([_safe_user(u) for u in users])
 
 
@@ -3332,7 +3470,6 @@ def api_add_staff():
     uid = db.add_user(
         name=data.get('name', ''),
         email=data.get('email', ''),
-        password=data.get('password', '123456'),
         role=data.get('role', 'staff'),
         department=data.get('department', ''),
         phone=data.get('phone', ''),
@@ -4232,7 +4369,12 @@ def api_add_leave():
     except ValueError:
         return jsonify({'success': False, 'message': 'Invalid date format. Use YYYY-MM-DD.'}), 400
 
-    holiday = db.get_company_holiday_in_range(start_date, end_date)
+    holiday = db.get_company_holiday_in_range(
+        start_date,
+        end_date,
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
+    )
     if holiday:
         holiday_name = holiday.get('name') or 'A company holiday'
         holiday_date = holiday.get('matched_date') or start_date
@@ -4460,7 +4602,11 @@ def api_get_leave_balances():
 def api_get_holidays():
     year = request.args.get('year', type=int)
     current_tenant = get_current_tenant_id()
-    return jsonify(db.get_company_holidays(year=year, organization_id=current_tenant))
+    return jsonify(db.get_company_holidays(
+        year=year,
+        organization_id=current_tenant,
+        branch_id=get_current_branch_id(),
+    ))
 
 
 @app.route('/api/holidays', methods=['POST'])
@@ -4479,7 +4625,14 @@ def api_add_holiday():
     if holiday_end < holiday_start:
         return jsonify({'success': False, 'message': 'Holiday end date cannot be earlier than its start date.'}), 400
     current_tenant = get_current_tenant_id()
-    if any(holiday.get('holiday_date') == hdate for holiday in db.get_company_holidays(organization_id=current_tenant)):
+    current_branch = get_current_branch_id()
+    if any(
+        holiday.get('holiday_date') == hdate
+        for holiday in db.get_company_holidays(
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
+    ):
         return jsonify({'success': False, 'message': 'A holiday already starts on this date.'}), 409
     hid = db.add_company_holiday(
         name=name,
@@ -4488,6 +4641,7 @@ def api_add_holiday():
         description=data.get('description', ''),
         is_recurring=int(data.get('is_recurring', 0)),
         organization_id=current_tenant,
+        branch_id=current_branch,
     )
     if hid:
         return jsonify({'success': True, 'id': hid}), 201
@@ -4496,7 +4650,11 @@ def api_add_holiday():
 
 @app.route('/api/holidays/<int:holiday_id>', methods=['DELETE'])
 def api_delete_holiday(holiday_id):
-    ok = db.delete_company_holiday(holiday_id)
+    ok = db.delete_company_holiday(
+        holiday_id,
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
+    )
     return jsonify({'success': ok})
 
 
@@ -4516,7 +4674,8 @@ def api_get_overtime():
     return jsonify(db.get_overtime(
         user_id=user_id, status=status, department=department,
         ot_date=ot_date, start_date=start_date, end_date=end_date,
-        organization_id=current_tenant
+        organization_id=current_tenant,
+        branch_id=get_current_branch_id(),
     ))
 
 
@@ -4526,7 +4685,16 @@ def api_overtime_rate_preview():
     overtime_date = (request.args.get('ot_date') or '').strip()
     if not user_id or not overtime_date:
         return jsonify({'error': 'user_id and ot_date are required'}), 400
-    preview = db.get_overtime_rate_preview(user_id, overtime_date)
+    current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
+    if not verify_user_access(user_id, organization_id=current_tenant):
+        return jsonify({'error': 'Employee not found or access denied'}), 404
+    preview = db.get_overtime_rate_preview(
+        user_id,
+        overtime_date,
+        organization_id=current_tenant,
+        branch_id=current_branch,
+    )
     if not preview:
         return jsonify({'error': 'Employee or overtime date is invalid'}), 400
     return jsonify(preview)
@@ -4538,7 +4706,15 @@ def api_add_overtime():
     user_id = data.get('user_id')
     if not user_id:
         return jsonify({'success': False, 'error': 'user_id is required'}), 400
-    user = db.get_user_by_id(int(user_id))
+    current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'user_id must be an integer'}), 400
+    user = verify_user_access(user_id, organization_id=current_tenant)
+    if not user or (user.get('branch_id') or 'DEFAULT_BRANCH') != current_branch:
+        return jsonify({'success': False, 'error': 'Employee not found or access denied'}), 404
     hours = float(data.get('hours', 0) or 0)
     if hours <= 0:
         return jsonify({'success': False, 'error': 'hours must be greater than 0'}), 400
@@ -4550,20 +4726,19 @@ def api_add_overtime():
     except ValueError:
         return jsonify({'success': False, 'error': 'ot_date must use YYYY-MM-DD format'}), 400
 
-    limit_status = db.get_overtime_limit_status(int(user_id), ot_date, hours)
+    limit_status = db.get_overtime_limit_status(user_id, ot_date, hours)
     if limit_status.get('exceeded'):
         return jsonify({'success': False, 'error': f"Overtime limit exceeded: Maximum allowed is {limit_status['maximum_hours']:g} hours {limit_status['period_label']}."}), 400
     
     reason = str(data.get('reason') or '')
-    current_tenant = get_current_tenant_id()
-
     oid = db.add_overtime(
-        user_id=int(user_id),
-        user_name=user['name'] if user else data.get('user_name', ''),
+        user_id=user_id,
+        user_name=user['name'],
         ot_date=ot_date,
         hours=hours,
         reason=reason,
         organization_id=current_tenant,
+        branch_id=current_branch,
     )
     if not oid:
         return jsonify({'success': False, 'error': 'Failed to save overtime record'}), 500
@@ -4588,7 +4763,13 @@ def api_update_overtime(ot_id):
     if new_status not in ('approved', 'rejected'):
         return jsonify({'success': False, 'error': 'status must be approved or rejected'}), 400
 
-    ot_record = db.get_overtime_by_id(ot_id)
+    current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
+    ot_record = db.get_overtime_by_id(
+        ot_id,
+        organization_id=current_tenant,
+        branch_id=current_branch,
+    )
     if not ot_record:
         return jsonify({'success': False, 'error': 'Overtime record not found'}), 404
     current_status = (ot_record.get('status') or 'pending').lower()
@@ -4605,9 +4786,17 @@ def api_update_overtime(ot_id):
             'error': 'This overtime was not approved because the employee was absent on the overtime date.'
         }), 409
 
-    success = db.update_overtime_status(ot_id, status=new_status, approved_by=approved_by)
+    success = db.update_overtime_status(
+        ot_id,
+        status=new_status,
+        approved_by=approved_by,
+        organization_id=current_tenant,
+        branch_id=current_branch,
+    )
     if not success:
-        latest_record = db.get_overtime_by_id(ot_id)
+        latest_record = db.get_overtime_by_id(
+            ot_id, organization_id=current_tenant, branch_id=current_branch
+        )
         if latest_record and (latest_record.get('status') or 'pending').lower() != 'pending':
             return jsonify({'success': False, 'error': 'Overtime was finalized by another request.'}), 409
         return jsonify({'success': False, 'error': 'Overtime record not found or could not be updated'}), 404
@@ -4633,7 +4822,13 @@ def api_bulk_approve_overtime():
     blocked_absent = []
     for ot_id in ot_ids:
         try:
-            rec = db.get_overtime_by_id(int(ot_id))
+            current_tenant = get_current_tenant_id()
+            current_branch = get_current_branch_id()
+            rec = db.get_overtime_by_id(
+                int(ot_id),
+                organization_id=current_tenant,
+                branch_id=current_branch,
+            )
             if not rec:
                 errors.append({'id': ot_id, 'reason': 'not found'})
                 continue
@@ -4646,11 +4841,21 @@ def api_bulk_approve_overtime():
             ) == 'absent':
                 blocked_absent.append({'id': ot_id, 'reason': 'employee was absent on the overtime date'})
                 continue
-            ok = db.update_overtime_status(int(ot_id), status=new_status, approved_by=approved_by)
+            ok = db.update_overtime_status(
+                int(ot_id),
+                status=new_status,
+                approved_by=approved_by,
+                organization_id=current_tenant,
+                branch_id=current_branch,
+            )
             if ok:
                 updated.append(ot_id)
             else:
-                latest_rec = db.get_overtime_by_id(int(ot_id))
+                latest_rec = db.get_overtime_by_id(
+                    int(ot_id),
+                    organization_id=current_tenant,
+                    branch_id=current_branch,
+                )
                 if latest_rec and (latest_rec.get('status') or 'pending').lower() != 'pending':
                     skipped.append({'id': ot_id, 'reason': 'already finalized'})
                 else:
@@ -4690,13 +4895,23 @@ def api_bulk_approve_overtime():
 @app.route('/api/overtime/<int:ot_id>', methods=['DELETE'])
 def api_delete_overtime(ot_id):
     try:
-        ot_record = db.get_overtime_by_id(ot_id)
+        current_tenant = get_current_tenant_id()
+        current_branch = get_current_branch_id()
+        ot_record = db.get_overtime_by_id(
+            ot_id,
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
         if not ot_record:
             return jsonify({'success': False, 'error': 'Overtime record not found'}), 404
         if (ot_record.get('status') or '').lower() == 'approved':
             return jsonify({'success': False, 'error': 'Cannot delete an approved overtime record.'}), 403
             
-        success = db.delete_overtime(ot_id)
+        success = db.delete_overtime(
+            ot_id,
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
         if not success:
             return jsonify({'success': False, 'error': 'Overtime record could not be deleted'}), 400
         return jsonify({'success': True, 'message': 'Overtime record deleted successfully'})
@@ -4830,7 +5045,10 @@ def api_auto_ot_rates():
 def api_get_payroll_history():
     try:
         current_tenant = get_current_tenant_id()
-        return jsonify(db.get_payroll_history(organization_id=current_tenant))
+        return jsonify(db.get_payroll_history(
+            organization_id=current_tenant,
+            branch_id=get_current_branch_id(),
+        ))
     except Exception as e:
         logger.exception("Failed to load payroll history")
         return jsonify({'error': f'Failed to load payroll history: {e}'}), 500
@@ -4844,8 +5062,17 @@ def api_get_monthly_payroll():
         return jsonify({'error': 'Payroll month is required in YYYY-MM format'}), 400
     try:
         current_tenant = get_current_tenant_id()
-        saved_run = None if recalculate else db.get_monthly_payroll(payroll_month, organization_id=current_tenant)
-        return jsonify(saved_run or db.calculate_monthly_payroll(payroll_month, organization_id=current_tenant))
+        current_branch = get_current_branch_id()
+        saved_run = None if recalculate else db.get_monthly_payroll(
+            payroll_month,
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
+        return jsonify(saved_run or db.calculate_monthly_payroll(
+            payroll_month,
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        ))
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
@@ -5120,10 +5347,19 @@ def api_finalize_monthly_payroll():
     if not payroll_month:
         return jsonify({'error': 'Payroll month is required in YYYY-MM format'}), 400
     current_tenant = get_current_tenant_id()
-    if db.get_monthly_payroll(payroll_month, organization_id=current_tenant):
+    current_branch = get_current_branch_id()
+    if db.get_monthly_payroll(
+        payroll_month,
+        organization_id=current_tenant,
+        branch_id=current_branch,
+    ):
         return jsonify({'error': f'Payroll for {payroll_month} is already finalized'}), 409
     try:
-        preview = db.calculate_monthly_payroll(payroll_month, organization_id=current_tenant)
+        preview = db.calculate_monthly_payroll(
+            payroll_month,
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
         if not preview['records']:
             return jsonify({'error': 'There are no active employees to include in payroll'}), 400
         missing_shift_history = [row['employee_name'] for row in preview['records'] if row.get('shift_history_missing')]
@@ -5135,7 +5371,11 @@ def api_finalize_monthly_payroll():
         missing_rule = [row['employee_name'] for row in preview['records'] if row.get('rule_missing')]
         if missing_rule:
             return jsonify({'error': 'Configure an active absence rule for: ' + ', '.join(missing_rule)}), 400
-        saved_run = db.finalize_monthly_payroll(preview, organization_id=current_tenant)
+        saved_run = db.finalize_monthly_payroll(
+            preview,
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
         if not saved_run:
             return jsonify({'error': f'Payroll for {payroll_month} was finalized by another request'}), 409
         return jsonify({'success': True, 'payroll': saved_run}), 201
@@ -5643,7 +5883,10 @@ def api_detect_local_webcams():
 
 @app.route('/get_staff_list')
 def legacy_staff_list():
-    return jsonify([_safe_user(u) for u in db.get_all_users()])
+    return jsonify([_safe_user(u) for u in db.get_all_users(
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
+    )])
 
 
 @app.route('/add_staff', methods=['POST', 'OPTIONS'])
@@ -5651,11 +5894,13 @@ def legacy_add_staff():
     data = request.get_json() or {}
     uid = db.add_user(
         name=data.get('name', ''), email=data.get('email', ''),
-        password=data.get('password', '123456'), role=data.get('role', 'staff'),
+        role=data.get('role', 'staff'),
         department=data.get('department', ''), phone=data.get('phone', ''),
         notes=data.get('notes', ''), cnic=data.get('cnic', ''),
         position=data.get('position', ''), salary=float(data.get('salary', 0) or 0),
-        join_date=data.get('join_date', '')
+        join_date=data.get('join_date', ''),
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
     )
     if uid is None:
         return jsonify({'success': False, 'message': 'Email already exists'}), 409

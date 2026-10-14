@@ -6,8 +6,81 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple, Any, Union
 from logger_config import get_logger
 from config import DB_PATH, ATTENDANCE_LOG_RETENTION_DAYS
+from werkzeug.security import check_password_hash, generate_password_hash
 
 logger = get_logger(__name__)
+
+
+def _migrate_payroll_run_tenant_uniqueness(cursor: sqlite3.Cursor) -> None:
+    """Replace the legacy global month constraint without changing payroll rows."""
+    staged_table = cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'payroll_runs_scoped'"
+    ).fetchone()
+    if staged_table:
+        source_count = cursor.execute("SELECT COUNT(*) FROM payroll_runs").fetchone()[0]
+        staged_count = cursor.execute("SELECT COUNT(*) FROM payroll_runs_scoped").fetchone()[0]
+        if source_count == 0 and staged_count > 0:
+            cursor.execute("DROP TABLE payroll_runs")
+            cursor.execute("ALTER TABLE payroll_runs_scoped RENAME TO payroll_runs")
+        else:
+            cursor.execute("DROP TABLE payroll_runs_scoped")
+
+    month_only_unique = False
+    for index in cursor.execute("PRAGMA index_list(payroll_runs)").fetchall():
+        if not index[2]:
+            continue
+        columns = [
+            row[2]
+            for row in cursor.execute(f"PRAGMA index_info('{index[1]}')").fetchall()
+        ]
+        if columns == ["payroll_month"]:
+            month_only_unique = True
+            break
+    if not month_only_unique:
+        cursor.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS ux_payroll_runs_tenant_month
+               ON payroll_runs(organization_id, branch_id, payroll_month)"""
+        )
+        return
+
+    cursor.execute("DROP TRIGGER IF EXISTS prevent_finalized_payroll_run_update")
+    cursor.execute("DROP TRIGGER IF EXISTS prevent_finalized_payroll_run_delete")
+    cursor.execute("""
+        CREATE TABLE payroll_runs_scoped (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            payroll_month TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            employee_count INTEGER NOT NULL DEFAULT 0,
+            total_basic_salary REAL NOT NULL DEFAULT 0,
+            total_deduction REAL NOT NULL DEFAULT 0,
+            total_net_salary REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'Finalized',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            finalized_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            total_allowances REAL NOT NULL DEFAULT 0,
+            total_overtime REAL NOT NULL DEFAULT 0,
+            organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+            branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
+            UNIQUE (organization_id, branch_id, payroll_month)
+        )
+    """)
+    cursor.execute("""
+        INSERT INTO payroll_runs_scoped (
+            id, payroll_month, period_start, period_end, employee_count,
+            total_basic_salary, total_deduction, total_net_salary, status,
+            created_at, finalized_at, total_allowances, total_overtime,
+            organization_id, branch_id
+        )
+        SELECT id, payroll_month, period_start, period_end, employee_count,
+               total_basic_salary, total_deduction, total_net_salary, status,
+               created_at, finalized_at, total_allowances, total_overtime,
+               COALESCE(NULLIF(organization_id, ''), 'DEFAULT_ORG'),
+               COALESCE(NULLIF(branch_id, ''), 'DEFAULT_BRANCH')
+        FROM payroll_runs
+    """)
+    cursor.execute("DROP TABLE payroll_runs")
+    cursor.execute("ALTER TABLE payroll_runs_scoped RENAME TO payroll_runs")
 
 def _get_local_instance_id() -> str:
     """Retrieve persistent local instance ID from config_integration.json or fallback."""
@@ -68,7 +141,8 @@ def init_db():
             # Automatic Migration: Add optional columns if they don't exist
             for col, col_type in [
                 ("photo_path", "TEXT"),
-                ("password", "TEXT DEFAULT '123456'"),
+                ("password", "TEXT"),
+                ("password_hash", "TEXT"),
                 ("role", "TEXT DEFAULT 'staff'"),
                 ("cnic", "TEXT"),
                 ("position", "TEXT"),
@@ -87,6 +161,35 @@ def init_db():
                     conn.commit()
                 except sqlite3.OperationalError:
                     pass
+
+            # Move legacy credentials to one-way hashes and invalidate known defaults.
+            credential_rows = cursor.execute(
+                "SELECT id, password, password_hash FROM users"
+            ).fetchall()
+            for user_id, legacy_password, password_hash in credential_rows:
+                if password_hash:
+                    if legacy_password is not None:
+                        cursor.execute("UPDATE users SET password = NULL WHERE id = ?", (user_id,))
+                    continue
+                if not legacy_password:
+                    continue
+                legacy_value = str(legacy_password)
+                if len(legacy_value) < 14:
+                    cursor.execute(
+                        "UPDATE users SET password = NULL, password_hash = NULL WHERE id = ?",
+                        (user_id,),
+                    )
+                elif legacy_value.startswith(("pbkdf2:", "scrypt:")):
+                    cursor.execute(
+                        "UPDATE users SET password = NULL, password_hash = ? WHERE id = ?",
+                        (legacy_value, user_id),
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE users SET password = NULL, password_hash = ? WHERE id = ?",
+                        (generate_password_hash(legacy_value), user_id),
+                    )
+            conn.commit()
 
             # Multi-Tenant Migration: Remove legacy global UNIQUE constraint on users.name
             try:
@@ -111,7 +214,8 @@ def init_db():
                             active INTEGER DEFAULT 1,
                             notes TEXT,
                             photo_path TEXT,
-                            password TEXT DEFAULT '123456',
+                            password TEXT,
+                            password_hash TEXT,
                             role TEXT DEFAULT 'staff',
                             cnic TEXT,
                             position TEXT,
@@ -377,7 +481,7 @@ def init_db():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS payroll_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    payroll_month TEXT NOT NULL UNIQUE,
+                    payroll_month TEXT NOT NULL,
                     period_start TEXT NOT NULL,
                     period_end TEXT NOT NULL,
                     employee_count INTEGER NOT NULL DEFAULT 0,
@@ -386,7 +490,10 @@ def init_db():
                     total_net_salary REAL NOT NULL DEFAULT 0,
                     status TEXT NOT NULL DEFAULT 'Finalized',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    finalized_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    finalized_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
+                    UNIQUE (organization_id, branch_id, payroll_month)
                 )
             ''')
             cursor.execute('''
@@ -452,6 +559,17 @@ def init_db():
                 cursor.execute("ALTER TABLE payroll_runs ADD COLUMN total_allowances REAL NOT NULL DEFAULT 0")
             if 'total_overtime' not in payroll_run_columns:
                 cursor.execute("ALTER TABLE payroll_runs ADD COLUMN total_overtime REAL NOT NULL DEFAULT 0")
+            if 'organization_id' not in payroll_run_columns:
+                cursor.execute("ALTER TABLE payroll_runs ADD COLUMN organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG'")
+            if 'branch_id' not in payroll_run_columns:
+                cursor.execute("ALTER TABLE payroll_runs ADD COLUMN branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH'")
+
+            conn.commit()
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            _migrate_payroll_run_tenant_uniqueness(cursor)
+            conn.commit()
+            cursor.execute("PRAGMA foreign_keys = ON")
+
             cursor.executescript('''
                 CREATE TRIGGER IF NOT EXISTS prevent_finalized_payroll_run_update
                 BEFORE UPDATE ON payroll_runs
@@ -894,6 +1012,15 @@ def init_db():
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_outbox_next_attempt ON sync_outbox_queue(next_attempt_at)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_outbox_event_id ON sync_outbox_queue(event_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_outbox_org_branch ON sync_outbox_queue(organization_id, branch_id)')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS attendance_ingestion_receipts (
+                    event_id TEXT PRIMARY KEY,
+                    payload_hash TEXT NOT NULL,
+                    response_json TEXT,
+                    response_status INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
             conn.commit()
             
@@ -904,12 +1031,64 @@ def init_db():
         return False
 
 
+def begin_attendance_ingestion(event_id: str, payload_hash: str) -> Dict[str, Any]:
+    """Atomically claim an attendance event ID or return its prior receipt."""
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT payload_hash, response_json, response_status "
+            "FROM attendance_ingestion_receipts WHERE event_id = ?",
+            (event_id,),
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                "INSERT INTO attendance_ingestion_receipts (event_id, payload_hash) VALUES (?, ?)",
+                (event_id, payload_hash),
+            )
+            return {"state": "new"}
+        if row["payload_hash"] != payload_hash:
+            return {"state": "conflict"}
+        if row["response_json"] is None:
+            return {"state": "processing"}
+        return {
+            "state": "duplicate",
+            "response": json.loads(row["response_json"]),
+            "status": int(row["response_status"] or 200),
+        }
+
+
+def complete_attendance_ingestion(
+    event_id: str,
+    response: Dict[str, Any],
+    status_code: int,
+) -> None:
+    """Persist the result returned for an accepted event ID."""
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        cursor = conn.execute(
+            "UPDATE attendance_ingestion_receipts "
+            "SET response_json = ?, response_status = ? WHERE event_id = ?",
+            (json.dumps(response, sort_keys=True), status_code, event_id),
+        )
+        if cursor.rowcount != 1:
+            raise RuntimeError("Attendance ingestion receipt disappeared before completion.")
+
+
+def abandon_attendance_ingestion(event_id: str) -> None:
+    """Release a receipt if processing failed before a response could be stored."""
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        conn.execute(
+            "DELETE FROM attendance_ingestion_receipts WHERE event_id = ? AND response_json IS NULL",
+            (event_id,),
+        )
+
+
 def add_user(
     name: str,
     email: Optional[str] = None,
     phone: Optional[str] = None,
     department: Optional[str] = None,
-    password: str = '123456',
+    password: Optional[str] = None,
     role: str = 'staff',
     notes: str = '',
     cnic: str = '',
@@ -928,6 +1107,11 @@ def add_user(
         return None
 
     clean_name = name.strip()
+    password = str(password).strip() if password else None
+    if password and len(password) < 14:
+        logger.warning("Rejected weak password when creating user '%s'", clean_name)
+        return None
+    password_hash = generate_password_hash(password) if password else None
     org_target = organization_id or 'DEFAULT_ORG'
     branch_target = branch_id or 'DEFAULT_BRANCH'
 
@@ -946,11 +1130,11 @@ def add_user(
                 # If previously marked inactive or re-enrolling, re-activate with updated details
                 cursor.execute("""
                     UPDATE users 
-                    SET active = 1, email = ?, phone = ?, department = ?, password = ?, role = ?,
+                    SET active = 1, email = ?, phone = ?, department = ?, password = NULL, password_hash = ?, role = ?,
                         notes = ?, cnic = ?, position = ?, salary = ?, join_date = ?, shift_id = ?,
                         checkin_cameras = ?, checkout_cameras = ?, organization_id = ?, branch_id = ?
                     WHERE id = ?
-                """, (email, phone, department, password, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target, existing_id))
+                """, (email, phone, department, password_hash, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target, existing_id))
                 effective_from = join_date if join_date else None
                 if effective_from:
                     try: datetime.strptime(effective_from, "%Y-%m-%d")
@@ -963,9 +1147,9 @@ def add_user(
             # 2. Insert new user safely scoped to this organization
             cursor.execute(
                 '''INSERT INTO users
-                   (name, email, phone, department, password, role, notes, cnic, position, salary, join_date, shift_id, checkin_cameras, checkout_cameras, organization_id, branch_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (clean_name, email, phone, department, password, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target)
+                   (name, email, phone, department, password, password_hash, role, notes, cnic, position, salary, join_date, shift_id, checkin_cameras, checkout_cameras, organization_id, branch_id)
+                   VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (clean_name, email, phone, department, password_hash, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target)
             )
             user_id = cursor.lastrowid
             if user_id is None:
@@ -1525,10 +1709,24 @@ def _resolve_calendar_override(
     )
 
 
-def _get_company_holiday_for_date(cursor: sqlite3.Cursor, overtime_date: str) -> Optional[Dict[str, Any]]:
-    """Find the company holiday covering a date, including recurring holidays."""
+def _get_company_holiday_for_date(
+    cursor: sqlite3.Cursor,
+    overtime_date: str,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Find a scoped company holiday covering a date, including recurring holidays."""
     date_key = overtime_date[5:]
-    cursor.execute("SELECT * FROM company_holidays ORDER BY holiday_date, id")
+    query = "SELECT * FROM company_holidays WHERE 1 = 1"
+    params: List[Any] = []
+    if organization_id is not None:
+        query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
+        params.append(organization_id)
+    if branch_id is not None:
+        query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+        params.append(branch_id)
+    query += " ORDER BY holiday_date, id"
+    cursor.execute(query, params)
     for row in cursor.fetchall():
         holiday = dict(row)
         holiday_start = str(holiday.get('holiday_date') or '')
@@ -1556,7 +1754,6 @@ def _get_overtime_premium_percent(
 ) -> float:
     """Return a holiday override or the configured day-type premium fallback."""
     if day_type == 'holiday':
-        holiday = _get_company_holiday_for_date(cursor, overtime_date)
         if holiday and holiday.get('overtime_premium_percent') is not None:
             return float(holiday['overtime_premium_percent'])
         if settings and settings['holiday_ot_premium_active']:
@@ -1569,6 +1766,15 @@ def _get_overtime_premium_percent(
 def _get_overtime_day_type(cursor: sqlite3.Cursor, user_id: int, overtime_date: str) -> str:
     """Classify overtime by its effective shift schedule and calendar exceptions."""
     try:
+        cursor.execute(
+            "SELECT COALESCE(organization_id, 'DEFAULT_ORG'), COALESCE(branch_id, 'DEFAULT_BRANCH') "
+            "FROM users WHERE id = ?",
+            (user_id,),
+        )
+        owner = cursor.fetchone()
+        if not owner:
+            return 'regular'
+        organization_id, branch_id = owner[0], owner[1]
         work_date = datetime.strptime(overtime_date, "%Y-%m-%d").date()
         cursor.execute('''
             SELECT shift_id, working_days FROM employee_shift_history
@@ -1606,7 +1812,7 @@ def _get_overtime_day_type(cursor: sqlite3.Cursor, user_id: int, overtime_date: 
         if override_type == 'off_day':
             return 'non_working_day'
 
-        if _get_company_holiday_for_date(cursor, overtime_date):
+        if _get_company_holiday_for_date(cursor, overtime_date, organization_id, branch_id):
             return 'holiday'
 
         working_days_set = set(_normalize_shift_working_days(working_days))
@@ -3136,14 +3342,31 @@ def mark_user_absent_today(user_id: int, target_date: Optional[str] = None, orga
 
                 cursor.execute('''
                     INSERT OR REPLACE INTO manual_absent (user_id, date, organization_id, branch_id)
-                    VALUES (?, date('now', 'localtime'), user_org, user_branch)
-                ''', (user_id,))
+                    VALUES (?, date('now', 'localtime'), ?, ?)
+                ''', (user_id, user_org, user_branch))
             conn.commit()
         logger.info(f"✓ Manually marked user ID {user_id} absent for {target_date or 'today'} (removed {deleted_count} logs, recorded manual_absent)")
         return True
     except Exception as e:
         logger.error(f"Failed to mark user ID {user_id} absent: {e}")
         return False
+
+
+def get_manual_absent_user_ids_today(organization_id: str, branch_id: str) -> List[int]:
+    """Return today's manual-absence overrides for one organization and branch."""
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute(
+            """
+            SELECT user_id
+            FROM manual_absent
+            WHERE organization_id = ?
+              AND branch_id = ?
+              AND date = date('now', 'localtime')
+            ORDER BY user_id
+            """,
+            (organization_id, branch_id),
+        ).fetchall()
+    return [int(row[0]) for row in rows]
 
 
 def calculate_eligible_overtime(shift_start: str, shift_end: str, actual_checkout: str, checkout_grace_period_minutes: int = 0) -> float:
@@ -3509,7 +3732,7 @@ def get_user_by_id(user_id: int, organization_id: Optional[str] = None) -> Optio
 
 
 def authenticate_user(email: str, password: str) -> Optional[Dict]:
-    """Authenticate staff / admin by email or username and password."""
+    """Authenticate an active local user against their stored password hash."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -3521,8 +3744,8 @@ def authenticate_user(email: str, password: str) -> Optional[Dict]:
             row = cursor.fetchone()
             if row:
                 user_dict = dict(row)
-                # Check password (plain comparison or fallback default)
-                if user_dict.get('password') == password.strip():
+                password_hash = user_dict.get('password_hash')
+                if password_hash and check_password_hash(password_hash, password):
                     return user_dict
         return None
     except Exception as e:
@@ -3531,11 +3754,16 @@ def authenticate_user(email: str, password: str) -> Optional[Dict]:
 
 
 def change_password(user_id: int, new_password: str) -> bool:
-    """Update user password."""
+    """Store a new password hash and clear any legacy plaintext value."""
+    if len(new_password) < 14:
+        return False
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE users SET password = ? WHERE id = ?", (new_password.strip(), user_id))
+            cursor.execute(
+                "UPDATE users SET password = NULL, password_hash = ? WHERE id = ?",
+                (generate_password_hash(new_password), user_id),
+            )
             conn.commit()
             return cursor.rowcount > 0
     except Exception as e:
@@ -3946,8 +4174,12 @@ def delete_leave_type(type_id: int) -> bool:
         return False
 
 
-def get_company_holidays(year: Optional[int] = None, organization_id: Optional[str] = None) -> List[Dict]:
-    """Get company holidays optionally filtered by year and organization."""
+def get_company_holidays(
+    year: Optional[int] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[Dict]:
+    """Get holidays scoped to the requested organization and branch."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -3958,11 +4190,11 @@ def get_company_holidays(year: Optional[int] = None, organization_id: Optional[s
                 query += " AND strftime('%Y', holiday_date) = ?"
                 params.append(str(year))
             if organization_id and organization_id != 'all':
-                if organization_id == 'DEFAULT_ORG':
-                    query += " AND (organization_id = 'DEFAULT_ORG' OR organization_id IS NULL)"
-                else:
-                    query += " AND (organization_id = ? OR organization_id IS NULL)"
-                    params.append(organization_id)
+                query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
+                params.append(organization_id)
+            if branch_id and branch_id != 'all':
+                query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+                params.append(branch_id)
             query += " ORDER BY holiday_date ASC"
             cursor.execute(query, params)
             return [dict(r) for r in cursor.fetchall()]
@@ -3971,7 +4203,12 @@ def get_company_holidays(year: Optional[int] = None, organization_id: Optional[s
         return []
 
 
-def get_company_holiday_in_range(start_date: str, end_date: str, organization_id: Optional[str] = None) -> Optional[Dict]:
+def get_company_holiday_in_range(
+    start_date: str,
+    end_date: str,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Optional[Dict]:
     """Return the first company holiday that overlaps a leave date range."""
     try:
         range_start = datetime.strptime(start_date, '%Y-%m-%d').date()
@@ -3979,7 +4216,7 @@ def get_company_holiday_in_range(start_date: str, end_date: str, organization_id
         if range_end < range_start:
             return None
 
-        holidays = get_company_holidays(organization_id=organization_id)
+        holidays = get_company_holidays(organization_id=organization_id, branch_id=branch_id)
         current_date = range_start
         while current_date <= range_end:
             current_iso = current_date.isoformat()
@@ -4027,12 +4264,24 @@ def add_company_holiday(name: str, holiday_date: str, end_date: str = None, desc
         return None
 
 
-def delete_company_holiday(holiday_id: int) -> bool:
-    """Delete a company holiday."""
+def delete_company_holiday(
+    holiday_id: int,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
+    """Delete a company holiday only within its owning tenant and branch."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM company_holidays WHERE id = ?", (holiday_id,))
+            query = "DELETE FROM company_holidays WHERE id = ?"
+            params: List[Any] = [holiday_id]
+            if organization_id is not None:
+                query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
+                params.append(organization_id)
+            if branch_id is not None:
+                query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+                params.append(branch_id)
+            cursor.execute(query, params)
             conn.commit()
             return cursor.rowcount > 0
     except Exception as e:
@@ -4627,13 +4876,20 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
             cursor = conn.cursor()
             cursor.execute("SELECT name, organization_id, branch_id FROM users WHERE id = ?", (user_id,))
             user_row = cursor.fetchone()
-            if user_row:
-                if not user_name:
-                    user_name = user_row[0]
-                if not organization_id:
-                    organization_id = user_row[1] or 'DEFAULT_ORG'
-                if not branch_id:
-                    branch_id = user_row[2] or 'DEFAULT_BRANCH'
+            if not user_row:
+                return None
+            user_organization = user_row[1] or 'DEFAULT_ORG'
+            user_branch = user_row[2] or 'DEFAULT_BRANCH'
+            if organization_id and organization_id != user_organization:
+                logger.warning("Rejected overtime for user %s outside organization %s", user_id, organization_id)
+                return None
+            if branch_id and branch_id != user_branch:
+                logger.warning("Rejected overtime for user %s outside branch %s", user_id, branch_id)
+                return None
+            if not user_name:
+                user_name = user_row[0]
+            organization_id = user_organization
+            branch_id = user_branch
             organization_id = organization_id or 'DEFAULT_ORG'
             branch_id = branch_id or 'DEFAULT_BRANCH'
             cursor.execute(
@@ -4648,17 +4904,26 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
         return None
 
 
-def get_overtime_rate_preview(user_id: int, overtime_date: str) -> Optional[Dict[str, Any]]:
+def get_overtime_rate_preview(
+    user_id: int,
+    overtime_date: str,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     try:
         datetime.strptime(overtime_date, '%Y-%m-%d')
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT u.salary, sc.basic_salary, sc.ot_rate
+                SELECT u.salary, sc.basic_salary, sc.ot_rate,
+                       COALESCE(u.organization_id, 'DEFAULT_ORG') AS organization_id,
+                       COALESCE(u.branch_id, 'DEFAULT_BRANCH') AS branch_id
                 FROM users u LEFT JOIN salary_configs sc ON sc.user_id = u.id
                 WHERE u.id = ?
-            ''', (user_id,))
+                  AND (? IS NULL OR COALESCE(u.organization_id, 'DEFAULT_ORG') = ?)
+                  AND (? IS NULL OR COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?)
+            ''', (user_id, organization_id, organization_id, branch_id, branch_id))
             employee = cursor.fetchone()
             if not employee:
                 return None
@@ -4671,7 +4936,9 @@ def get_overtime_rate_preview(user_id: int, overtime_date: str) -> Optional[Dict
                        holiday_ot_premium_active, non_working_day_ot_premium_active
                 FROM payroll_settings WHERE id = 1
             ''').fetchone()
-            holiday = _get_company_holiday_for_date(cursor, overtime_date) if day_type == 'holiday' else None
+            holiday = _get_company_holiday_for_date(
+                cursor, overtime_date, employee['organization_id'], employee['branch_id']
+            ) if day_type == 'holiday' else None
             premium_percent = _get_overtime_premium_percent(cursor, overtime_date, day_type, settings, holiday)
             return {
                 'user_id': user_id,
@@ -4730,17 +4997,13 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                 query += " AND o.ot_date <= ?"
                 params.append(end_date)
             if organization_id and organization_id != 'all':
-                if organization_id == 'DEFAULT_ORG':
-                    query += " AND (COALESCE(o.organization_id, u.organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG' OR o.organization_id IS NULL OR u.organization_id IS NULL)"
-                else:
-                    query += " AND (o.organization_id = ? OR (o.organization_id IS NULL AND u.organization_id = ?))"
-                    params.extend([organization_id, organization_id])
+                query += """ AND COALESCE(o.organization_id, u.organization_id, 'DEFAULT_ORG') = ?
+                             AND COALESCE(u.organization_id, 'DEFAULT_ORG') = ?"""
+                params.extend([organization_id, organization_id])
             if branch_id and branch_id != 'all':
-                if branch_id == 'DEFAULT_BRANCH':
-                    query += " AND (COALESCE(o.branch_id, u.branch_id, 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH' OR o.branch_id IS NULL OR u.branch_id IS NULL)"
-                else:
-                    query += " AND (o.branch_id = ? OR (o.branch_id IS NULL AND u.branch_id = ?))"
-                    params.extend([branch_id, branch_id])
+                query += """ AND COALESCE(o.branch_id, u.branch_id, 'DEFAULT_BRANCH') = ?
+                             AND COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?"""
+                params.extend([branch_id, branch_id])
             query += " ORDER BY o.ot_date DESC, o.created_at DESC"
             cursor.execute(query, params)
             overtime_rows = cursor.fetchall()
@@ -4753,7 +5016,12 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                 hours = float(d.get('hours') or 0.0)
                 base_rate = float(d.get('ot_rate') or 0.0)
                 day_type = _get_overtime_day_type(cursor, int(d['user_id']), str(d['ot_date']))
-                holiday = _get_company_holiday_for_date(cursor, str(d['ot_date'])) if day_type == 'holiday' else None
+                holiday = _get_company_holiday_for_date(
+                    cursor,
+                    str(d['ot_date']),
+                    str(d.get('organization_id') or 'DEFAULT_ORG'),
+                    str(d.get('branch_id') or 'DEFAULT_BRANCH'),
+                ) if day_type == 'holiday' else None
                 premium = _get_overtime_premium_percent(cursor, str(d['ot_date']), day_type, settings_row, holiday)
                 effective_rate = round(base_rate * (1 + premium / 100), 2)
                 d['base_ot_rate'] = base_rate
@@ -4770,13 +5038,29 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
         return []
 
 
-def get_overtime_by_id(ot_id: int) -> Optional[Dict]:
-    """Retrieve an overtime record by ID."""
+def get_overtime_by_id(
+    ot_id: int,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Optional[Dict]:
+    """Retrieve an overtime record by ID, optionally constrained to its owning scope."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM overtime WHERE id = ?", (ot_id,))
+            query = """SELECT o.* FROM overtime o
+                       JOIN users u ON u.id = o.user_id
+                       WHERE o.id = ?"""
+            params: List[Any] = [ot_id]
+            if organization_id is not None:
+                query += """ AND COALESCE(o.organization_id, u.organization_id, 'DEFAULT_ORG') = ?
+                             AND COALESCE(u.organization_id, 'DEFAULT_ORG') = ?"""
+                params.extend([organization_id, organization_id])
+            if branch_id is not None:
+                query += """ AND COALESCE(o.branch_id, u.branch_id, 'DEFAULT_BRANCH') = ?
+                             AND COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?"""
+                params.extend([branch_id, branch_id])
+            cursor.execute(query, params)
             row = cursor.fetchone()
             return dict(row) if row else None
     except Exception as e:
@@ -4807,15 +5091,31 @@ def get_user_attendance_status(user_id: int, target_date: str) -> Optional[str]:
         return None
 
 
-def update_overtime_status(ot_id: int, status: str = 'approved', approved_by: str = 'Admin') -> bool:
+def update_overtime_status(
+    ot_id: int,
+    status: str = 'approved',
+    approved_by: str = 'Admin',
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     """Finalize a pending overtime record without allowing later status changes."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE overtime SET status = ?, approved_by = ? WHERE id = ? AND LOWER(COALESCE(status, 'pending')) = 'pending'",
-                (status, approved_by, ot_id)
-            )
+            query = """UPDATE overtime SET status = ?, approved_by = ?
+                       WHERE id = ? AND LOWER(COALESCE(status, 'pending')) = 'pending'"""
+            params: List[Any] = [status, approved_by, ot_id]
+            if organization_id is not None:
+                query += """ AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                             AND EXISTS (SELECT 1 FROM users u WHERE u.id = overtime.user_id
+                                         AND COALESCE(u.organization_id, 'DEFAULT_ORG') = ?)"""
+                params.extend([organization_id, organization_id])
+            if branch_id is not None:
+                query += """ AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                             AND EXISTS (SELECT 1 FROM users u WHERE u.id = overtime.user_id
+                                         AND COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?)"""
+                params.extend([branch_id, branch_id])
+            cursor.execute(query, params)
             conn.commit()
             return cursor.rowcount > 0
     except Exception as e:
@@ -4823,12 +5123,28 @@ def update_overtime_status(ot_id: int, status: str = 'approved', approved_by: st
         return False
 
 
-def delete_overtime(ot_id: int) -> bool:
-    """Delete an overtime record by ID."""
+def delete_overtime(
+    ot_id: int,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
+    """Delete an overtime record by ID only within its owning scope."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM overtime WHERE id = ?", (ot_id,))
+            query = "DELETE FROM overtime WHERE id = ?"
+            params: List[Any] = [ot_id]
+            if organization_id is not None:
+                query += """ AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                             AND EXISTS (SELECT 1 FROM users u WHERE u.id = overtime.user_id
+                                         AND COALESCE(u.organization_id, 'DEFAULT_ORG') = ?)"""
+                params.extend([organization_id, organization_id])
+            if branch_id is not None:
+                query += """ AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                             AND EXISTS (SELECT 1 FROM users u WHERE u.id = overtime.user_id
+                                         AND COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?)"""
+                params.extend([branch_id, branch_id])
+            cursor.execute(query, params)
             conn.commit()
             return cursor.rowcount > 0
     except Exception as e:
@@ -5799,7 +6115,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         raise ValueError("Payroll month must use YYYY-MM format") from e
     if month_start.strftime("%Y-%m") != str(payroll_month):
         raise ValueError("Payroll month must use YYYY-MM format")
-    finalized_run = get_monthly_payroll(payroll_month, organization_id=organization_id)
+    finalized_run = get_monthly_payroll(
+        payroll_month, organization_id=organization_id, branch_id=branch_id
+    )
     if finalized_run:
         return finalized_run
 
@@ -5835,26 +6153,38 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             FROM users u
             LEFT JOIN salary_configs sc ON sc.user_id = u.id
             WHERE (u.active = 1 OR (u.exit_date IS NOT NULL AND u.exit_date >= ?))
-              AND (u.organization_id = ? OR (u.organization_id IS NULL AND ? = 'DEFAULT_ORG') OR (? = 'DEFAULT_ORG' AND u.organization_id = ''))
+              AND COALESCE(u.organization_id, 'DEFAULT_ORG') = ?
+              AND (? IS NULL OR COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?)
             ORDER BY u.department COLLATE NOCASE, u.name COLLATE NOCASE
-        ''', (month_start.isoformat(), organization_id, organization_id, organization_id))
+        ''', (month_start.isoformat(), organization_id, branch_id, branch_id))
         employees = [dict(row) for row in cursor.fetchall()]
 
         # Query approved overtime for this payroll month
         cursor.execute('''
-            SELECT user_id, ot_date, SUM(hours) as total_ot_hours
-            FROM overtime
-            WHERE LOWER(status) = 'approved'
-              AND ot_date >= ? AND ot_date <= ?
-            GROUP BY user_id, ot_date
-        ''', (month_start.isoformat(), month_end.isoformat()))
+            SELECT o.user_id, o.ot_date, SUM(o.hours) as total_ot_hours
+            FROM overtime o
+            JOIN users u ON u.id = o.user_id
+            WHERE LOWER(o.status) = 'approved'
+              AND o.ot_date >= ? AND o.ot_date <= ?
+              AND COALESCE(u.organization_id, 'DEFAULT_ORG') = ?
+              AND COALESCE(o.organization_id, u.organization_id, 'DEFAULT_ORG') = ?
+              AND (? IS NULL OR COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?)
+              AND (? IS NULL OR COALESCE(o.branch_id, u.branch_id, 'DEFAULT_BRANCH') = ?)
+            GROUP BY o.user_id, o.ot_date
+        ''', (
+            month_start.isoformat(), month_end.isoformat(),
+            organization_id, organization_id,
+            branch_id, branch_id, branch_id, branch_id,
+        ))
         approved_ot_rows = [dict(row) for row in cursor.fetchall()]
         approved_ot_by_user: Dict[int, List[Dict[str, Any]]] = {}
         for overtime_row in approved_ot_rows:
             overtime_user_id = int(overtime_row['user_id'])
             overtime_date = str(overtime_row['ot_date'])
             day_type = _get_overtime_day_type(cursor, overtime_user_id, overtime_date)
-            holiday = _get_company_holiday_for_date(cursor, overtime_date) if day_type == 'holiday' else None
+            holiday = _get_company_holiday_for_date(
+                cursor, overtime_date, organization_id, branch_id or 'DEFAULT_BRANCH'
+            ) if day_type == 'holiday' else None
             approved_ot_by_user.setdefault(overtime_user_id, []).append({
                 'ot_date': overtime_date,
                 'day_type': day_type,
@@ -6103,8 +6433,12 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         'total_net_salary': round(sum(row['net_salary'] for row in rows), 2),
         'records': rows,
     }
-    preview['payroll_run_id'] = _persist_draft_monthly_payroll(preview, organization_id=organization_id, branch_id=branch_id)
-    finalized_run = get_monthly_payroll(payroll_month, organization_id=organization_id)
+    preview['payroll_run_id'] = _persist_draft_monthly_payroll(
+        preview, organization_id=organization_id, branch_id=branch_id
+    )
+    finalized_run = get_monthly_payroll(
+        payroll_month, organization_id=organization_id, branch_id=branch_id
+    )
     if finalized_run:
         return finalized_run
     if month is not None and payroll_month.endswith(f"-{int(month):02d}"):
@@ -6144,15 +6478,20 @@ def _insert_payroll_records(cursor: sqlite3.Cursor, run_id: int, rows: List[Dict
     ) for row in rows])
 
 
-def _persist_draft_monthly_payroll(preview: Dict[str, Any], organization_id: str = 'DEFAULT_ORG', branch_id: Optional[str] = None) -> int:
+def _persist_draft_monthly_payroll(preview: Dict[str, Any], organization_id: str = 'DEFAULT_ORG', branch_id: Optional[str] = None) -> Optional[int]:
     _sanitize_orphan_payroll_records()
     with sqlite3.connect(DB_PATH, timeout=30) as conn:
         cursor = conn.cursor()
         cursor.execute("BEGIN IMMEDIATE")
-        if organization_id == 'DEFAULT_ORG':
-            cursor.execute("SELECT id, status FROM payroll_runs WHERE payroll_month = ? AND (organization_id = ? OR organization_id IS NULL OR organization_id = '')", (preview['payroll_month'], organization_id))
-        else:
-            cursor.execute("SELECT id, status FROM payroll_runs WHERE payroll_month = ? AND organization_id = ?", (preview['payroll_month'], organization_id))
+        cursor.execute(
+            """SELECT id, status, COALESCE(organization_id, 'DEFAULT_ORG') AS organization_id,
+                      COALESCE(branch_id, 'DEFAULT_BRANCH') AS branch_id
+               FROM payroll_runs
+               WHERE payroll_month = ?
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+            (preview['payroll_month'], organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH'),
+        )
         existing = cursor.fetchone()
         if existing and existing[1] == 'Finalized':
             return existing[0]
@@ -6191,33 +6530,31 @@ def _persist_draft_monthly_payroll(preview: Dict[str, Any], organization_id: str
         return run_id
 
 
-def get_payroll_history(limit: int = 24, organization_id: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_payroll_history(
+    limit: int = 24,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """List persisted monthly payroll runs without recalculating them, filtered by tenant."""
     safe_limit = max(1, min(int(limit), 120))
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         if organization_id:
-            if organization_id == 'DEFAULT_ORG':
-                cursor.execute('''
-                    SELECT id, payroll_month, period_start, period_end, employee_count,
-                           total_basic_salary, total_allowances, total_overtime, total_deduction, total_net_salary, status,
-                           created_at, finalized_at, organization_id, branch_id
-                    FROM payroll_runs
-                    WHERE (organization_id = ? OR organization_id IS NULL OR organization_id = '')
-                    ORDER BY payroll_month DESC, id DESC
-                    LIMIT ?
-                ''', (organization_id, safe_limit))
-            else:
-                cursor.execute('''
-                    SELECT id, payroll_month, period_start, period_end, employee_count,
-                           total_basic_salary, total_allowances, total_overtime, total_deduction, total_net_salary, status,
-                           created_at, finalized_at, organization_id, branch_id
-                    FROM payroll_runs
-                    WHERE organization_id = ?
-                    ORDER BY payroll_month DESC, id DESC
-                    LIMIT ?
-                ''', (organization_id, safe_limit))
+            query = '''
+                SELECT id, payroll_month, period_start, period_end, employee_count,
+                       total_basic_salary, total_allowances, total_overtime, total_deduction, total_net_salary, status,
+                       created_at, finalized_at, organization_id, branch_id
+                FROM payroll_runs
+                WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+            '''
+            params: List[Any] = [organization_id]
+            if branch_id:
+                query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+                params.append(branch_id)
+            query += " ORDER BY payroll_month DESC, id DESC LIMIT ?"
+            params.append(safe_limit)
+            cursor.execute(query, params)
         else:
             cursor.execute('''
                 SELECT id, payroll_month, period_start, period_end, employee_count,
@@ -6230,23 +6567,40 @@ def get_payroll_history(limit: int = 24, organization_id: Optional[str] = None) 
         return [dict(row) for row in cursor.fetchall()]
 
 
-def get_monthly_payroll(payroll_month: str, organization_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def get_monthly_payroll(
+    payroll_month: str,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     """Load a finalized payroll snapshot for a month, if one exists for the specified tenant."""
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         if organization_id:
-            if organization_id == 'DEFAULT_ORG':
-                cursor.execute("SELECT * FROM payroll_runs WHERE payroll_month = ? AND status = 'Finalized' AND (organization_id = ? OR organization_id IS NULL OR organization_id = '')", (payroll_month, organization_id))
-            else:
-                cursor.execute("SELECT * FROM payroll_runs WHERE payroll_month = ? AND status = 'Finalized' AND organization_id = ?", (payroll_month, organization_id))
+            query = """SELECT * FROM payroll_runs
+                       WHERE payroll_month = ? AND status = 'Finalized'
+                         AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"""
+            params: List[Any] = [payroll_month, organization_id]
+            if branch_id:
+                query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+                params.append(branch_id)
+            cursor.execute(query, params)
         else:
             cursor.execute("SELECT * FROM payroll_runs WHERE payroll_month = ? AND status = 'Finalized'", (payroll_month,))
         run = cursor.fetchone()
         if not run:
             return None
         result = dict(run)
-        cursor.execute("SELECT * FROM payroll_records WHERE payroll_run_id = ? ORDER BY department COLLATE NOCASE, employee_name COLLATE NOCASE", (run['id'],))
+        records_query = "SELECT * FROM payroll_records WHERE payroll_run_id = ?"
+        records_params: List[Any] = [run['id']]
+        if organization_id:
+            records_query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
+            records_params.append(organization_id)
+        if branch_id:
+            records_query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+            records_params.append(branch_id)
+        records_query += " ORDER BY department COLLATE NOCASE, employee_name COLLATE NOCASE"
+        cursor.execute(records_query, records_params)
         result['records'] = []
         for row in cursor.fetchall():
             record = dict(row)
@@ -6280,10 +6634,15 @@ def finalize_monthly_payroll(preview: Dict[str, Any], organization_id: str = 'DE
         with sqlite3.connect(DB_PATH, timeout=30) as conn:
             cursor = conn.cursor()
             cursor.execute("BEGIN IMMEDIATE")
-            if organization_id == 'DEFAULT_ORG':
-                cursor.execute("SELECT id, status FROM payroll_runs WHERE payroll_month = ? AND (organization_id = ? OR organization_id IS NULL OR organization_id = '')", (preview['payroll_month'], organization_id))
-            else:
-                cursor.execute("SELECT id, status FROM payroll_runs WHERE payroll_month = ? AND organization_id = ?", (preview['payroll_month'], organization_id))
+            cursor.execute(
+                """SELECT id, status, COALESCE(organization_id, 'DEFAULT_ORG') AS organization_id,
+                          COALESCE(branch_id, 'DEFAULT_BRANCH') AS branch_id
+                   FROM payroll_runs
+                   WHERE payroll_month = ?
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (preview['payroll_month'], organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH'),
+            )
             existing = cursor.fetchone()
             if existing and existing[1] == 'Finalized':
                 return None
@@ -6324,7 +6683,11 @@ def finalize_monthly_payroll(preview: Dict[str, Any], organization_id: str = 'DE
                 WHERE id = ?
             ''', (run_id,))
             conn.commit()
-        return get_monthly_payroll(preview['payroll_month'], organization_id=organization_id)
+        return get_monthly_payroll(
+            preview['payroll_month'],
+            organization_id=organization_id,
+            branch_id=branch_id,
+        )
     except Exception as e:
         logger.error(f"Failed to finalize payroll for {preview.get('payroll_month')}: {e}")
         raise
