@@ -3,6 +3,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+import urllib.error
 import uuid
 from unittest.mock import patch
 
@@ -285,6 +286,28 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             401,
         )
 
+    def test_edge_mark_uses_payload_tenant_not_integration_file(self):
+        with patch.object(
+            app_module,
+            "load_integration_config",
+            return_value={
+                "linked": True,
+                "organization_id": "ORG-311376",
+                "branch_id": "BR-ORG-311376",
+                "branch_status": "active",
+                "licensed_modules": ["payroll"],
+            },
+        ):
+            payload = self._payload()
+            with patch.object(
+                app_module,
+                "process_user_attendance_event",
+                return_value=("CHECKIN", "Attendance recorded"),
+            ):
+                accepted = self._post("/api/attendance/edge-mark", payload)
+        self.assertEqual(accepted.status_code, 201)
+        self.assertTrue(accepted.get_json()["success"])
+
     def test_payload_tenant_branch_and_employee_ownership_are_enforced(self):
         self.assertEqual(
             self._post(
@@ -369,6 +392,236 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
         )
         self.assertEqual(missing_branch.status_code, 400)
+
+
+class Layer1IdentityTests(unittest.TestCase):
+    """Browser tenant is the Flask session. The integration file is ignored."""
+
+    HELLO_WORLD_FILE = {
+        "linked": True,
+        "organization_id": "ORG-311376",
+        "organization_name": "Hello World",
+        "branch_id": "BR-ORG-311376",
+        "branch_status": "active",
+        "licensed_modules": ["attendance", "shifts", "payroll"],
+    }
+
+    def setUp(self):
+        self.client_a = app_module.app.test_client()
+        self.client_b = app_module.app.test_client()
+        self.config_patch = patch.object(
+            app_module, "load_integration_config", return_value=dict(self.HELLO_WORLD_FILE)
+        )
+        self.save_patch = patch.object(
+            app_module, "save_integration_config", side_effect=AssertionError("client login must not write config_integration.json")
+        )
+        self.config_patch.start()
+        self.save_patch.start()
+
+    def tearDown(self):
+        self.save_patch.stop()
+        self.config_patch.stop()
+
+    def _authenticate_payload(self, org_id, branch_id, modules, org_name, branch_name):
+        return {
+            "success": True,
+            "organization_id": org_id,
+            "organization_name": org_name,
+            "branch_id": branch_id,
+            "branch_name": branch_name,
+            "modules": modules,
+        }
+
+    def test_client_login_binds_session_only_and_ignores_hello_world_file(self):
+        auth = self._authenticate_payload(
+            "ORG-A", "BR-A", ["attendance", "shifts"], "Org A", "Branch A"
+        )
+        with patch("urllib.request.urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(auth).encode("utf-8")
+            login = self.client_a.post(
+                "/api/client/login",
+                json={"username": "a@example.test", "password": "ClientPortalPass-2026"},
+            )
+        self.assertEqual(login.status_code, 200)
+        body = login.get_json()
+        self.assertEqual(body["organization_id"], "ORG-A")
+        self.assertFalse(body["admin_unlocked"])
+        self.assertTrue(body["is_client_session"])
+
+        status = self.client_a.get("/api/admin/status").get_json()
+        self.assertTrue(status["authenticated"])
+        self.assertTrue(status["client_authenticated"])
+        self.assertFalse(status["admin_unlocked"])
+        self.assertEqual(status["organization_id"], "ORG-A")
+        self.assertEqual(status["branch_id"], "BR-A")
+        self.assertEqual(status["licensed_modules"], ["attendance", "shifts"])
+
+        page = self.client_a.get("/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Org A", page.data)
+        company_home = self.client_a.get("/c/org-a-orga/")
+        self.assertEqual(company_home.status_code, 200)
+        self.assertIn(b"window.companyPortalSlug = \"org-a-orga\"", company_home.data)
+        self.assertNotIn(b"Hello World", page.data)
+        self.assertIn(b'window.clientSessionModules = ["attendance", "shifts"]', page.data)
+
+        staff = self.client_a.get("/api/staff")
+        self.assertEqual(staff.status_code, 200)
+        for row in staff.get_json():
+            self.assertEqual(row.get("organization_id"), "ORG-A")
+
+    def test_two_client_sessions_stay_isolated_after_refresh(self):
+        auth_a = self._authenticate_payload(
+            "ORG-A", "BR-A", ["attendance", "shifts"], "Org A", "Branch A"
+        )
+        auth_b = self._authenticate_payload(
+            "ORG-B", "BR-B", ["attendance", "shifts", "payroll"], "Org B", "Branch B"
+        )
+
+        with patch("urllib.request.urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(auth_a).encode("utf-8")
+            self.assertEqual(
+                self.client_a.post(
+                    "/api/client/login",
+                    json={"username": "a@example.test", "password": "ClientPortalPass-2026"},
+                ).status_code,
+                200,
+            )
+            urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(auth_b).encode("utf-8")
+            self.assertEqual(
+                self.client_b.post(
+                    "/api/client/login",
+                    json={"username": "b@example.test", "password": "ClientPortalPass-2026"},
+                ).status_code,
+                200,
+            )
+
+        for _ in range(3):
+            status_a = self.client_a.get("/api/admin/status").get_json()
+            status_b = self.client_b.get("/api/admin/status").get_json()
+            self.assertEqual(status_a["organization_id"], "ORG-A")
+            self.assertEqual(status_b["organization_id"], "ORG-B")
+            self.assertEqual(status_a["licensed_modules"], ["attendance", "shifts"])
+            self.assertEqual(status_b["licensed_modules"], ["attendance", "shifts", "payroll"])
+            page_a = self.client_a.get("/")
+            page_b = self.client_b.get("/")
+            self.assertIn(b"Org A", page_a.data)
+            self.assertIn(b"Org B", page_b.data)
+            self.assertNotIn(b"Org B", page_a.data)
+            self.assertNotIn(b"Org A", page_b.data)
+
+    def test_logout_clears_only_the_browser_session(self):
+        auth = self._authenticate_payload(
+            "ORG-A", "BR-A", ["attendance"], "Org A", "Branch A"
+        )
+        with patch("urllib.request.urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(auth).encode("utf-8")
+            self.client_a.post(
+                "/api/client/login",
+                json={"username": "a@example.test", "password": "ClientPortalPass-2026"},
+            )
+        logout = self.client_a.post("/api/logout")
+        self.assertEqual(logout.status_code, 200)
+        status = self.client_a.get("/api/admin/status").get_json()
+        self.assertFalse(status["authenticated"])
+        self.assertIsNone(status["organization_id"])
+        page = self.client_a.get("/")
+        self.assertIn(b'<body class="auth-required">', page.data)
+        self.assertNotIn(b"Org A", page.data)
+
+    def test_company_portal_slug_mismatch_is_forbidden(self):
+        with patch("urllib.request.urlopen") as urlopen:
+            urlopen.side_effect = urllib.error.HTTPError(
+                "https://main.example/api/client/authenticate",
+                403,
+                "Forbidden",
+                hdrs=None,
+                fp=None,
+            )
+            denied = self.client_a.post(
+                "/api/client/login",
+                json={
+                    "username": "a@example.test",
+                    "password": "ClientPortalPass-2026",
+                    "portal_slug": "other-company",
+                },
+            )
+        self.assertEqual(denied.status_code, 403)
+
+
+class Layer2ModuleFirstPaintTests(unittest.TestCase):
+    """First HTML matches the session modules. The integration file cannot grant all modules."""
+
+    def setUp(self):
+        self.client = app_module.app.test_client()
+        self.config_patch = patch.object(
+            app_module,
+            "load_integration_config",
+            return_value={
+                "linked": False,
+                "organization_id": "ORG-311376",
+                "licensed_modules": ["attendance", "shifts", "leave", "overtime", "payroll"],
+            },
+        )
+        self.config_patch.start()
+
+    def tearDown(self):
+        self.config_patch.stop()
+
+    def _login_session(self, modules):
+        with self.client.session_transaction() as session:
+            session.clear()
+            session["client_user"] = "layer2@example.test"
+            session["client_org"] = "Paint Org"
+            session["organization_id"] = "ORG-PAINT"
+            session["branch_id"] = "BR-PAINT"
+            session["licensed_modules"] = modules
+
+    def test_two_module_session_omits_unlicensed_sidebar_on_first_paint(self):
+        self._login_session(["attendance", "shifts"])
+        for _ in range(10):
+            page = self.client.get("/")
+            self.assertEqual(page.status_code, 200)
+            html = page.get_data(as_text=True)
+            self.assertIn('id="menuItemShifts"', html)
+            self.assertIn('id="menuItemStaff"', html)
+            self.assertNotIn('id="menuItemPayroll"', html)
+            self.assertNotIn('id="menuItemLeaves"', html)
+            self.assertNotIn('id="menuItemOvertime"', html)
+            self.assertIn("payroll: false", html)
+            self.assertIn("leave: false", html)
+            self.assertIn("overtime: false", html)
+            self.assertNotIn("fetch('/api/integration/status')", html)
+
+    def test_three_module_session_keeps_licensed_sidebar_items(self):
+        self._login_session(["attendance", "shifts", "payroll"])
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn('id="menuItemPayroll"', html)
+        self.assertIn('id="menuItemShifts"', html)
+        self.assertNotIn('id="menuItemLeaves"', html)
+        self.assertNotIn('id="menuItemOvertime"', html)
+        self.assertIn("payroll: true", html)
+
+    def test_unlicensed_payroll_url_and_api_are_forbidden(self):
+        self._login_session(["attendance", "shifts"])
+        payroll_page = self.client.get("/payroll")
+        self.assertEqual(payroll_page.status_code, 403)
+        self.assertEqual(payroll_page.get_json()["module"], "payroll")
+        tab = self.client.get("/?tab=payroll-view")
+        self.assertEqual(tab.status_code, 403)
+        api = self.client.get("/api/payroll")
+        self.assertEqual(api.status_code, 403)
+        leaves = self.client.get("/api/leaves")
+        self.assertEqual(leaves.status_code, 403)
+        overtime = self.client.get("/api/overtime")
+        self.assertEqual(overtime.status_code, 403)
+
+    def test_unlinked_file_does_not_grant_all_modules_to_client_session(self):
+        self._login_session(["attendance"])
+        self.assertEqual(self.client.get("/api/payroll").status_code, 403)
+        self.assertEqual(self.client.get("/api/shifts").status_code, 403)
+        staff = self.client.get("/api/staff")
+        self.assertEqual(staff.status_code, 200)
 
 
 if __name__ == "__main__":

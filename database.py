@@ -11,6 +11,15 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 logger = get_logger(__name__)
 
+
+def _cloud_mirror(action: str, *args, **kwargs) -> None:
+    """Best-effort replica to Railway Postgres. Never breaks local SQLite/AI."""
+    try:
+        import postgres_mirror as cloud_pg
+        getattr(cloud_pg, action)(*args, **kwargs)
+    except Exception as error:
+        logger.warning("Cloud Postgres mirror skipped (%s): %s", action, error)
+
 def _quote_sqlite_identifier(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
 
@@ -1144,6 +1153,11 @@ def init_db():
             conn.commit()
             
         logger.info(f"✓ Database initialized at {DB_PATH}")
+        try:
+            import postgres_mirror as cloud_pg
+            cloud_pg.bootstrap_cloud_postgres()
+        except Exception as error:
+            logger.warning("Cloud Postgres bootstrap skipped: %s", error)
         return True
     except Exception as e:
         logger.error(f"✗ Database initialization failed: {e}")
@@ -1261,6 +1275,7 @@ def add_user(
                 _record_employee_shift_history(cursor, existing_id, shift_id or 1, effective_from)
                 conn.commit()
                 logger.info(f"✓ Re-activated/Updated user '{clean_name}' for Org '{org_target}' (ID: {existing_id})")
+                _cloud_mirror("mirror_user_id", existing_id)
                 return existing_id
 
             # 2. Insert new user safely scoped to this organization
@@ -1281,6 +1296,7 @@ def add_user(
             conn.commit()
 
         logger.info(f"✓ User '{clean_name}' created for Org '{org_target}' (ID: {user_id}, Shift ID: {shift_id})")
+        _cloud_mirror("mirror_user_id", user_id)
         return user_id
     except sqlite3.IntegrityError as ie:
         logger.warning(f"Integrity check for user '{clean_name}' under Org '{org_target}': {ie}")
@@ -1464,6 +1480,7 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
             
         if updated:
             logger.info(f"✓ User ID {user_id} updated: {name} (Shift: {shift_id}, In: {checkin_cameras}, Out: {checkout_cameras})")
+            _cloud_mirror("mirror_user_id", user_id)
         return updated
     except Exception as e:
         logger.error(f"Failed to update user ID {user_id}: {e}")
@@ -1568,12 +1585,16 @@ def delete_user(user_id: int) -> bool:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute("PRAGMA foreign_keys = ON")
+            cursor.execute("SELECT organization_id FROM users WHERE id = ?", (user_id,))
+            org_row = cursor.fetchone()
+            org_id = org_row[0] if org_row else None
             cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
             deleted = cursor.rowcount > 0
             conn.commit()
             
         if deleted:
             logger.info(f"✓ User ID {user_id} deleted successfully with related data.")
+            _cloud_mirror("delete_employee", user_id, org_id)
         return deleted
     except Exception as e:
         logger.error(f"Failed to delete user ID {user_id}: {e}")
@@ -2107,6 +2128,15 @@ def add_shift(name: str, start_time: str, end_time: str, grace_period_minutes: i
             conn.commit()
             shift_id = cursor.lastrowid
             logger.info(f"✓ Shift '{name}' created for Org '{organization_id or 'DEFAULT_ORG'}' (ID: {shift_id})")
+            _cloud_mirror("mirror_shift", {
+                "id": shift_id,
+                "name": name.strip(),
+                "start_time": start_time,
+                "end_time": end_time,
+                "grace_period_minutes": grace_period_minutes,
+                "organization_id": organization_id or "DEFAULT_ORG",
+                "branch_id": branch_id or "DEFAULT_BRANCH",
+            })
             return shift_id
     except ValueError:
         raise
@@ -4038,7 +4068,19 @@ def add_leave_request(
                       half_leave_quota_type_id, int(bool(half_leave_quota_charge)), u_org, u_branch)
             )
             conn.commit()
-            return cursor.lastrowid
+            leave_id = cursor.lastrowid
+            _cloud_mirror("mirror_leave", {
+                "id": leave_id,
+                "user_id": user_id,
+                "leave_type": leave_type,
+                "start_date": s_str,
+                "end_date": e_str,
+                "reason": reason,
+                "status": "pending",
+                "organization_id": u_org,
+                "branch_id": u_branch,
+            })
+            return leave_id
     except Exception as e:
         logger.error(f"Add leave request error: {e}")
         return None
@@ -5040,7 +5082,17 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
                 (user_id, user_name, ot_date, hours, reason, organization_id, branch_id)
             )
             conn.commit()
-            return cursor.lastrowid
+            overtime_id = cursor.lastrowid
+            _cloud_mirror("mirror_overtime", {
+                "id": overtime_id,
+                "user_id": user_id,
+                "hours": hours,
+                "ot_date": ot_date,
+                "reason": reason,
+                "organization_id": organization_id,
+                "branch_id": branch_id,
+            })
+            return overtime_id
     except Exception as e:
         logger.error(f"Add overtime error: {e}")
         return None
@@ -7215,6 +7267,7 @@ def add_camera(camera_id: str, name: str, room_name: str, camera_type: str = 'ip
             conn.commit()
             cam_db_id = cursor.lastrowid
             logger.info(f"✓ Camera '{name}' ({camera_id}) added for room '{room_name}' (ID: {cam_db_id})")
+            _cloud_mirror("mirror_camera_row", cam_db_id)
             return cam_db_id
     except sqlite3.IntegrityError:
         logger.warning(f"Camera ID '{camera_id}' already exists")
@@ -7244,6 +7297,7 @@ def update_camera(cam_db_id: int, camera_id: str, name: str, room_name: str, cam
             )
             conn.commit()
             logger.info(f"✓ Camera DB ID {cam_db_id} updated: {name}")
+            _cloud_mirror("mirror_camera_row", cam_db_id)
             return True
     except Exception as e:
         logger.error(f"Failed to update camera DB ID {cam_db_id}: {e}")
@@ -7262,9 +7316,13 @@ def delete_camera(cam_db_id: int, organization_id: Optional[str] = None) -> bool
                 if not cursor.fetchone():
                     logger.warning(f"Camera ID {cam_db_id} not found or tenant unauthorized")
                     return False
+            cursor.execute("SELECT camera_id, organization_id FROM cameras WHERE id = ?", (cam_db_id,))
+            cam_row = cursor.fetchone()
             cursor.execute("DELETE FROM cameras WHERE id = ?", (cam_db_id,))
             conn.commit()
             logger.info(f"✓ Camera DB ID {cam_db_id} deleted.")
+            if cam_row:
+                _cloud_mirror("delete_camera", cam_row[0], cam_row[1])
             return True
     except Exception as e:
         logger.error(f"Failed to delete camera DB ID {cam_db_id}: {e}")

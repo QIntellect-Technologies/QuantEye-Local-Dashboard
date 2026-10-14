@@ -185,6 +185,58 @@ def save_integration_config(cfg):
         logger.error(f"Error saving config_integration.json: {e}")
         return False
 
+
+def is_client_browser_session() -> bool:
+    """True when the browser is a provisioned client, not a Local platform admin."""
+    return bool(session.get('client_user'))
+
+
+def session_licensed_modules() -> List[str]:
+    modules = session.get('licensed_modules')
+    if not isinstance(modules, list):
+        return []
+    return [
+        str(module).strip().lower()
+        for module in modules
+        if isinstance(module, str) and str(module).strip()
+    ]
+
+
+def licensed_module_flags(modules: Optional[List[str]] = None) -> Dict[str, bool]:
+    licensed = {
+        str(module).strip().lower()
+        for module in (modules or [])
+        if isinstance(module, str) and str(module).strip()
+    }
+    return {
+        'attendance': bool({'attendance', 'employees', 'face-recognition', 'reports'} & licensed),
+        'payroll': 'payroll' in licensed,
+        'leave': bool({'leave', 'leaves', 'leave-management', 'leave_management'} & licensed),
+        'overtime': bool({'overtime', 'overtime-management', 'overtime_management'} & licensed),
+        'shifts': bool({'shifts', 'shift', 'shift-management', 'shift_management'} & licensed),
+    }
+
+
+def browser_licensed_modules() -> Optional[List[str]]:
+    """Session modules for a browser caller. None means skip (unauthenticated/service)."""
+    if is_client_browser_session():
+        return session_licensed_modules()
+    if session.get('admin_unlocked'):
+        modules = session.get('licensed_modules')
+        if isinstance(modules, list):
+            return session_licensed_modules()
+        return list(CANONICAL_MODULES)
+    return None
+
+
+def _forbidden_module_response(module_name: str):
+    return jsonify({
+        'success': False,
+        'error': f'{module_name.replace("-", " ").title()} module is not licensed for this organization.',
+        'module': module_name,
+    }), 403
+
+
 def check_module_entitlement_for_request():
     """
     Step 7: Enforce module entitlement on existing Local Dashboard page and API routes.
@@ -202,20 +254,23 @@ def check_module_entitlement_for_request():
         return None
     if path.startswith('/api/settings/') or path.startswith('/api/departments') or path.startswith('/api/designations'):
         return None
-    if path.startswith('/static/'):
+    if path.startswith('/static/') or path.startswith('/c/'):
+        return None
+    if path.startswith('/api/integration/') or path in {
+        '/api/attendance/edge-mark', '/api/sync/attendance-event'
+    }:
         return None
 
-    cfg = load_integration_config()
-    # If standalone / unlinked, full access is granted by default
-    if not cfg.get('linked', False):
+    browser_modules = browser_licensed_modules()
+    if browser_modules is None:
         return None
 
-    licensed = set(cfg.get('licensed_modules') or [])
-    has_attendance = bool({'attendance', 'employees', 'face-recognition', 'reports'}.intersection(licensed))
-    has_payroll = bool({'payroll'}.intersection(licensed))
-    has_leave = bool({'leave', 'leaves', 'leave-management', 'leave_management'}.intersection(licensed))
-    has_overtime = bool({'overtime', 'overtime-management', 'overtime_management'}.intersection(licensed))
-    has_shifts = bool({'shifts', 'shift', 'shift-management', 'shift_management'}.intersection(licensed))
+    flags = licensed_module_flags(browser_modules)
+    has_attendance = flags['attendance']
+    has_payroll = flags['payroll']
+    has_leave = flags['leave']
+    has_overtime = flags['overtime']
+    has_shifts = flags['shifts']
 
     # 1. Attendance module routes
     attendance_pages = {
@@ -230,59 +285,31 @@ def check_module_entitlement_for_request():
     }
     if not has_attendance:
         if path in attendance_pages:
-            return jsonify({
-                'success': False,
-                'error': 'Attendance module is not licensed for this branch.',
-                'module': 'attendance'
-            }), 403
+            return _forbidden_module_response('attendance')
         if path.startswith('/api/attendance') or path.startswith('/api/reports') or path.startswith('/api/staff') or path.startswith('/api/locate') or path.startswith('/api/stream') or path.startswith('/api/camera-monitoring') or path.startswith('/api/clear-live-detections'):
-            return jsonify({
-                'success': False,
-                'error': 'Attendance module is not licensed for this branch.',
-                'module': 'attendance'
-            }), 403
+            return _forbidden_module_response('attendance')
         if path.startswith('/api/users') and not path.endswith('/assign-shift'):
-            return jsonify({
-                'success': False,
-                'error': 'Attendance module is not licensed for this branch.',
-                'module': 'attendance'
-            }), 403
+            return _forbidden_module_response('attendance')
 
     # 2. Payroll module routes
     if not has_payroll:
-        if path.startswith('/api/payroll') or path.startswith('/api/salary') or path.startswith('/api/payroll-settings'):
-            return jsonify({
-                'success': False,
-                'error': 'Payroll module is not licensed for this branch.',
-                'module': 'payroll'
-            }), 403
+        if path in {'/payroll', '/payroll-view'} or path.startswith('/api/payroll') or path.startswith('/api/salary') or path.startswith('/api/payroll-settings'):
+            return _forbidden_module_response('payroll')
 
     # 3. Leave Management module routes
     if not has_leave:
-        if path.startswith('/api/leaves') or path.startswith('/api/leave-types') or path.startswith('/api/holidays') or path in {'/get_pending_leaves', '/update_leave_status'}:
-            return jsonify({
-                'success': False,
-                'error': 'Leave Management module is not licensed for this branch.',
-                'module': 'leave'
-            }), 403
+        if path in {'/leave', '/leaves', '/get_pending_leaves', '/update_leave_status'} or path.startswith('/api/leaves') or path.startswith('/api/leave-types') or path.startswith('/api/holidays'):
+            return _forbidden_module_response('leave')
 
     # 4. Overtime Management module routes
     if not has_overtime:
-        if path.startswith('/api/overtime'):
-            return jsonify({
-                'success': False,
-                'error': 'Overtime Management module is not licensed for this branch.',
-                'module': 'overtime'
-            }), 403
+        if path in {'/overtime'} or path.startswith('/api/overtime'):
+            return _forbidden_module_response('overtime')
 
     # 5. Shift Management module routes
     if not has_shifts:
-        if path.startswith('/api/shifts') or path.endswith('/assign-shift') or path.endswith('/bulk-assign-shifts'):
-            return jsonify({
-                'success': False,
-                'error': 'Shift Management module is not licensed for this branch.',
-                'module': 'shifts'
-            }), 403
+        if path in {'/shifts', '/shift-management'} or path.startswith('/api/shifts') or path.endswith('/assign-shift') or path.endswith('/bulk-assign-shifts'):
+            return _forbidden_module_response('shifts')
 
     return None
 
@@ -804,26 +831,35 @@ def allowed_file(filename):
 
 
 @app.route('/')
-def index():
+@app.route('/c/<portal_slug>')
+@app.route('/c/<portal_slug>/')
+def index(portal_slug=None):
     """Serve the dashboard UI."""
+    company_portal_slug = str(portal_slug or request.view_args.get('portal_slug') or '').strip().lower()
     client_user = session.get('client_user')
     is_authenticated = bool(session.get('admin_unlocked') or client_user)
-    client_licensed_modules = session.get('licensed_modules')
-    if client_user and not isinstance(client_licensed_modules, list):
-        config = load_integration_config()
-        client_licensed_modules = config.get('licensed_modules') or []
-    licensed_modules = {
-        str(module).strip().lower()
-        for module in (client_licensed_modules or [])
-        if isinstance(module, str)
-    }
-    client_module_entitlements = {
-        'attendance': bool({'attendance', 'employees', 'face-recognition', 'reports'} & licensed_modules),
-        'payroll': 'payroll' in licensed_modules,
-        'leave': bool({'leave', 'leaves', 'leave-management', 'leave_management'} & licensed_modules),
-        'overtime': bool({'overtime', 'overtime-management', 'overtime_management'} & licensed_modules),
-        'shifts': bool({'shifts', 'shift', 'shift-management', 'shift_management'} & licensed_modules),
-    }
+    # Client browsers use the session only. Never fall back to config_integration.json.
+    client_licensed_modules = session_licensed_modules() if client_user else (
+        session.get('licensed_modules') if isinstance(session.get('licensed_modules'), list) else []
+    )
+    client_module_entitlements = licensed_module_flags(client_licensed_modules)
+    if client_user:
+        requested_tab = str(request.args.get('tab') or '').strip().lower()
+        tab_module = {
+            'payroll': 'payroll', 'payroll-view': 'payroll',
+            'leave': 'leave', 'leaves': 'leave', 'leaves-view': 'leave',
+            'overtime': 'overtime', 'overtime-view': 'overtime',
+            'shifts': 'shifts', 'shift-management': 'shifts', 'shifts-view': 'shifts',
+        }.get(requested_tab)
+        if tab_module and not client_module_entitlements.get(tab_module):
+            return _forbidden_module_response(tab_module)
+        session_slug = str(session.get('portal_slug') or '').strip().lower()
+        if company_portal_slug and session_slug and session_slug != company_portal_slug:
+            session.clear()
+            is_authenticated = False
+            client_user = None
+            client_licensed_modules = []
+            client_module_entitlements = licensed_module_flags([])
     return render_template(
         'index.html',
         is_authenticated=is_authenticated,
@@ -833,7 +869,25 @@ def index():
         active_organization_name=session.get('client_org') if client_user else '',
         active_branch_name=session.get('client_branch') if client_user else '',
         active_user_name=client_user or ('Administrator' if is_authenticated else ''),
+        company_portal_slug=company_portal_slug,
     )
+
+
+@app.route('/payroll')
+@app.route('/leave')
+@app.route('/leaves')
+@app.route('/overtime')
+@app.route('/shifts')
+def licensed_module_page():
+    """Direct module URLs: 403 if unlicensed, otherwise open the portal tab."""
+    tab_by_path = {
+        '/payroll': 'payroll-view',
+        '/leave': 'leaves-view',
+        '/leaves': 'leaves-view',
+        '/overtime': 'overtime-view',
+        '/shifts': 'shifts-view',
+    }
+    return redirect(f"/?tab={tab_by_path.get(request.path, 'reports-view')}")
 
 
 @app.route('/camera')
@@ -1102,22 +1156,10 @@ def _prepare_attendance_ingestion(data):
     if len(integration_key) < 32 or not secrets.compare_digest(supplied_key, integration_key):
         return None, (jsonify({'success': False, 'error': 'Integration authentication required'}), 401)
 
-    cfg = load_integration_config()
-    organization_id = str(cfg.get('organization_id') or '').strip()
-    branch_id = str(cfg.get('branch_id') or '').strip()
-    if (
-        not cfg.get('linked')
-        or not organization_id
-        or not branch_id
-        or str(cfg.get('branch_status') or 'active').lower() != 'active'
-    ):
-        return None, (jsonify({'success': False, 'error': 'Local instance has no active tenant binding'}), 403)
-
-    if (
-        str(data.get('organization_id') or '').strip() != organization_id
-        or str(data.get('branch_id') or '').strip() != branch_id
-    ):
-        return None, (jsonify({'success': False, 'error': 'Attendance event tenant does not match this instance'}), 403)
+    organization_id = str(data.get('organization_id') or '').strip()
+    branch_id = str(data.get('branch_id') or '').strip()
+    if not organization_id or not branch_id:
+        return None, (jsonify({'success': False, 'error': 'Organization and branch are required'}), 400)
 
     try:
         event_id = str(uuid.UUID(str(data.get('event_id') or '').strip()))
@@ -1163,12 +1205,28 @@ def _prepare_attendance_ingestion(data):
     return normalized, None
 
 
-def _finish_attendance_ingestion(event_id, response, status_code):
+def _finish_attendance_ingestion(event_id, response, status_code, event=None):
     try:
         db.complete_attendance_ingestion(event_id, response, status_code)
     except Exception:
         logger.exception('Unable to complete attendance event receipt')
         return jsonify({'success': False, 'error': 'Attendance event result could not be persisted'}), 500
+    if event and 200 <= int(status_code) < 300:
+        try:
+            import postgres_mirror
+            postgres_mirror.mirror_attendance_event({
+                "event_id": event_id,
+                "organization_id": event.get("organization_id"),
+                "branch_id": event.get("branch_id"),
+                "user_id": event.get("user_id"),
+                "name": event.get("name"),
+                "camera_id": event.get("camera_id"),
+                "timestamp": event.get("timestamp"),
+                "event_type": event.get("event_type") or event.get("status"),
+                "confidence": event.get("confidence", 1.0),
+            })
+        except Exception:
+            logger.warning("Cloud Postgres attendance mirror skipped for event %s", event_id)
     return jsonify(response), status_code
 
 
@@ -1255,7 +1313,7 @@ def api_sync_attendance_event():
             'attendance_logged': success,
             'reason': reason,
             'event_id': event_id,
-        }, 200)
+        }, 200, event=data)
     except Exception as e:
         db.abandon_attendance_ingestion(event_id)
         logger.error(f"Error in api_sync_attendance_event: {e}")
@@ -3223,6 +3281,35 @@ def integration_edge_sync_state():
     }), 200
 
 
+@app.route('/api/integration/shifts', methods=['GET'])
+def integration_get_shifts():
+    """Return branch-scoped shifts to the authenticated control plane for the EXE relay."""
+    integration_key = os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()
+    if len(integration_key) < 32:
+        return jsonify({'success': False, 'message': 'Integration authentication is not securely configured.'}), 503
+    supplied_key = request.headers.get('X-Integration-Key', '')
+    if not secrets.compare_digest(supplied_key, integration_key):
+        return jsonify({'success': False, 'message': 'Integration authentication required.'}), 401
+
+    organization_id = request.args.get('organization_id', '').strip()
+    branch_id = request.args.get('branch_id', '').strip()
+    if not organization_id or not branch_id:
+        return jsonify({'success': False, 'message': 'Organization and branch are required.'}), 400
+
+    shifts = db.get_all_shifts(
+        active_only=True,
+        organization_id=organization_id,
+        branch_id=branch_id,
+    )
+    return jsonify({
+        'success': True,
+        'organization_id': organization_id,
+        'branch_id': branch_id,
+        'shifts': shifts,
+        'count': len(shifts),
+    }), 200
+
+
 @app.route('/api/attendance/edge-mark', methods=['POST'])
 def api_edge_mark_attendance():
     """
@@ -3300,7 +3387,16 @@ def api_edge_mark_attendance():
             'name': detected_name,
             'timestamp': datetime.now().isoformat(),
             'event_id': event_id,
-        }, 201)
+        }, 201, event={
+            "organization_id": data.get("organization_id"),
+            "branch_id": data.get("branch_id"),
+            "user_id": user_id,
+            "name": detected_name,
+            "camera_id": camera_id,
+            "timestamp": datetime.now().isoformat(),
+            "event_type": status,
+            "confidence": confidence,
+        })
 
     return _finish_attendance_ingestion(event_id, {
         'success': False,
@@ -3454,13 +3550,15 @@ def api_change_password():
 @app.route('/api/client/login', methods=['POST'])
 def api_client_login():
     """
-    Authenticate client using their Organization Credentials.
-    Validates against Main Dashboard to fetch licensed modules and updates integration config.
+    Authenticate a provisioned client against Main Dashboard.
+    Tenant binding lives in this browser session only. Do not rewrite
+    config_integration.json (that file is one-instance operator state).
     """
     data = request.get_json() or {}
     username = str(data.get('username') or data.get('email') or '').strip()
     password = str(data.get('password') or '')
     branch_key = str(data.get('branch_key') or '').strip()
+    portal_slug = str(data.get('portal_slug') or data.get('company_slug') or '').strip().lower()
 
     if not username and not branch_key:
         return jsonify({'success': False, 'message': 'Username/Email or Branch Key required'}), 400
@@ -3473,7 +3571,12 @@ def api_client_login():
         import urllib.error
         req = urllib.request.Request(
             f"{main_url}/api/client/authenticate",
-            data=json.dumps({"username": username, "password": password, "branch_key": branch_key}).encode('utf-8'),
+            data=json.dumps({
+                "username": username,
+                "password": password,
+                "branch_key": branch_key,
+                "portal_slug": portal_slug,
+            }).encode('utf-8'),
             headers={"Content-Type": "application/json"},
             method="POST"
         )
@@ -3481,6 +3584,8 @@ def api_client_login():
             auth_data = json.loads(resp.read().decode('utf-8'))
     except urllib.error.HTTPError as e:
         logger.info("Main Dashboard rejected client login with HTTP %s", e.code)
+        if e.code == 403:
+            return jsonify({'success': False, 'message': 'These credentials do not belong to this company portal.'}), 403
         return jsonify({'success': False, 'message': 'Invalid client credentials or activation key.'}), 401
     except Exception:
         logger.exception("Main dashboard auth service is unavailable")
@@ -3489,27 +3594,15 @@ def api_client_login():
     if auth_data and auth_data.get('success'):
         org_name = auth_data.get('organization_name', 'Client Organization')
         branch_name = auth_data.get('branch_name', 'Main Branch')
-        modules = auth_data.get('modules', ['attendance', 'shifts', 'payroll'])
+        modules = auth_data.get('modules') or ['attendance']
+        if not isinstance(modules, list):
+            modules = ['attendance']
         organization_id = str(auth_data.get('organization_id') or '').strip()
         branch_id = str(auth_data.get('branch_id') or '').strip()
         if not organization_id or not branch_id:
             return jsonify({'success': False, 'message': 'Authentication service returned an invalid tenant binding.'}), 502
-        
-        # Save client organization integration config
-        cfg = load_integration_config()
-        cfg['linked'] = True
-        cfg['organization_id'] = organization_id
-        cfg['organization_name'] = org_name
-        cfg['branch_id'] = branch_id
-        cfg['branch_name'] = branch_name
-        cfg['branch_status'] = 'active'
-        cfg['licensed_modules'] = modules
-        cfg['last_sync_timestamp'] = datetime.now().isoformat()
-        if not save_integration_config(cfg):
-            return jsonify({'success': False, 'message': 'Could not persist client organization binding.'}), 500
-        
+
         session.clear()
-        session['admin_unlocked'] = True
         session['client_user'] = username or org_name
         session['client_org'] = org_name
         session['client_org_id'] = organization_id
@@ -3518,14 +3611,18 @@ def api_client_login():
         session['client_branch_id'] = branch_id
         session['branch_id'] = branch_id
         session['licensed_modules'] = modules
+        session['portal_slug'] = str(auth_data.get('portal_slug') or portal_slug or '').strip().lower()
 
         return jsonify({
             'success': True,
             'organization_id': organization_id,
             'organization_name': org_name,
+            'portal_slug': session['portal_slug'],
             'branch_name': branch_name,
             'modules': modules,
-            'user': username or org_name
+            'user': username or org_name,
+            'is_client_session': True,
+            'admin_unlocked': False,
         }), 200
 
     return jsonify({'success': False, 'message': 'Invalid credentials. Please verify your email and password.'}), 401
@@ -3540,33 +3637,26 @@ def api_logout():
 
 def get_current_tenant_id() -> str:
     """
-    Return currently active tenant organization_id.
-    SECURITY HARDENING: If user is authenticated in session, session organization_id
-    is 100% authoritative and CANNOT be overridden by headers, query params, or client inputs.
-    Caller-provided headers are never an authority. Unlinked standalone installs use
-    their local default tenant; linked installs use server-persisted integration config.
+    Browser tenant comes from the Flask session only.
+    config_integration.json is never used for a logged-in client.
     """
-    if 'organization_id' in session and session['organization_id']:
+    if is_client_browser_session():
+        return str(session.get('organization_id') or session.get('client_org_id') or '').strip()
+    if session.get('organization_id'):
         return str(session['organization_id']).strip()
-    if 'client_org_id' in session and session['client_org_id']:
+    if session.get('client_org_id'):
         return str(session['client_org_id']).strip()
-    cfg = load_integration_config()
-    if cfg.get('linked') and cfg.get('organization_id'):
-        return str(cfg['organization_id']).strip()
     return 'DEFAULT_ORG'
 
 
 def get_current_branch_id() -> str:
-    """
-    Return currently active branch_id from authenticated session or header/config.
-    """
-    if 'branch_id' in session and session['branch_id']:
+    """Return the active branch from the browser session only."""
+    if is_client_browser_session():
+        return str(session.get('branch_id') or session.get('client_branch_id') or '').strip()
+    if session.get('branch_id'):
         return str(session['branch_id']).strip()
-    if 'client_branch_id' in session and session['client_branch_id']:
+    if session.get('client_branch_id'):
         return str(session['client_branch_id']).strip()
-    cfg = load_integration_config()
-    if cfg.get('linked') and cfg.get('branch_id'):
-        return str(cfg['branch_id']).strip()
     return 'DEFAULT_BRANCH'
 
 
@@ -3642,10 +3732,18 @@ def api_admin_disable_enrollment():
 
 @app.route('/api/admin/status', methods=['GET'])
 def api_admin_status():
-    """Return current admin session state (unlocked, enrollment_enabled)."""
+    """Return current browser auth state. Client sessions are not platform admin."""
+    client_session = is_client_browser_session()
+    platform_admin = bool(session.get('admin_unlocked')) and not client_session
     return jsonify({
-        'admin_unlocked': bool(session.get('admin_unlocked')),
-        'enrollment_enabled': bool(session.get('enrollment_enabled'))
+        'authenticated': bool(platform_admin or client_session),
+        'admin_unlocked': platform_admin,
+        'client_authenticated': client_session,
+        'is_client_session': client_session,
+        'enrollment_enabled': bool(session.get('enrollment_enabled')),
+        'organization_id': session.get('organization_id') if (platform_admin or client_session) else None,
+        'branch_id': session.get('branch_id') if (platform_admin or client_session) else None,
+        'licensed_modules': session_licensed_modules() if client_session else [],
     })
 
 
@@ -3663,10 +3761,10 @@ def _require_enrollment_access():
 
 
 def _require_admin_configuration():
-    """Require an authenticated, unlocked admin session for protected payroll changes."""
-    if not session.get('admin_unlocked'):
-        return jsonify({'success': False, 'error': 'Admin authentication required'}), 403
-    return None
+    """Require an authenticated browser session for protected payroll changes."""
+    if session.get('client_user') or session.get('admin_unlocked'):
+        return None
+    return jsonify({'success': False, 'error': 'Admin authentication required'}), 403
 
 
 # ============================================

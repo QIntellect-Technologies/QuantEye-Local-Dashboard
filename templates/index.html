@@ -42,18 +42,26 @@
     </script>
     {% if is_client_session %}
     <style id="server-rendered-client-entitlements">
-      {% if not client_module_entitlements.attendance %}.sidebar-menu .menu-item[data-module="attendance"] { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.payroll %}.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.leave %}.sidebar-menu .menu-item[data-module="leave"] { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.shifts %}.sidebar-menu .menu-item[data-module="shifts"] { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.attendance %}.sidebar-menu .menu-item[data-module="attendance"] { display: none !important; } #reports-view, #staff-view, #live-view, #enroll-view { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.payroll %}.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; } #payroll-view { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.leave %}.sidebar-menu .menu-item[data-module="leave"] { display: none !important; } #leaves-view { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; } #overtime-view { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.shifts %}.sidebar-menu .menu-item[data-module="shifts"] { display: none !important; } #shifts-view { display: none !important; }{% endif %}
     </style>
     <script>
       window.clientSessionModules = {{ client_licensed_modules|tojson }};
+      window.entitledModules = {
+        attendance: {{ 'true' if client_module_entitlements.attendance else 'false' }},
+        payroll: {{ 'true' if client_module_entitlements.payroll else 'false' }},
+        leave: {{ 'true' if client_module_entitlements.leave else 'false' }},
+        overtime: {{ 'true' if client_module_entitlements.overtime else 'false' }},
+        shifts: {{ 'true' if client_module_entitlements.shifts else 'false' }}
+      };
     </script>
     {% else %}
     <script>window.clientSessionModules = null;</script>
     {% endif %}
+    <script>window.companyPortalSlug = {{ (company_portal_slug or '')|tojson }};</script>
 
     <style>
       :root {
@@ -2762,6 +2770,7 @@
           <i class="fa-solid fa-users-gear"></i>
           <span>Staff Directory</span>
         </li>
+        {% if not is_client_session or client_module_entitlements.payroll %}
         <li
           id="menuItemPayroll"
           class="menu-item"
@@ -2772,6 +2781,8 @@
           <i class="fa-solid fa-money-check-dollar"></i>
           <span>Payroll</span>
         </li>
+        {% endif %}
+        {% if not is_client_session or client_module_entitlements.leave %}
         <li
           id="menuItemLeaves"
           class="menu-item"
@@ -2782,6 +2793,8 @@
           <i class="fa-solid fa-umbrella-beach"></i>
           <span>Leave &amp; Holidays</span>
         </li>
+        {% endif %}
+        {% if not is_client_session or client_module_entitlements.overtime %}
         <li
           id="menuItemOvertime"
           class="menu-item"
@@ -2792,6 +2805,8 @@
           <i class="fa-solid fa-clock-rotate-left"></i>
           <span>Overtime Management</span>
         </li>
+        {% endif %}
+        {% if not is_client_session or client_module_entitlements.shifts %}
         <li
           id="menuItemShifts"
           class="menu-item"
@@ -2802,6 +2817,7 @@
           <i class="fa-solid fa-business-time"></i>
           <span>Shift Management</span>
         </li>
+        {% endif %}
         <li
           id="menuItemLive"
           class="menu-item"
@@ -6726,7 +6742,6 @@ async function fetchMultiLiveDetections() {
         try {
           const sessionModules = window.clientSessionModules;
           await updateModuleEntitlements(sessionModules);
-          setInterval(() => updateModuleEntitlements(sessionModules), 5000);
         } catch(e) { console.error("updateModuleEntitlements error:", e); }
         addTerminalLine(
           "Dashboard interface loaded. Initializing backend APIs...",
@@ -7461,7 +7476,7 @@ async function fetchMultiLiveDetections() {
         document.getElementById('payroll-view').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
-      window.entitledModules = { attendance: true, payroll: true, leave: true, overtime: true, shifts: true };
+      window.entitledModules = window.entitledModules || { attendance: true, payroll: true, leave: true, overtime: true, shifts: true };
 
       const VIEW_MODULE_MAP = {
         'reports-view': 'attendance',
@@ -7482,24 +7497,20 @@ async function fetchMultiLiveDetections() {
         if (!viewId || viewId === 'settings-view') return true; // Settings is always entitled
         const reqMod = VIEW_MODULE_MAP[viewId];
         if (!reqMod) return true;
-        if (!window.entitledModules) return true;
+        if (!window.entitledModules) return !Array.isArray(window.clientSessionModules);
         return Boolean(window.entitledModules[reqMod]);
       }
 
       async function updateModuleEntitlements(overrideModules = null) {
         try {
+          const sessionModules = Array.isArray(window.clientSessionModules) ? window.clientSessionModules : null;
           let modulesList = overrideModules;
-          if (!modulesList) {
-            const res = await fetch('/api/integration/status');
-            if (res.ok) {
-              const data = await res.json();
-              if (data && data.linked && Array.isArray(data.licensed_modules)) {
-                modulesList = data.licensed_modules;
-              }
-            }
+          if (!modulesList && sessionModules) {
+            modulesList = sessionModules;
           }
-
-          if (modulesList && Array.isArray(modulesList)) {
+          if (!modulesList && window.clientSessionModules === null) {
+            window.entitledModules = { attendance: true, payroll: true, leave: true, overtime: true, shifts: true };
+          } else if (modulesList && Array.isArray(modulesList)) {
             const lic = new Set(modulesList);
             window.entitledModules = {
               attendance: lic.has('attendance') || lic.has('employees') || lic.has('face-recognition') || lic.has('reports'),
@@ -7509,7 +7520,7 @@ async function fetchMultiLiveDetections() {
               shifts: lic.has('shifts') || lic.has('shift') || lic.has('shift-management') || lic.has('shift_management')
             };
           } else {
-            window.entitledModules = { attendance: true, payroll: true, leave: true, overtime: true, shifts: true };
+            window.entitledModules = { attendance: false, payroll: false, leave: false, overtime: false, shifts: false };
           }
 
           // Update sidebar items visibility
@@ -14159,15 +14170,16 @@ async function fetchMultiLiveDetections() {
         const res = await fetch('/api/admin/status', { credentials: 'same-origin' });
         if (!res.ok) throw new Error(`Authentication status check failed (HTTP ${res.status}).`);
         const data = await res.json();
+        const clientAuthenticated = data.client_authenticated === true || data.is_client_session === true;
         _adminUnlocked = data.admin_unlocked === true;
-        _applicationAuthPending = !_adminUnlocked;
+        _applicationAuthPending = data.authenticated !== true;
         _enrollmentEnabled = data.enrollment_enabled === true;
         document.body.classList.toggle('auth-required', _applicationAuthPending);
         applyAdminStateToUI();
 
-        if (_adminUnlocked) {
+        if (!_applicationAuthPending) {
           closeAdminPasswordModal();
-        } else {
+        } else if (!clientAuthenticated) {
           showAdminPasswordModal();
         }
       } catch (e) {
@@ -14252,7 +14264,7 @@ async function fetchMultiLiveDetections() {
     }
 
     function closeAdminPasswordModal() {
-      if (_applicationAuthPending && !_adminUnlocked) return;
+      if (_applicationAuthPending) return;
       document.getElementById('adminPasswordModal').style.display = 'none';
       document.getElementById('adminPasswordInput').value = '';
       _pendingSettingsElement = null;
@@ -14300,7 +14312,7 @@ async function fetchMultiLiveDetections() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               credentials: 'same-origin',
-              body: JSON.stringify({ username, password })
+              body: JSON.stringify({ username, password, portal_slug: window.companyPortalSlug || '' })
             });
             if (res.ok) {
               data = await res.json();
@@ -14308,8 +14320,8 @@ async function fetchMultiLiveDetections() {
           } catch(e) {}
         }
 
-        // 2. Fallback to /api/admin/verify-password
-        if (!data || !data.success) {
+        // 2. Fallback to /api/admin/verify-password (shared operator URL only)
+        if ((!data || !data.success) && !window.companyPortalSlug) {
           try {
             const fbRes = await fetch('/api/admin/verify-password', {
               method: 'POST',
