@@ -1924,22 +1924,45 @@ def _is_scheduled_workday(work_date, working_days: Any, override_type: Optional[
     return work_date.weekday() in weekdays
 
 
-def get_all_shifts(active_only: bool = True, organization_id: Optional[str] = None) -> List[Dict]:
-    """Retrieve all defined shifts along with assigned employee count and default flag, scoped by organization."""
+def get_all_shifts(
+    active_only: bool = True,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[Dict]:
+    """Retrieve shifts with employee counts scoped to the requested organization and branch."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             where_clauses = []
             params = []
+            join_conditions = [
+                "COALESCE(u.shift_id, 1) = s.id",
+                "u.active = 1",
+            ]
+            join_params = []
             if active_only:
                 where_clauses.append("s.active = 1")
             if organization_id and organization_id != 'all':
                 if organization_id == 'DEFAULT_ORG':
                     where_clauses.append("(s.organization_id = 'DEFAULT_ORG' OR s.organization_id IS NULL OR s.id = 1)")
+                    join_conditions.append("COALESCE(NULLIF(u.organization_id, ''), 'DEFAULT_ORG') = 'DEFAULT_ORG'")
                 else:
                     where_clauses.append("(s.organization_id = ? OR s.id = 1)")
                     params.append(organization_id)
+                    join_conditions.append("u.organization_id = ?")
+                    join_params.append(organization_id)
+            else:
+                join_conditions.extend([
+                    "COALESCE(NULLIF(u.organization_id, ''), 'DEFAULT_ORG') = COALESCE(NULLIF(s.organization_id, ''), 'DEFAULT_ORG')",
+                    "COALESCE(NULLIF(u.branch_id, ''), 'DEFAULT_BRANCH') = COALESCE(NULLIF(s.branch_id, ''), 'DEFAULT_BRANCH')",
+                ])
+            if branch_id and branch_id != 'all':
+                where_clauses.append("(s.branch_id = ? OR s.id = 1)")
+                params.append(branch_id)
+                join_conditions.append("u.branch_id = ?")
+                join_params.append(branch_id)
             where_clause = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+            join_clause = " AND ".join(join_conditions)
             cursor.execute(f'''
                 SELECT s.id, s.name, s.start_time, s.end_time, s.grace_period_minutes, 
                        COALESCE(s.is_default, CASE WHEN s.id = 1 THEN 1 ELSE 0 END) as is_default,
@@ -1947,11 +1970,11 @@ def get_all_shifts(active_only: bool = True, organization_id: Optional[str] = No
                        COUNT(u.id) as user_count, s.working_days, s.checkout_grace_period_minutes,
                        COALESCE(s.organization_id, 'DEFAULT_ORG') as organization_id
                 FROM shifts s
-                LEFT JOIN users u ON COALESCE(u.shift_id, 1) = s.id AND u.active = 1
+                LEFT JOIN users u ON {join_clause}
                 {where_clause}
                 GROUP BY s.id
                 ORDER BY s.id ASC
-            ''', params)
+            ''', join_params + params)
             rows = cursor.fetchall()
 
         return [{

@@ -210,6 +210,30 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(trained, 1)
 
+    def test_shift_staff_counts_are_scoped_to_current_organization_and_branch(self):
+        with self.client.session_transaction() as session:
+            session["admin_unlocked"] = True
+            session["organization_id"] = "ORG-ALPHA"
+            session["branch_id"] = "BR-ALPHA-1"
+
+        with patch.object(
+            app_module,
+            "load_integration_config",
+            return_value={
+                "linked": True,
+                "organization_id": "ORG-ALPHA",
+                "branch_id": "BR-ALPHA-1",
+                "branch_status": "active",
+                "licensed_modules": ["attendance", "shifts"],
+            },
+        ):
+            response = self.client.get("/api/shifts")
+
+        self.assertEqual(response.status_code, 200)
+        shifts = response.get_json()["shifts"]
+        default_shift = next(shift for shift in shifts if shift["id"] == 1)
+        self.assertEqual(default_shift["user_count"], 1)
+
     def test_unauthenticated_and_forged_client_headers_are_rejected(self):
         payload = self._payload()
         self.assertEqual(

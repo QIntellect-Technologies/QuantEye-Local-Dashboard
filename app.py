@@ -2480,7 +2480,10 @@ def get_users():
 def api_get_shifts():
     """Retrieve all shifts with employee count scoped to current tenant."""
     current_tenant = get_current_tenant_id()
-    shifts = db.get_all_shifts(organization_id=current_tenant)
+    shifts = db.get_all_shifts(
+        organization_id=current_tenant,
+        branch_id=get_current_branch_id(),
+    )
     return jsonify({'success': True, 'shifts': shifts}), 200
 
 
