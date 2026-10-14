@@ -328,12 +328,7 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             },
         ):
             payload = self._payload()
-            with patch.object(
-                app_module,
-                "process_user_attendance_event",
-                return_value=("CHECKIN", "Attendance recorded"),
-            ):
-                accepted = self._post("/api/attendance/edge-mark", payload)
+            accepted = self._post("/api/attendance/edge-mark", payload)
         self.assertEqual(accepted.status_code, 201)
         self.assertTrue(accepted.get_json()["success"])
 
@@ -369,11 +364,7 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
 
     def test_edge_mark_valid_event_is_processed_once_and_replay_conflicts_are_rejected(self):
         payload = self._payload()
-        with patch.object(
-            app_module,
-            "process_user_attendance_event",
-            return_value=("CHECKIN", "Attendance recorded"),
-        ) as attendance:
+        with patch.object(db, "log_attendance", return_value=(True, "Attendance recorded")) as attendance:
             accepted = self._post("/api/attendance/edge-mark", payload)
             self.assertEqual(accepted.status_code, 201)
             self.assertTrue(accepted.get_json()["success"])
@@ -386,6 +377,39 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             conflict = self._post("/api/attendance/edge-mark", changed)
             self.assertEqual(conflict.status_code, 409)
             self.assertEqual(attendance.call_count, 1)
+
+    def test_edge_mark_uses_edge_timestamp_and_skips_local_shift_clock(self):
+        payload = self._payload(timestamp="2026-10-14T23:26:07")
+        with patch.object(db, "check_user_shift_allowed", return_value=(False, "outside", None)):
+            with patch.object(db, "log_attendance", return_value=(True, "Attendance recorded")) as log:
+                accepted = self._post("/api/attendance/edge-mark", payload)
+        self.assertEqual(accepted.status_code, 201)
+        kwargs = log.call_args.kwargs
+        self.assertTrue(kwargs["bypass_shift_check"])
+        self.assertEqual(kwargs["attendance_time"].strftime("%Y-%m-%d %H:%M:%S"), "2026-10-14 23:26:07")
+
+    def test_edge_mark_failed_receipt_can_be_retried_after_local_accepts(self):
+        payload = self._payload()
+        with patch.object(db, "log_attendance", return_value=(False, "outside shift")):
+            rejected = self._post("/api/attendance/edge-mark", payload)
+        self.assertEqual(rejected.status_code, 400)
+        with patch.object(db, "log_attendance", return_value=(True, "Attendance recorded")):
+            retried = self._post("/api/attendance/edge-mark", payload)
+        self.assertEqual(retried.status_code, 201)
+        self.assertTrue(retried.get_json()["success"])
+
+    def test_failed_ingestion_receipt_is_reclaimed_for_the_same_event(self):
+        event_id = str(uuid.uuid4())
+        payload_hash = "same-payload-hash"
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.execute(
+                "INSERT INTO attendance_ingestion_receipts "
+                "(event_id, payload_hash, response_json, response_status) "
+                "VALUES (?, ?, ?, ?)",
+                (event_id, payload_hash, json.dumps({"success": False}), 400),
+            )
+        receipt = db.begin_attendance_ingestion(event_id, payload_hash)
+        self.assertEqual(receipt["state"], "new")
 
     def test_sync_valid_event_is_authenticated_and_idempotent(self):
         payload = self._payload(event_type="CHECKIN")

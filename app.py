@@ -3365,11 +3365,21 @@ def api_edge_mark_attendance():
     camera_name = data.get('camera_name') or 'Live AI Camera'
     source = data.get('source') or f"camera_{camera_id}"
     location = data.get('room_name') or camera_name
-    checkout_cam_id = data.get('checkout_camera_id')
-    checkout_loc = data.get('checkout_location')
+    from datetime import timedelta
+    timestamp_str = data.get('timestamp')
+    att_time = None
+    if timestamp_str:
+        try:
+            att_time = datetime.fromisoformat(str(timestamp_str).replace('Z', ''))
+        except Exception:
+            att_time = None
+    if att_time is None:
+        att_time = datetime.utcnow() + timedelta(hours=5)
+    event_type = str(data.get('event_type') or 'CHECKIN').upper()
+    checkout_cam_id = camera_id if event_type == 'CHECKOUT' else data.get('checkout_camera_id')
+    checkout_loc = camera_name if event_type == 'CHECKOUT' else data.get('checkout_location')
 
-    bypass_shift = False
-    if bypass_shift:
+    try:
         success, msg = db.log_attendance(
             user_id=int(user_id),
             detected_name=detected_name,
@@ -3377,59 +3387,57 @@ def api_edge_mark_attendance():
             source=source,
             location=location,
             device_id=camera_id,
-            bypass_shift_check=True
-        )
-        if success:
-            return jsonify({
-                'success': True,
-                'status': 'CHECKIN',
-                'message': msg,
-                'user_id': user_id,
-                'name': detected_name,
-                'timestamp': datetime.now().isoformat()
-            }), 201
-        return jsonify({'success': False, 'message': msg}), 400
-
-    try:
-        status, msg = process_user_attendance_event(
-            user_id=int(user_id),
-            name=detected_name,
-            confidence=confidence,
-            source=source,
-            location=location,
-            camera_id=camera_id
+            checkout_camera_id=checkout_cam_id if event_type == 'CHECKOUT' else None,
+            checkout_location=checkout_loc if event_type == 'CHECKOUT' else None,
+            bypass_shift_check=True,
+            attendance_time=att_time,
         )
     except Exception:
         db.abandon_attendance_ingestion(event_id)
         logger.exception('Error processing authenticated edge attendance event')
         return jsonify({'success': False, 'error': 'Attendance event processing failed'}), 500
 
-    if status in ("CHECKIN", "CHECKOUT", "PRESENT_ACTIVE"):
-        return _finish_attendance_ingestion(event_id, {
-            'success': True,
-            'status': status,
+    if not success:
+        db.abandon_attendance_ingestion(event_id)
+        return jsonify({
+            'success': False,
+            'status': 'REJECTED',
             'message': msg,
+            'event_id': event_id,
+        }), 400
+
+    status = 'CHECKOUT' if event_type == 'CHECKOUT' else 'CHECKIN'
+    with cache_lock:
+        LATEST_STREAM_DETECTIONS.insert(0, {
             'user_id': user_id,
             'name': detected_name,
-            'timestamp': datetime.now().isoformat(),
-            'event_id': event_id,
-        }, 201, event={
-            "organization_id": data.get("organization_id"),
-            "branch_id": data.get("branch_id"),
-            "user_id": user_id,
-            "name": detected_name,
-            "camera_id": camera_id,
-            "timestamp": datetime.now().isoformat(),
-            "event_type": status,
-            "confidence": confidence,
+            'confidence': int(confidence * 100),
+            'camera_name': camera_name,
+            'timestamp': att_time.strftime('%H:%M:%S'),
+            'time': att_time.strftime('%H:%M:%S'),
+            'source': camera_name,
         })
+        if len(LATEST_STREAM_DETECTIONS) > 50:
+            LATEST_STREAM_DETECTIONS.pop()
 
     return _finish_attendance_ingestion(event_id, {
-        'success': False,
+        'success': True,
         'status': status,
         'message': msg,
+        'user_id': user_id,
+        'name': detected_name,
+        'timestamp': att_time.isoformat(),
         'event_id': event_id,
-    }, 400)
+    }, 201, event={
+        "organization_id": data.get("organization_id"),
+        "branch_id": data.get("branch_id"),
+        "user_id": user_id,
+        "name": detected_name,
+        "camera_id": camera_id,
+        "timestamp": att_time.isoformat(),
+        "event_type": status,
+        "confidence": confidence,
+    })
 
 
 @app.route('/api/init', methods=['POST'])

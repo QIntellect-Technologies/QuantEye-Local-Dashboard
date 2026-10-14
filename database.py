@@ -1184,10 +1184,21 @@ def begin_attendance_ingestion(event_id: str, payload_hash: str) -> Dict[str, An
             return {"state": "conflict"}
         if row["response_json"] is None:
             return {"state": "processing"}
+        status = int(row["response_status"] or 200)
+        if status >= 400:
+            conn.execute(
+                "DELETE FROM attendance_ingestion_receipts WHERE event_id = ?",
+                (event_id,),
+            )
+            conn.execute(
+                "INSERT INTO attendance_ingestion_receipts (event_id, payload_hash) VALUES (?, ?)",
+                (event_id, payload_hash),
+            )
+            return {"state": "new"}
         return {
             "state": "duplicate",
             "response": json.loads(row["response_json"]),
-            "status": int(row["response_status"] or 200),
+            "status": status,
         }
 
 
