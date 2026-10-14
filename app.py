@@ -303,7 +303,7 @@ def require_admin_session_for_app_data():
         '/api/integration/sync',
         '/api/integration/edge-sync-state',
         '/api/integration/cameras',
-        '/api/integration/employees',
+        '/api/integration/employees', '/api/integration/employees/',
         '/api/attendance/edge-mark',
         '/api/sync/attendance-event',
     }
@@ -317,7 +317,7 @@ def require_admin_session_for_app_data():
         return entitlement_error
 
     protected_path = (
-        request.path not in public_paths
+        (request.path not in public_paths and not request.path.startswith('/api/integration/employees/'))
         or request.path.startswith('/profile_photos/')
         or request.path.startswith('/static/profile_photos/')
     )
@@ -3044,6 +3044,87 @@ def integration_get_employees():
         } for employee in employees],
         'count': len(employees),
     }), 200
+
+
+@app.route('/api/integration/employees/<int:user_id>/embeddings', methods=['POST'])
+def integration_sync_employee_embeddings(user_id):
+    """Store a branch employee's face vectors from an authenticated Main Dashboard relay."""
+    integration_key = os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()
+    if len(integration_key) < 32:
+        return jsonify({'success': False, 'message': 'Integration authentication is not securely configured.'}), 503
+    supplied_key = request.headers.get('X-Integration-Key', '')
+    if not secrets.compare_digest(supplied_key, integration_key):
+        return jsonify({'success': False, 'message': 'Integration authentication required.'}), 401
+
+    organization_id = request.args.get('organization_id', '').strip()
+    branch_id = request.args.get('branch_id', '').strip()
+    if not organization_id or not branch_id:
+        return jsonify({'success': False, 'message': 'Organization and branch are required.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    vectors = payload.get('embeddings')
+    if not isinstance(vectors, list) or not vectors or len(vectors) > 20:
+        return jsonify({'success': False, 'message': 'Between 1 and 20 face embeddings are required.'}), 400
+
+    validated_vectors = []
+    for vector in vectors:
+        try:
+            validated = np.asarray(vector, dtype=np.float32)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Face embeddings must be numeric vectors.'}), 400
+        if validated.shape != (512,) or not np.isfinite(validated).all():
+            return jsonify({'success': False, 'message': 'Each face embedding must contain 512 finite values.'}), 400
+        validated_vectors.append(validated.tolist())
+
+    try:
+        with sqlite3.connect(db.DB_PATH) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id FROM users WHERE id = ? AND organization_id = ? AND branch_id = ? AND active = 1",
+                (user_id, organization_id, branch_id),
+            )
+            if not cur.fetchone():
+                return jsonify({'success': False, 'message': 'Employee was not found in this active branch.'}), 404
+
+            for statement in (
+                "ALTER TABLE embeddings ADD COLUMN organization_id TEXT",
+                "ALTER TABLE embeddings ADD COLUMN branch_id TEXT",
+                "ALTER TABLE users ADD COLUMN face_trained INTEGER DEFAULT 0",
+            ):
+                try:
+                    cur.execute(statement)
+                except sqlite3.OperationalError as error:
+                    if "duplicate column name" not in str(error).lower():
+                        raise
+
+            cur.execute(
+                "DELETE FROM embeddings WHERE user_id = ? AND organization_id = ? AND branch_id = ?",
+                (user_id, organization_id, branch_id),
+            )
+            source = str(payload.get('source') or 'local_ai_edge_node')[:200]
+            cur.executemany(
+                "INSERT INTO embeddings (user_id, embedding, source_video, organization_id, branch_id) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    (user_id, json.dumps(vector).encode('utf-8'), source, organization_id, branch_id)
+                    for vector in validated_vectors
+                ],
+            )
+            cur.execute(
+                "UPDATE users SET face_trained = 1 WHERE id = ? AND organization_id = ? AND branch_id = ?",
+                (user_id, organization_id, branch_id),
+            )
+            conn.commit()
+
+        refresh_embedding_cache()
+        return jsonify({
+            'success': True,
+            'synced_count': len(validated_vectors),
+            'is_trained': True,
+        }), 200
+    except Exception:
+        logger.exception("Could not sync biometric embeddings for employee %s.", user_id)
+        return jsonify({'success': False, 'error': 'Could not save employee face embeddings.'}), 500
 
 
 @app.route('/api/integration/edge-sync-state', methods=['GET'])

@@ -180,6 +180,36 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             branch_id="BR-ALPHA-2",
         )
 
+    def test_integration_embedding_sync_requires_service_key_and_exact_branch(self):
+        endpoint = "/api/integration/employees/102/embeddings?organization_id=ORG-ALPHA&branch_id=BR-ALPHA-2"
+        payload = {"embeddings": [[0.25] * 512], "source": "node-test"}
+        with patch.dict(os.environ, {"LOCAL_DASHBOARD_API_KEY": "unit-test-integration-key-0123456789"}):
+            unauthorized = self.client.post(endpoint, json=payload)
+            wrong_branch = self.client.post(
+                endpoint.replace("BR-ALPHA-2", "BR-ALPHA-1"),
+                json=payload,
+                headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
+            )
+            with patch.object(app_module, "refresh_embedding_cache"):
+                response = self.client.post(
+                    endpoint,
+                    json=payload,
+                    headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
+                )
+
+        self.assertEqual(unauthorized.status_code, 401)
+        self.assertEqual(wrong_branch.status_code, 404)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["is_trained"])
+        with sqlite3.connect(db.DB_PATH) as conn:
+            count, trained = conn.execute(
+                "SELECT (SELECT COUNT(*) FROM embeddings WHERE user_id = 102 AND organization_id = ? AND branch_id = ?), "
+                "face_trained FROM users WHERE id = 102",
+                ("ORG-ALPHA", "BR-ALPHA-2"),
+            ).fetchone()
+        self.assertEqual(count, 1)
+        self.assertEqual(trained, 1)
+
     def test_unauthenticated_and_forged_client_headers_are_rejected(self):
         payload = self._payload()
         self.assertEqual(
