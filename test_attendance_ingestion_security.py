@@ -659,6 +659,23 @@ class Layer2ModuleFirstPaintTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/settings/payroll/overtime-rules").status_code, 403)
         self.assertEqual(self.client.get("/api/payroll-settings/scoped-rules/half-leave").status_code, 403)
 
+    def test_staff_enrollment_requires_handover_key_then_lock_hides_it(self):
+        self._login_session(["attendance", "shifts"])
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn("Staff Enrollment Lock", html)
+        self.assertIn('id="enrollmentKeyInput"', html)
+        denied = self.client.post("/api/users", json={"name": "New Hire"})
+        self.assertEqual(denied.status_code, 403)
+        with patch("urllib.request.urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value.read.return_value = json.dumps({"success": True}).encode("utf-8")
+            unlocked = self.client.post("/api/enrollment/unlock", json={"enrollment_key": "ENR-TESTKEY"})
+        self.assertEqual(unlocked.status_code, 200)
+        self.assertTrue(unlocked.get_json()["enrollment_enabled"])
+        locked = self.client.post("/api/enrollment/lock")
+        self.assertEqual(locked.status_code, 200)
+        denied_again = self.client.post("/api/users", json={"name": "New Hire"})
+        self.assertEqual(denied_again.status_code, 403)
+
     def test_unlinked_file_does_not_grant_all_modules_to_client_session(self):
         self._login_session(["attendance"])
         self.assertEqual(self.client.get("/api/payroll").status_code, 403)

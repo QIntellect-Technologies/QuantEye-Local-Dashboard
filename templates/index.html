@@ -5998,23 +5998,35 @@ async function fetchMultiLiveDetections() {
 
     {% endif %}
 
-    <!-- ======== ADMIN CONTROLS PANEL (visible only when unlocked) ======== -->
+    <!-- ======== STAFF ENROLLMENT LOCK (client uses handover key; platform admin uses toggle) ======== -->
     <div id="adminControlsPanel" style="display:none; margin-top: 32px;">
       <div class="card p-4 shadow-sm" style="background: #0f172a; border: 1px solid #1e3a5f; border-radius: 16px; max-width: 860px;">
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px;">
-          <i class="fa-solid fa-shield-halved" style="color:#3d9fd4; font-size:1.5em;"></i>
+          <i class="fa-solid fa-user-plus" style="color:#3d9fd4; font-size:1.5em;"></i>
           <div>
-            <h3 style="color:#e2e8f0; font-size:1.1em; font-weight:800; margin:0;">Admin Configuration Controls</h3>
-            <p style="color:#64748b; font-size:0.82em; margin:4px 0 0;">Manage protected system features. Only visible after authentication.</p>
+            <h3 style="color:#e2e8f0; font-size:1.1em; font-weight:800; margin:0;">Staff Enrollment Lock</h3>
+            <p style="color:#64748b; font-size:0.82em; margin:4px 0 0;">Enter the Staff Enrollment Key from the Main handover sheet to show Add Employee. Lock hides it again.</p>
           </div>
           <div style="margin-left:auto;">
-            <span id="adminUnlockedBadge" style="background:#064e3b; color:#34d399; border:1px solid #065f46; padding:4px 12px; border-radius:20px; font-size:0.8em; font-weight:700;">
-              <i class="fa-solid fa-lock-open"></i> Unlocked
+            <span id="adminUnlockedBadge" style="background:#1e3a5f; color:#93c5fd; border:1px solid #2d4a6a; padding:4px 12px; border-radius:20px; font-size:0.8em; font-weight:700;">
+              <i class="fa-solid fa-lock"></i> Locked
             </span>
           </div>
         </div>
 
+        <div id="enrollmentKeyUnlockBox" style="background:#1e293b; border:1px solid #2d4a6a; border-radius:12px; padding:20px; margin-bottom:16px;">
+          <label for="enrollmentKeyInput" style="display:block; color:#e2e8f0; font-weight:700; font-size:0.88em; margin-bottom:8px;">Staff Enrollment Key</label>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <input id="enrollmentKeyInput" type="password" autocomplete="off" placeholder="ENR-…" style="flex:1; min-width:220px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0; padding:10px 12px;">
+            <button type="button" id="enrollmentKeyUnlockBtn" onclick="unlockStaffEnrollmentWithKey()" style="background:linear-gradient(135deg,#3d9fd4,#2176ae); color:#fff; border:none; padding:10px 18px; border-radius:10px; font-weight:700; cursor:pointer;">
+              <i class="fa-solid fa-unlock-keyhole"></i> Enable Staff Enrollment
+            </button>
+          </div>
+          <div id="enrollmentKeyUnlockMsg" style="margin-top:12px; display:none;"></div>
+        </div>
+
         <!-- Staff Enrollment Toggle -->
+        <div id="enrollmentUnlockedControls" style="display:none;">
         <div style="background:#1e293b; border:1px solid #2d4a6a; border-radius:12px; padding:20px; margin-bottom:16px;">
           <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
             <div style="display:flex; align-items:center; gap:12px;">
@@ -6036,10 +6048,11 @@ async function fetchMultiLiveDetections() {
 
         <!-- Lock Configuration Button -->
         <div style="border-top:1px solid #1e3a5f; padding-top:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
-          <div style="color:#64748b; font-size:0.82em;"><i class="fa-solid fa-circle-info" style="margin-right:5px;"></i>Locking will also hide Staff Enrollment from the sidebar and require re-authentication.</div>
+          <div style="color:#64748b; font-size:0.82em;"><i class="fa-solid fa-circle-info" style="margin-right:5px;"></i>Locking hides Staff Enrollment and Add Employee. You stay logged in. Enter the enrollment key again to re-enable.</div>
           <button onclick="adminLockConfiguration()" style="background:linear-gradient(135deg,#7f1d1d,#991b1b); color:#fca5a5; border:1px solid #991b1b; padding:10px 22px; border-radius:10px; font-weight:700; font-size:0.88em; cursor:pointer; transition:all 0.2s ease; display:flex; align-items:center; gap:8px;">
-            <i class="fa-solid fa-lock"></i> Lock Configuration
+            <i class="fa-solid fa-lock"></i> Lock Staff Enrollment
           </button>
+        </div>
         </div>
       </div>
     </div>
@@ -14276,9 +14289,30 @@ async function fetchMultiLiveDetections() {
         enrollItem.style.display = (_enrollmentEnabled && (!window.entitledModules || window.entitledModules.attendance)) ? '' : 'none';
       }
 
-      // Admin controls panel (only shown when unlocked)
       if (adminPanel) {
-        adminPanel.style.display = _adminUnlocked ? 'block' : 'none';
+        adminPanel.style.display = (_adminUnlocked || _clientAuthenticated) ? 'block' : 'none';
+      }
+      const enrollmentKeyBox = document.getElementById('enrollmentKeyUnlockBox');
+      const enrollmentUnlockedControls = document.getElementById('enrollmentUnlockedControls');
+      const enrollmentBadge = document.getElementById('adminUnlockedBadge');
+      if (enrollmentKeyBox) {
+        enrollmentKeyBox.style.display = (_clientAuthenticated && !_enrollmentEnabled) ? 'block' : 'none';
+      }
+      if (enrollmentUnlockedControls) {
+        enrollmentUnlockedControls.style.display = (_adminUnlocked || _enrollmentEnabled) ? 'block' : 'none';
+      }
+      if (enrollmentBadge) {
+        if (_enrollmentEnabled) {
+          enrollmentBadge.style.background = '#064e3b';
+          enrollmentBadge.style.color = '#34d399';
+          enrollmentBadge.style.border = '1px solid #065f46';
+          enrollmentBadge.innerHTML = '<i class="fa-solid fa-lock-open"></i> Unlocked';
+        } else {
+          enrollmentBadge.style.background = '#1e3a5f';
+          enrollmentBadge.style.color = '#93c5fd';
+          enrollmentBadge.style.border = '1px solid #2d4a6a';
+          enrollmentBadge.innerHTML = '<i class="fa-solid fa-lock"></i> Locked';
+        }
       }
 
       // Enrollment badge + button
@@ -14511,16 +14545,76 @@ async function fetchMultiLiveDetections() {
     /**
      * Lock configuration — clears server session, hides enrollment, re-locks settings.
      */
+    async function unlockStaffEnrollmentWithKey() {
+      const input = document.getElementById('enrollmentKeyInput');
+      const btn = document.getElementById('enrollmentKeyUnlockBtn');
+      const msgDiv = document.getElementById('enrollmentKeyUnlockMsg');
+      const key = input ? input.value.trim() : '';
+      if (!key) {
+        if (msgDiv) {
+          msgDiv.style.display = 'block';
+          msgDiv.innerHTML = '<div style="padding:10px 14px; background:#450a0a; border:1px solid #7f1d1d; border-radius:8px; color:#fca5a5; font-size:0.85em;">Enter the Staff Enrollment Key from the handover sheet.</div>';
+        }
+        return;
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Checking...';
+      }
+      try {
+        const res = await fetch('/api/enrollment/unlock', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enrollment_key: key })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          _enrollmentEnabled = true;
+          if (input) input.value = '';
+          applyAdminStateToUI();
+          if (typeof updateModuleEntitlements === 'function') {
+            updateModuleEntitlements(window.clientSessionModules);
+          }
+          if (msgDiv) {
+            msgDiv.style.display = 'block';
+            msgDiv.innerHTML = `<div style="padding:10px 14px; background:#064e3b; border:1px solid #065f46; border-radius:8px; color:#34d399; font-size:0.85em;">${data.message || 'Staff Enrollment enabled.'}</div>`;
+          }
+        } else if (msgDiv) {
+          msgDiv.style.display = 'block';
+          msgDiv.innerHTML = `<div style="padding:10px 14px; background:#450a0a; border:1px solid #7f1d1d; border-radius:8px; color:#fca5a5; font-size:0.85em;">${data.message || 'Invalid staff enrollment key.'}</div>`;
+        }
+      } catch (e) {
+        if (msgDiv) {
+          msgDiv.style.display = 'block';
+          msgDiv.innerHTML = '<div style="padding:10px 14px; background:#450a0a; border:1px solid #7f1d1d; border-radius:8px; color:#fca5a5; font-size:0.85em;">Connection error. Please try again.</div>';
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Enable Staff Enrollment';
+        }
+      }
+    }
+
     async function adminLockConfiguration() {
       try {
-        const response = await fetch('/api/admin/lock', { method: 'POST', credentials: 'same-origin' });
+        const endpoint = _clientAuthenticated ? '/api/enrollment/lock' : '/api/admin/lock';
+        const response = await fetch(endpoint, { method: 'POST', credentials: 'same-origin' });
         if (!response.ok) {
-          alert('Could not lock the dashboard. Please try again.');
+          alert('Could not lock Staff Enrollment. Please try again.');
           return;
         }
-        window.location.reload();
+        _enrollmentEnabled = false;
+        applyAdminStateToUI();
+        if (typeof updateModuleEntitlements === 'function') {
+          updateModuleEntitlements(window.clientSessionModules);
+        }
+        if (document.getElementById('enroll-view')?.classList.contains('active')) {
+          switchTab('reports-view');
+        }
       } catch (e) {
-        alert('Could not lock the dashboard. Check your connection and try again.');
+        alert('Could not lock Staff Enrollment. Check your connection and try again.');
       }
     }
 

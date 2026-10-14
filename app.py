@@ -250,7 +250,8 @@ def check_module_entitlement_for_request():
                 '/api/integration/edge-sync-state', '/api/integration/cameras',
                 '/api/integration/employees',
                 '/api/admin/status', '/api/admin/verify-password', '/api/admin/lock',
-                '/api/login', '/api/client/login', '/api/logout', '/api/change-password'}:
+                '/api/login', '/api/client/login', '/api/logout', '/api/change-password',
+                '/api/enrollment/unlock', '/api/enrollment/lock'}:
         return None
     # Branch profile, departments, and designations stay available for licensed ops.
     # Payroll/overtime settings are gated below with the matching module.
@@ -3728,28 +3729,86 @@ def api_admin_verify_password():
     return jsonify({'success': False, 'message': 'Incorrect password'}), 401
 
 
+def _can_manage_enrollment() -> bool:
+    if session.get('admin_unlocked') and not is_client_browser_session():
+        return True
+    return bool(is_client_browser_session() and session.get('enrollment_unlocked'))
+
+
 @app.route('/api/admin/lock', methods=['POST'])
 def api_admin_lock():
-    """Lock admin configuration and revoke enrollment access."""
+    """Lock admin configuration and revoke enrollment access. Client login stays."""
+    if is_client_browser_session():
+        session.pop('enrollment_enabled', None)
+        session.pop('enrollment_unlocked', None)
+        return jsonify({'success': True, 'message': 'Staff Enrollment locked'})
     session.pop('admin_unlocked', None)
     session.pop('enrollment_enabled', None)
+    session.pop('enrollment_unlocked', None)
     return jsonify({'success': True, 'message': 'Configuration locked'})
+
+
+@app.route('/api/enrollment/unlock', methods=['POST'])
+def api_enrollment_unlock():
+    """Client Settings: enable Staff Enrollment with the handover enrollment key."""
+    if not is_client_browser_session():
+        return jsonify({'success': False, 'message': 'Client login required'}), 401
+    flags = licensed_module_flags(session_licensed_modules())
+    if not flags.get('attendance'):
+        return jsonify({'success': False, 'message': 'Attendance is not licensed for this organization.'}), 403
+    data = request.get_json(silent=True) or {}
+    enrollment_key = str(data.get('enrollment_key') or data.get('enrollmentKey') or '').strip()
+    if not enrollment_key:
+        return jsonify({'success': False, 'message': 'Staff enrollment key is required.'}), 400
+    org_id = str(session.get('organization_id') or '').strip()
+    main_url = os.environ.get("MAIN_DASHBOARD_URL", "https://quanteye-main-dashboard-production.up.railway.app").rstrip('/')
+    try:
+        import urllib.request
+        import urllib.error
+        req = urllib.request.Request(
+            f"{main_url}/api/client/verify-enrollment-key",
+            data=json.dumps({"organization_id": org_id, "enrollment_key": enrollment_key}).encode('utf-8'),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            payload = json.loads(resp.read().decode('utf-8'))
+        if not payload.get('success'):
+            return jsonify({'success': False, 'message': 'Invalid staff enrollment key.'}), 401
+    except urllib.error.HTTPError:
+        return jsonify({'success': False, 'message': 'Invalid staff enrollment key.'}), 401
+    except Exception:
+        logger.exception("Enrollment key verification failed")
+        return jsonify({'success': False, 'message': 'Could not verify the staff enrollment key.'}), 502
+    session['enrollment_unlocked'] = True
+    session['enrollment_enabled'] = True
+    return jsonify({'success': True, 'message': 'Staff Enrollment enabled. Add Employee is now available.', 'enrollment_enabled': True})
+
+
+@app.route('/api/enrollment/lock', methods=['POST'])
+def api_enrollment_lock():
+    """Hide Staff Enrollment again. Does not log the client out."""
+    if not is_client_browser_session() and not session.get('admin_unlocked'):
+        return jsonify({'success': False, 'message': 'Authentication required'}), 401
+    session.pop('enrollment_enabled', None)
+    session.pop('enrollment_unlocked', None)
+    return jsonify({'success': True, 'message': 'Staff Enrollment locked'})
 
 
 @app.route('/api/admin/enable-enrollment', methods=['POST'])
 def api_admin_enable_enrollment():
-    """Enable staff enrollment (requires admin session)."""
-    if not session.get('admin_unlocked'):
-        return jsonify({'success': False, 'message': 'Admin authentication required'}), 403
+    """Enable staff enrollment (platform admin or client after enrollment-key unlock)."""
+    if not _can_manage_enrollment():
+        return jsonify({'success': False, 'message': 'Enter the staff enrollment key in Settings first.'}), 403
     session['enrollment_enabled'] = True
     return jsonify({'success': True, 'message': 'Staff Enrollment enabled successfully'})
 
 
 @app.route('/api/admin/disable-enrollment', methods=['POST'])
 def api_admin_disable_enrollment():
-    """Disable staff enrollment (requires admin session)."""
-    if not session.get('admin_unlocked'):
-        return jsonify({'success': False, 'message': 'Admin authentication required'}), 403
+    """Disable staff enrollment (platform admin or client after enrollment-key unlock)."""
+    if not _can_manage_enrollment():
+        return jsonify({'success': False, 'message': 'Enter the staff enrollment key in Settings first.'}), 403
     session.pop('enrollment_enabled', None)
     return jsonify({'success': True, 'message': 'Staff Enrollment disabled'})
 
@@ -3765,6 +3824,7 @@ def api_admin_status():
         'client_authenticated': client_session,
         'is_client_session': client_session,
         'enrollment_enabled': bool(session.get('enrollment_enabled')),
+        'enrollment_unlocked': bool(session.get('enrollment_unlocked') or session.get('enrollment_enabled')),
         'organization_id': session.get('organization_id') if (platform_admin or client_session) else None,
         'branch_id': session.get('branch_id') if (platform_admin or client_session) else None,
         'licensed_modules': session_licensed_modules() if client_session else [],
@@ -3772,16 +3832,12 @@ def api_admin_status():
 
 
 def _require_enrollment_access():
-    """Returns None if access granted, otherwise a JSON error response."""
-    if (
-        session.get('client_user') or
-        session.get('admin_unlocked') or
-        session.get('enrollment_enabled') or
-        session.get('organization_id') or
-        session.get('username')
-    ):
+    """Staff create/train APIs require enrollment to be explicitly enabled."""
+    if session.get('enrollment_enabled'):
         return None
-    return jsonify({'success': False, 'message': 'Staff Enrollment is disabled. Enable it from Admin Configuration.'}), 403
+    if session.get('admin_unlocked') and not is_client_browser_session() and session.get('enrollment_enabled'):
+        return None
+    return jsonify({'success': False, 'message': 'Staff Enrollment is disabled. Enable it from Settings with the staff enrollment key.'}), 403
 
 
 def _require_admin_configuration():
