@@ -28,6 +28,16 @@ class PostgresMirrorConfigTests(unittest.TestCase):
         self.assertEqual(postgres_mirror._map_event_type("CHECKIN"), "CHECK_IN")
         self.assertEqual(postgres_mirror._map_event_type("CHECKOUT"), "CHECK_OUT")
 
+    def test_hydrate_branch_employees_noops_without_postgres(self):
+        with patch.dict(os.environ, {"DATABASE_URL": "", "POSTGRES_URL": "", "PGHOST": ""}, clear=False):
+            os.environ.pop("DATABASE_URL", None)
+            os.environ.pop("POSTGRES_URL", None)
+            os.environ.pop("PGHOST", None)
+            self.assertEqual(
+                postgres_mirror.hydrate_branch_employees("ORG-A", "BR-A"),
+                0,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

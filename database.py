@@ -1367,6 +1367,17 @@ def get_user_by_name(name: str) -> Optional[Dict]:
 
 def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict]:
     """Get all active users with today's attendance status, shift details, and camera assignments via optimized join, strictly scoped by organization and branch."""
+    if organization_id and organization_id not in ('all', 'DEFAULT_ORG') and branch_id and branch_id not in ('all', 'DEFAULT_BRANCH'):
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                cached = conn.execute(
+                    "SELECT COUNT(*) FROM users WHERE organization_id = ? AND branch_id = ?",
+                    (organization_id, branch_id),
+                ).fetchone()[0]
+            if cached == 0:
+                _cloud_mirror("hydrate_branch_employees", organization_id, branch_id)
+        except Exception as error:
+            logger.warning("Could not hydrate staff cache from Postgres: %s", error)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -6517,7 +6528,10 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         if len(matching_rules) > 1:
             raise RuntimeError(f"Multiple active payroll rules match {unexcused_absent_days} absences for employee #{employee_id}")
         matched_rule = matching_rules[0] if matching_rules else None
-        rule_missing = unexcused_absent_days > 0 and matched_rule is None
+        absence_rules_configured = any(
+            (rule.get('rule_basis') or 'absence') == 'absence' for rule in active_rules
+        )
+        rule_missing = unexcused_absent_days > 0 and matched_rule is None and absence_rules_configured
         deduction_type = matched_rule['deduction_type'] if matched_rule else 'percentage'
         deduction_percent = float(matched_rule['deduction_percent']) if matched_rule and deduction_type == 'percentage' else None
         fixed_amount = float(matched_rule['fixed_amount']) if matched_rule and deduction_type == 'fixed' else 0.0

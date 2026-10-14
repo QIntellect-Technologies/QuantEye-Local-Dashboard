@@ -423,6 +423,79 @@ def mirror_shift(row: Dict[str, Any]) -> None:
     _with_cursor(_write)
 
 
+def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
+    """Copy Postgres employee rows into SQLite when the local cache is missing them.
+
+    Face embeddings are never stored in Postgres and are not created here.
+    """
+    org_id = str(organization_id or "").strip()
+    br_id = str(branch_id or "").strip()
+    if not postgres_is_configured() or not _real_tenant(org_id, br_id):
+        return 0
+    conn = _connect()
+    if conn is None:
+        return 0
+    inserted = 0
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, employee_code, name, email, phone, is_active
+                FROM employees
+                WHERE organization_id = %s AND branch_id = %s
+                """,
+                (org_id, br_id),
+            )
+            rows = list(cur.fetchall() or [])
+        if not rows:
+            return 0
+        with sqlite3.connect(_sqlite_path()) as sqlite_conn:
+            sqlite_cur = sqlite_conn.cursor()
+            for row in rows:
+                try:
+                    user_id = int(str(row.get("id") or "").strip())
+                except (TypeError, ValueError):
+                    continue
+                exists = sqlite_cur.execute(
+                    "SELECT 1 FROM users WHERE id = ? AND organization_id = ? AND branch_id = ?",
+                    (user_id, org_id, br_id),
+                ).fetchone()
+                if exists:
+                    continue
+                sqlite_cur.execute(
+                    """
+                    INSERT INTO users (
+                        id, name, email, phone, notes, active, organization_id, branch_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        row.get("name") or f"User-{user_id}",
+                        row.get("email") or "",
+                        row.get("phone") or "",
+                        row.get("employee_code") or f"EMP-{user_id}",
+                        1 if row.get("is_active", True) else 0,
+                        org_id,
+                        br_id,
+                    ),
+                )
+                inserted += 1
+            sqlite_conn.commit()
+        if inserted:
+            logger.info(
+                "Hydrated %s employees from Postgres into SQLite for %s/%s.",
+                inserted,
+                org_id,
+                br_id,
+            )
+        return inserted
+    except Exception as error:
+        logger.warning("Could not hydrate employees from Postgres: %s", error)
+        return 0
+    finally:
+        conn.close()
+
+
 def _sqlite_path() -> str:
     from config import DB_PATH
     return DB_PATH
