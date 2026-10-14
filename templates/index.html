@@ -40,6 +40,20 @@
         } catch(e) {}
       })();
     </script>
+    {% if is_client_session %}
+    <style id="server-rendered-client-entitlements">
+      {% if not client_module_entitlements.attendance %}.sidebar-menu .menu-item[data-module="attendance"] { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.payroll %}.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.leave %}.sidebar-menu .menu-item[data-module="leave"] { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.shifts %}.sidebar-menu .menu-item[data-module="shifts"] { display: none !important; }{% endif %}
+    </style>
+    <script>
+      window.clientSessionModules = {{ client_licensed_modules|tojson }};
+    </script>
+    {% else %}
+    <script>window.clientSessionModules = null;</script>
+    {% endif %}
 
     <style>
       :root {
@@ -6709,7 +6723,11 @@ async function fetchMultiLiveDetections() {
       // Initialize system on load
       window.onload = async () => {
         console.log("[*] Initializing system...");
-        try { await updateModuleEntitlements(); setInterval(updateModuleEntitlements, 5000); } catch(e) { console.error("updateModuleEntitlements error:", e); }
+        try {
+          const sessionModules = window.clientSessionModules;
+          await updateModuleEntitlements(sessionModules);
+          setInterval(() => updateModuleEntitlements(sessionModules), 5000);
+        } catch(e) { console.error("updateModuleEntitlements error:", e); }
         addTerminalLine(
           "Dashboard interface loaded. Initializing backend APIs...",
           "system",

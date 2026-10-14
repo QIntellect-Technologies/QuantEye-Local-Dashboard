@@ -85,9 +85,22 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             session['client_user'] = 'first-org@example.test'
             session['client_org'] = 'First Organization'
             session['client_branch'] = 'First Branch'
+            session['licensed_modules'] = ['attendance', 'payroll']
         authenticated_page = self.client.get('/')
         self.assertIn(b'First Organization', authenticated_page.data)
         self.assertNotIn(b'<body class="auth-required">', authenticated_page.data)
+        self.assertIn(
+            b'.sidebar-menu .menu-item[data-module="leave"] { display: none !important; }',
+            authenticated_page.data,
+        )
+        self.assertNotIn(
+            b'.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; }',
+            authenticated_page.data,
+        )
+        self.assertIn(
+            b'window.clientSessionModules = ["attendance", "payroll"]',
+            authenticated_page.data,
+        )
 
         logout = self.client.post('/api/logout')
         self.assertEqual(logout.status_code, 200)

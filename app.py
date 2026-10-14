@@ -805,9 +805,28 @@ def index():
     """Serve the dashboard UI."""
     client_user = session.get('client_user')
     is_authenticated = bool(session.get('admin_unlocked') or client_user)
+    client_licensed_modules = session.get('licensed_modules')
+    if client_user and not isinstance(client_licensed_modules, list):
+        config = load_integration_config()
+        client_licensed_modules = config.get('licensed_modules') or []
+    licensed_modules = {
+        str(module).strip().lower()
+        for module in (client_licensed_modules or [])
+        if isinstance(module, str)
+    }
+    client_module_entitlements = {
+        'attendance': bool({'attendance', 'employees', 'face-recognition', 'reports'} & licensed_modules),
+        'payroll': 'payroll' in licensed_modules,
+        'leave': bool({'leave', 'leaves', 'leave-management', 'leave_management'} & licensed_modules),
+        'overtime': bool({'overtime', 'overtime-management', 'overtime_management'} & licensed_modules),
+        'shifts': bool({'shifts', 'shift', 'shift-management', 'shift_management'} & licensed_modules),
+    }
     return render_template(
         'index.html',
         is_authenticated=is_authenticated,
+        is_client_session=bool(client_user),
+        client_licensed_modules=client_licensed_modules or [],
+        client_module_entitlements=client_module_entitlements,
         active_organization_name=session.get('client_org') if client_user else '',
         active_branch_name=session.get('client_branch') if client_user else '',
         active_user_name=client_user or ('Administrator' if is_authenticated else ''),
@@ -3294,7 +3313,8 @@ def api_client_login():
         session['client_branch'] = branch_name
         session['client_branch_id'] = branch_id
         session['branch_id'] = branch_id
-        
+        session['licensed_modules'] = modules
+
         return jsonify({
             'success': True,
             'organization_id': organization_id,
