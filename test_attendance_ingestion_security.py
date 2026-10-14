@@ -182,6 +182,35 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             branch_id="BR-ALPHA-2",
         )
 
+    def test_integration_shift_endpoint_uses_api_key_without_browser_session(self):
+        endpoint = "/api/integration/shifts?organization_id=ORG-ALPHA&branch_id=BR-ALPHA-2"
+        with self.client.session_transaction() as session:
+            session.clear()
+        missing_key = self.client.get(endpoint)
+        with patch.object(db, "get_all_shifts", return_value=[{
+            "id": 1,
+            "name": "Morning Shift",
+            "start_time": "23:04",
+            "end_time": "23:07",
+            "grace_period_minutes": 2,
+        }]) as get_all_shifts:
+            response = self.client.get(
+                endpoint,
+                headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
+            )
+        self.assertEqual(missing_key.status_code, 401)
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["organization_id"], "ORG-ALPHA")
+        self.assertEqual(payload["branch_id"], "BR-ALPHA-2")
+        self.assertEqual(payload["shifts"][0]["start_time"], "23:04")
+        get_all_shifts.assert_called_once_with(
+            active_only=True,
+            organization_id="ORG-ALPHA",
+            branch_id="BR-ALPHA-2",
+        )
+
     def test_integration_embedding_sync_requires_service_key_and_exact_branch(self):
         endpoint = "/api/integration/employees/102/embeddings?organization_id=ORG-ALPHA&branch_id=BR-ALPHA-2"
         payload = {"embeddings": [[0.25] * 512], "source": "node-test"}

@@ -354,6 +354,7 @@ def require_admin_session_for_app_data():
         '/api/integration/edge-sync-state',
         '/api/integration/cameras',
         '/api/integration/employees', '/api/integration/employees/',
+        '/api/integration/shifts',
         '/api/attendance/edge-mark',
         '/api/sync/attendance-event',
     }
