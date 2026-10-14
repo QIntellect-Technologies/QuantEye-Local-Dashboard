@@ -29,18 +29,9 @@
                            window.location.hostname.includes('railway.app') || 
                            window.location.hostname.includes('up.railway.app') || 
                            window.location.port === '5100';
-          var auth = JSON.parse(localStorage.getItem('quanteye_client_auth') || 'null');
           var css = '.menu-item[onclick*="dashboard-view"], .menu-item[onclick*="multi-view"], .menu-item[onclick*="locator-view"] { display: none !important; } ';
           if (isCloudEnv) {
             css += '#menuItemLive, #live-view, .menu-item[onclick*="live-view"] { display: none !important; } ';
-          }
-          if (auth && Array.isArray(auth.modules)) {
-            var lic = new Set(auth.modules);
-            if (!lic.has('payroll')) css += '#menuItemPayroll { display: none !important; } ';
-            if (!lic.has('shifts') && !lic.has('shift') && !lic.has('shift-management')) css += '#menuItemShifts { display: none !important; } ';
-            if (!lic.has('leave') && !lic.has('leaves') && !lic.has('leave-management')) css += '#menuItemLeaves { display: none !important; } ';
-            if (!lic.has('overtime') && !lic.has('overtime-management')) css += '#menuItemOvertime { display: none !important; } ';
-            if (!lic.has('attendance')) css += '#menuItemReports, #menuItemStaff, #menuItemLive { display: none !important; } ';
           }
           var s = document.createElement('style');
           s.id = 'zero-flicker-entitlements-css';
@@ -2685,8 +2676,17 @@
         }
       }
     </style>
+    <style>
+      body.auth-required { min-height:100vh; overflow:hidden; background:#0b1220; }
+      body.auth-required > :not(#adminPasswordModal) { display:none !important; }
+      body.auth-required #adminPasswordModal {
+        display:flex !important; position:fixed; inset:0; z-index:99999;
+        justify-content:center; align-items:center; padding:24px;
+        background:#0b1220 !important; backdrop-filter:none !important;
+      }
+    </style>
   </head>
-  <body>
+  <body class="{% if not is_authenticated %}auth-required{% endif %}">
     <!-- Global Floating Toast Container -->
     <div id="toastContainer" class="app-toast-container" aria-live="polite"></div>
 
@@ -2836,7 +2836,7 @@
         </div>
         <div id="sidebarBranchNameBox" style="font-size:0.78em; color:#0284c7; margin-top:6px; font-weight:700; display:flex; align-items:center; gap:6px; background:rgba(2,132,199,0.08); padding:4px 8px; border-radius:6px; border:1px solid rgba(2,132,199,0.15);">
           <i class="fa-solid fa-building" style="color:#3d9fd4; font-size:0.95em;"></i>
-          <span id="sidebarBranchNameText" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Main Branch</span>
+          <span id="sidebarBranchNameText" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ active_organization_name }}{% if active_organization_name and active_branch_name %} &bull; {% endif %}{{ active_branch_name }}</span>
         </div>
         <div
           style="
@@ -2850,7 +2850,7 @@
           "
         >
           <i class="fa-solid fa-user-tie" style="color: #3d9fd4; font-size: 1.05em;"></i>
-          <span id="sidebarUserName">Mr. Junaid</span>
+          <span id="sidebarUserName">{{ active_user_name }}</span>
         </div>
         <button id="sidebarLogoutBtn" onclick="handleClientLogout()" title="Logout" style="width:100%; margin-top:8px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#dc2626; border-radius:6px; padding:6px 10px; font-size:0.8rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; transition:all 0.2s;">
           <i class="fa-solid fa-right-from-bracket"></i>
@@ -2868,7 +2868,7 @@
           <span class="header-separator">|</span>
           <span id="headerBranchBadge" style="display:inline-flex; align-items:center; gap:5px; background:#e0f2fe; color:#0369a1; padding:3px 10px; border-radius:6px; font-weight:700; font-size:0.82rem; border:1px solid #bae6fd;" title="Current Branch">
             <i class="fa-solid fa-building" style="color:#0284c7; font-size:0.8em;"></i>
-            <span id="headerBranchNameText">Main Branch</span>
+            <span id="headerBranchNameText">{{ active_organization_name }}{% if active_organization_name and active_branch_name %} &bull; {% endif %}{{ active_branch_name }}</span>
           </span>
           <span class="header-separator">|</span>
           <span class="header-current-page" id="headerCurrentPageTitle">Attendance Reports</span>
@@ -2881,7 +2881,7 @@
           <span class="header-separator">|</span>
           <div class="header-user-badge">
             <i class="fa-solid fa-user-tie"></i>
-            <span class="header-user-name" id="headerUserName">Mr. Junaid</span>
+            <span class="header-user-name" id="headerUserName">{{ active_user_name }}</span>
           </div>
           <span class="header-separator">|</span>
           <button id="headerLogoutBtn" onclick="handleClientLogout()" title="Logout / Switch Client Organization" style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#dc2626; border-radius:6px; padding:4px 10px; font-size:0.8rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:all 0.2s;">
@@ -7471,14 +7471,6 @@ async function fetchMultiLiveDetections() {
       async function updateModuleEntitlements(overrideModules = null) {
         try {
           let modulesList = overrideModules;
-          if (!modulesList) {
-            try {
-              const cached = JSON.parse(localStorage.getItem('quanteye_client_auth') || 'null');
-              if (cached && Array.isArray(cached.modules)) {
-                modulesList = cached.modules;
-              }
-            } catch(e) {}
-          }
           if (!modulesList) {
             const res = await fetch('/api/integration/status');
             if (res.ok) {
@@ -13280,17 +13272,16 @@ async function fetchMultiLiveDetections() {
       }
 
       function updateDynamicBranchHeaders(branchName, city, adminName) {
-        try {
-          const cached = JSON.parse(localStorage.getItem('quanteye_client_auth') || 'null');
-          if (cached && cached.organization_name) {
-            const orgTitle = `${cached.organization_name} (${cached.branch_name || 'Main Branch'})`;
-            document.querySelectorAll('#headerBranchNameText, #sidebarBranchNameText').forEach(el => el.textContent = orgTitle);
-            const userTitle = cached.user || cached.organization_name;
-            document.querySelectorAll('#headerUserName, #sidebarUserName').forEach(el => el.textContent = userTitle);
-            document.title = `${orgTitle} - QIntellect Technologies`;
-            return;
-          }
-        } catch(e) {}
+        const organizationName = {{ active_organization_name|tojson }};
+        const sessionBranchName = {{ active_branch_name|tojson }};
+        const sessionUserName = {{ active_user_name|tojson }};
+        if (organizationName) {
+          const orgTitle = `${organizationName} (${sessionBranchName || 'Main Branch'})`;
+          document.querySelectorAll('#headerBranchNameText, #sidebarBranchNameText').forEach(el => el.textContent = orgTitle);
+          document.querySelectorAll('#headerUserName, #sidebarUserName').forEach(el => el.textContent = sessionUserName || organizationName);
+          document.title = `${orgTitle} - QIntellect Technologies`;
+          return;
+        }
 
         const branchDisplay = (branchName || '').trim();
         const cityDisplay = (city || '').trim();
@@ -14132,18 +14123,6 @@ async function fetchMultiLiveDetections() {
       window.fetch = function(url, options = {}) {
         options = options || {};
         options.credentials = options.credentials || 'same-origin';
-        try {
-          if (localStorage.getItem('quanteye_client_auth')) {
-            options.headers = options.headers || {};
-            if (options.headers instanceof Headers) {
-              if (!options.headers.has('X-Client-Auth')) options.headers.set('X-Client-Auth', 'true');
-            } else if (Array.isArray(options.headers)) {
-              options.headers.push(['X-Client-Auth', 'true']);
-            } else {
-              options.headers['X-Client-Auth'] = 'true';
-            }
-          }
-        } catch(e) {}
         return originalFetch.call(this, url, options);
       };
     })();
@@ -14151,65 +14130,33 @@ async function fetchMultiLiveDetections() {
     // In-memory state (synced with server session on every relevant action)
     let _adminUnlocked = false;
     let _enrollmentEnabled = false;
-    let _applicationAuthPending = false;
-
-    // Immediately apply cached client credentials on load to prevent any UI flashing
-    try {
-      const _cached = JSON.parse(localStorage.getItem('quanteye_client_auth') || 'null');
-      if (_cached && _cached.organization_name) {
-        _adminUnlocked = true;
-        const orgTitle = `${_cached.organization_name} (${_cached.branch_name || 'Main Branch'})`;
-        document.addEventListener('DOMContentLoaded', () => {
-          document.querySelectorAll('#headerBranchNameText, #sidebarBranchNameText').forEach(el => el.textContent = orgTitle);
-          document.querySelectorAll('#headerUserName, #sidebarUserName').forEach(el => el.textContent = _cached.user || _cached.organization_name);
-          document.title = `${orgTitle} - QIntellect Technologies`;
-          if (typeof updateModuleEntitlements === 'function') {
-            updateModuleEntitlements(_cached.modules);
-          }
-        });
-      }
-    } catch(e) {}
+    let _applicationAuthPending = document.body.classList.contains('auth-required');
 
     /**
      * Fetch current admin session state from server and update UI accordingly.
      * Called on page load and after any state change.
      */
     async function syncAdminState() {
-      const cached = JSON.parse(localStorage.getItem('quanteye_client_auth') || 'null');
       try {
         const res = await fetch('/api/admin/status', { credentials: 'same-origin' });
-        const data = res.ok ? await res.json() : {};
-        if (data.admin_unlocked === true || (cached && cached.organization_name)) {
-          _adminUnlocked = true;
-          _applicationAuthPending = false;
-        } else {
-          _adminUnlocked = false;
-          _applicationAuthPending = true;
-        }
+        if (!res.ok) throw new Error(`Authentication status check failed (HTTP ${res.status}).`);
+        const data = await res.json();
+        _adminUnlocked = data.admin_unlocked === true;
+        _applicationAuthPending = !_adminUnlocked;
         _enrollmentEnabled = data.enrollment_enabled === true;
+        document.body.classList.toggle('auth-required', _applicationAuthPending);
         applyAdminStateToUI();
 
         if (_adminUnlocked) {
           closeAdminPasswordModal();
-          if (cached && cached.modules && typeof updateModuleEntitlements === 'function') {
-            updateModuleEntitlements(cached.modules);
-          }
         } else {
           showAdminPasswordModal();
         }
       } catch (e) {
-        if (cached && cached.organization_name) {
-          _adminUnlocked = true;
-          _applicationAuthPending = false;
-          closeAdminPasswordModal();
-          applyAdminStateToUI();
-          if (cached.modules && typeof updateModuleEntitlements === 'function') {
-            updateModuleEntitlements(cached.modules);
-          }
-        } else {
-          _applicationAuthPending = true;
-          showAdminPasswordModal();
-        }
+        _adminUnlocked = false;
+        _applicationAuthPending = true;
+        document.body.classList.add('auth-required');
+        showAdminPasswordModal();
       }
     }
 
@@ -14368,39 +14315,8 @@ async function fetchMultiLiveDetections() {
           _adminUnlocked = true;
           _applicationAuthPending = false;
 
-          // Save active client auth locally
-          try {
-            localStorage.setItem('quanteye_client_auth', JSON.stringify({
-              organization_name: data.organization_name || 'Client Organization',
-              branch_name: data.branch_name || 'Main Branch',
-              modules: data.modules || ['attendance', 'shifts', 'payroll'],
-              user: data.user || username || data.organization_name
-            }));
-          } catch(e) {}
-
-          // Apply client branding if returned
-          const orgTitle = `${data.organization_name || 'Client Organization'} (${data.branch_name || 'Main Branch'})`;
-          document.querySelectorAll('#headerBranchNameText, #sidebarBranchNameText').forEach(el => {
-            el.textContent = orgTitle;
-          });
-          const userTitle = data.user || data.organization_name || 'Client Admin';
-          document.querySelectorAll('#headerUserName, #sidebarUserName').forEach(el => {
-            el.textContent = userTitle;
-          });
-          document.title = `${orgTitle} - QIntellect Technologies`;
-
-          applyAdminStateToUI();
-          if (typeof updateModuleEntitlements === 'function') {
-            await updateModuleEntitlements(data.modules);
-          }
-
-          closeAdminPasswordModal();
-
-          // Refresh dashboard data seamlessly without flash
-          try {
-            if (typeof fetchMainReportData === 'function') fetchMainReportData();
-            if (typeof fetchStaffList === 'function') fetchStaffList();
-          } catch(e) {}
+          document.body.classList.remove('auth-required');
+          window.location.reload();
         } else {
           showAdminPwdError(data?.message || 'Incorrect credentials. Please verify your email and password.');
           btn.disabled = false;
@@ -14415,19 +14331,18 @@ async function fetchMultiLiveDetections() {
 
     async function handleClientLogout() {
       if (!confirm('Are you sure you want to log out of the client dashboard?')) return;
+      document.body.classList.add('auth-required');
       try {
+        const response = await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`Logout failed (HTTP ${response.status}).`);
         localStorage.removeItem('quanteye_client_auth');
-      } catch(e) {}
-      try {
-        await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
-        await fetch('/api/admin/lock', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
-      } catch (e) {}
-      _adminUnlocked = false;
-      _applicationAuthPending = true;
-      if (typeof updateModuleEntitlements === 'function') {
-        updateModuleEntitlements();
+        window.location.replace('/');
+      } catch (error) {
+        alert(error.message || 'Logout failed. Please try again.');
+        _adminUnlocked = false;
+        _applicationAuthPending = true;
+        showAdminPasswordModal();
       }
-      showAdminPasswordModal();
     }
     window.handleClientLogout = handleClientLogout;
 

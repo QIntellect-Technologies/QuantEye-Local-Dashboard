@@ -72,6 +72,29 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
         self.env_patch.stop()
         self.config_patch.stop()
 
+    def test_dashboard_requires_a_server_session_and_logout_removes_it(self):
+        with self.client.session_transaction() as session:
+            session.clear()
+        page = self.client.get('/')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'<body class="auth-required">', page.data)
+        self.assertIn(b'background:#0b1220 !important', page.data)
+
+        with self.client.session_transaction() as session:
+            session['admin_unlocked'] = True
+            session['client_user'] = 'first-org@example.test'
+            session['client_org'] = 'First Organization'
+            session['client_branch'] = 'First Branch'
+        authenticated_page = self.client.get('/')
+        self.assertIn(b'First Organization', authenticated_page.data)
+        self.assertNotIn(b'<body class="auth-required">', authenticated_page.data)
+
+        logout = self.client.post('/api/logout')
+        self.assertEqual(logout.status_code, 200)
+        logged_out_page = self.client.get('/')
+        self.assertIn(b'<body class="auth-required">', logged_out_page.data)
+        self.assertNotIn(b'First Organization', logged_out_page.data)
+
     @staticmethod
     def _payload(**overrides):
         payload = {

@@ -803,7 +803,15 @@ def allowed_file(filename):
 @app.route('/')
 def index():
     """Serve the dashboard UI."""
-    return render_template('index.html')
+    client_user = session.get('client_user')
+    is_authenticated = bool(session.get('admin_unlocked') or client_user)
+    return render_template(
+        'index.html',
+        is_authenticated=is_authenticated,
+        active_organization_name=session.get('client_org') if client_user else '',
+        active_branch_name=session.get('client_branch') if client_user else '',
+        active_user_name=client_user or ('Administrator' if is_authenticated else ''),
+    )
 
 
 @app.route('/camera')
