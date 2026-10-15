@@ -1,0 +1,20 @@
+{
+  "id": "S15",
+  "title": "Rest-day extra including join-month",
+  "assumptions": {
+    "method": "fixed_day 1500",
+    "sundays_in_sep_2026": 4,
+    "e1_expected_extra": 6000,
+    "e6_join": "2026-09-11",
+    "e6_sundays_after_join": [
+      "2026-09-13",
+      "2026-09-20",
+      "2026-09-27"
+    ],
+    "e6_sunday_before_join_must_not_count": "2026-09-06"
+  },
+  "expected": {
+    "e1_off_day_extra_pay": 6000.0,
+    "e6_off_day_extra_pay": 4500.0
+  }
+}

@@ -1,0 +1,15 @@
+code,employee_name,formula_present,formula_payable,formula_unpaid_deduction,formula_ot,formula_bonus,formula_net,notes
+E1,E1 Full Attend,26 (all Mon-Sat Sep 2026),=26,0,0,0,=ROUND(60000*26/26,2),WD=26 divisor always whole month
+E2,E2 Two Absent,=26-2,=24,0,0,0,=ROUND(60000*24/26,2),2 unexcused; brackets 0 in payable_days
+E3,E3 Six Absent,=26-6,=20,0,0,0,=ROUND(60000*20/26,2),6 unexcused
+E4,E4 Late Half,23 on-time + 3 late,=23+3,0,0,0,=ROUND(60000*26/26,2),lates count as payable; no late $ until C1
+E5,E5 Leave Mix,23 present + 2 paid,=23+2,=ROUND(60000*1/26,2),0,0,=ROUND(60000*25/26,2)-ROUND(60000*1/26,2),1 unpaid extra deduction
+E6,E6 Join Mid,17 days from 2026-09-11,=17,0,0,0,=ROUND(60000*17/26,2),join mid; divisor 26 not 17
+E7,E7 Exit Mid,16 days through 2026-09-18,=16,0,0,0,=ROUND(60000*16/26,2),exit_date via API (A8)
+E8,E8 Overtime,26,=26,0,=ROUND(4*(60000/208),2),0,=ROUND(60000+4*(60000/208),2),approved 4h only; pending/rejected 0
+E9,E9 Flex Pay,26,=26,0,0,1000,=ROUND(60000+1000,2),one-person exception
+E10,E10 Salary Change,26,=26,0,0,0,=ROUND(40000*15/30+50000*15/30,2) if revisions else last-write,hand sheet 45000 IF flag+effective_from work
+E11,E11 No Salary,26,=26,0,0,0,0,blocks finalize
+E12,E12 Deactivate,26,=26,0,0,0,=ROUND(60000*26/26,2),active in September
+E13,E13 Extra,26,=26,0,0,0,=ROUND(42000*26/26,2),
+E14,E14 Absurd QA,26,=26,0,0,0,=ROUND(10000000*26/26,2),

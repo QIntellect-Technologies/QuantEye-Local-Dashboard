@@ -486,7 +486,76 @@ def scenario_s14() -> Dict[str, Any]:
     }
 
 
+def scenario_a0() -> Dict[str, Any]:
+    return {
+        "id": "A0",
+        "title": "full_salary PUT vs engine mode",
+        "expected": {
+            "put_response_mode": "full_salary",
+            "engine_preview_mode": "full_salary",
+            "sql_attendance_pay_mode": "full_salary",
+        },
+    }
+
+
+def scenario_s15() -> Dict[str, Any]:
+    sundays = 4
+    return {
+        "id": "S15",
+        "title": "Rest-day extra including join-month",
+        "assumptions": {
+            "method": "fixed_day 1500",
+            "sundays_in_sep_2026": sundays,
+            "e1_expected_extra": 1500 * sundays,
+            "e6_join": "2026-09-11",
+            "e6_sundays_after_join": ["2026-09-13", "2026-09-20", "2026-09-27"],
+            "e6_sunday_before_join_must_not_count": "2026-09-06",
+        },
+        "expected": {
+            "e1_off_day_extra_pay": 6000.0,
+            "e6_off_day_extra_pay": 4500.0,
+        },
+    }
+
+
+def scenario_s16() -> Dict[str, Any]:
+    return {
+        "id": "S16",
+        "title": "Finalize, lock, reopen",
+        "expected": {
+            "finalize_with_salary_0": 400,
+            "finalize_after_fix": 201,
+            "attendance_edit_while_finalized": "blocked with reopen message",
+            "reopen_endpoint": "POST /api/payroll/reopen",
+        },
+    }
+
+
+def scenario_s17() -> Dict[str, Any]:
+    return {
+        "id": "S17",
+        "title": "Pay-line scopes",
+        "expected": {
+            "department_Finance_gets_HRA": True,
+            "ops_does_not": True,
+            "employee_override_supported": True,
+        },
+    }
+
+
+def scenario_s18() -> Dict[str, Any]:
+    return {
+        "id": "S18",
+        "title": "Legacy-schema payroll settings save",
+        "expected": {
+            "put_must_not_500": True,
+            "ui_must_show_server_field_error": True,
+        },
+    }
+
+
 SCENARIOS = {
+    "A0": scenario_a0,
     "S1": scenario_s1,
     "S2": scenario_s2,
     "S3": scenario_s3,
@@ -501,6 +570,10 @@ SCENARIOS = {
     "S12": scenario_s12,
     "S13": scenario_s13,
     "S14": scenario_s14,
+    "S15": scenario_s15,
+    "S16": scenario_s16,
+    "S17": scenario_s17,
+    "S18": scenario_s18,
 }
 
 

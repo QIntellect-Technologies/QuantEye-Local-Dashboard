@@ -187,6 +187,27 @@ def create_mon_sat_shift(api: LiveAPI, name: str = "Audit Mon-Sat") -> int:
     return int(body.get("shift_id") or body.get("id"))
 
 
+def settings_sql_dump() -> list:
+    import database as db
+    import sqlite3
+    try:
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT * FROM payroll_settings ORDER BY id").fetchall()
+            keep = (
+                "id", "organization_id", "branch_id", "attendance_pay_mode",
+                "deduct_unpaid_leave", "enable_salary_revisions", "enable_named_components",
+                "enable_tax", "updated_at",
+            )
+            out = []
+            for row in rows:
+                data = dict(row)
+                out.append({k: data.get(k) for k in keep if k in data} or data)
+            return out
+    except sqlite3.Error as exc:
+        return [{"error": str(exc)}]
+
+
 def put_pay_mode(api: LiveAPI, mode: str, extra: Optional[dict] = None) -> Any:
     st, current, _ = api.request("GET", "/api/settings/payroll", expected=200)
     payload = dict(current)
@@ -194,8 +215,24 @@ def put_pay_mode(api: LiveAPI, mode: str, extra: Optional[dict] = None) -> Any:
     payload["attendance_pay_mode"] = mode
     if extra:
         payload.update(extra)
+    sql_before = settings_sql_dump()
     st, saved, _ = api.request("PUT", "/api/settings/payroll", json_body=payload, expected=200)
-    return saved
+    saved_settings = (saved or {}).get("settings") if isinstance(saved, dict) else None
+    return {
+        "request": {"attendance_pay_mode": payload.get("attendance_pay_mode"), "extra_keys": list((extra or {}).keys())},
+        "request_payload": {
+            k: payload.get(k)
+            for k in (
+                "attendance_pay_mode", "deduct_unpaid_leave", "organization_id", "branch_id",
+                "id", "enable_salary_revisions", "proration_basis",
+            )
+        },
+        "http_status": st,
+        "response_settings_mode": None if not saved_settings else saved_settings.get("attendance_pay_mode"),
+        "response": saved,
+        "sql_before": sql_before,
+        "sql_after": settings_sql_dump(),
+    }
 
 
 def create_employee(api: LiveAPI, spec: dict, shift_id: int, email_domain: str) -> int:
@@ -416,6 +453,53 @@ def bonus_xlsx(rows):
 
 def seed_scenario(api: LiveAPI, scenario_id: str) -> Dict[str, Any]:
     sid = scenario_id.upper()
+    if sid == "A0":
+        core = seed_core_org(api, ORG1, BR1, ALL_MODULES, "org1.audit")
+        sched = scheduled_days_in_month(2026, 9, working_days=DEFAULT_WORKING_DAYS)
+        bulk_present(api, [core["ids"]["E1"]], sched)
+        bulk_present(api, [core["ids"]["E2"]], _skip_first(sched, 2))
+        before_any = settings_sql_dump()
+        get_before = api.request("GET", "/api/settings/payroll", expected=200)
+        put_pay_mode(api, "payable_days")
+        payable = get_payroll(api, SEP_MONTH)
+        e2_payable = next((r for r in slim_records(payable) if r.get("employee_name") == "E2 Two Absent"), None)
+        put_full = put_pay_mode(api, "full_salary")
+        get_after_put = api.request("GET", "/api/settings/payroll", expected=200)
+        import database as db
+        direct_settings = dict(db.get_payroll_settings(organization_id=ORG1, branch_id=BR1))
+        payroll = get_payroll(api, SEP_MONTH)
+        e1 = next((r for r in slim_records(payroll) if r.get("employee_name") == "E1 Full Attend"), None)
+        e2_full = next((r for r in slim_records(payroll) if r.get("employee_name") == "E2 Two Absent"), None)
+        audit = db.list_payroll_audit(SEP_MONTH, organization_id=ORG1, branch_id=BR1)
+        return {
+            "verdict": {
+                "seeder_requested": "full_salary",
+                "put_response_mode": put_full.get("response_settings_mode"),
+                "get_after_put_mode": (get_after_put[1] or {}).get("attendance_pay_mode") if isinstance(get_after_put[1], dict) else None,
+                "direct_db_get_payroll_settings": direct_settings.get("attendance_pay_mode"),
+                "settings_notices": direct_settings.get("notices"),
+                "sql_rows": settings_sql_dump(),
+                "engine_record_mode": None if not e2_full else e2_full.get("attendance_pay_mode"),
+                "engine_preview_mode": payroll.get("attendance_pay_mode"),
+                "preview_notices": payroll.get("notices"),
+                "matched_rule_e2": None if not e2_full else e2_full.get("matched_rule"),
+                "e2_payable_net": None if not e2_payable else e2_payable.get("net_salary"),
+                "e2_full_salary_net": None if not e2_full else e2_full.get("net_salary"),
+                "money_differs": bool(e2_payable and e2_full and float(e2_payable.get("net_salary") or 0) != float(e2_full.get("net_salary") or 0)),
+                "product_overwrites_full_salary_without_absence_rules": (
+                    (payroll.get("attendance_pay_mode") or "") != "full_salary"
+                ),
+            },
+            "sql_at_start": before_any,
+            "get_before_put": get_before[1],
+            "put_full_salary": put_full,
+            "payroll_e1": e1,
+            "e2_payable": e2_payable,
+            "e2_full": e2_full,
+            "audit_tail": audit[:5],
+            "unlock": core["unlock"],
+        }
+
     if sid == "S1":
         core = seed_core_org(api, ORG1, BR1, ALL_MODULES, "org1.audit")
         sched = scheduled_days_in_month(2026, 9, working_days=DEFAULT_WORKING_DAYS)
@@ -642,24 +726,51 @@ def seed_scenario(api: LiveAPI, scenario_id: str) -> Dict[str, Any]:
 
     if sid == "S9":
         core = seed_core_org(api, ORG1, BR1, ALL_MODULES, "org1.audit")
-        put_pay_mode(api, "full_salary", extra={"enable_salary_revisions": 1})
+        settings_before = api.request("GET", "/api/settings/payroll", expected=200)[1]
+        settings_put = put_pay_mode(api, "full_salary", extra={"enable_salary_revisions": 1})
+        settings_after = api.request("GET", "/api/settings/payroll", expected=200)[1]
         scheduled = scheduled_days_in_month(2026, 9, working_days=DEFAULT_WORKING_DAYS)
-        bulk_present(api, [core["ids"]["E10"]], scheduled)
-        post_wrong = api.request(
-            "POST",
-            f"/api/salary/{core['ids']['E10']}",
-            json_body={"basic_salary": 50000, "effective_from": "2026-09-16"},
-        )
-        put_ok = api.request(
-            "PUT",
-            f"/api/salary/{core['ids']['E10']}",
-            json_body={"basic_salary": 50000, "allowances": 0, "deductions": 0, "ot_rate": 0, "effective_from": "2026-09-16"},
-        )
+        uid = core["ids"]["E10"]
+        bulk_present(api, [uid], scheduled)
+        post_body = {"basic_salary": 50000, "effective_from": "2026-09-16"}
+        post_wrong = api.request("POST", f"/api/salary/{uid}", json_body=post_body)
+        put_body = {
+            "user_id": uid,
+            "basic_salary": 50000,
+            "allowances": 0,
+            "deductions": 0,
+            "ot_rate": 0,
+            "effective_from": "2026-09-16",
+        }
+        put_ok = api.request("PUT", f"/api/salary/{uid}", json_body=put_body)
+        import sqlite3
+        import database as db
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM salary_configs WHERE user_id=?", (uid,)).fetchone()
+            salary_cfg = dict(row) if row else {}
+            try:
+                revisions = [dict(r) for r in conn.execute("SELECT * FROM salary_revisions WHERE user_id=?", (uid,)).fetchall()]
+            except sqlite3.OperationalError as exc:
+                revisions = [{"error": str(exc)}]
+        e10 = next((r for r in slim_records(get_payroll(api, SEP_MONTH)) if r.get("employee_name") == "E10 Salary Change"), None)
         return {
             "unlock": core["unlock"],
-            "post_salary_id": {"status": post_wrong[0], "body": post_wrong[1]},
-            "put_salary": {"status": put_ok[0], "body": put_ok[1]},
-            "payroll": slim_records(get_payroll(api, SEP_MONTH)),
+            "hand_sheet_assumes": {
+                "calendar_proration": "15/30 * 40000 + 15/30 * 50000 = 45000",
+                "requires_enable_salary_revisions": 1,
+                "requires_effective_from": "2026-09-16",
+                "starting_basic": 40000,
+            },
+            "settings_before_flag": None if not isinstance(settings_before, dict) else settings_before.get("enable_salary_revisions"),
+            "settings_put": settings_put,
+            "settings_after_flag": None if not isinstance(settings_after, dict) else settings_after.get("enable_salary_revisions"),
+            "settings_after_mode": None if not isinstance(settings_after, dict) else settings_after.get("attendance_pay_mode"),
+            "post_salary_id": {"method": "POST", "path": f"/api/salary/{uid}", "json": post_body, "status": post_wrong[0], "body": post_wrong[1]},
+            "put_salary": {"method": "PUT", "path": f"/api/salary/{uid}", "json": put_body, "status": put_ok[0], "body": put_ok[1]},
+            "salary_configs_row": salary_cfg,
+            "salary_revisions_rows": revisions,
+            "e10": e10,
         }
 
     if sid == "S10":
@@ -761,5 +872,100 @@ def seed_scenario(api: LiveAPI, scenario_id: str) -> Dict[str, Any]:
                 st, body, _ = api.request(method, path)
                 table[label][path] = {"status": st, "error": (body.get("error") or body.get("message") if isinstance(body, dict) else str(body)[:200])}
         return {"route_table": table}
+
+    if sid == "S15":
+        core = seed_core_org(api, ORG1, BR1, ALL_MODULES, "org1.audit")
+        put_pay_mode(api, "payable_days", extra={
+            "off_day_attendance_pay_active": 1,
+            "off_day_attendance_pay_mode": "fixed_day",
+            "off_day_attendance_pay_fixed_amount": 1500,
+        })
+        scheduled = scheduled_days_in_month(2026, 9, working_days=DEFAULT_WORKING_DAYS)
+        bulk_present(api, [core["ids"]["E1"]], scheduled)
+        sundays = scheduled_days_in_month(2026, 9, working_days=(6,))
+        for day in sundays:
+            mark_present(api, core["ids"]["E1"], day, "09:05")
+        join = date(2026, 9, 11)
+        e6_sched = [d for d in scheduled if d >= join]
+        bulk_present(api, [core["ids"]["E6"]], e6_sched)
+        e6_sundays = [d for d in sundays]
+        for day in e6_sundays:
+            mark_present(api, core["ids"]["E6"], day, "09:05")
+        payroll = get_payroll(api, SEP_MONTH)
+        return {
+            "unlock": core["unlock"],
+            "sundays": [d.isoformat() for d in sundays],
+            "e6_join": "2026-09-11",
+            "e1": next((r for r in slim_records(payroll) if r.get("employee_name") == "E1 Full Attend"), None),
+            "e6": next((r for r in slim_records(payroll) if r.get("employee_name") == "E6 Join Mid"), None),
+        }
+
+    if sid == "S16":
+        core = seed_core_org(api, ORG1, BR1, ALL_MODULES, "org1.audit")
+        put_pay_mode(api, "payable_days")
+        scheduled = scheduled_days_in_month(2026, 9, working_days=DEFAULT_WORKING_DAYS)
+        bulk_present(api, [core["ids"]["E1"], core["ids"]["E11"]], scheduled)
+        blocked = api.request("POST", "/api/payroll/finalize", json_body={"month": SEP_MONTH})
+        api.request(
+            "PUT",
+            f"/api/salary/{core['ids']['E11']}",
+            json_body={"user_id": core["ids"]["E11"], "basic_salary": 30000, "allowances": 0, "deductions": 0, "ot_rate": 0},
+        )
+        ok = api.request("POST", "/api/payroll/finalize", json_body={"month": SEP_MONTH})
+        att = api.request("POST", f"/api/users/{core['ids']['E1']}/mark-absent", json_body={"date": "2026-09-04"})
+        reopen = api.request("POST", "/api/payroll/reopen", json_body={"month": SEP_MONTH, "reason": "audit reopen"})
+        after = api.request("GET", f"/api/payroll?month={SEP_MONTH}")
+        return {
+            "unlock": core["unlock"],
+            "finalize_with_zero_salary": {"status": blocked[0], "body": blocked[1]},
+            "finalize_after_salary": {"status": ok[0], "success": (ok[1] or {}).get("success") if isinstance(ok[1], dict) else None},
+            "mark_absent_after_finalize": {"status": att[0], "body": att[1]},
+            "reopen": {"method": "POST", "path": "/api/payroll/reopen", "status": reopen[0], "body": reopen[1]},
+            "get_after_finalize": {
+                "status": after[0],
+                "is_finalized": (after[1] or {}).get("is_finalized") if isinstance(after[1], dict) else None,
+            },
+        }
+
+    if sid == "S17":
+        core = seed_core_org(api, ORG1, BR1, ALL_MODULES, "org1.audit")
+        put_pay_mode(api, "full_salary", extra={"enable_named_components": 1, "enable_tax": 1})
+        scheduled = scheduled_days_in_month(2026, 9, working_days=DEFAULT_WORKING_DAYS)
+        bulk_present(api, [core["ids"]["E1"], core["ids"]["E2"], core["ids"]["E9"]], scheduled)
+        api.request("POST", "/api/payroll/component-types", json_body={
+            "name": "HRA", "code": "hra", "kind": "earning", "category": "allowance",
+            "calc_mode": "percent_basic", "default_amount": 10,
+        })
+        types = api.request("GET", "/api/payroll/component-types", expected=200)[1].get("types") or []
+        hra_id = next((t["id"] for t in types if str(t.get("code")).lower() == "hra"), None)
+        dept_assign = api.request("POST", "/api/payroll/employee-components", json_body={
+            "scope": "department", "department": "Finance", "component_type_id": hra_id,
+            "percent": 10, "effective_from": "2026-09-01",
+        })
+        e1_assign = api.request("POST", "/api/payroll/employee-components", json_body={
+            "user_id": core["ids"]["E1"], "component_type_id": hra_id, "percent": 10, "effective_from": "2026-09-01",
+        })
+        payroll = slim_records(get_payroll(api, SEP_MONTH))
+        return {
+            "unlock": core["unlock"],
+            "department_scope_post": {"status": dept_assign[0], "body": dept_assign[1]},
+            "employee_scope_post": {"status": e1_assign[0], "body": e1_assign[1]},
+            "e1": next((r for r in payroll if r.get("employee_name") == "E1 Full Attend"), None),
+            "e2_ops": next((r for r in payroll if r.get("employee_name") == "E2 Two Absent"), None),
+            "e9_finance": next((r for r in payroll if r.get("employee_name") == "E9 Flex Pay"), None),
+        }
+
+    if sid == "S18":
+        api.login(ORG1, BR1, ALL_MODULES)
+        get_st, get_body, _ = api.request("GET", "/api/settings/payroll")
+        payload = dict(get_body) if isinstance(get_body, dict) else {"deduct_unpaid_leave": False}
+        payload["deduct_unpaid_leave"] = True
+        put_st, put_body, _ = api.request("PUT", "/api/settings/payroll", json_body=payload)
+        return {
+            "legacy_snapshot": True,
+            "get_settings": {"status": get_st, "body": get_body if not isinstance(get_body, dict) else {k: get_body.get(k) for k in ("error", "attendance_pay_mode", "organization_id", "id")}},
+            "put_settings": {"status": put_st, "body": put_body},
+            "sql": settings_sql_dump(),
+        }
 
     raise ApiError(f"Unknown scenario {scenario_id}")

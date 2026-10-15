@@ -1,0 +1,8 @@
+{
+  "id": "S18",
+  "title": "Legacy-schema payroll settings save",
+  "expected": {
+    "put_must_not_500": true,
+    "ui_must_show_server_field_error": true
+  }
+}

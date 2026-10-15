@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-SCENARIOS = [f"S{i}" for i in range(1, 15)]
+SCENARIOS = ["A0"] + [f"S{i}" for i in range(1, 19)]
 
 
 def backup_dev_db(dest_dir: Path) -> str:
@@ -39,6 +39,27 @@ def backup_dev_db(dest_dir: Path) -> str:
         shutil.copy2(src, dest)
         return str(dest)
     return f"NO_DEV_DB:{src}"
+
+
+def make_legacy_snapshot(path: Path) -> None:
+    """Pre-tenant singleton payroll_settings (no org/branch, no attendance_pay_mode)."""
+    if path.exists():
+        path.unlink()
+    with sqlite3.connect(str(path)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE payroll_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                deduct_unpaid_leave INTEGER NOT NULL DEFAULT 0,
+                half_leave_quota_mode TEXT NOT NULL DEFAULT 'category',
+                half_leaves_per_quota_day INTEGER NOT NULL DEFAULT 2,
+                holiday_ot_premium_percent REAL NOT NULL DEFAULT 0,
+                non_working_day_ot_premium_percent REAL NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute("INSERT INTO payroll_settings (id, deduct_unpaid_leave) VALUES (1, 0)")
+        conn.commit()
 
 
 def make_clean_snapshot(path: Path) -> None:
@@ -140,12 +161,22 @@ def run_isolated(scenario: str, evidence_dir: Path, snapshot: Path) -> dict:
         "api_log_tail": api.log[-40:],
         "users_in_db": _count_users(db_path),
         "db_rows": _dump_db_rows(db_path),
+        "payroll_settings_rows": _dump_settings(db_path),
     }
     out_dir = evidence_dir / scenario
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "result.json").write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     (out_dir / "expected.json").write_text(json.dumps(expected, indent=2, default=str), encoding="utf-8")
     return payload
+
+
+def _dump_settings(db_path: Path) -> list:
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            return [dict(r) for r in conn.execute("SELECT * FROM payroll_settings ORDER BY id").fetchall()]
+    except sqlite3.Error as exc:
+        return [{"error": str(exc)}]
 
 
 def _count_users(db_path: Path) -> int:
@@ -197,7 +228,10 @@ def main(argv=None) -> int:
             return 2
 
     snapshot = Path(tempfile.mkdtemp(prefix="qe-snap-")) / "clean.db"
-    make_clean_snapshot(snapshot)
+    if wanted == ["S18"] or (len(wanted) == 1 and wanted[0] == "S18"):
+        make_legacy_snapshot(snapshot)
+    else:
+        make_clean_snapshot(snapshot)
 
     summaries = []
     if args.all and not args.child:

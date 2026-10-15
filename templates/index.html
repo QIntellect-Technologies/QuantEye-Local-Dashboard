@@ -5640,6 +5640,7 @@ async function fetchMultiLiveDetections() {
               <option value="full_salary">Pay full monthly salary, then apply absence brackets below</option>
             </select>
           </label>
+          <div id="payrollFullSalaryNoRulesNotice" class="alert alert-warning py-2 mt-3 mb-0" hidden>No absence rules configured</div>
           <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; margin-top:12px;">Save pay method</button>
         </section>
 
@@ -7357,8 +7358,8 @@ async function fetchMultiLiveDetections() {
           message.innerHTML = `<div class="alert alert-warning py-2 mb-0">${issues.length} employee${issues.length === 1 ? '' : 's'} need resolution before finalization. Use the Issues filter to review them.</div>`;
         } else if (monthOpen) {
           message.innerHTML = `<div class="alert alert-warning py-2 mb-0">This is a live preview through ${payrollEscape(payroll.period_end || 'today')}. Recalculate anytime. Finalize is available on the last day of the month.</div>`;
-        } else if (payMode === 'full_salary' && records.every(row => !row.applied_rule_id && Number(row.attendance_shortfall || 0) === 0)) {
-          message.innerHTML = '<div class="alert alert-warning py-2 mb-0">Full monthly salary is being paid. Add an absence bracket, or switch Payroll Settings to “Pay for days present”, then Recalculate.</div>';
+        } else if ((payroll.notices || []).includes('No absence rules configured') || (payMode === 'full_salary' && payroll.absence_rules_configured === false)) {
+          message.innerHTML = '<div class="alert alert-warning py-2 mb-0">No absence rules configured</div>';
         } else {
           message.innerHTML = '<div class="alert alert-success py-2 mb-0">All employee rows are ready for review and finalization.</div>';
         }
@@ -12673,6 +12674,11 @@ async function fetchMultiLiveDetections() {
           if (proration) proration.value = settings.proration_basis || 'calendar_days';
           const attendancePay = document.getElementById('payrollAttendancePayMode');
           if (attendancePay) attendancePay.value = settings.attendance_pay_mode || 'full_salary';
+          const noRulesNotice = document.getElementById('payrollFullSalaryNoRulesNotice');
+          if (noRulesNotice) {
+            const showNotice = (settings.attendance_pay_mode === 'full_salary') && !settings.absence_rules_configured;
+            noRulesNotice.hidden = !showNotice;
+          }
           const currencyInput = document.getElementById('payrollCurrencyCode');
           if (currencyInput) currencyInput.value = settings.currency_code || 'PKR';
           const decimalInput = document.getElementById('payrollDecimalPlaces');

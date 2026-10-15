@@ -5985,7 +5985,24 @@ def get_payroll_settings(
             'branch_id': branch,
             **DEFAULT_PAYROLL_SETTINGS,
         }
-        return dict(row) if row else defaults
+        settings = dict(row) if row else defaults
+        try:
+            absence_count = cursor.execute(
+                """SELECT COUNT(*) FROM payroll_rules
+                   WHERE active = 1
+                     AND COALESCE(rule_basis, 'absence') = 'absence'
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (org, branch),
+            ).fetchone()[0]
+        except sqlite3.Error:
+            absence_count = 0
+        settings['absence_rules_configured'] = bool(absence_count)
+        if _normalize_attendance_pay_mode(settings.get('attendance_pay_mode')) == 'full_salary' and not absence_count:
+            settings['notices'] = ['No absence rules configured']
+        else:
+            settings['notices'] = []
+        return settings
 
 
 def get_payroll_scope_options(
@@ -7548,8 +7565,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
     absence_rules_configured = any(
         (rule.get('rule_basis') or 'absence') == 'absence' for rule in active_rules
     )
+    payroll_notices: List[str] = []
     if attendance_mode == 'full_salary' and not absence_rules_configured:
-        attendance_mode = 'payable_days'
+        payroll_notices.append('No absence rules configured')
 
     report = get_detailed_attendance_report(
         start_date=month_start.isoformat(),
@@ -7892,8 +7910,29 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         'total_arrears': round(sum(row.get('arrears_amount', 0) for row in rows), 2),
         'total_deduction': round(sum(row['deduction_amount'] + row['custom_deductions'] for row in rows), 2),
         'total_net_salary': round(sum(row['net_salary'] for row in rows), 2),
+        'absence_rules_configured': absence_rules_configured,
+        'notices': payroll_notices,
         'records': rows,
     }
+    if payroll_notices:
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                _write_payroll_audit(
+                    conn.cursor(),
+                    'full_salary_no_absence_rules',
+                    organization_id,
+                    branch_id,
+                    payroll_month,
+                    'system',
+                    {
+                        'notice': payroll_notices[0],
+                        'attendance_pay_mode': attendance_mode,
+                        'behavior': 'honored_saved_full_salary_with_no_absence_deduction',
+                    },
+                )
+                conn.commit()
+        except Exception:
+            logger.exception('Failed to write full_salary notice audit')
     preview['payroll_run_id'] = _persist_draft_monthly_payroll(
         preview, organization_id=organization_id, branch_id=branch_id
     )

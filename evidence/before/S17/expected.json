@@ -1,0 +1,9 @@
+{
+  "id": "S17",
+  "title": "Pay-line scopes",
+  "expected": {
+    "department_Finance_gets_HRA": true,
+    "ops_does_not": true,
+    "employee_override_supported": true
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "S16",
+  "title": "Finalize, lock, reopen",
+  "expected": {
+    "finalize_with_salary_0": 400,
+    "finalize_after_fix": 201,
+    "attendance_edit_while_finalized": "blocked with reopen message",
+    "reopen_endpoint": "POST /api/payroll/reopen"
+  }
+}
