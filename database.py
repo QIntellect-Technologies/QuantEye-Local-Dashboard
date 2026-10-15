@@ -1835,9 +1835,9 @@ def check_user_camera_allowed(user_id: int, camera_id: str, action: str = 'check
         for token in allowed_tokens:
             if token == cam_id_token:
                 return True, f"Camera '{camera_id}' matches assigned camera ID for {action}"
-            if room_token and (token == room_token or token in room_token or room_token in token):
+            if room_token and token == room_token:
                 return True, f"Camera room '{cam_row[2]}' matches assigned room for {action}"
-            if name_token and (token == name_token or token in name_token):
+            if name_token and token == name_token:
                 return True, f"Camera name '{cam_row[1]}' matches assigned camera for {action}"
             if rtsp_token and token == rtsp_token:
                 return True, f"Camera source matches assigned camera for {action}"

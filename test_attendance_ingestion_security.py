@@ -193,7 +193,12 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
             "start_time": "23:04",
             "end_time": "23:07",
             "grace_period_minutes": 2,
-        }]) as get_all_shifts:
+        }]) as get_all_shifts, patch.object(db, "get_all_users", return_value=[{
+            "id": 102,
+            "shift_id": 1,
+            "checkin_cameras": "Room",
+            "checkout_cameras": "AI TEAM ROOM",
+        }]):
             response = self.client.get(
                 endpoint,
                 headers={"X-Integration-Key": "unit-test-integration-key-0123456789"},
@@ -205,6 +210,10 @@ class AttendanceIngestionSecurityTests(unittest.TestCase):
         self.assertEqual(payload["organization_id"], "ORG-ALPHA")
         self.assertEqual(payload["branch_id"], "BR-ALPHA-2")
         self.assertEqual(payload["shifts"][0]["start_time"], "23:04")
+        self.assertEqual(payload["assignments"][0]["user_id"], 102)
+        self.assertEqual(payload["assignments"][0]["shift_id"], 1)
+        self.assertEqual(payload["assignments"][0]["checkin_cameras"], "Room")
+        self.assertEqual(payload["assignments"][0]["checkout_cameras"], "AI TEAM ROOM")
         get_all_shifts.assert_called_once_with(
             active_only=True,
             organization_id="ORG-ALPHA",

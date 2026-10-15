@@ -3374,6 +3374,8 @@ def integration_get_shifts():
         assignments.append({
             'user_id': int(employee['id']),
             'shift_id': shift_id,
+            'checkin_cameras': str(employee.get('checkin_cameras') or 'all').strip() or 'all',
+            'checkout_cameras': str(employee.get('checkout_cameras') or 'all').strip() or 'all',
         })
     return jsonify({
         'success': True,
