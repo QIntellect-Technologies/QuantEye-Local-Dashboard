@@ -6087,6 +6087,8 @@ def api_get_employee_payslip(employee_id):
         )
         if not payslip:
             return jsonify({'error': 'No payroll record found for this employee'}), 404
+        from payroll_extensions import payslip_invoice_html
+        payslip['html'] = payslip_invoice_html(payslip)
         return jsonify(payslip)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -6517,6 +6519,7 @@ def api_update_payroll_settings():
                 current_settings.get('off_day_attendance_pay_fixed_amount'),
             ),
             feature_flags={key: data.get(key, current_settings.get(key)) for key in db.FEATURE_FLAGS},
+            letterhead={key: data.get(key, current_settings.get(key)) for key in db.PAYSLIP_LETTERHEAD_FIELDS},
         )
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400

@@ -5,6 +5,7 @@ leave calculate_monthly_payroll math unchanged.
 """
 from __future__ import annotations
 
+import html as html_lib
 import io
 import json
 from datetime import date, datetime, timedelta
@@ -668,14 +669,195 @@ def _pdf_rows_from_payslip(payslip: Dict[str, Any]) -> Tuple[List[Tuple[str, str
     return earnings, cuts
 
 
-def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
-    """A4 payslip PDF in the same layout as the Main Dashboard invoice paper."""
-    emp = payslip.get("employee") or {}
+def _payslip_letterhead(payslip: Dict[str, Any]) -> Dict[str, str]:
+    lh = payslip.get("letterhead") or {}
     company = payslip.get("company") or {}
+    defaults = {
+        "payslip_company_name": company.get("name") or "QIntellect Technologies",
+        "payslip_tagline": "DRIVING THE FUTURE TECHNOLOGY POWERED BY QUANTUM & AI",
+        "payslip_phone": company.get("phone") or "+92 302 9633999",
+        "payslip_email": company.get("email") or "info@qintellecttechnologies.com",
+        "payslip_website": "qintellecttechnologies.com",
+        "payslip_address": company.get("address") or company.get("branch") or "Main Branch, Rahim Yar Khan",
+        "payslip_ntn": "J756903",
+        "payslip_footer": "© 2026 QIntellect Technologies. All rights reserved.",
+        "payslip_powered": "Powered by QIntellect Technologies",
+        "payslip_bank_title": "QIntellect Technologies",
+        "payslip_bank_name": "United Bank Limited (UBL)",
+        "payslip_bank_iban": "PK46UNIL0109000400912116",
+    }
+    out = {}
+    for key, fallback in defaults.items():
+        text = str(lh.get(key) or fallback or "").strip()
+        out[key] = text or str(fallback)
+    return out
+
+
+def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
+    emp = payslip.get("employee") or {}
+    deductions = payslip.get("deductions") or {}
+    items: List[Dict[str, Any]] = []
+
+    def add(description: str, amount: Any, qty: Any = 1, force: bool = False) -> None:
+        value = float(amount or 0)
+        quantity = float(qty or 0) or 1.0
+        if not force and value == 0:
+            return
+        items.append({
+            "description": description,
+            "qty": quantity,
+            "unit": value / quantity if quantity else value,
+            "amount": value,
+        })
+
+    add("Basic pay", emp.get("basic_salary"), 1, True)
+    pay_lines = emp.get("pay_lines") or []
+    if isinstance(pay_lines, str):
+        try:
+            pay_lines = json.loads(pay_lines)
+        except (TypeError, ValueError):
+            pay_lines = []
+    named_earn = any(
+        str(item.get("kind") or "") == "earning" and float(item.get("amount") or 0)
+        for item in (pay_lines or [])
+    )
+    named_bonus = any(str(item.get("category") or "") == "bonus" for item in (pay_lines or []))
+    if not named_earn:
+        add("Allowances", emp.get("allowances"))
+    ot_hours = float(emp.get("overtime_hours") or 0)
+    ot_amount = float(emp.get("overtime_amount") or 0)
+    if ot_amount:
+        add("Overtime", ot_amount, ot_hours if ot_hours else 1)
+    if not named_bonus:
+        add("Bonus", emp.get("bonus_amount"))
+    add("Rest-day extra", emp.get("off_day_extra_pay"))
+    add("Adjustments", emp.get("adjustment_amount"))
+    add("Arrears", emp.get("arrears_amount"))
+    for item in pay_lines or []:
+        amount = float(item.get("amount") or 0)
+        if not amount:
+            continue
+        name = str(item.get("name") or item.get("type") or "Pay item")
+        kind = str(item.get("kind") or item.get("category") or "")
+        if kind in ("deduction", "tax", "loan", "advance", "provident", "insurance"):
+            add(name, amount, 1, True)
+        elif kind in ("earning", "allowance", "bonus") and name.lower() not in ("basic", "basic pay"):
+            add(name, amount, 1, True)
+    add("Missed-day cut", deductions.get("absence"))
+    add("Unpaid leave", deductions.get("unpaid_leave"))
+    add("Half-day leave cut", deductions.get("half_leave"))
+    add("Days not present", deductions.get("attendance_shortfall"))
+    if not items:
+        add("Basic pay", 0, 1, True)
+    return items
+
+
+def payslip_invoice_html(payslip: Dict[str, Any]) -> str:
+    """Invoice-paper HTML shared by the on-screen payslip and print/PDF views."""
+    emp = payslip.get("employee") or {}
+    lh = _payslip_letterhead(payslip)
     currency = payslip.get("currency_code") or DEFAULT_CURRENCY
     places = int(payslip.get("decimal_places") or DEFAULT_DECIMAL_PLACES)
     status = "Locked" if payslip.get("is_finalized") else (payslip.get("status") or "Draft")
-    earnings, cuts = _pdf_rows_from_payslip(payslip)
+    deductions = payslip.get("deductions") or {}
+
+    def esc(value: Any) -> str:
+        return html_lib.escape(str(value if value is not None else ""))
+
+    def money_text(value: Any) -> str:
+        return esc(_pdf_money(value, currency, places))
+
+    def qty_text(value: Any) -> str:
+        number = float(value or 0)
+        if abs(number - round(number)) < 0.001:
+            return str(int(round(number)))
+        return "{:.2f}".format(number)
+
+    rows = []
+    for item in _payslip_invoice_items(payslip):
+        rows.append(
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                esc(item["description"]),
+                esc(qty_text(item["qty"])),
+                money_text(item["unit"]),
+                money_text(item["amount"]),
+            )
+        )
+    paid_leave = emp.get("paid_leave_days")
+    if paid_leave is None:
+        paid_leave = emp.get("approved_leave_days") or 0
+    note = "This payslip is for the month shown above. Locked months do not change after Finalize."
+    return (
+        '<div class="invoice-paper" id="printPayslip"><header>'
+        '<div class="invoice-brand">'
+        '<img src="/static/Logo.png" alt="Company logo" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">'
+        '<div class="payslip-mark" style="display:none">Q</div>'
+        "<div><strong style=\"font-size:1.25rem\">{name}</strong>"
+        '<div style="color:#247eae;font-size:.72rem;font-weight:800;letter-spacing:.5px">{tagline}</div>'
+        "<div>{phone} · {email}</div>"
+        '<div class="mono">NTN: {ntn}</div>'
+        "<div>{address}</div><div>{website}</div></div></div>"
+        '<div style="text-align:right"><h1 style="font-size:1.8rem;margin:0">PAYSLIP</h1>'
+        '<div class="mono">{month}</div><span class="badge">{status}</span></div></header>'
+        '<div class="invoice-meta"><div><small>Pay to</small><strong>{staff}</strong>'
+        "<div>#{emp_id} · {dept} · {role}</div></div>"
+        "<div><small>Pay period</small><strong>{period}</strong>"
+        "<div>Work days: {work} · Days paid: {paid}</div></div></div>"
+        "<table><thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead>"
+        "<tbody>{rows}</tbody></table>"
+        '<div class="total"><div>Gross pay: {gross}</div><div>Total cuts: {cuts}</div><hr>'
+        "<strong>Take-home pay: {net}</strong></div>"
+        '<div class="bank-details"><small>Payment details</small>'
+        "<strong>Account Title:</strong> {bank_title}<br>"
+        "<strong>Bank Name:</strong> {bank_name}<br>"
+        "<strong>IBAN:</strong> {iban}</div>"
+        '<p style="margin-top:22px;color:#628095">{note} Present {present} · Absent {absent} · Late {late} · '
+        "Paid leave {leave} · Unpaid leave {unpaid}</p>"
+        '<div class="app-preview-footer">{footer}<br><strong>{powered}</strong></div></div>'
+    ).format(
+        name=esc(lh["payslip_company_name"]),
+        tagline=esc(lh["payslip_tagline"]),
+        phone=esc(lh["payslip_phone"]),
+        email=esc(lh["payslip_email"]),
+        ntn=esc(lh["payslip_ntn"]),
+        address=esc(lh["payslip_address"]),
+        website=esc(lh["payslip_website"]),
+        month=esc(payslip.get("payroll_month") or ""),
+        status=esc(status),
+        staff=esc(emp.get("employee_name") or "Staff"),
+        emp_id=esc(emp.get("employee_id") or ""),
+        dept=esc(emp.get("department") or "General"),
+        role=esc(emp.get("designation") or "Staff"),
+        period=esc("{} to {}".format(payslip.get("period_start") or "", payslip.get("period_end") or "")),
+        work=esc(emp.get("month_scheduled_workdays") or emp.get("scheduled_workdays") or 0),
+        paid=esc(emp.get("payable_days") or 0),
+        rows="".join(rows),
+        gross=money_text(payslip.get("gross_salary")),
+        cuts=money_text(deductions.get("total")),
+        net=money_text(payslip.get("net_salary")),
+        bank_title=esc(lh["payslip_bank_title"]),
+        bank_name=esc(lh["payslip_bank_name"]),
+        iban=esc(lh["payslip_bank_iban"]),
+        note=esc(note),
+        present=esc(emp.get("present_days") or 0),
+        absent=esc(emp.get("absent_days") or 0),
+        late=esc(emp.get("late_days") or 0),
+        leave=esc(paid_leave or 0),
+        unpaid=esc(emp.get("unpaid_leave_days") or 0),
+        footer=esc(lh["payslip_footer"]),
+        powered=esc(lh["payslip_powered"]),
+    )
+
+
+def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
+    """A4 payslip PDF in the same layout as the on-screen invoice paper."""
+    emp = payslip.get("employee") or {}
+    lh = _payslip_letterhead(payslip)
+    currency = payslip.get("currency_code") or DEFAULT_CURRENCY
+    places = int(payslip.get("decimal_places") or DEFAULT_DECIMAL_PLACES)
+    status = "Locked" if payslip.get("is_finalized") else (payslip.get("status") or "Draft")
+    items = _payslip_invoice_items(payslip)
+    deductions = payslip.get("deductions") or {}
     ops: List[str] = []
 
     def rgb_fill(r: float, g: float, b: float, x: float, y: float, w: float, h: float) -> None:
@@ -689,84 +871,76 @@ def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
         ops.append("{:.3f} {:.3f} {:.3f} rg".format(*color))
         ops.append("BT /{} {} Tf {:.1f} {:.1f} Td ({}) Tj ET".format(font, size, x, y, _pdf_escape(text)))
 
-    # Page: A4
+    # A4 invoice paper: header, 4-column table, totals, bank box, dark footer.
     rgb_fill(1, 1, 1, 0, 0, 595, 842)
-    rgb_fill(0.09, 0.19, 0.26, 36, 788, 523, 18)
-    rgb_fill(0.239, 0.624, 0.831, 36, 786, 523, 3)
-    text_at(48, 810, "QIntellect Technologies", 16, True, (0.09, 0.19, 0.26))
-    text_at(48, 794, "DRIVING THE FUTURE TECHNOLOGY POWERED BY QUANTUM & AI", 8, True, (0.14, 0.49, 0.68))
-    text_at(360, 812, "PAYSLIP", 22, True, (0.09, 0.19, 0.26))
-    text_at(360, 794, str(payslip.get("payroll_month") or ""), 11, False, (0.38, 0.50, 0.58))
-    text_at(48, 770, "+92 302 9633999  ·  info@qintellecttechnologies.com", 9, False, (0.38, 0.50, 0.58))
-    text_at(48, 756, "NTN: J756903", 9, True, (0.38, 0.50, 0.58))
-    text_at(430, 770, status, 10, True, (0.239, 0.624, 0.831))
+    text_at(48, 800, lh["payslip_company_name"], 16, True, (0.09, 0.19, 0.26))
+    text_at(48, 784, lh["payslip_tagline"][:72], 8, True, (0.141, 0.494, 0.682))
+    text_at(48, 768, "{}  ·  {}".format(lh["payslip_phone"], lh["payslip_email"]), 9, False, (0.384, 0.502, 0.584))
+    text_at(48, 754, "NTN: {}".format(lh["payslip_ntn"]), 9, True, (0.384, 0.502, 0.584))
+    text_at(48, 740, lh["payslip_address"], 9, False, (0.384, 0.502, 0.584))
+    text_at(430, 798, "PAYSLIP", 22, True, (0.09, 0.19, 0.26))
+    text_at(430, 778, str(payslip.get("payroll_month") or ""), 11, False, (0.384, 0.502, 0.584))
+    text_at(430, 760, status, 10, True, (0.239, 0.624, 0.831))
+    rgb_fill(0.239, 0.624, 0.831, 36, 726, 523, 2.2)
 
-    company_line = " · ".join(
-        part for part in [company.get("name"), company.get("branch"), company.get("city")] if part
-    )
-    rgb_stroke(0.863, 0.925, 0.957, 36, 678, 523, 68)
-    text_at(48, 730, "PAY TO", 8, True, (0.38, 0.50, 0.58))
-    text_at(48, 714, str(emp.get("employee_name") or "Staff"), 12, True)
-    text_at(48, 698, "#{}  ·  {}  ·  {}".format(
+    text_at(48, 708, "PAY TO", 8, True, (0.384, 0.502, 0.584))
+    text_at(48, 692, str(emp.get("employee_name") or "Staff"), 12, True)
+    text_at(48, 676, "#{}  ·  {}  ·  {}".format(
         emp.get("employee_id") or "",
         emp.get("department") or "General",
         emp.get("designation") or "Staff",
-    ), 9, False, (0.38, 0.50, 0.58))
-    text_at(48, 684, company_line or "Company", 9, False, (0.38, 0.50, 0.58))
-    text_at(330, 730, "PAY PERIOD", 8, True, (0.38, 0.50, 0.58))
-    text_at(330, 714, "{} to {}".format(payslip.get("period_start") or "", payslip.get("period_end") or ""), 11, True)
-    text_at(330, 698, "Work days: {}   Days paid: {}".format(
+    ), 9, False, (0.384, 0.502, 0.584))
+    text_at(320, 708, "PAY PERIOD", 8, True, (0.384, 0.502, 0.584))
+    text_at(320, 692, "{} to {}".format(payslip.get("period_start") or "", payslip.get("period_end") or ""), 11, True)
+    text_at(320, 676, "Work days: {}   Days paid: {}".format(
         emp.get("month_scheduled_workdays") or emp.get("scheduled_workdays") or 0,
         emp.get("payable_days") or 0,
-    ), 9, False, (0.38, 0.50, 0.58))
+    ), 9, False, (0.384, 0.502, 0.584))
+    rgb_stroke(0.863, 0.925, 0.957, 36, 664, 523, 0.8)
 
-    y = 650
-    rgb_fill(0.949, 0.980, 0.992, 36, y - 4, 523, 22)
-    text_at(48, y, "Description", 9, True, (0.09, 0.19, 0.26))
-    text_at(430, y, "Amount", 9, True, (0.09, 0.19, 0.26))
-    y -= 22
-    text_at(48, y, "Money added", 10, True, (0.14, 0.49, 0.68))
-    y -= 16
-    for name, amount in earnings:
-        text_at(48, y, name, 10)
-        text_at(400, y, amount, 10, True)
-        y -= 15
-        if y < 220:
-            break
-    y -= 6
-    text_at(48, y, "Money taken away", 10, True, (0.14, 0.49, 0.68))
-    y -= 16
-    for name, amount in cuts:
-        text_at(48, y, name, 10)
-        text_at(400, y, amount, 10, True, (0.71, 0.28, 0.28))
-        y -= 15
-        if y < 180:
+    y = 640
+    rgb_fill(0.961, 0.984, 1.0, 36, y - 6, 523, 22)
+    text_at(48, y, "Description", 9, True)
+    text_at(286, y, "Qty", 9, True)
+    text_at(348, y, "Unit price", 9, True)
+    text_at(456, y, "Amount", 9, True)
+    y -= 24
+    for item in items:
+        text_at(48, y, str(item["description"])[:40], 10)
+        qty = item["qty"]
+        qty_label = str(int(qty)) if abs(qty - round(qty)) < 0.001 else "{:.2f}".format(qty)
+        text_at(286, y, qty_label, 10)
+        text_at(348, y, _pdf_money(item["unit"], currency, places), 10)
+        text_at(448, y, _pdf_money(item["amount"], currency, places), 10, True)
+        y -= 16
+        if y < 250:
             break
 
-    y = min(y - 8, 250)
-    rgb_fill(0.961, 0.984, 1.0, 300, y - 58, 259, 78)
-    rgb_stroke(0.812, 0.910, 0.969, 300, y - 58, 259, 78)
-    text_at(314, y, "Gross pay", 9, False, (0.38, 0.50, 0.58))
+    y = min(y - 10, 300)
+    rgb_fill(0.961, 0.984, 1.0, 300, y - 70, 259, 86)
+    rgb_stroke(0.812, 0.910, 0.969, 300, y - 70, 259, 86)
+    text_at(314, y, "Gross pay", 9, False, (0.384, 0.502, 0.584))
     text_at(400, y, _pdf_money(payslip.get("gross_salary"), currency, places), 10, True)
-    text_at(314, y - 16, "Total cuts", 9, False, (0.38, 0.50, 0.58))
-    text_at(400, y - 16, _pdf_money((payslip.get("deductions") or {}).get("total"), currency, places), 10, True, (0.71, 0.28, 0.28))
-    text_at(314, y - 38, "Take-home pay", 11, True)
-    text_at(390, y - 38, _pdf_money(payslip.get("net_salary"), currency, places), 13, True, (0.05, 0.56, 0.47))
+    text_at(314, y - 16, "Total cuts", 9, False, (0.384, 0.502, 0.584))
+    text_at(400, y - 16, _pdf_money(deductions.get("total"), currency, places), 10, True)
+    text_at(314, y - 40, "Take-home pay", 11, True)
+    text_at(390, y - 40, _pdf_money(payslip.get("net_salary"), currency, places), 12, True, (0.09, 0.19, 0.26))
 
-    rgb_stroke(0.812, 0.910, 0.969, 36, 86, 250, 92)
-    rgb_fill(0.961, 0.984, 1.0, 36, 86, 250, 92)
-    text_at(48, 160, "Attendance this month", 8, True, (0.38, 0.50, 0.58))
-    text_at(48, 144, "Present: {}".format(emp.get("present_days") or 0), 9)
-    text_at(48, 130, "Absent: {}".format(emp.get("absent_days") or 0), 9)
-    text_at(48, 116, "Late: {}".format(emp.get("late_days") or 0), 9)
-    text_at(48, 102, "Paid leave: {}   Unpaid leave: {}".format(
-        emp.get("paid_leave_days") if emp.get("paid_leave_days") is not None else emp.get("approved_leave_days") or 0,
-        emp.get("unpaid_leave_days") or 0,
-    ), 9)
+    rgb_fill(0.961, 0.984, 1.0, 36, 86, 250, 110)
+    rgb_stroke(0.812, 0.910, 0.969, 36, 86, 250, 110)
+    text_at(48, 176, "PAYMENT DETAILS", 8, True, (0.384, 0.502, 0.584))
+    text_at(48, 160, "Account Title: {}".format(lh["payslip_bank_title"])[:42], 9)
+    text_at(48, 146, "Bank Name: {}".format(lh["payslip_bank_name"])[:42], 9)
+    text_at(48, 132, "IBAN: {}".format(lh["payslip_bank_iban"])[:36], 9)
+    text_at(48, 114, "Present {} · Absent {} · Late {}".format(
+        emp.get("present_days") or 0,
+        emp.get("absent_days") or 0,
+        emp.get("late_days") or 0,
+    ), 8, False, (0.384, 0.502, 0.584))
 
     rgb_fill(0.09, 0.19, 0.26, 36, 36, 523, 40)
-    text_at(48, 58, "© 2026 QIntellect Technologies. All rights reserved.", 8, False, (1, 1, 1))
-    text_at(48, 44, "Powered by QIntellect Technologies", 9, True, (1, 1, 1))
+    text_at(48, 58, lh["payslip_footer"][:78], 8, False, (1, 1, 1))
+    text_at(48, 44, lh["payslip_powered"][:60], 9, True, (1, 1, 1))
 
     stream = "\n".join(ops).encode("latin-1", "replace")
     objs = [

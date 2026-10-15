@@ -71,7 +71,34 @@ DEFAULT_PAYROLL_SETTINGS = {
     "enable_bonuses": 1,
     "enable_individual_adjustments": 0,
     "enable_salary_revisions": 0,
+    "payslip_company_name": "QIntellect Technologies",
+    "payslip_tagline": "DRIVING THE FUTURE TECHNOLOGY POWERED BY QUANTUM & AI",
+    "payslip_phone": "+92 302 9633999",
+    "payslip_email": "info@qintellecttechnologies.com",
+    "payslip_website": "qintellecttechnologies.com",
+    "payslip_address": "Main Branch, Rahim Yar Khan",
+    "payslip_ntn": "J756903",
+    "payslip_footer": "© 2026 QIntellect Technologies. All rights reserved.",
+    "payslip_powered": "Powered by QIntellect Technologies",
+    "payslip_bank_title": "QIntellect Technologies",
+    "payslip_bank_name": "United Bank Limited (UBL)",
+    "payslip_bank_iban": "PK46UNIL0109000400912116",
 }
+
+PAYSLIP_LETTERHEAD_FIELDS = (
+    "payslip_company_name",
+    "payslip_tagline",
+    "payslip_phone",
+    "payslip_email",
+    "payslip_website",
+    "payslip_address",
+    "payslip_ntn",
+    "payslip_footer",
+    "payslip_powered",
+    "payslip_bank_title",
+    "payslip_bank_name",
+    "payslip_bank_iban",
+)
 
 
 def tenant_ids(organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> Tuple[str, str]:
@@ -470,6 +497,18 @@ def _migrate_payroll_settings(cursor) -> None:
         # Existing orgs keep round_rate_first. New rows set round_at_end in ensure_payroll_settings_row.
         # Rollback: DROP COLUMN ot_rounding (SQLite 3.35+) or restore backup.
         ("ot_rounding", "TEXT NOT NULL DEFAULT 'round_rate_first'"),
+        ("payslip_company_name", "TEXT NOT NULL DEFAULT 'QIntellect Technologies'"),
+        ("payslip_tagline", "TEXT NOT NULL DEFAULT 'DRIVING THE FUTURE TECHNOLOGY POWERED BY QUANTUM & AI'"),
+        ("payslip_phone", "TEXT NOT NULL DEFAULT '+92 302 9633999'"),
+        ("payslip_email", "TEXT NOT NULL DEFAULT 'info@qintellecttechnologies.com'"),
+        ("payslip_website", "TEXT NOT NULL DEFAULT 'qintellecttechnologies.com'"),
+        ("payslip_address", "TEXT NOT NULL DEFAULT 'Main Branch, Rahim Yar Khan'"),
+        ("payslip_ntn", "TEXT NOT NULL DEFAULT 'J756903'"),
+        ("payslip_footer", "TEXT NOT NULL DEFAULT '© 2026 QIntellect Technologies. All rights reserved.'"),
+        ("payslip_powered", "TEXT NOT NULL DEFAULT 'Powered by QIntellect Technologies'"),
+        ("payslip_bank_title", "TEXT NOT NULL DEFAULT 'QIntellect Technologies'"),
+        ("payslip_bank_name", "TEXT NOT NULL DEFAULT 'United Bank Limited (UBL)'"),
+        ("payslip_bank_iban", "TEXT NOT NULL DEFAULT 'PK46UNIL0109000400912116'"),
     ):
         if column not in cols:
             cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")

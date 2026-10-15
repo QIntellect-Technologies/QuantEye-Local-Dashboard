@@ -13,6 +13,7 @@ from payroll_policy_schema import (
     DEFAULT_DECIMAL_PLACES,
     DEFAULT_OT_DIVISOR,
     DEFAULT_PAYROLL_SETTINGS,
+    PAYSLIP_LETTERHEAD_FIELDS,
     DEFAULT_PRORATION_BASIS,
     DEFAULT_OT_ROUNDING,
     LEGACY_OT_ROUNDING,
@@ -904,6 +905,18 @@ def init_db():
                 ("enable_salary_revisions", "INTEGER NOT NULL DEFAULT 0"),
                 ("attendance_pay_mode", "TEXT NOT NULL DEFAULT 'payable_days'"),
                 ("ot_rounding", "TEXT NOT NULL DEFAULT 'round_rate_first'"),
+                ("payslip_company_name", "TEXT NOT NULL DEFAULT 'QIntellect Technologies'"),
+                ("payslip_tagline", "TEXT NOT NULL DEFAULT 'DRIVING THE FUTURE TECHNOLOGY POWERED BY QUANTUM & AI'"),
+                ("payslip_phone", "TEXT NOT NULL DEFAULT '+92 302 9633999'"),
+                ("payslip_email", "TEXT NOT NULL DEFAULT 'info@qintellecttechnologies.com'"),
+                ("payslip_website", "TEXT NOT NULL DEFAULT 'qintellecttechnologies.com'"),
+                ("payslip_address", "TEXT NOT NULL DEFAULT 'Main Branch, Rahim Yar Khan'"),
+                ("payslip_ntn", "TEXT NOT NULL DEFAULT 'J756903'"),
+                ("payslip_footer", "TEXT NOT NULL DEFAULT '© 2026 QIntellect Technologies. All rights reserved.'"),
+                ("payslip_powered", "TEXT NOT NULL DEFAULT 'Powered by QIntellect Technologies'"),
+                ("payslip_bank_title", "TEXT NOT NULL DEFAULT 'QIntellect Technologies'"),
+                ("payslip_bank_name", "TEXT NOT NULL DEFAULT 'United Bank Limited (UBL)'"),
+                ("payslip_bank_iban", "TEXT NOT NULL DEFAULT 'PK46UNIL0109000400912116'"),
             ]:
                 if column not in payroll_setting_columns:
                     cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -6193,6 +6206,9 @@ def get_payroll_settings(
             **DEFAULT_PAYROLL_SETTINGS,
         }
         settings = dict(row) if row else defaults
+        for key in PAYSLIP_LETTERHEAD_FIELDS:
+            if not str(settings.get(key) or '').strip():
+                settings[key] = DEFAULT_PAYROLL_SETTINGS.get(key) or ''
         try:
             absence_count = cursor.execute(
                 """SELECT COUNT(*) FROM payroll_rules
@@ -6773,6 +6789,7 @@ def update_payroll_settings(
     off_day_attendance_pay_multiplier: Optional[float] = None,
     off_day_attendance_pay_fixed_amount: Optional[float] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
+    letterhead: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Save organization-owned payroll and half-leave quota policies."""
     mode = str(half_leave_quota_mode or 'category').strip().lower()
@@ -6894,6 +6911,17 @@ def update_payroll_settings(
         "off_day_attendance_pay_fixed_amount = ?",
     ]
     assignments.extend(f"{key} = ?" for key in FEATURE_FLAGS)
+    letterhead = letterhead or {}
+    letterhead_values = []
+    for key in PAYSLIP_LETTERHEAD_FIELDS:
+        incoming = letterhead.get(key) if key in letterhead else current.get(key)
+        text = str(incoming if incoming is not None else DEFAULT_PAYROLL_SETTINGS.get(key) or '').strip()
+        if not text:
+            text = str(DEFAULT_PAYROLL_SETTINGS.get(key) or '')
+        if len(text) > 240:
+            text = text[:240]
+        letterhead_values.append(text)
+        assignments.append(f"{key} = ?")
     params = (
         int(bool(deduct_unpaid_leave)),
         mode,
@@ -6919,6 +6947,7 @@ def update_payroll_settings(
         off_mult,
         off_fixed,
         *flag_values,
+        *letterhead_values,
     )
     insert_columns = [
         "organization_id",
@@ -6947,6 +6976,7 @@ def update_payroll_settings(
         "off_day_attendance_pay_multiplier",
         "off_day_attendance_pay_fixed_amount",
         *FEATURE_FLAGS,
+        *PAYSLIP_LETTERHEAD_FIELDS,
     ]
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -8819,7 +8849,7 @@ def get_employee_payslip(
     )
     if not record:
         return None
-    branch = get_branch_settings()
+    letterhead = {key: settings.get(key) or DEFAULT_PAYROLL_SETTINGS.get(key) or '' for key in PAYSLIP_LETTERHEAD_FIELDS}
     return {
         'payroll_month': payroll.get('payroll_month'),
         'period_start': payroll.get('period_start'),
@@ -8830,13 +8860,14 @@ def get_employee_payslip(
         'decimal_places': settings.get('decimal_places') if settings.get('decimal_places') is not None else DEFAULT_DECIMAL_PLACES,
         'finalized_at': payroll.get('finalized_at'),
         'finalized_by': payroll.get('finalized_by'),
+        'letterhead': letterhead,
         'company': {
-            'name': (branch.get('company_name') or '').strip() or 'QIntellect Technologies',
-            'branch': (branch.get('branch_name') or '').strip(),
-            'city': (branch.get('city') or '').strip(),
-            'phone': (branch.get('phone') or '').strip(),
-            'email': (branch.get('email') or '').strip(),
-            'address': (branch.get('address') or '').strip(),
+            'name': letterhead.get('payslip_company_name') or 'QIntellect Technologies',
+            'branch': letterhead.get('payslip_address') or '',
+            'city': '',
+            'phone': letterhead.get('payslip_phone') or '',
+            'email': letterhead.get('payslip_email') or '',
+            'address': letterhead.get('payslip_address') or '',
         },
         'employee': record,
         'gross_salary': record.get('gross_salary'),

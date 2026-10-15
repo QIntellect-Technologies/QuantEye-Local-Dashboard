@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- Premium Fonts & Icons -->
 
     <link
@@ -929,6 +930,24 @@
         gap: 16px;
       }
       .invoice-brand { display: flex; align-items: center; gap: 14px; }
+      .invoice-brand img { width: 76px; height: 76px; object-fit: contain; }
+      .payslip-letterhead-grid {
+        display: grid;
+        grid-template-columns: minmax(280px, 1fr) minmax(340px, 1.15fr);
+        gap: 18px;
+        align-items: start;
+      }
+      .payslip-live-preview {
+        background: #f4f8fb;
+        border: 1px solid #cfe8f7;
+        border-radius: 12px;
+        padding: 12px;
+        max-height: 760px;
+        overflow: auto;
+      }
+      @media (max-width: 980px) {
+        .payslip-letterhead-grid { grid-template-columns: 1fr; }
+      }
       .payslip-mark {
         width: 76px;
         height: 76px;
@@ -960,7 +979,7 @@
         text-transform: uppercase;
         letter-spacing: .4px;
       }
-      .invoice-paper table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      .invoice-paper table { width: 100%; border-collapse: collapse; margin-top: 28px; }
       .invoice-paper th,
       .invoice-paper td { text-align: left; padding: 12px; border-bottom: 1px solid #dcecf4; }
       .invoice-paper th { color: #173042; font-size: 12px; text-transform: uppercase; }
@@ -5849,6 +5868,7 @@ async function fetchMultiLiveDetections() {
         {% endif %}
         <button type="button" class="payroll-hub-tab" data-payroll-hub="packages" onclick="switchPayrollHubTab('packages')">6. Salary packages</button>
         <button type="button" class="payroll-hub-tab" data-payroll-hub="calendar" onclick="switchPayrollHubTab('calendar')">7. Special dates</button>
+        <button type="button" class="payroll-hub-tab" data-payroll-hub="payslip" onclick="switchPayrollHubTab('payslip')">8. Payslip</button>
       </nav>
     </template>
     <!-- TAB 5: PAYROLL RULES -->
@@ -5869,7 +5889,7 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
         <div class="payroll-hub-tabs-mount"></div>
-        <p class="payroll-hub-step" data-payroll-hub-step>Step 1 of 7 — General<span>Set currency and how pay is split when someone joins or leaves mid-month. Open Payroll Guide for a full example.</span></p>
+        <p class="payroll-hub-step" data-payroll-hub-step>Step 1 of 8 — General<span>Set currency and how pay is split when someone joins or leaves mid-month. Open Payroll Guide for a full example.</span></p>
         <div id="payrollSettingsMessage" role="status" class="small text-muted" style="margin-bottom:10px;"></div>
 
         <div class="payroll-hub-pane is-active" data-payroll-hub-pane="general">
@@ -6466,6 +6486,58 @@ async function fetchMultiLiveDetections() {
         </section>
         </div>
         {% endif %}
+
+        <div class="payroll-hub-pane" data-payroll-hub-pane="payslip">
+          <section class="payroll-panel">
+            <h4>Payslip letterhead</h4>
+            <p class="payroll-panel-help">These details print on every payslip, in the same layout as a QuantEye invoice. Type on the left — the preview on the right updates immediately. Click Save letterhead to keep the change.</p>
+            <div class="payslip-letterhead-grid">
+              <form id="payslipLetterheadForm" oninput="refreshPayslipLetterheadPreview()" onsubmit="event.preventDefault(); savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false);">
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Company name
+                  <input id="payslip_company_name" class="form-control" type="text" maxlength="120" autocomplete="organization">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Tagline
+                  <input id="payslip_tagline" class="form-control" type="text" maxlength="160">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Phone
+                  <input id="payslip_phone" class="form-control" type="text" maxlength="60">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Email
+                  <input id="payslip_email" class="form-control" type="text" maxlength="120">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Website
+                  <input id="payslip_website" class="form-control" type="text" maxlength="120">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Address / branch
+                  <input id="payslip_address" class="form-control" type="text" maxlength="200">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:10px;">NTN
+                  <input id="payslip_ntn" class="form-control" type="text" maxlength="40">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Bank account title
+                  <input id="payslip_bank_title" class="form-control" type="text" maxlength="120">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Bank name
+                  <input id="payslip_bank_name" class="form-control" type="text" maxlength="120">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:10px;">IBAN
+                  <input id="payslip_bank_iban" class="form-control" type="text" maxlength="60">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Footer
+                  <input id="payslip_footer" class="form-control" type="text" maxlength="200">
+                </label>
+                <label class="payroll-rule-field" style="margin-bottom:14px;">Powered by
+                  <input id="payslip_powered" class="form-control" type="text" maxlength="120">
+                </label>
+                <button type="submit" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">Save letterhead</button>
+              </form>
+              <div>
+                <p class="payroll-panel-help" style="margin-bottom:8px;">Live preview (sample staff, not a real person)</p>
+                <div id="payslipLetterheadPreview" class="payslip-live-preview"></div>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
 
@@ -6486,7 +6558,7 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
         <div class="payroll-hub-tabs-mount"></div>
-        <p class="payroll-hub-step" data-payroll-hub-step>Step 7 of 7 — Special dates<span>Mark holidays, extra work days, or off days that override the weekly shift.</span></p>
+        <p class="payroll-hub-step" data-payroll-hub-step>Step 7 of 8 — Special dates<span>Mark holidays, extra work days, or off days that override the weekly shift.</span></p>
 
         <form id="payrollCalendarForm" class="payroll-rule-form" onsubmit="event.preventDefault(); savePayrollCalendarOverride();">
           <input id="payrollCalendarId" type="hidden" value="">
@@ -6572,7 +6644,7 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
         <div class="payroll-hub-tabs-mount"></div>
-        <p class="payroll-hub-step" data-payroll-hub-step>Step 6 of 7 — Salary packages<span>Set each person’s basic pay, extras, and overtime rate.</span></p>
+        <p class="payroll-hub-step" data-payroll-hub-step>Step 6 of 8 — Salary packages<span>Set each person’s basic pay, extras, and overtime rate.</span></p>
 
         <!-- 4 KPI Summary Stat Cards -->
         <div class="stats-grid mb-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px;">
@@ -6762,11 +6834,12 @@ async function fetchMultiLiveDetections() {
           <button type="button" data-guide-section="guide-overtime" onclick="showPayrollGuideSection('guide-overtime', this)">5. Overtime</button>
           <button type="button" data-guide-section="guide-packages" onclick="showPayrollGuideSection('guide-packages', this)">6. Salary packages</button>
           <button type="button" data-guide-section="guide-calendar" onclick="showPayrollGuideSection('guide-calendar', this)">7. Special dates</button>
+          <button type="button" data-guide-section="guide-payslip" onclick="showPayrollGuideSection('guide-payslip', this)">8. Payslip</button>
         </nav>
         <div class="payroll-guide-content">
           <section id="guide-overview">
             <h4>Simple Guide</h4>
-            <p>Set these 7 tabs in order. Click Save on each tab. Then open Payroll, pick the month, and Recalculate. Months you already locked do not change.</p>
+            <p>Set these 8 tabs in order. Click Save on each tab. Then open Payroll, pick the month, and Recalculate. Months you already locked do not change.</p>
             <table class="payroll-guide-table">
               <thead><tr><th>Tab</th><th>What you set</th></tr></thead>
               <tbody>
@@ -6777,6 +6850,7 @@ async function fetchMultiLiveDetections() {
                 <tr><td>5. Overtime</td><td>Hourly rate, maximum hours, holiday extra.</td></tr>
                 <tr><td>6. Salary packages</td><td>Each person’s basic pay and overtime rate.</td></tr>
                 <tr><td>7. Special dates</td><td>Holidays, extra work days, or off days for one date.</td></tr>
+                <tr><td>8. Payslip</td><td>Company name, address, NTN, phone, email, bank, and footer printed on the slip.</td></tr>
               </tbody>
             </table>
             <h5>Words we use</h5>
@@ -7162,6 +7236,20 @@ async function fetchMultiLiveDetections() {
               </tbody>
             </table>
             <p>Weekly shift still applies on dates you did not mark. After you add dates, Recalculate the open month on Payroll.</p>
+          </section>
+
+          <section id="guide-payslip" hidden>
+            <h4>8. Payslip</h4>
+            <p>This tab is the company letterhead on every payslip. It uses the same paper layout as a QuantEye invoice: header, four-column table, totals, bank box, and dark footer.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Field</th><th>Where it prints</th></tr></thead>
+              <tbody>
+                <tr><td>Company name, tagline, phone, email, NTN, address</td><td>Top left of the slip</td></tr>
+                <tr><td>Bank account title, bank name, IBAN</td><td>Payment details box</td></tr>
+                <tr><td>Footer and Powered by</td><td>Dark bar at the bottom</td></tr>
+              </tbody>
+            </table>
+            <p>The preview on the right updates as you type. Sample staff is not a real person. Click Save letterhead, then open a real payslip from Payroll. Download PDF uses the same paper you see on screen.</p>
           </section>
         </div>
       </div>
@@ -13304,13 +13392,14 @@ async function fetchMultiLiveDetections() {
 
       let lastPayrollHubTab = 'general';
       const PAYROLL_HUB_STEPS = {
-        general: { title: 'Step 1 of 7 — General', text: 'Set currency and how pay is split when someone joins or leaves mid-month. Open Payroll Guide for a full example.' },
-        attendance: { title: 'Step 2 of 7 — Attendance', text: 'Choose whether you pay for days present, or pay full salary then cut missed days. You can also add rest-day extra pay here.' },
-        extras: { title: 'Step 3 of 7 — Extra pay', text: 'Turn on only what this company uses. Then add items like house rent or tax and choose who they apply to.' },
-        leave: { title: 'Step 4 of 7 — Leave', text: 'Set unpaid leave, half-day leave, and missed-day cut rules. Use this tab one step at a time.' },
-        overtime: { title: 'Step 5 of 7 — Overtime', text: 'Set how overtime hours are paid, including holiday and rest-day extras. Only approved overtime is paid.' },
-        packages: { title: 'Step 6 of 7 — Salary packages', text: 'Set each person’s basic pay, extras, and overtime rate. Use Edit on a row to change a package.' },
-        calendar: { title: 'Step 7 of 7 — Special dates', text: 'Mark holidays, extra work days, or off days that override the weekly shift for the people you select.' }
+        general: { title: 'Step 1 of 8 — General', text: 'Set currency and how pay is split when someone joins or leaves mid-month. Open Payroll Guide for a full example.' },
+        attendance: { title: 'Step 2 of 8 — Attendance', text: 'Choose whether you pay for days present, or pay full salary then cut missed days. You can also add rest-day extra pay here.' },
+        extras: { title: 'Step 3 of 8 — Extra pay', text: 'Turn on only what this company uses. Then add items like house rent or tax and choose who they apply to.' },
+        leave: { title: 'Step 4 of 8 — Leave', text: 'Set unpaid leave, half-day leave, and missed-day cut rules. Use this tab one step at a time.' },
+        overtime: { title: 'Step 5 of 8 — Overtime', text: 'Set how overtime hours are paid, including holiday and rest-day extras. Only approved overtime is paid.' },
+        packages: { title: 'Step 6 of 8 — Salary packages', text: 'Set each person’s basic pay, extras, and overtime rate. Use Edit on a row to change a package.' },
+        calendar: { title: 'Step 7 of 8 — Special dates', text: 'Mark holidays, extra work days, or off days that override the weekly shift for the people you select.' },
+        payslip: { title: 'Step 8 of 8 — Payslip', text: 'Edit company name, address, NTN, phone, email, bank, and footer. The preview updates as you type. Save to print on every payslip.' }
       };
 
       function paintPayrollHubTabs(activeKey) {
@@ -13349,6 +13438,7 @@ async function fetchMultiLiveDetections() {
           pane.classList.toggle('is-active', pane.getAttribute('data-payroll-hub-pane') === key);
         });
         paintPayrollHubTabs(key);
+        if (key === 'payslip') refreshPayslipLetterheadPreview();
       }
 
       function switchSettingsTab(tabId, btn) {
@@ -13398,7 +13488,7 @@ async function fetchMultiLiveDetections() {
         else if (tabId === 'payroll-rules-tab') {
           loadPayrollRules();
           loadPayrollSettings();
-          const inner = ['general', 'attendance', 'extras', 'leave', 'overtime'].includes(lastPayrollHubTab)
+          const inner = ['general', 'attendance', 'extras', 'leave', 'overtime', 'payslip'].includes(lastPayrollHubTab)
             ? lastPayrollHubTab
             : 'general';
           document.querySelectorAll('.payroll-hub-pane').forEach((pane) => {
@@ -13669,6 +13759,7 @@ async function fetchMultiLiveDetections() {
             const el = document.getElementById(`flag_${flag}`);
             if (el) el.checked = Boolean(Number(settings[flag] ?? (flag === 'enable_bonuses' ? 1 : 0)));
           });
+          applyPayslipLetterhead(settings);
           await loadPayrollComponentTypes();
           await loadPayLineDuplicates();
           await fillPayLineScopeOptions();
@@ -14158,16 +14249,85 @@ async function fetchMultiLiveDetections() {
 
       let currentPayslip = null;
       let currentPayslipEmployeeId = null;
-      const PAYSLIP_COMPANY = {
-        name: 'QIntellect Technologies',
-        tagline: 'DRIVING THE FUTURE TECHNOLOGY POWERED BY QUANTUM & AI',
-        phone: '+92 302 9633999',
-        email: 'info@qintellecttechnologies.com',
-        ntn: 'J756903',
-        footer: '© 2026 QIntellect Technologies. All rights reserved.',
-        powered: 'Powered by QIntellect Technologies'
+      const PAYSLIP_LETTERHEAD_FIELDS = [
+        'payslip_company_name', 'payslip_tagline', 'payslip_phone', 'payslip_email', 'payslip_website',
+        'payslip_address', 'payslip_ntn', 'payslip_footer', 'payslip_powered',
+        'payslip_bank_title', 'payslip_bank_name', 'payslip_bank_iban'
+      ];
+      const PAYSLIP_LETTERHEAD_DEFAULTS = {
+        payslip_company_name: 'QIntellect Technologies',
+        payslip_tagline: 'DRIVING THE FUTURE TECHNOLOGY POWERED BY QUANTUM & AI',
+        payslip_phone: '+92 302 9633999',
+        payslip_email: 'info@qintellecttechnologies.com',
+        payslip_website: 'qintellecttechnologies.com',
+        payslip_address: 'Main Branch, Rahim Yar Khan',
+        payslip_ntn: 'J756903',
+        payslip_footer: '© 2026 QIntellect Technologies. All rights reserved.',
+        payslip_powered: 'Powered by QIntellect Technologies',
+        payslip_bank_title: 'QIntellect Technologies',
+        payslip_bank_name: 'United Bank Limited (UBL)',
+        payslip_bank_iban: 'PK46UNIL0109000400912116'
       };
-      const PAYSLIP_PRINT_CSS = `@page{size:A4;margin:14mm}body{font-family:Arial;margin:0;color:#173042}.invoice-paper{max-width:820px;margin:auto;padding:42px;border:1px solid #dcecf4}.invoice-paper header{display:flex;justify-content:space-between;border-bottom:2px solid #3d9fd4;padding-bottom:22px;gap:16px}.invoice-brand{display:flex;align-items:center;gap:14px}.payslip-mark{width:76px;height:76px;border-radius:18px;background:linear-gradient(135deg,#3d9fd4,#2176ae);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:2rem}.invoice-meta{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:24px 0;padding:18px 0;border-top:1px solid #dcecf4;border-bottom:1px solid #dcecf4}.invoice-meta small,.bank-details small{display:block;color:#628095;font-size:11px;font-weight:bold;text-transform:uppercase}.invoice-paper table{width:100%;border-collapse:collapse;margin-top:12px}.invoice-paper th,.invoice-paper td{text-align:left;padding:12px;border-bottom:1px solid #dcecf4}.invoice-paper th.num,.invoice-paper td.num{text-align:right}.invoice-paper .badge{display:inline-block;background:#e8f6fd;color:#0f4c6d;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800}.invoice-paper .total{margin:22px 0 0 auto;width:280px;line-height:1.8}.bank-details{margin-top:26px;padding:18px;border:1px solid #cfe8f7;background:#f5fbff}.app-preview-footer{margin:32px -42px -42px;padding:15px 42px;background:#173042;color:#fff;font-size:12px}.mono{font-family:ui-monospace,Menlo,Consolas,monospace}`;
+      const PAYSLIP_PRINT_CSS = `@page{size:A4;margin:14mm}body{font-family:Arial;margin:0;color:#173042}.invoice-paper{max-width:820px;margin:auto;padding:42px;border:1px solid #dcecf4}.invoice-paper header{display:flex;justify-content:space-between;border-bottom:2px solid #3d9fd4;padding-bottom:22px}.invoice-brand{display:flex;align-items:center;gap:14px}.invoice-brand img{width:76px;height:76px;object-fit:contain}.payslip-mark{width:76px;height:76px;border-radius:18px;background:linear-gradient(135deg,#3d9fd4,#2176ae);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:2rem}.invoice-meta{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:24px 0;padding:18px 0;border-top:1px solid #dcecf4;border-bottom:1px solid #dcecf4}.invoice-meta small,.bank-details small{display:block;color:#628095;font-size:11px;font-weight:bold;text-transform:uppercase}.invoice-paper table{width:100%;border-collapse:collapse;margin-top:28px}.invoice-paper th,.invoice-paper td{text-align:left;padding:12px;border-bottom:1px solid #dcecf4}.total{margin:22px 0 0 auto;width:280px;line-height:1.8}.bank-details{margin-top:26px;padding:18px;border:1px solid #cfe8f7;background:#f5fbff}.app-preview-footer{margin:32px -42px -42px;padding:15px 42px;background:#173042;color:#fff;font-size:12px}.mono{font-family:ui-monospace,Menlo,Consolas,monospace}.invoice-paper .badge{display:inline-block;background:#e8f6fd;color:#0f4c6d;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800}`;
+
+      function collectPayslipLetterhead() {
+        const out = {};
+        PAYSLIP_LETTERHEAD_FIELDS.forEach((key) => {
+          const el = document.getElementById(key);
+          const fallback = PAYSLIP_LETTERHEAD_DEFAULTS[key] || '';
+          out[key] = String(el?.value || fallback).trim() || fallback;
+        });
+        window._payslipLetterhead = out;
+        return out;
+      }
+
+      function applyPayslipLetterhead(settings) {
+        PAYSLIP_LETTERHEAD_FIELDS.forEach((key) => {
+          const el = document.getElementById(key);
+          if (el) el.value = settings?.[key] || PAYSLIP_LETTERHEAD_DEFAULTS[key] || '';
+        });
+        collectPayslipLetterhead();
+        refreshPayslipLetterheadPreview();
+      }
+
+      function samplePayslipPayload() {
+        const letterhead = collectPayslipLetterhead();
+        return {
+          payroll_month: '2026-10',
+          period_start: '2026-10-01',
+          period_end: '2026-10-31',
+          status: 'Draft',
+          is_finalized: false,
+          currency_code: window._payrollCurrencyCode || 'PKR',
+          decimal_places: window._payrollDecimalPlaces ?? 2,
+          letterhead,
+          employee: {
+            employee_name: 'Sample staff',
+            employee_id: 1001,
+            department: 'Operations',
+            designation: 'Staff',
+            basic_salary: 60000,
+            overtime_hours: 8,
+            overtime_amount: 2308,
+            present_days: 22,
+            absent_days: 1,
+            late_days: 0,
+            paid_leave_days: 1,
+            unpaid_leave_days: 0,
+            month_scheduled_workdays: 26,
+            payable_days: 23
+          },
+          gross_salary: 62308,
+          net_salary: 59908,
+          deductions: { total: 2400, absence: 2400 }
+        };
+      }
+
+      function refreshPayslipLetterheadPreview() {
+        const host = document.getElementById('payslipLetterheadPreview');
+        if (!host) return;
+        host.innerHTML = payslipPaperHtml(samplePayslipPayload());
+      }
 
       function payslipMoney(value, currency, places) {
         const amount = Number(value || 0);
@@ -14176,61 +14336,80 @@ async function fetchMultiLiveDetections() {
         return `${code} ${amount.toLocaleString('en-PK', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
       }
 
+      function payslipQty(value) {
+        const number = Number(value || 0);
+        if (Math.abs(number - Math.round(number)) < 0.001) return String(Math.round(number));
+        return number.toFixed(2);
+      }
+
+      function payslipLetterheadFromPayload(payslip) {
+        const lh = Object.assign({}, PAYSLIP_LETTERHEAD_DEFAULTS, window._payslipLetterhead || {}, payslip?.letterhead || {});
+        const company = payslip?.company || {};
+        if (!lh.payslip_company_name) lh.payslip_company_name = company.name || PAYSLIP_LETTERHEAD_DEFAULTS.payslip_company_name;
+        if (!lh.payslip_phone) lh.payslip_phone = company.phone || PAYSLIP_LETTERHEAD_DEFAULTS.payslip_phone;
+        if (!lh.payslip_email) lh.payslip_email = company.email || PAYSLIP_LETTERHEAD_DEFAULTS.payslip_email;
+        if (!lh.payslip_address) lh.payslip_address = company.address || company.branch || PAYSLIP_LETTERHEAD_DEFAULTS.payslip_address;
+        return lh;
+      }
+
       function payslipPaperHtml(payslip) {
         const emp = payslip.employee || {};
-        const company = payslip.company || {};
+        const lh = payslipLetterheadFromPayload(payslip);
         const deductions = payslip.deductions || {};
         const currency = payslip.currency_code || 'PKR';
         const places = payslip.decimal_places;
         const money = (value) => payslipMoney(value, currency, places);
         const status = payslip.is_finalized ? 'Locked' : (payslip.status || 'Draft');
         const monthLabel = payrollMonthLabel(payslip.payroll_month);
-        const companyLine = [company.name, company.branch, company.city].filter(Boolean).join(' · ');
         let payLines = emp.pay_lines || [];
         if (typeof payLines === 'string') {
           try { payLines = JSON.parse(payLines); } catch (err) { payLines = []; }
         }
-        const earnRows = [];
-        const cutRows = [];
-        const pushRow = (list, label, amount, force) => {
-          if (!force && !(Number(amount || 0) > 0)) return;
-          list.push(`<tr><td>${payrollEscape(label)}</td><td class="num">${money(amount)}</td></tr>`);
+        const rows = [];
+        const pushItem = (label, amount, qty, force) => {
+          const value = Number(amount || 0);
+          if (!force && !(value > 0)) return;
+          const quantity = Number(qty || 1) || 1;
+          rows.push(`<tr><td>${payrollEscape(label)}</td><td>${payrollEscape(payslipQty(quantity))}</td><td>${money(value / quantity)}</td><td>${money(value)}</td></tr>`);
         };
         const namedEarn = (payLines || []).some((item) => String(item.kind || '') === 'earning' && Number(item.amount || 0) > 0);
         const namedBonus = (payLines || []).some((item) => String(item.category || '') === 'bonus' && Number(item.amount || 0) > 0);
-        pushRow(earnRows, 'Basic pay', emp.basic_salary, true);
-        if (!namedEarn) pushRow(earnRows, 'Allowances', emp.allowances);
-        pushRow(earnRows, Number(emp.overtime_hours || 0) ? `Overtime (${Number(emp.overtime_hours).toFixed(1)} hrs)` : 'Overtime', emp.overtime_amount);
-        if (!namedBonus) pushRow(earnRows, 'Bonus', emp.bonus_amount);
-        pushRow(earnRows, 'Rest-day extra', emp.off_day_extra_pay);
-        pushRow(earnRows, 'Adjustments', emp.adjustment_amount);
-        pushRow(earnRows, 'Arrears', emp.arrears_amount);
+        pushItem('Basic pay', emp.basic_salary, 1, true);
+        if (!namedEarn) pushItem('Allowances', emp.allowances, 1);
+        pushItem('Overtime', emp.overtime_amount, Number(emp.overtime_hours || 0) || 1);
+        if (!namedBonus) pushItem('Bonus', emp.bonus_amount, 1);
+        pushItem('Rest-day extra', emp.off_day_extra_pay, 1);
+        pushItem('Adjustments', emp.adjustment_amount, 1);
+        pushItem('Arrears', emp.arrears_amount, 1);
         (payLines || []).forEach((item) => {
           const amount = Number(item.amount || 0);
           if (!amount) return;
           const name = item.name || item.type || 'Pay item';
           const kind = String(item.kind || item.category || '');
           if (['deduction', 'tax', 'loan', 'advance', 'provident', 'insurance'].includes(kind)) {
-            pushRow(cutRows, name, amount, true);
+            pushItem(name, amount, 1, true);
           } else if (['earning', 'allowance', 'bonus'].includes(kind) && String(name).toLowerCase() !== 'basic pay') {
-            pushRow(earnRows, name, amount, true);
+            pushItem(name, amount, 1, true);
           }
         });
-        pushRow(cutRows, 'Missed-day cut', deductions.absence);
-        pushRow(cutRows, 'Unpaid leave', deductions.unpaid_leave);
-        pushRow(cutRows, 'Half-day leave cut', deductions.half_leave);
-        pushRow(cutRows, 'Days not present', deductions.attendance_shortfall);
-        if (!cutRows.length) pushRow(cutRows, 'No cuts', 0, true);
+        pushItem('Missed-day cut', deductions.absence, 1);
+        pushItem('Unpaid leave', deductions.unpaid_leave, 1);
+        pushItem('Half-day leave cut', deductions.half_leave, 1);
+        pushItem('Days not present', deductions.attendance_shortfall, 1);
+        if (!rows.length) pushItem('Basic pay', 0, 1, true);
         const paidLeave = emp.paid_leave_days != null ? emp.paid_leave_days : emp.approved_leave_days;
         return `<div class="invoice-paper" id="printPayslip">
           <header>
             <div class="invoice-brand">
-              <div class="payslip-mark">Q</div>
+              <img src="/static/Logo.png" alt="Company logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+              <div class="payslip-mark" style="display:none">Q</div>
               <div>
-                <strong style="font-size:1.25rem">${payrollEscape(PAYSLIP_COMPANY.name)}</strong>
-                <div style="color:#247eae;font-size:.72rem;font-weight:800;letter-spacing:.5px">${PAYSLIP_COMPANY.tagline}</div>
-                <div>${payrollEscape(PAYSLIP_COMPANY.phone)} · ${payrollEscape(PAYSLIP_COMPANY.email)}</div>
-                <div class="mono">NTN: ${PAYSLIP_COMPANY.ntn}</div>
+                <strong style="font-size:1.25rem">${payrollEscape(lh.payslip_company_name)}</strong>
+                <div style="color:#247eae;font-size:.72rem;font-weight:800;letter-spacing:.5px">${payrollEscape(lh.payslip_tagline)}</div>
+                <div>${payrollEscape(lh.payslip_phone)} · ${payrollEscape(lh.payslip_email)}</div>
+                <div class="mono">NTN: ${payrollEscape(lh.payslip_ntn)}</div>
+                <div>${payrollEscape(lh.payslip_address)}</div>
+                <div>${payrollEscape(lh.payslip_website)}</div>
               </div>
             </div>
             <div style="text-align:right">
@@ -14244,7 +14423,6 @@ async function fetchMultiLiveDetections() {
               <small>Pay to</small>
               <strong>${payrollEscape(emp.employee_name || 'Staff')}</strong>
               <div>#${payrollEscape(emp.employee_id || '')} · ${payrollEscape(emp.department || 'General')} · ${payrollEscape(emp.designation || 'Staff')}</div>
-              <div>${payrollEscape(companyLine || '')}</div>
             </div>
             <div>
               <small>Pay period</small>
@@ -14254,13 +14432,8 @@ async function fetchMultiLiveDetections() {
             </div>
           </div>
           <table>
-            <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
-            <tbody>
-              <tr><td colspan="2" style="font-weight:800;color:#247eae;background:#f5fbff;">Money added</td></tr>
-              ${earnRows.join('')}
-              <tr><td colspan="2" style="font-weight:800;color:#247eae;background:#f5fbff;">Money taken away</td></tr>
-              ${cutRows.join('')}
-            </tbody>
+            <thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead>
+            <tbody>${rows.join('')}</tbody>
           </table>
           <div class="total">
             <div>Gross pay: ${money(payslip.gross_salary)}</div>
@@ -14269,16 +14442,13 @@ async function fetchMultiLiveDetections() {
             <strong>Take-home pay: ${money(payslip.net_salary)}</strong>
           </div>
           <div class="bank-details">
-            <small>Attendance this month</small>
-            <strong>Present ${payrollEscape(emp.present_days || 0)}</strong>
-            · Absent ${payrollEscape(emp.absent_days || 0)}
-            · Late ${payrollEscape(emp.late_days || 0)}<br>
-            Paid leave ${payrollEscape(paidLeave || 0)}
-            · Unpaid leave ${payrollEscape(emp.unpaid_leave_days || 0)}
-            ${emp.matched_rule ? `<div style="margin-top:8px;">Rule used: ${payrollEscape(emp.matched_rule)}</div>` : ''}
+            <small>Payment details</small>
+            <strong>Account Title:</strong> ${payrollEscape(lh.payslip_bank_title)}<br>
+            <strong>Bank Name:</strong> ${payrollEscape(lh.payslip_bank_name)}<br>
+            <strong>IBAN:</strong> ${payrollEscape(lh.payslip_bank_iban)}
           </div>
-          <p style="margin-top:22px;color:#628095">This payslip is for the month shown above. Locked months do not change after Finalize.</p>
-          <div class="app-preview-footer">${PAYSLIP_COMPANY.footer}<br><strong>${PAYSLIP_COMPANY.powered}</strong></div>
+          <p style="margin-top:22px;color:#628095">This payslip is for the month shown above. Locked months do not change after Finalize. Present ${payrollEscape(emp.present_days || 0)} · Absent ${payrollEscape(emp.absent_days || 0)} · Late ${payrollEscape(emp.late_days || 0)} · Paid leave ${payrollEscape(paidLeave || 0)} · Unpaid leave ${payrollEscape(emp.unpaid_leave_days || 0)}</p>
+          <div class="app-preview-footer">${payrollEscape(lh.payslip_footer)}<br><strong>${payrollEscape(lh.payslip_powered)}</strong></div>
         </div>`;
       }
 
@@ -14325,7 +14495,7 @@ async function fetchMultiLiveDetections() {
         printWindow.print();
       }
 
-      function downloadPayslipPdf(employeeId) {
+      async function downloadPayslipPdf(employeeId) {
         const id = employeeId || currentPayslipEmployeeId;
         const month = document.getElementById('payrollMonth')?.value;
         if (!month) {
@@ -14335,6 +14505,39 @@ async function fetchMultiLiveDetections() {
         if (!id) {
           showAppToast('Choose a staff member first.', 'error');
           return;
+        }
+        try {
+          let payload = currentPayslip;
+          if (!payload || Number(currentPayslipEmployeeId) !== Number(id)) {
+            const response = await fetch(`${API_BASE}/payroll/payslip/${id}?month=${encodeURIComponent(month)}`);
+            payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.error || 'Could not load payslip.');
+          }
+          const wrap = document.createElement('div');
+          wrap.style.position = 'fixed';
+          wrap.style.left = '-12000px';
+          wrap.style.top = '0';
+          wrap.style.width = '820px';
+          wrap.style.background = '#ffffff';
+          wrap.innerHTML = payslipPaperHtml(payload);
+          document.body.appendChild(wrap);
+          try {
+            const paper = wrap.querySelector('#printPayslip') || wrap.firstElementChild;
+            if (window.html2pdf && paper) {
+              await window.html2pdf().set({
+                margin: [10, 10, 10, 10],
+                filename: `payslip-${month}-${id}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+              }).from(paper).save();
+              return;
+            }
+          } finally {
+            wrap.remove();
+          }
+        } catch (error) {
+          showAppToast(error.message || 'Could not build PDF from the on-screen payslip.', 'error');
         }
         window.location.href = `${API_BASE}/payroll/payslip/${id}/pdf?month=${encodeURIComponent(month)}`;
       }
@@ -14800,7 +15003,8 @@ async function fetchMultiLiveDetections() {
               enable_loans: Boolean(document.getElementById('flag_enable_loans')?.checked),
               enable_advances: Boolean(document.getElementById('flag_enable_advances')?.checked),
               enable_provident: Boolean(document.getElementById('flag_enable_provident')?.checked),
-              enable_insurance: Boolean(document.getElementById('flag_enable_insurance')?.checked)
+              enable_insurance: Boolean(document.getElementById('flag_enable_insurance')?.checked),
+              ...collectPayslipLetterhead()
             })
           });
           const result = await response.json();
@@ -14811,6 +15015,7 @@ async function fetchMultiLiveDetections() {
           }
           window._payrollCurrencyCode = result.settings?.currency_code || 'PKR';
           window._payrollDecimalPlaces = result.settings?.decimal_places ?? 2;
+          applyPayslipLetterhead(result.settings || {});
           if (quotaMode) quotaMode.value = result.settings?.half_leave_quota_mode || 'category';
           if (conversionCount) {
             conversionCount.value = result.settings?.half_leaves_per_quota_day || 2;
