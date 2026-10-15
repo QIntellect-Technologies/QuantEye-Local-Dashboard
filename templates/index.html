@@ -6664,10 +6664,10 @@ async function fetchMultiLiveDetections() {
           <div style="margin-top:16px; border-top:1px solid #dbe5ec; padding-top:12px;">
             <div style="font-weight:700; color:#173042; margin-bottom:8px;">Extra overtime for one group</div>
             <div style="font-size:0.82em; color:#64748b; margin-bottom:10px;">Different extra pay for one department or one person.</div>
-            <form id="overtimeSpecificRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); /* TODO */">
+            <form id="overtimeSpecificRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); saveOvertimeSpecificRule();">
               <label class="payroll-rule-field">
                 Applies to
-                <select class="form-select" id="overtimeRuleScope" onchange="updateOvertimeRuleScopeOptions()">
+                <select class="form-select" id="overtimeRuleScope" onchange="updateOvertimePremiumRuleScopeOptions()">
                   <option value="department">Department</option>
                   <option value="employee">One person</option>
                 </select>
@@ -6676,6 +6676,13 @@ async function fetchMultiLiveDetections() {
                 Target
                 <select class="form-select" id="overtimeRuleTarget">
                   <option value="">Select…</option>
+                </select>
+              </label>
+              <label class="payroll-rule-field">
+                Day type
+                <select class="form-select" id="overtimeRuleDayType">
+                  <option value="non_working_day">Rest day</option>
+                  <option value="holiday">Public holiday</option>
                 </select>
               </label>
               <label class="payroll-rule-field">
@@ -6694,12 +6701,13 @@ async function fetchMultiLiveDetections() {
                   <tr>
                     <th>Scope</th>
                     <th>Target</th>
+                    <th>Day</th>
                     <th>Premium</th>
                     <th style="text-align:right;">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="overtimeSpecificRulesTableBody">
-                  <tr><td colspan="4" class="text-center text-muted p-4">None yet.</td></tr>
+                  <tr><td colspan="5" class="text-center text-muted p-4">None yet.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -14120,6 +14128,8 @@ async function fetchMultiLiveDetections() {
             await loadOvertimePremiumRules();
             await loadSpecificOvertimeLimitRules();
             await updateOvertimeLimitRuleScopeOptions();
+            await loadOvertimeSpecificRules();
+            await updateOvertimePremiumRuleScopeOptions();
           }
           await previewPayrollSettingsImpact();
         } catch (error) {
@@ -14441,6 +14451,112 @@ async function fetchMultiLiveDetections() {
           }).join('');
         } catch (e) {
           tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger p-4">Error loading rules: ${e.message}</td></tr>`;
+        }
+      }
+
+      async function updateOvertimePremiumRuleScopeOptions() {
+        const scopeEl = document.getElementById('overtimeRuleScope');
+        const targetSelect = document.getElementById('overtimeRuleTarget');
+        if (!scopeEl || !targetSelect) return;
+        const scope = scopeEl.value;
+        targetSelect.innerHTML = '<option value="">Select…</option>';
+        try {
+          const data = await loadPayrollScopeOptions();
+          if (scope === 'department') {
+            const rows = data.departments || [];
+            targetSelect.innerHTML = rows.length
+              ? '<option value="">Select department…</option>' + rows.map((row) =>
+                `<option value="${payrollEscape(row.name || row.id)}">${payrollEscape(row.name || row.id)}</option>`
+              ).join('')
+              : '<option value="">No departments yet</option>';
+            return;
+          }
+          const users = data.employees || [];
+          targetSelect.innerHTML = users.length
+            ? '<option value="">Select person…</option>' + users.map((row) =>
+              `<option value="${payrollEscape(row.id)}">${payrollEscape(row.name || row.id)}</option>`
+            ).join('')
+            : '<option value="">No people yet</option>';
+        } catch (error) {
+          targetSelect.innerHTML = '<option value="">Could not load list</option>';
+        }
+      }
+
+      async function saveOvertimeSpecificRule() {
+        const scope = document.getElementById('overtimeRuleScope')?.value;
+        const targetId = document.getElementById('overtimeRuleTarget')?.value;
+        const dayType = document.getElementById('overtimeRuleDayType')?.value;
+        const premium = document.getElementById('overtimeRuleValue')?.value;
+        if (!targetId || premium === '' || premium == null) {
+          showAppToast('Select a group and enter a premium percent.', 'error');
+          return;
+        }
+        try {
+          const res = await fetch(`${API_BASE}/settings/payroll/scoped-rules/overtime-premium`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              scope_type: scope,
+              scope_id: targetId,
+              day_type: dayType,
+              premium_percent: Number(premium),
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) throw new Error(data.error || 'Failed to save extra overtime rule');
+          showAppToast('Extra overtime rule saved.', 'success');
+          document.getElementById('overtimeRuleValue').value = '';
+          await loadOvertimeSpecificRules();
+        } catch (e) {
+          showAppToast(e.message, 'error');
+        }
+      }
+
+      async function deleteOvertimeSpecificRule(id) {
+        if (!await appConfirm('Remove this extra overtime rule?')) return;
+        try {
+          const res = await fetch(`${API_BASE}/settings/payroll/scoped-rules/overtime-premium/${id}`, { method: 'DELETE' });
+          const data = await res.json();
+          if (!res.ok || !data.success) throw new Error(data.error || 'Failed to delete rule');
+          showAppToast('Extra overtime rule removed.', 'success');
+          await loadOvertimeSpecificRules();
+        } catch (e) {
+          showAppToast(e.message, 'error');
+        }
+      }
+
+      async function loadOvertimeSpecificRules() {
+        const tbody = document.getElementById('overtimeSpecificRulesTableBody');
+        if (!tbody) return;
+        try {
+          const res = await fetch(`${API_BASE}/settings/payroll/scoped-rules/overtime-premium`);
+          const rules = await res.json();
+          if (!res.ok) throw new Error(rules.error || 'Failed to load extra overtime rules');
+          if (!Array.isArray(rules) || rules.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted p-4">None yet.</td></tr>';
+            return;
+          }
+          tbody.innerHTML = rules.map((rule) => {
+            const targetName = rule.scope_type === 'department'
+              ? (rule.department_name || `Dept #${rule.scope_id}`)
+              : (rule.employee_name || `Employee #${rule.scope_id}`);
+            const dayLabel = rule.day_type === 'holiday' ? 'Public holiday' : 'Rest day';
+            return `
+              <tr>
+                <td><span class="badge bg-secondary-subtle text-secondary" style="text-transform:capitalize;">${escapeOtHtml(rule.scope_type)}</span></td>
+                <td style="font-weight:600;">${escapeOtHtml(targetName)}</td>
+                <td>${escapeOtHtml(dayLabel)}</td>
+                <td style="font-weight:700; color:#3d9fd4;">${escapeOtHtml(String(rule.overtime_premium_percent))}%</td>
+                <td class="text-end">
+                  <button class="btn btn-sm btn-outline-danger" onclick="deleteOvertimeSpecificRule(${rule.id})" title="Delete this rule">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </td>
+              </tr>
+            `;
+          }).join('');
+        } catch (e) {
+          tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger p-4">Error loading rules: ${e.message}</td></tr>`;
         }
       }
 
@@ -19957,27 +20073,8 @@ async function fetchMultiLiveDetections() {
     };
 
     window.updateOvertimeRuleScopeOptions = async function() {
-        const scope = document.getElementById('overtimeRuleScope').value;
-        const targetSelect = document.getElementById('overtimeRuleTarget');
-        if (!targetSelect) return;
-        targetSelect.innerHTML = `<option value="">Select ${scope}...</option>`;
-        
-        const targets = await fetchRuleTargets();
-        
-        if (scope === 'department') {
-            targets.departments.forEach(d => {
-                const opt = document.createElement('option');
-                opt.value = d.id;
-                opt.textContent = d.name;
-                targetSelect.appendChild(opt);
-            });
-        } else if (scope === 'employee') {
-            targets.employees.forEach(e => {
-                const opt = document.createElement('option');
-                opt.value = e.id || e.user_id;
-                opt.textContent = `${e.name || e.user_name} (ID: ${e.id || e.user_id})`;
-                targetSelect.appendChild(opt);
-            });
+        if (typeof updateOvertimePremiumRuleScopeOptions === 'function') {
+            await updateOvertimePremiumRuleScopeOptions();
         }
     };
 

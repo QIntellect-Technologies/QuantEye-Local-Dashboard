@@ -2154,8 +2154,13 @@ def _get_overtime_premium_percent(
     day_type: str,
     settings: Optional[Any],
     holiday: Optional[Dict[str, Any]] = None,
+    user_id: Optional[int] = None,
 ) -> float:
-    """Return a holiday override or the configured day-type premium fallback."""
+    """Person/department extra first, then a named holiday, then company default."""
+    if day_type in ('holiday', 'non_working_day') and user_id:
+        scoped = _get_scoped_payroll_rule(cursor, 'overtime_premium', int(user_id), day_type)
+        if scoped and scoped.get('overtime_premium_percent') is not None:
+            return float(scoped['overtime_premium_percent'] or 0.0)
     if day_type == 'holiday':
         if holiday and holiday.get('overtime_premium_percent') is not None:
             return float(holiday['overtime_premium_percent'])
@@ -5618,7 +5623,9 @@ def get_overtime_rate_preview(
             holiday = _get_company_holiday_for_date(
                 cursor, overtime_date, employee['organization_id'], employee['branch_id']
             ) if day_type == 'holiday' else None
-            premium_percent = _get_overtime_premium_percent(cursor, overtime_date, day_type, settings, holiday)
+            premium_percent = _get_overtime_premium_percent(
+                cursor, overtime_date, day_type, settings, holiday, user_id=user_id
+            )
             return {
                 'user_id': user_id,
                 'ot_date': overtime_date,
@@ -5716,7 +5723,9 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                     emp_org,
                     emp_branch,
                 ) if day_type == 'holiday' else None
-                premium = _get_overtime_premium_percent(cursor, str(d['ot_date']), day_type, settings_row, holiday)
+                premium = _get_overtime_premium_percent(
+                    cursor, str(d['ot_date']), day_type, settings_row, holiday, user_id=int(d['user_id'])
+                )
                 effective_rate = round(base_rate * (1 + premium / 100), 2)
                 d['base_ot_rate'] = base_rate
                 d['ot_day_type'] = day_type
@@ -6547,15 +6556,17 @@ def save_scoped_overtime_premium_rule(
     if scope not in ('department', 'employee') or kind not in ('holiday', 'non_working_day'):
         return False
     try:
-        target_id = int(scope_id)
         premium = float(premium_percent)
     except (TypeError, ValueError, OverflowError):
         return False
-    if target_id <= 0 or not 0 <= premium <= 1000:
+    if not 0 <= premium <= 1000:
         return False
     try:
         with sqlite3.connect(DB_PATH) as conn:
             org, branch = _tenant_ids(organization_id, branch_id)
+            target_id = _resolve_scoped_target_id(conn, org, branch, scope, scope_id)
+            if not target_id:
+                return False
             conn.execute('''
                 INSERT INTO payroll_scoped_rules (
                     policy_type, scope_type, scope_id, day_type,
@@ -8160,7 +8171,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 'holiday_id': holiday.get('id') if holiday else None,
                 'holiday_name': holiday.get('name') if holiday else None,
                 'hours': float(overtime_row['total_ot_hours'] or 0.0),
-                'premium_percent': _get_overtime_premium_percent(cursor, overtime_date, day_type, payroll_settings, holiday),
+                'premium_percent': _get_overtime_premium_percent(
+                    cursor, overtime_date, day_type, payroll_settings, holiday, user_id=overtime_user_id
+                ),
             })
 
         extra_maps = _load_payroll_extension_maps(

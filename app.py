@@ -310,6 +310,8 @@ def check_module_entitlement_for_request():
         return _forbidden_module_response('leave')
     elif path.startswith('/api/payroll-settings/scoped-rules/overtime-limit') and not has_overtime:
         return _forbidden_module_response('overtime')
+    elif path.startswith('/api/payroll-settings/scoped-rules/overtime-premium') and not has_overtime:
+        return _forbidden_module_response('overtime')
 
     # 3. Leave Management module routes
     if not has_leave:
@@ -6251,6 +6253,60 @@ def api_delete_scoped_overtime_limit_rule(rule_id):
         return jsonify({'error': 'Rule could not be deleted'}), 400
     except Exception as e:
         logger.exception("Failed to delete scoped rule")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings/payroll/scoped-rules/overtime-premium', methods=['GET'])
+@app.route('/api/payroll-settings/scoped-rules/overtime-premium', methods=['GET'])
+def api_get_scoped_overtime_premium_rules():
+    try:
+        all_rules = db.get_payroll_scoped_rules(**payroll_tenant())
+        premium_rules = [r for r in all_rules if r.get('policy_type') == 'overtime_premium']
+        return jsonify(premium_rules)
+    except Exception as e:
+        logger.exception("Failed to get scoped overtime premium rules")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings/payroll/scoped-rules/overtime-premium', methods=['POST'])
+@app.route('/api/payroll-settings/scoped-rules/overtime-premium', methods=['POST'])
+def api_save_scoped_overtime_premium_rule():
+    data = request.json or {}
+    scope_type = data.get('scope_type')
+    scope_id = data.get('scope_id')
+    day_type = data.get('day_type')
+    premium_percent = data.get('premium_percent')
+    if not scope_type or scope_id in (None, '') or not day_type or premium_percent is None:
+        return jsonify({'error': 'Choose a group, a day type, and a premium percent.'}), 400
+    try:
+        premium = float(premium_percent)
+    except (TypeError, ValueError, OverflowError):
+        return jsonify({'error': 'Premium must be a number between 0 and 1000.'}), 400
+    if not 0 <= premium <= 1000:
+        return jsonify({'error': 'Premium must be between 0 and 1000 percent.'}), 400
+    try:
+        success = db.save_scoped_overtime_premium_rule(
+            scope_type, scope_id, day_type, premium, **payroll_tenant()
+        )
+        if success:
+            return jsonify({'success': True})
+        return jsonify({'error': 'Failed to save rule. Choose a valid department or person, and Holiday or Rest day.'}), 400
+    except Exception as e:
+        logger.exception("Failed to save scoped overtime premium rule")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings/payroll/scoped-rules/overtime-premium/<int:rule_id>', methods=['DELETE'])
+@app.route('/api/payroll-settings/scoped-rules/overtime-premium/<int:rule_id>', methods=['DELETE'])
+def api_delete_scoped_overtime_premium_rule(rule_id):
+    try:
+        all_rules = db.get_payroll_scoped_rules(**payroll_tenant())
+        rule = next((r for r in all_rules if r['id'] == rule_id), None)
+        if not rule or rule.get('policy_type') != 'overtime_premium':
+            return jsonify({'error': 'Rule not found or is not an overtime extra rule'}), 404
+        success = db.delete_payroll_scoped_rule(rule_id, **payroll_tenant())
+        if success:
+            return jsonify({'success': True})
+        return jsonify({'error': 'Rule could not be deleted'}), 400
+    except Exception as e:
+        logger.exception("Failed to delete scoped overtime premium rule")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/payroll/rules', methods=['GET'])

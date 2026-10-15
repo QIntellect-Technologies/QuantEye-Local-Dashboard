@@ -323,6 +323,35 @@ class PayrollBonusExtraPayTests(unittest.TestCase):
         self.assertEqual(float(body["settings"]["off_day_attendance_pay_fixed_amount"]), 1500.0)
         self.assertTrue(body["settings"]["enable_named_components"])
 
+    def test_group_overtime_extra_saves_and_overrides_company_rest_day_rate(self):
+        db.save_overtime_premium_rule("non_working_day", 25.0, organization_id=ORG, branch_id=BRANCH)
+        created = self.client.post(
+            "/api/settings/payroll/scoped-rules/overtime-premium",
+            json={
+                "scope_type": "employee",
+                "scope_id": self.user_id,
+                "day_type": "non_working_day",
+                "premium_percent": 80,
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.get_data(as_text=True))
+        listed = self.client.get("/api/settings/payroll/scoped-rules/overtime-premium")
+        self.assertEqual(listed.status_code, 200)
+        rows = listed.get_json()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["scope_type"], "employee")
+        self.assertEqual(float(rows[0]["overtime_premium_percent"]), 80.0)
+        preview = db.get_overtime_rate_preview(self.user_id, "2026-09-06", ORG, BRANCH)
+        self.assertIsNotNone(preview)
+        self.assertEqual(preview["day_type"], "non_working_day")
+        self.assertEqual(preview["premium_percent"], 80.0)
+        deleted = self.client.delete(
+            f"/api/settings/payroll/scoped-rules/overtime-premium/{rows[0]['id']}"
+        )
+        self.assertEqual(deleted.status_code, 200, deleted.get_data(as_text=True))
+        after = db.get_overtime_rate_preview(self.user_id, "2026-09-06", ORG, BRANCH)
+        self.assertEqual(after["premium_percent"], 25.0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -720,6 +720,7 @@ class Layer2ModuleFirstPaintTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/settings/payroll").status_code, 200)
         self.assertEqual(self.client.get("/api/settings/payroll/overtime-rules").status_code, 403)
         self.assertEqual(self.client.get("/api/payroll-settings/scoped-rules/half-leave").status_code, 403)
+        self.assertEqual(self.client.get("/api/payroll-settings/scoped-rules/overtime-premium").status_code, 403)
 
     def test_cloud_staff_enrollment_page_omits_video_training_console(self):
         self._login_session(["attendance", "shifts"])
