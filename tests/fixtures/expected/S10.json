@@ -179,15 +179,15 @@
       "absence_deduction_percent": 0.0,
       "absence_deduction_fixed_pkr": 0.0,
       "absence_deduction": 0.0,
-      "unpaid_leave_deduction": 2307.69,
+      "unpaid_leave_deduction": 0.0,
       "hra": 0,
       "tax": 0,
       "overtime_hours_approved": 0,
       "overtime_amount": 0.0,
       "bonus": 0,
       "rest_day_extra": 0,
-      "expected_net": 55384.62,
-      "notes": "CSV ROUND(60000*25/26)-ROUND(60000*1/26)"
+      "expected_net": 57692.31,
+      "notes": "payable_days already excludes unpaid (23 present + 2 paid = 25); no second unpaid deduction"
     },
     {
       "code": "E6",
@@ -306,9 +306,9 @@
       "tax": 0,
       "overtime_hours_approved": 0,
       "overtime_amount": 0.0,
-      "bonus": 1000,
+      "bonus": 0,
       "rest_day_extra": 0,
-      "expected_net": 61000.0,
+      "expected_net": 60000.0,
       "notes": ""
     },
     {

@@ -3,6 +3,7 @@ venv/
 ENV/
 env/
 .venv
+.venv-playwright/
 
 # Python
 __pycache__/

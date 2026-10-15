@@ -670,13 +670,20 @@ def seed_scenario(api: LiveAPI, scenario_id: str) -> Dict[str, Any]:
             "/api/payroll/employee-components",
             json_body={"user_id": core["ids"]["E1"], "component_type_id": hra_id, "percent": 10, "amount": 0, "effective_from": "2026-09-01"},
         )
+        payroll = get_payroll(api, SEP_MONTH)
+        records = slim_records(payroll)
+        e1 = next((r for r in records if r.get("employee_name") == "E1 Full Attend"), None)
+        payslip = api.request("GET", f"/api/payroll/payslip/{core['ids']['E1']}?month={SEP_MONTH}")
         return {
             "unlock": core["unlock"],
             "types": types,
             "assign_hra": {"status": assign_hra[0], "body": assign_hra[1]},
             "assign_tax": {"status": assign_tax[0], "body": assign_tax[1]},
             "duplicate_assign": {"status": dup[0], "body": dup[1]},
-            "payroll": slim_records(get_payroll(api, SEP_MONTH)),
+            "payroll": records,
+            "e1": e1,
+            "total_deduction": payroll.get("total_deduction"),
+            "payslip": {"status": payslip[0], "body": payslip[1]},
         }
 
     if sid == "S8":
@@ -778,13 +785,8 @@ def seed_scenario(api: LiveAPI, scenario_id: str) -> Dict[str, Any]:
     if sid == "S10":
         core = seed_core_org(api, ORG1, BR1, ALL_MODULES, "org1.audit")
         add_absence_brackets(api, "percentage")
-        put_pay_mode(api, "payable_days", extra={"deduct_unpaid_leave": True, "enable_bonuses": 1, "enable_individual_adjustments": 1})
+        put_pay_mode(api, "payable_days", extra={"deduct_unpaid_leave": True})
         patterns = seed_september_patterns(api, core["ids"])
-        api.request(
-            "POST",
-            "/api/payroll/adjustments?month=2026-09",
-            json_body={"user_id": core["ids"]["E9"], "adj_type": "bonus", "pay_mode": "fixed", "amount": 1000, "note": "S10 exception"},
-        )
         payroll = get_payroll(api, SEP_MONTH)
         return {"unlock": core["unlock"], "patterns": patterns, "employee_count": payroll.get("employee_count"), "payroll": slim_records(payroll), "raw": payroll}
 

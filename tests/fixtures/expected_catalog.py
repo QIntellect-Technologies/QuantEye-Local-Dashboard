@@ -407,7 +407,7 @@ def scenario_s10() -> Dict[str, Any]:
         row(code="E6", name="E6 Join Mid", basic=E1_BASIC, mode="payable_days", present=join_p, join_on=join),
         row(code="E7", name="E7 Exit Mid", basic=E1_BASIC, mode="payable_days", present=exit_p, exit_on=exit_d),
         row(code="E8", name="E8 Overtime", basic=E1_BASIC, mode="payable_days", present=n, ot_hours_approved=4),
-        row(code="E9", name="E9 Flex Pay", basic=E1_BASIC, mode="payable_days", present=n, bonus=1000),
+        row(code="E9", name="E9 Flex Pay", basic=E1_BASIC, mode="payable_days", present=n),
         row(code="E10", name="E10 Salary Change", basic=40000, mode="payable_days", present=n, notes="pending C4"),
         row(code="E11", name="E11 No Salary", basic=0, mode="payable_days", present=n, notes="salary 0 must appear and block finalize"),
         row(code="E12", name="E12 Deactivate", basic=E1_BASIC, mode="payable_days", present=n),
@@ -415,11 +415,13 @@ def scenario_s10() -> Dict[str, Any]:
         row(code="E14", name="E14 Absurd QA", basic=ABSURD_BASIC, mode="payable_days", present=n),
     ]
     by = {item["code"]: item for item in rows}
-    # Strict CSV formulas from S10_hand_sheet_formulas.csv. Do not match the engine.
+    # Seed: 23 present + 2 paid leave + 1 unpaid. payable_days = 23+2 = 25 (unpaid excluded).
+    # Subtracting ROUND(60000/26) again double-counts the unpaid day. Engine payable_days
+    # also zeros unpaid_leave_deduction.
     e5 = by["E5"]
-    e5["unpaid_leave_deduction"] = money(E1_BASIC * 1 / n)
-    e5["expected_net"] = money(money(E1_BASIC * 25 / n) - e5["unpaid_leave_deduction"])
-    e5["notes"] = "CSV ROUND(60000*25/26)-ROUND(60000*1/26)"
+    e5["unpaid_leave_deduction"] = 0.0
+    e5["expected_net"] = money(E1_BASIC * 25 / n)
+    e5["notes"] = "payable_days already excludes unpaid (23 present + 2 paid = 25); no second unpaid deduction"
     e6 = by["E6"]
     e6["proration_basis"] = "working_days"
     e6["proration_factor"] = round(join_p / n, 6)

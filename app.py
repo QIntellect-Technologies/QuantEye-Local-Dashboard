@@ -6097,7 +6097,14 @@ def api_get_employee_payslip(employee_id):
 
 @app.route('/api/payroll/scope-options', methods=['GET'])
 def api_get_payroll_scope_options():
-    return jsonify(db.get_payroll_scope_options(**payroll_tenant()))
+    try:
+        return jsonify(db.get_payroll_scope_options(**payroll_tenant()))
+    except Exception as exc:
+        logger.exception("Failed to load payroll scope options")
+        return jsonify({
+            'departments': [], 'designations': [], 'shifts': [],
+            'employees': [], 'branches': [], 'error': str(exc),
+        }), 500
 
 
 @app.route('/api/payroll-settings/scoped-rules/half-leave', methods=['GET'])

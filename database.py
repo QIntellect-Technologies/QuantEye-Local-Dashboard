@@ -3311,7 +3311,7 @@ def get_detailed_attendance_report(
                         effective_shift = shift_history[history_index]
                         history_index += 1
                     att = att_map.get((uid, cur_date))
-                    schedule_known = True
+                    schedule_known = False
                     if att and att.get('record_shift_id') and att['record_shift_id'] in all_shifts_lookup:
                         rec_shift = all_shifts_lookup[att['record_shift_id']]
                         shift_id_for_day = rec_shift['id']
@@ -3321,15 +3321,24 @@ def get_detailed_attendance_report(
                         grace_mins = int(rec_shift.get('grace_period_minutes') or 15)
                         shift_working_days = set(_normalize_shift_working_days(rec_shift.get('working_days')))
                         schedule_known = True
+                    elif effective_shift is not None:
+                        shift_id_for_day = effective_shift['shift_id']
+                        day_shift_name = effective_shift['shift_name']
+                        shift_start = effective_shift['start_time']
+                        shift_end = effective_shift['end_time']
+                        grace_mins = int(effective_shift['grace_period_minutes'] or 15)
+                        shift_working_days = set(_normalize_shift_working_days(effective_shift['working_days']))
+                        schedule_known = True
                     else:
-                        shift_id_for_day = effective_shift['shift_id'] if effective_shift is not None else u['shift_id']
-                        day_shift_name = effective_shift['shift_name'] if effective_shift is not None else u['shift_name']
-                        shift_start = effective_shift['start_time'] if effective_shift is not None else u.get('start_time') or '08:00'
-                        shift_end = effective_shift['end_time'] if effective_shift is not None else u.get('end_time') or '20:00'
-                        grace_mins = int(effective_shift['grace_period_minutes'] if effective_shift is not None else u.get('grace_period_minutes') or 15)
-                        shift_working_days = set(_normalize_shift_working_days(
-                            effective_shift['working_days'] if effective_shift is not None else u.get('working_days')
-                        ))
+                        # No employee_shift_history row covering this date. Do not
+                        # silently fall back to users.shift_id (that hid missing history).
+                        shift_id_for_day = None
+                        day_shift_name = None
+                        shift_start = '08:00'
+                        shift_end = '20:00'
+                        grace_mins = 15
+                        shift_working_days = set()
+                        schedule_known = False
                     start_mins = parse_time_to_minutes(shift_start)
                     grace_deadline_mins = start_mins + grace_mins
                     dt_obj = datetime.strptime(cur_date, "%Y-%m-%d")
@@ -6226,31 +6235,117 @@ def get_payroll_scope_options(
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
-    """Return departments and employees for scoped payroll rules in the current tenant."""
+    """Return real departments, job titles, shifts, people, and the current branch."""
     org, branch = _tenant_ids(organization_id, branch_id)
+    empty = {
+        'departments': [], 'designations': [], 'shifts': [],
+        'employees': [], 'branches': [{'id': branch, 'name': branch}],
+    }
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
-            departments = [dict(row) for row in conn.execute(
+            employees = [dict(row) for row in conn.execute(
+                """SELECT id, name,
+                          COALESCE(department, '') AS department,
+                          COALESCE(position, '') AS position,
+                          COALESCE(shift_id, 0) AS shift_id
+                   FROM users
+                   WHERE active = 1
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                   ORDER BY name COLLATE NOCASE""",
+                (org, branch),
+            ).fetchall()]
+            table_depts = [dict(row) for row in conn.execute(
                 """SELECT id, name FROM departments
                    WHERE active = 1
-                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                     AND (
+                       COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                       OR organization_id IS NULL OR organization_id = ''
+                     )
                    ORDER BY name COLLATE NOCASE""",
-                (org, branch),
+                (org,),
             ).fetchall()]
-            employees = [dict(row) for row in conn.execute(
-                """SELECT id, name, COALESCE(department, '') AS department FROM users
+            seen_dept = set()
+            departments: List[Dict[str, Any]] = []
+            for row in table_depts:
+                name = str(row.get('name') or '').strip()
+                if not name or name.lower() in seen_dept:
+                    continue
+                seen_dept.add(name.lower())
+                departments.append({'id': row['id'], 'name': name})
+            for emp in employees:
+                name = str(emp.get('department') or '').strip()
+                if not name or name.lower() in seen_dept:
+                    continue
+                seen_dept.add(name.lower())
+                departments.append({'id': name, 'name': name})
+            departments.sort(key=lambda row: str(row['name']).lower())
+
+            table_titles = [dict(row) for row in conn.execute(
+                """SELECT id, title FROM designations
                    WHERE active = 1
-                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
-                   ORDER BY name COLLATE NOCASE""",
-                (org, branch),
+                     AND (
+                       COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                       OR organization_id IS NULL OR organization_id = ''
+                     )
+                   ORDER BY title COLLATE NOCASE""",
+                (org,),
             ).fetchall()]
-            return {'departments': departments, 'employees': employees}
+            seen_title = set()
+            designations: List[Dict[str, Any]] = []
+            for row in table_titles:
+                title = str(row.get('title') or '').strip()
+                if not title or title.lower() in seen_title:
+                    continue
+                seen_title.add(title.lower())
+                designations.append({'id': row['id'], 'name': title, 'title': title})
+            for emp in employees:
+                title = str(emp.get('position') or '').strip()
+                if not title or title.lower() in seen_title:
+                    continue
+                seen_title.add(title.lower())
+                designations.append({'id': title, 'name': title, 'title': title})
+            designations.sort(key=lambda row: str(row['name']).lower())
+
+            shifts = [dict(row) for row in conn.execute(
+                """SELECT id, name FROM shifts
+                   WHERE COALESCE(active, 1) = 1
+                     AND (
+                       COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                       OR organization_id IS NULL OR organization_id = ''
+                     )
+                   ORDER BY name COLLATE NOCASE""",
+                (org,),
+            ).fetchall()]
+            if not shifts:
+                shift_ids = sorted({int(emp.get('shift_id') or 0) for emp in employees if int(emp.get('shift_id') or 0)})
+                if shift_ids:
+                    placeholders = ','.join('?' * len(shift_ids))
+                    shifts = [dict(row) for row in conn.execute(
+                        f"SELECT id, name FROM shifts WHERE id IN ({placeholders}) ORDER BY name COLLATE NOCASE",
+                        shift_ids,
+                    ).fetchall()]
+
+            branch_name = branch
+            try:
+                row = conn.execute(
+                    "SELECT branch_name FROM branch_settings WHERE id = 1"
+                ).fetchone()
+                if row and row['branch_name']:
+                    branch_name = str(row['branch_name'])
+            except sqlite3.OperationalError:
+                pass
+            return {
+                'departments': departments,
+                'designations': designations,
+                'shifts': shifts,
+                'employees': employees,
+                'branches': [{'id': branch, 'name': branch_name}],
+            }
     except Exception as e:
         logger.error(f"Failed to load payroll rule scope options: {e}")
-        return {'departments': [], 'employees': []}
+        return empty
 
 
 def get_payroll_scoped_rules(
@@ -6280,6 +6375,52 @@ def get_payroll_scoped_rules(
         return []
 
 
+def _resolve_scoped_target_id(cursor, org: str, branch: str, scope: str, scope_id) -> Optional[int]:
+    """Map a person id or department name/id to the integer scoped-rule target."""
+    if scope == 'employee':
+        try:
+            target_id = int(scope_id)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        row = cursor.execute(
+            """SELECT id FROM users
+               WHERE id = ?
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+            (target_id, org, branch),
+        ).fetchone()
+        return int(row[0]) if row else None
+    name = str(scope_id or '').strip()
+    if not name:
+        return None
+    try:
+        as_id = int(name)
+    except (TypeError, ValueError):
+        as_id = None
+    if as_id is not None:
+        row = cursor.execute("SELECT id FROM departments WHERE id = ?", (as_id,)).fetchone()
+        if row:
+            return int(row[0])
+    row = cursor.execute(
+        "SELECT id FROM departments WHERE name = ? COLLATE NOCASE LIMIT 1",
+        (name,),
+    ).fetchone()
+    if row:
+        return int(row[0])
+    try:
+        cursor.execute(
+            "INSERT INTO departments (name, code, description, organization_id, branch_id) VALUES (?, '', '', ?, ?)",
+            (name, org, branch),
+        )
+        return int(cursor.lastrowid)
+    except sqlite3.IntegrityError:
+        row = cursor.execute(
+            "SELECT id FROM departments WHERE name = ? COLLATE NOCASE LIMIT 1",
+            (name,),
+        ).fetchone()
+        return int(row[0]) if row else None
+
+
 def save_scoped_half_leave_rule(
     scope_type: str,
     scope_id: int,
@@ -6293,15 +6434,17 @@ def save_scoped_half_leave_rule(
     if scope not in ('department', 'employee') or mode not in ('category', 'monthly_cap', 'monthly_convert'):
         return False
     try:
-        target_id = int(scope_id)
         count = int(monthly_count)
     except (TypeError, ValueError, OverflowError):
         return False
-    if target_id <= 0 or count < 1:
+    if count < 1:
         return False
     try:
         with sqlite3.connect(DB_PATH) as conn:
             org, branch = _tenant_ids(organization_id, branch_id)
+            target_id = _resolve_scoped_target_id(conn, org, branch, scope, scope_id)
+            if not target_id:
+                return False
             conn.execute('''
                 INSERT INTO payroll_scoped_rules (
                     policy_type, scope_type, scope_id, day_type, half_leave_quota_mode,
@@ -6332,15 +6475,17 @@ def save_scoped_overtime_limit_rule(
     if scope not in ('department', 'employee') or p not in ('day', 'week', 'month', 'per_entry'):
         return False
     try:
-        target_id = int(scope_id)
         max_h = float(max_hours)
     except (TypeError, ValueError, OverflowError):
         return False
-    if target_id <= 0 or max_h <= 0:
+    if max_h <= 0:
         return False
     try:
         with sqlite3.connect(DB_PATH) as conn:
             org, branch = _tenant_ids(organization_id, branch_id)
+            target_id = _resolve_scoped_target_id(conn, org, branch, scope, scope_id)
+            if not target_id:
+                return False
             conn.execute('''
                 INSERT INTO payroll_scoped_rules (
                     policy_type, scope_type, scope_id, day_type, overtime_max_hours,
@@ -7930,6 +8075,11 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         ).fetchall()]
 
         # Query approved overtime for this payroll month
+        cursor.execute('SELECT id, working_days FROM shifts')
+        shift_days_by_id = {
+            int(row['id']): _normalize_shift_working_days(row['working_days'])
+            for row in cursor.fetchall()
+        }
         cursor.execute('''
             SELECT o.user_id, o.ot_date, SUM(o.hours) as total_ot_hours
             FROM overtime o
@@ -8041,6 +8191,22 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                             if eligible_start.isoformat() <= str(day.get('date', '')) <= eligible_end.isoformat()]
         month_scheduled_workdays = sum(bool(day.get('scheduled_workday')) for day in month_schedule_records)
         scheduled_workdays = sum(bool(day.get('scheduled_workday')) for day in period_schedule_records)
+        pattern_days = None
+        for day in daily_records:
+            wds = day.get('shift_working_days')
+            if wds:
+                pattern_days = wds
+                break
+        if not pattern_days:
+            pattern_days = shift_days_by_id.get(int(employee.get('shift_id') or 0)) or default_working_days()
+        days_by_date = {str(day.get('date')): day for day in daily_records}
+        full_month_workdays = 0
+        cursor_day = month_start
+        while cursor_day <= month_end:
+            rec = days_by_date.get(cursor_day.isoformat()) or {}
+            if _is_scheduled_workday(cursor_day, pattern_days, rec.get('calendar_override')):
+                full_month_workdays += 1
+            cursor_day += timedelta(days=1)
         shift_history_missing = any(day.get('shift_history_missing') for day in eligible_records)
         shift_details = list({
             (day['shift_id'], day['shift_effective_from']): {
@@ -8071,7 +8237,6 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         
         payable_days = min(scheduled_workdays, present_days + late_days + approved_leave_days_period)
         
-        full_month_workdays = sum(bool(day.get('scheduled_workday')) for day in daily_records)
         proration_factor = _payroll_proration_factor(
             proration_basis,
             eligible_start,
@@ -8081,6 +8246,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             month_scheduled_workdays,
             full_month_workdays,
         )
+        if attendance_mode == 'payable_days' and proration_basis == 'working_days':
+            month_scheduled_workdays = int(full_month_workdays or 0)
         
         fallback_pkg = {
             'basic_salary': float(employee['basic_salary'] or 0),
@@ -8097,9 +8264,14 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             if revision_ot > 0:
                 employee['ot_rate'] = revision_ot
         else:
-            basic_salary = _m(max(0.0, float(employee['basic_salary'] or 0)) * proration_factor)
-            lump_allowances = round(max(0.0, float(employee.get('allowances') or 0.0)) * proration_factor, 2)
-            lump_deductions = round(max(0.0, float(employee.get('custom_deductions') or 0.0)) * proration_factor, 2)
+            # payable_days + working_days: earn divisor is the whole month (26), so
+            # do not also scale basic by join/exit or joiners pay 17/17 of 60,000.
+            scale = proration_factor
+            if attendance_mode == 'payable_days' and proration_basis == 'working_days':
+                scale = 1.0
+            basic_salary = _m(max(0.0, float(employee['basic_salary'] or 0)) * scale)
+            lump_allowances = round(max(0.0, float(employee.get('allowances') or 0.0)) * scale, 2)
+            lump_deductions = round(max(0.0, float(employee.get('custom_deductions') or 0.0)) * scale, 2)
 
         # Apply calendar-based premiums to approved overtime hours.
         overtime_entries = approved_ot_by_user.get(employee_id, [])
