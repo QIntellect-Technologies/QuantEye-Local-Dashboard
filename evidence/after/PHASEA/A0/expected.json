@@ -1,0 +1,9 @@
+{
+  "id": "A0",
+  "title": "full_salary PUT vs engine mode",
+  "expected": {
+    "put_response_mode": "full_salary",
+    "engine_preview_mode": "full_salary",
+    "sql_attendance_pay_mode": "full_salary"
+  }
+}

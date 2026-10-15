@@ -1,0 +1,26 @@
+{
+  "id": "S11",
+  "title": "October 2026 live preview honesty",
+  "assumptions": {
+    "month_scheduled_workdays": 27,
+    "seeded_dates": [
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03"
+    ],
+    "must_not_show_full_salary_as_earned": true
+  },
+  "expected": [
+    {
+      "code": "E1",
+      "employee_name": "E1 Full Attend",
+      "attendance_pay_mode": "payable_days",
+      "present_days": 3,
+      "month_scheduled_workdays": 27,
+      "earned_so_far": 6666.67,
+      "projected_month_end": 60000.0,
+      "expected_net_must_not_equal_full_basic": true,
+      "full_basic": 60000.0
+    }
+  ]
+}
