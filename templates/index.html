@@ -636,33 +636,187 @@
 
       .payroll-stats-grid {
         grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 12px;
-        margin-bottom: 16px;
+        gap: 8px;
+        margin-bottom: 10px;
       }
 
       .payroll-stats-grid .stat-box {
         min-width: 0;
-        padding: 12px 14px;
-        gap: 12px;
-        border-radius: 8px;
+        padding: 8px 10px !important;
+        gap: 8px !important;
+        border-radius: 10px !important;
+        min-height: 58px;
+        box-shadow: none;
+      }
+
+      .payroll-stats-grid .stat-box:hover {
+        transform: none;
       }
 
       .payroll-stats-grid .stat-icon {
-        width: 38px;
-        height: 38px;
-        flex: 0 0 38px;
-        border-radius: 9px;
-        font-size: 1.05em;
+        width: 28px !important;
+        height: 28px !important;
+        flex: 0 0 28px !important;
+        border-radius: 7px !important;
+        font-size: 0.78em !important;
       }
 
       .payroll-stats-grid .stat-value {
-        font-size: 1.3em;
+        font-size: 0.98rem !important;
+        font-weight: 800;
         overflow-wrap: anywhere;
+        line-height: 1.15;
       }
 
       .payroll-stats-grid .stat-label {
-        font-size: 0.78em;
-        margin-top: 3px;
+        font-size: 0.68rem !important;
+        margin-top: 1px !important;
+        letter-spacing: .01em;
+      }
+
+      .payroll-projection-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin: 0 0 14px;
+      }
+
+      .payroll-projection-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        border: 1px solid #cfe8f7;
+        background: linear-gradient(180deg, #ffffff 0%, #f4fbff 100%);
+        box-shadow: 0 6px 16px rgba(15, 76, 109, 0.06);
+      }
+
+      .payroll-projection-card.is-projected {
+        border-color: #b7eadc;
+        background: linear-gradient(180deg, #ffffff 0%, #f3fbf7 100%);
+      }
+
+      .payroll-projection-card i {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        background: #e8f6fd;
+        color: #247eae;
+        flex: 0 0 36px;
+      }
+
+      .payroll-projection-card.is-projected i {
+        background: #e7f8f2;
+        color: #0f766e;
+      }
+
+      .payroll-projection-card small {
+        display: block;
+        color: #64748b;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+      }
+
+      .payroll-projection-card strong {
+        display: block;
+        margin-top: 2px;
+        color: #173042;
+        font-size: 1.15rem;
+        font-weight: 800;
+        line-height: 1.2;
+      }
+
+      .payroll-projection-card em {
+        display: block;
+        margin-top: 2px;
+        color: #628095;
+        font-size: 0.78rem;
+        font-style: normal;
+      }
+
+      .app-dialog-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 200000;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(6px);
+      }
+
+      .app-dialog-overlay.is-open { display: flex; }
+
+      .app-dialog-card {
+        width: min(460px, 100%);
+        background: #ffffff;
+        border: 1px solid #cfe8f7;
+        border-radius: 16px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+        overflow: hidden;
+      }
+
+      .app-dialog-card header {
+        padding: 16px 20px 0;
+      }
+
+      .app-dialog-card h3 {
+        margin: 0;
+        color: #173042;
+        font-size: 1.12rem;
+        font-weight: 800;
+      }
+
+      .app-dialog-card .app-dialog-body {
+        padding: 12px 20px 18px;
+        color: #475569;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+      }
+
+      .app-dialog-card .app-dialog-body.is-html { white-space: normal; }
+
+      .app-dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 0 20px 16px;
+      }
+
+      .app-dialog-metrics {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin: 10px 0 12px;
+      }
+
+      .app-dialog-metrics div {
+        padding: 10px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        background: #f8fafc;
+      }
+
+      .app-dialog-metrics small {
+        display: block;
+        color: #64748b;
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .app-dialog-metrics strong {
+        display: block;
+        margin-top: 2px;
+        color: #173042;
+        font-size: 0.92rem;
       }
 
       .payroll-review-summary {
@@ -1128,6 +1282,10 @@
 
         .payroll-review-summary {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .payroll-projection-grid {
+          grid-template-columns: 1fr;
         }
       }
 
@@ -3122,6 +3280,18 @@
   <body class="{% if not is_authenticated %}auth-required{% endif %}">
     <!-- Global Floating Toast Container -->
     <div id="toastContainer" class="app-toast-container" aria-live="polite"></div>
+    <div id="appDialogOverlay" class="app-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
+      <div class="app-dialog-card">
+        <header>
+          <h3 id="appDialogTitle">Notice</h3>
+        </header>
+        <div id="appDialogBody" class="app-dialog-body"></div>
+        <div class="app-dialog-actions">
+          <button type="button" id="appDialogCancel" class="btn btn-outline-secondary btn-sm">Cancel</button>
+          <button type="button" id="appDialogConfirm" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">OK</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Left Persistent Sidebar Panel -->
     <div class="sidebar">
@@ -4623,6 +4793,24 @@ async function fetchMultiLiveDetections() {
         </button>
       </div>
 
+      <div id="payrollProjectionCards" class="payroll-projection-grid" hidden>
+        <div class="payroll-projection-card">
+          <i class="fa-solid fa-chart-line"></i>
+          <div>
+            <small id="payrollEarnedLabel">Earned so far</small>
+            <strong id="payrollEarnedSoFar">--</strong>
+            <em id="payrollEarnedThrough">Through today</em>
+          </div>
+        </div>
+        <div class="payroll-projection-card is-projected">
+          <i class="fa-solid fa-flag-checkered"></i>
+          <div>
+            <small id="payrollProjectedLabel">Projected month-end</small>
+            <strong id="payrollProjectedMonthEnd">--</strong>
+            <em>If remaining scheduled days are worked</em>
+          </div>
+        </div>
+      </div>
       <div id="payrollMessage" aria-live="polite" style="margin-bottom:12px;"></div>
       <div style="display:flex; align-items:center; flex-wrap:wrap; gap:9px; padding:12px; margin-bottom:12px; background:#ffffff; border:1px solid #dbe5ec; border-radius:8px;">
         <label for="payrollEmployeeSearch" style="position:relative; flex:1 1 220px; max-width:340px;">
@@ -7930,6 +8118,8 @@ async function fetchMultiLiveDetections() {
 
   <script>
       var API_BASE = window.location.origin + "/api";
+      const nativeAlert = window.alert.bind(window);
+      const nativeConfirm = window.confirm.bind(window);
       let selectedCameraId = "nvr_office";
       let isStreaming = false;
       let tickerInterval = null;
@@ -7975,6 +8165,67 @@ async function fetchMultiLiveDetections() {
 
         toast.querySelector('.toast-close').addEventListener('click', () => clearTimeout(timer));
       }
+
+      function appDialog({ title = 'Notice', message = '', html = '', confirmText = 'OK', cancelText = '', danger = false } = {}) {
+        const overlay = document.getElementById('appDialogOverlay');
+        const titleEl = document.getElementById('appDialogTitle');
+        const bodyEl = document.getElementById('appDialogBody');
+        const okBtn = document.getElementById('appDialogConfirm');
+        const cancelBtn = document.getElementById('appDialogCancel');
+        if (!overlay || !bodyEl || !okBtn) {
+          if (cancelText) return Promise.resolve(nativeConfirm(String(message || title)));
+          nativeAlert(String(message || title));
+          return Promise.resolve(true);
+        }
+        titleEl.textContent = title;
+        if (html) {
+          bodyEl.classList.add('is-html');
+          bodyEl.innerHTML = html;
+        } else {
+          bodyEl.classList.remove('is-html');
+          bodyEl.textContent = String(message || '');
+        }
+        okBtn.textContent = confirmText;
+        okBtn.style.background = danger ? '#dc2626' : '#3d9fd4';
+        if (cancelBtn) {
+          cancelBtn.style.display = cancelText ? '' : 'none';
+          cancelBtn.textContent = cancelText || 'Cancel';
+        }
+        overlay.classList.add('is-open');
+        return new Promise((resolve) => {
+          const finish = (ok) => {
+            overlay.classList.remove('is-open');
+            okBtn.onclick = null;
+            if (cancelBtn) cancelBtn.onclick = null;
+            overlay.onclick = null;
+            resolve(Boolean(ok));
+          };
+          okBtn.onclick = () => finish(true);
+          if (cancelBtn) cancelBtn.onclick = () => finish(false);
+          overlay.onclick = (event) => {
+            if (event.target === overlay && cancelText) finish(false);
+          };
+        });
+      }
+
+      function appAlert(message, title = 'Notice') {
+        return appDialog({ title, message: String(message || ''), confirmText: 'OK' });
+      }
+
+      function appConfirm(message, title = 'Please confirm', options = {}) {
+        return appDialog({
+          title,
+          message: String(message || ''),
+          html: options.html || '',
+          confirmText: options.ok || 'Confirm',
+          cancelText: options.cancel || 'Cancel',
+          danger: Boolean(options.danger)
+        });
+      }
+
+      window.alert = function(message) {
+        void appAlert(String(message || ''), 'Notice');
+      };
 
       // ================================================================
       // BUTTON LOADING STATE HELPER
@@ -8250,6 +8501,25 @@ async function fetchMultiLiveDetections() {
         document.getElementById('payrollIssueCount').textContent = issues.length;
         const payMode = payroll.attendance_pay_mode || 'full_salary';
         const monthOpen = payroll.month_complete === false || payroll.can_finalize === false;
+        const projectionHost = document.getElementById('payrollProjectionCards');
+        const earnedTotal = records.reduce((sum, row) => sum + Number(row.earned_so_far || 0), 0);
+        const projectedTotal = records.reduce((sum, row) => sum + Number(row.projected_month_end || 0), 0);
+        if (projectionHost) {
+          const showProjection = !isFinalized && monthOpen;
+          projectionHost.hidden = !showProjection;
+          if (showProjection) {
+            const earnedLabel = document.getElementById('payrollEarnedLabel');
+            const earnedValue = document.getElementById('payrollEarnedSoFar');
+            const earnedThrough = document.getElementById('payrollEarnedThrough');
+            const projectedLabel = document.getElementById('payrollProjectedLabel');
+            const projectedValue = document.getElementById('payrollProjectedMonthEnd');
+            if (earnedLabel) earnedLabel.textContent = payroll.earned_so_far_label || 'Earned so far';
+            if (earnedValue) earnedValue.textContent = payrollMoney(earnedTotal);
+            if (earnedThrough) earnedThrough.textContent = `Through ${payroll.period_end || 'today'}`;
+            if (projectedLabel) projectedLabel.textContent = payroll.projected_month_end_label || 'Projected month-end';
+            if (projectedValue) projectedValue.textContent = payrollMoney(projectedTotal);
+          }
+        }
         document.getElementById('payrollPeriodNote').textContent = isFinalized
           ? `Finalized snapshot · ${payroll.finalized_at || 'finalization time unavailable'}`
           : monthOpen
@@ -8280,12 +8550,10 @@ async function fetchMultiLiveDetections() {
         } else if (issues.length) {
           message.innerHTML = `<div class="alert alert-warning py-2 mb-0">${issues.length} employee${issues.length === 1 ? '' : 's'} need resolution before finalization. Use the Issues filter to review them.</div>`;
         } else if (monthOpen) {
-          const sample = records[0] || {};
-          message.innerHTML = `<div class="alert alert-warning py-2 mb-0">
-            <div><strong>${payrollEscape(payroll.earned_so_far_label || ('Earned so far (through ' + (payroll.period_end || 'today') + ')'))}:</strong> ${payrollMoney(sample.earned_so_far)}</div>
-            <div><strong>${payrollEscape(payroll.projected_month_end_label || 'Projected month-end')}:</strong> ${payrollMoney(sample.projected_month_end)}</div>
-            ${(payroll.notices || []).map(n => `<div>${payrollEscape(n)}</div>`).join('')}
-          </div>`;
+          const notices = (payroll.notices || []).filter(Boolean);
+          message.innerHTML = notices.length
+            ? `<div class="alert alert-warning py-2 mb-0">${notices.map(n => `<div>${payrollEscape(n)}</div>`).join('')}</div>`
+            : '';
         } else if ((payroll.notices || []).includes('No absence rules configured') || (payMode === 'full_salary' && payroll.absence_rules_configured === false)) {
           message.innerHTML = '<div class="alert alert-warning py-2 mb-0">No absence rules configured</div>';
         } else {
@@ -8764,7 +9032,7 @@ async function fetchMultiLiveDetections() {
         const overlay = document.getElementById('payrollShiftHistoryDialog');
         const list = document.getElementById('payrollShiftHistoryNames');
         if (!overlay) {
-          return Promise.resolve(window.confirm(
+          return Promise.resolve(nativeConfirm(
             `Missing shift assignment history for:\n${names.join('\n')}\n\nConfigure shift history before finalizing. Continue anyway?`
           ));
         }
@@ -8795,9 +9063,18 @@ async function fetchMultiLiveDetections() {
           document.getElementById('payrollReviewIssues').innerHTML = `<div class="alert alert-danger py-2 mb-0">Finalization blocked. Resolve: ${issues.map(row => payrollEscape(row.employee_name)).join(', ')}</div>`;
           return;
         }
-        const confirmed = window.confirm(
-          `Payroll Review\n\n${payrollMonthLabel(month)}\nEmployees: ${currentPayrollPreview.employee_count}\nBasic salary: ${payrollMoney(currentPayrollPreview.total_basic_salary)}\nDeductions: ${payrollMoney(currentPayrollPreview.total_deduction)}\nTotal payable: ${payrollMoney(currentPayrollPreview.total_net_salary)}\n\n${finalizeEarly ? 'Finalize this month early (before month-end)?' : 'Finalize this immutable snapshot?'}`
-        );
+        const confirmed = await appConfirm('', 'Payroll review', {
+          ok: finalizeEarly ? 'Finalize early' : 'Finalize',
+          cancel: 'Cancel',
+          html: `<p style="margin:0 0 4px;font-weight:700;color:#173042;">${payrollEscape(payrollMonthLabel(month))}</p>
+            <div class="app-dialog-metrics">
+              <div><small>Employees</small><strong>${payrollEscape(currentPayrollPreview.employee_count)}</strong></div>
+              <div><small>Basic salary</small><strong>${payrollEscape(payrollMoney(currentPayrollPreview.total_basic_salary))}</strong></div>
+              <div><small>Deductions</small><strong>${payrollEscape(payrollMoney(currentPayrollPreview.total_deduction))}</strong></div>
+              <div><small>Total payable</small><strong>${payrollEscape(payrollMoney(currentPayrollPreview.total_net_salary))}</strong></div>
+            </div>
+            <p style="margin:0;">${finalizeEarly ? 'Finalize this month early (before month-end)?' : 'Lock this payroll snapshot? This cannot be undone.'}</p>`
+        });
         if (!confirmed) return;
         const button = document.getElementById('finalizePayrollButton');
         button.disabled = true;
@@ -9588,7 +9865,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function clearLiveDetectionsList() {
-        if (!confirm('Clear all live attendance entries from this view?')) return;
+        if (!await appConfirm('Clear all live attendance entries from this view?')) return;
         try {
           await fetch(`${API_BASE}/clear-live-detections`, { method: 'POST' });
         } catch (e) {
@@ -9726,7 +10003,7 @@ async function fetchMultiLiveDetections() {
 
       async function bulkAttendance(action) {
         const actionLabel = action === "present" ? "present" : "absent";
-        const confirmed = confirm(
+        const confirmed = await appConfirm(
           `Mark all active students ${actionLabel} for today? This will update the attendance database.`,
         );
         if (!confirmed) return;
@@ -10546,7 +10823,7 @@ async function fetchMultiLiveDetections() {
           showAppToast(`Error: ${e.message}`, 'error');
           return;
         }
-        if (!confirm(`WARNING:\nAre you absolutely sure you want to delete '${name}'?\n\nThis will permanently delete their profile, all trained biometric face embeddings, and attendance logs. This action CANNOT be undone.`)) return;
+        if (!await appConfirm(`WARNING:\nAre you absolutely sure you want to delete '${name}'?\n\nThis will permanently delete their profile, all trained biometric face embeddings, and attendance logs. This action CANNOT be undone.`)) return;
 
         addTerminalLine(`Deleting profile for '${name}' (ID: ${userId})...`, "warning");
         try {
@@ -12691,7 +12968,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function deleteTabStaffMember(userId, userName) {
-        if (!confirm(`Are you sure you want to permanently delete staff member "${userName}" (#${userId})?`)) return;
+        if (!await appConfirm(`Are you sure you want to permanently delete staff member "${userName}" (#${userId})?`)) return;
         try {
           const res = await fetch(`${API_BASE}/users/${userId}/delete`, { method: 'POST' });
           const json = await res.json();
@@ -13062,7 +13339,7 @@ async function fetchMultiLiveDetections() {
         if (selectedShiftStaffIds.size > 0) {
           userIds = Array.from(selectedShiftStaffIds);
         } else {
-          if (!confirm(`No specific staff selected.\n\nDo you want to assign '${shiftTitle}' to ALL registered staff members?`)) {
+          if (!await appConfirm(`No specific staff selected.\n\nDo you want to assign '${shiftTitle}' to ALL registered staff members?`)) {
             return;
           }
         }
@@ -13362,7 +13639,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function deleteShift(id, name) {
-        if (!confirm(`Are you sure you want to delete shift '${name}'?\nAny employees assigned to this shift will revert to Morning Shift.`)) return;
+        if (!await appConfirm(`Are you sure you want to delete shift '${name}'?\nAny employees assigned to this shift will revert to Morning Shift.`)) return;
         try {
           const resp = await fetch(`${API_BASE}/shifts/${id}`, { method: "DELETE" });
           const data = await resp.json();
@@ -13406,11 +13683,11 @@ async function fetchMultiLiveDetections() {
         const template = document.getElementById('payrollHubTabsTemplate');
         if (!template) return;
         document.querySelectorAll('.payroll-hub-tabs-mount').forEach((mount) => {
-          if (!mount.querySelector('.payroll-hub-tabs')) {
-            mount.appendChild(template.content.cloneNode(true));
-          }
+          mount.innerHTML = '';
+          mount.appendChild(template.content.cloneNode(true));
           mount.querySelectorAll('.payroll-hub-tab').forEach((button) => {
             button.classList.toggle('is-active', button.getAttribute('data-payroll-hub') === activeKey);
+            button.onclick = () => switchPayrollHubTab(button.getAttribute('data-payroll-hub'));
           });
         });
         const step = PAYROLL_HUB_STEPS[activeKey];
@@ -13422,23 +13699,49 @@ async function fetchMultiLiveDetections() {
       }
 
       function switchPayrollHubTab(key) {
+        const previous = lastPayrollHubTab;
         lastPayrollHubTab = key;
-        if (key === 'packages') {
-          switchSettingsTab('salary-config-tab', document.getElementById('salaryConfigNavBtn'));
-          return;
-        }
-        if (key === 'calendar') {
-          switchSettingsTab('payroll-calendar-tab', document.getElementById('payrollCalendarNavBtn'));
-          return;
-        }
-        if (typeof currentSettingsTab === 'undefined' || currentSettingsTab !== 'payroll-rules-tab') {
-          switchSettingsTab('payroll-rules-tab', document.getElementById('payrollRulesNavBtn'));
-        }
-        document.querySelectorAll('.payroll-hub-pane').forEach((pane) => {
-          pane.classList.toggle('is-active', pane.getAttribute('data-payroll-hub-pane') === key);
+        const tabMap = {
+          packages: { id: 'salary-config-tab', btn: 'salaryConfigNavBtn' },
+          calendar: { id: 'payroll-calendar-tab', btn: 'payrollCalendarNavBtn' }
+        };
+        const mapped = tabMap[key] || { id: 'payroll-rules-tab', btn: 'payrollRulesNavBtn' };
+        currentSettingsTab = mapped.id;
+        document.querySelectorAll('.settings-sub-tab').forEach((pane) => {
+          pane.style.display = 'none';
         });
+        const activePane = document.getElementById(mapped.id);
+        if (activePane) activePane.style.display = 'block';
+        document.querySelectorAll('.settings-nav-btn').forEach((nav) => {
+          const on = nav.id === mapped.btn;
+          nav.classList.toggle('active', on);
+          nav.style.background = on ? '#3d9fd4' : '#f1f5f9';
+          nav.style.color = on ? '#ffffff' : '#475569';
+        });
+        const topbarTitle = document.getElementById('headerCurrentPageTitle');
+        const settingsSubEl = document.getElementById('settingsPageSubtitle');
+        if (key === 'packages') {
+          if (topbarTitle) topbarTitle.textContent = 'Salary packages';
+          if (settingsSubEl) settingsSubEl.textContent = 'Set each person’s basic pay, extras, and overtime rate.';
+          loadSalaryConfigs();
+        } else if (key === 'calendar') {
+          if (topbarTitle) topbarTitle.textContent = 'Special Dates';
+          if (settingsSubEl) settingsSubEl.textContent = 'Mark holidays, extra work days, or off days that override the weekly shift.';
+          loadPayrollCalendar();
+        } else {
+          if (topbarTitle) topbarTitle.textContent = 'Payroll Settings';
+          if (settingsSubEl) settingsSubEl.textContent = 'Use the tabs to set salary rules one step at a time. Open Payroll Guide for formulas and examples.';
+          if ((previous === 'packages' || previous === 'calendar') && typeof loadPayrollSettings === 'function') {
+            loadPayrollSettings();
+          }
+          document.querySelectorAll('.payroll-hub-pane').forEach((pane) => {
+            pane.classList.toggle('is-active', pane.getAttribute('data-payroll-hub-pane') === key);
+          });
+          if (key === 'payslip' && typeof refreshPayslipLetterheadPreview === 'function') {
+            refreshPayslipLetterheadPreview();
+          }
+        }
         paintPayrollHubTabs(key);
-        if (key === 'payslip') refreshPayslipLetterheadPreview();
       }
 
       function switchSettingsTab(tabId, btn) {
@@ -13658,7 +13961,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function deleteHalfLeaveSpecificRule(id) {
-        if (!confirm('Delete this specific rule?')) return;
+        if (!await appConfirm('Delete this specific rule?')) return;
         try {
           const res = await fetch(`/api/payroll-settings/scoped-rules/half-leave/${id}`, { method: 'DELETE' });
           const data = await res.json();
@@ -14040,7 +14343,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function deleteSpecificOvertimeLimitRule(id) {
-        if (!confirm('Are you sure you want to remove this specific overtime limit?')) return;
+        if (!await appConfirm('Are you sure you want to remove this specific overtime limit?')) return;
         try {
           const res = await fetch(`${API_BASE}/settings/payroll/scoped-rules/overtime-limit/${id}`, {method: 'DELETE'});
           const data = await res.json();
@@ -14061,9 +14364,9 @@ async function fetchMultiLiveDetections() {
             fetch(`${API_BASE}/departments`),
             fetch(`${API_BASE}/users`)
           ]);
-          const rules = await rulesRes.json();
-          const depts = await deptsRes.json();
-          const users = await usersRes.json();
+          const rules = payrollListFromPayload(await rulesRes.json(), ['rules', 'items']);
+          const depts = payrollListFromPayload(await deptsRes.json(), ['departments']);
+          const users = payrollListFromPayload(await usersRes.json(), ['users', 'employees', 'staff']);
           
           if (!rules || rules.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted p-4">None yet.</td></tr>';
@@ -14143,7 +14446,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function removeOvertimePremiumRule(dayType) {
-        if (!confirm('Remove this overtime premium rule?')) return;
+        if (!await appConfirm('Remove this overtime premium rule?')) return;
         try {
           const response = await fetch(`${API_BASE}/settings/payroll/overtime-rules/${encodeURIComponent(dayType)}`, { method: 'DELETE' });
           const result = await response.json();
@@ -14217,7 +14520,7 @@ async function fetchMultiLiveDetections() {
             return;
           }
           const summary = (preview.preview || []).map((row) => `${row.employee_name}: ${row.amount}`).join('\n') || preview.message;
-          if (!confirm(`Preview (duplicates are rejected, not summed):\n${summary}\n\nCommit this bonus file?`)) return;
+          if (!await appConfirm(`Preview (duplicates are rejected, not summed):\n${summary}\n\nCommit this bonus file?`)) return;
           const confirmForm = new FormData();
           confirmForm.append('file', file);
           confirmForm.append('confirm', '1');
@@ -14764,7 +15067,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function deletePayrollComponentType(id) {
-        if (!confirm('Remove this pay line?')) return;
+        if (!await appConfirm('Remove this pay line?')) return;
         const response = await fetch(`${API_BASE}/payroll/component-types/${id}`, { method: 'DELETE' });
         const result = await response.json();
         if (!response.ok) {
@@ -14785,7 +15088,7 @@ async function fetchMultiLiveDetections() {
             fetch(`${API_BASE}/users`)
           ]);
           const adjBody = await adjRes.json();
-          const users = await usersRes.json();
+          const users = payrollListFromPayload(await usersRes.json(), ['users', 'employees', 'staff']);
           if (userSelect && Array.isArray(users)) {
             userSelect.innerHTML = users.filter((u) => u.active !== 0).map((u) => `<option value="${u.id}">${payrollEscape(u.name)} (#${u.id})</option>`).join('');
           }
@@ -15164,7 +15467,7 @@ async function fetchMultiLiveDetections() {
 
       async function deletePayrollCalendarOverride(overrideId) {
         const entry = cachedPayrollCalendar.find(item => Number(item.id) === Number(overrideId));
-        if (!entry || !window.confirm(`Remove the special date for ${entry.calendar_date}?`)) return;
+        if (!entry || !await appConfirm(`Remove the special date for ${entry.calendar_date}?`)) return;
         try {
           const response = await fetch(`${API_BASE}/payroll/calendar/${overrideId}`, { method: 'DELETE' });
           const result = await response.json();
@@ -15623,7 +15926,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function resetSalaryPackage(userId, userName) {
-        if (!confirm(`Are you sure you want to reset the custom salary package for "${userName}"? This will clear allowances, custom deductions, and overtime rates back to default base.`)) {
+        if (!await appConfirm(`Are you sure you want to reset the custom salary package for "${userName}"? This will clear allowances, custom deductions, and overtime rates back to default base.`)) {
           return;
         }
         try {
@@ -15940,7 +16243,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function deleteDepartment(id, name) {
-        if (!confirm(`Are you sure you want to disable department "${name}"?\nExisting staff records will remain intact.`)) return;
+        if (!await appConfirm(`Are you sure you want to disable department "${name}"?\nExisting staff records will remain intact.`)) return;
         try {
           const resp = await fetch(`${API_BASE}/departments/${id}`, { method: 'DELETE' });
           const res = await resp.json();
@@ -16089,7 +16392,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function deleteDesignation(id, title) {
-        if (!confirm(`Are you sure you want to disable designation "${title}"?`)) return;
+        if (!await appConfirm(`Are you sure you want to disable designation "${title}"?`)) return;
         try {
           const resp = await fetch(`${API_BASE}/designations/${id}`, { method: 'DELETE' });
           const res = await resp.json();
@@ -16362,7 +16665,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function deleteCamera(id, name) {
-        if (!confirm(`Are you sure you want to delete camera "${name}"?\nIt will be removed from Live AI streaming.`)) return;
+        if (!await appConfirm(`Are you sure you want to delete camera "${name}"?\nIt will be removed from Live AI streaming.`)) return;
         try {
           const resp = await fetch(`${API_BASE}/cameras/${id}`, { method: 'DELETE' });
           const res = await resp.json();
@@ -16805,7 +17108,7 @@ async function fetchMultiLiveDetections() {
     }
 
     async function handleClientLogout() {
-      if (!confirm('Are you sure you want to log out of the client dashboard?')) return;
+      if (!await appConfirm('Are you sure you want to log out of the client dashboard?')) return;
       document.body.classList.add('auth-required');
       try {
         const response = await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
@@ -17538,7 +17841,7 @@ async function fetchMultiLiveDetections() {
     async function updateLeaveRequestGroupStatus(leaveIds, status) {
       const ids = [...new Set(leaveIds.map(Number).filter(id => Number.isInteger(id) && id > 0))];
       if (!ids.length || !['approved', 'rejected'].includes(status)) return;
-      if (!confirm(`Are you sure you want to ${status} ${ids.length} pending leave request segment(s)?`)) return;
+      if (!await appConfirm(`Are you sure you want to ${status} ${ids.length} pending leave request segment(s)?`)) return;
       try {
         const responses = await Promise.all(ids.map(id => fetch(`/api/leaves/${id}`, {
           method: 'PUT',
@@ -17560,7 +17863,7 @@ async function fetchMultiLiveDetections() {
     window.updateLeaveRequestGroupStatus = updateLeaveRequestGroupStatus;
 
     async function updateLeaveStatus(leaveId, status) {
-      if (!confirm(`Are you sure you want to set leave #${leaveId} to ${status.toUpperCase()}?`)) return;
+      if (!await appConfirm(`Are you sure you want to set leave #${leaveId} to ${status.toUpperCase()}?`)) return;
       try {
         const res = await fetch(`/api/leaves/${leaveId}`, {
           method: 'PUT',
@@ -17580,7 +17883,7 @@ async function fetchMultiLiveDetections() {
     }
 
     async function deleteLeaveRequest(leaveId) {
-      if (!confirm(`Permanently delete leave request #${leaveId}?`)) return;
+      if (!await appConfirm(`Permanently delete leave request #${leaveId}?`)) return;
       try {
         const res = await fetch(`/api/leaves/${leaveId}`, { method: 'DELETE' });
         const data = await res.json();
@@ -18255,7 +18558,7 @@ async function fetchMultiLiveDetections() {
     }
 
     async function deleteLeaveType(typeId) {
-      if (!confirm("Delete this leave category?")) return;
+      if (!await appConfirm("Delete this leave category?")) return;
       try {
         const res = await fetch(`/api/leave-types/${typeId}`, { method: 'DELETE' });
         const data = await res.json();
@@ -18329,7 +18632,7 @@ async function fetchMultiLiveDetections() {
     }
 
     async function deleteCompanyHoliday(holidayId) {
-      if (!confirm("Delete this public holiday?")) return;
+      if (!await appConfirm("Delete this public holiday?")) return;
       try {
         const res = await fetch(`/api/holidays/${holidayId}`, { method: 'DELETE' });
         const data = await res.json();
@@ -18850,7 +19153,7 @@ async function fetchMultiLiveDetections() {
     }
 
     async function updateOvertimeStatus(otId, newStatus) {
-      if (!confirm(`Are you sure you want to mark overtime record #${otId} as ${newStatus.toUpperCase()}?`)) return;
+      if (!await appConfirm(`Are you sure you want to mark overtime record #${otId} as ${newStatus.toUpperCase()}?`)) return;
       try {
         const res = await fetch(`/api/overtime/${otId}`, {
           method: 'PUT',
@@ -18877,7 +19180,7 @@ async function fetchMultiLiveDetections() {
         showAppToast('Approved overtime records cannot be deleted.', 'warning');
         return;
       }
-      if (!confirm(`Are you sure you want to permanently delete overtime record #${otId}?`)) return;
+      if (!await appConfirm(`Are you sure you want to permanently delete overtime record #${otId}?`)) return;
       try {
         const res = await fetch(`/api/overtime/${otId}`, { method: 'DELETE' });
         const data = await res.json();
@@ -19018,7 +19321,7 @@ async function fetchMultiLiveDetections() {
         return true;
       });
       if (!pendingRecs.length) { showAppToast('No pending OT records in current view.', 'info'); return; }
-      if (!confirm(`Approve all ${pendingRecs.length} pending OT record(s) in the current view?\n\nThis decision is permanent and cannot be undone.`)) return;
+      if (!await appConfirm(`Approve all ${pendingRecs.length} pending OT record(s) in the current view?\n\nThis decision is permanent and cannot be undone.`)) return;
       try {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
@@ -19044,7 +19347,7 @@ async function fetchMultiLiveDetections() {
         return true;
       });
       if (!pendingRecs.length) { showAppToast(`No pending OT for ${userName}.`, 'info'); return; }
-      if (!confirm(`Approve all ${pendingRecs.length} pending OT record(s) for ${userName}?\n\nThis decision is permanent and cannot be undone.`)) return;
+      if (!await appConfirm(`Approve all ${pendingRecs.length} pending OT record(s) for ${userName}?\n\nThis decision is permanent and cannot be undone.`)) return;
       try {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
@@ -19236,7 +19539,7 @@ async function fetchMultiLiveDetections() {
     async function otDetailApproveSelected() {
       const ids = otDetailGetSelectedPendingIds();
       if (!ids.length) { showAppToast('Select at least one pending record to approve.', 'warning'); return; }
-      if (!confirm(`Approve ${ids.length} selected OT record(s)?\n\nThis decision is permanent and cannot be undone.`)) return;
+      if (!await appConfirm(`Approve ${ids.length} selected OT record(s)?\n\nThis decision is permanent and cannot be undone.`)) return;
       try {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
@@ -19254,7 +19557,7 @@ async function fetchMultiLiveDetections() {
     async function otDetailRejectSelected() {
       const ids = otDetailGetSelectedPendingIds();
       if (!ids.length) { showAppToast('Select at least one pending record to reject.', 'warning'); return; }
-      if (!confirm(`Reject ${ids.length} selected OT record(s)?\n\nThis decision is permanent and cannot be undone.`)) return;
+      if (!await appConfirm(`Reject ${ids.length} selected OT record(s)?\n\nThis decision is permanent and cannot be undone.`)) return;
       try {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
@@ -19272,7 +19575,7 @@ async function fetchMultiLiveDetections() {
     async function otDetailAcceptAllPending() {
       const pending = _otDetailRecords.filter(r => (r.status||'pending').toLowerCase()==='pending');
       if (!pending.length) { showAppToast('No pending records in this month for this employee.', 'info'); return; }
-      if (!confirm(`Approve all ${pending.length} pending OT record(s) for ${_otDetailUserName} this month?\n\nThis decision is permanent and cannot be undone.`)) return;
+      if (!await appConfirm(`Approve all ${pending.length} pending OT record(s) for ${_otDetailUserName} this month?\n\nThis decision is permanent and cannot be undone.`)) return;
       try {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
