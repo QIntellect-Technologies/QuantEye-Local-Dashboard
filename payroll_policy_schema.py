@@ -18,7 +18,7 @@ DEFAULT_CURRENCY = "PKR"
 DEFAULT_DECIMAL_PLACES = 2
 VALID_PRORATION_BASES = ("calendar_days", "working_days", "30_day")
 VALID_ATTENDANCE_PAY_MODES = ("full_salary", "payable_days")
-DEFAULT_ATTENDANCE_PAY_MODE = "full_salary"
+DEFAULT_ATTENDANCE_PAY_MODE = "payable_days"
 VALID_OT_PAY_MODES = ("percent", "multiplier", "fixed_hour")
 VALID_OFF_DAY_ATTENDANCE_MODES = ("multiplier", "fixed_day")
 DEFAULT_EXAMPLE_MULTIPLIER = 1.5
@@ -819,8 +819,10 @@ def ensure_payroll_settings_row(cursor, organization_id: Optional[str], branch_i
     org, branch = tenant_ids(organization_id, branch_id)
     cursor.execute(
         """
-        INSERT OR IGNORE INTO payroll_settings (organization_id, branch_id, deduct_unpaid_leave)
-        VALUES (?, ?, 0)
+        INSERT OR IGNORE INTO payroll_settings (
+            organization_id, branch_id, deduct_unpaid_leave, attendance_pay_mode
+        )
+        VALUES (?, ?, 0, ?)
         """,
-        (org, branch),
+        (org, branch, DEFAULT_ATTENDANCE_PAY_MODE),
     )
