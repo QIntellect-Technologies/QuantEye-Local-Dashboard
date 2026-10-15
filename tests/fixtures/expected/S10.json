@@ -168,14 +168,14 @@
       "absence_deduction_percent": 0.0,
       "absence_deduction_fixed_pkr": 0.0,
       "absence_deduction": 0.0,
-      "unpaid_leave_deduction": 2307.69,
+      "unpaid_leave_deduction": 0.0,
       "hra": 0,
       "tax": 0,
       "overtime_hours_approved": 0,
       "overtime_amount": 0.0,
       "bonus": 0,
       "rest_day_extra": 0,
-      "expected_net": 55384.62,
+      "expected_net": 57692.31,
       "notes": ""
     },
     {

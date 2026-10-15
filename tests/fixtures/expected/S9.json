@@ -15,7 +15,7 @@
       "present_days": 26,
       "expected_basic_used": 45000.0,
       "expected_net": 45000.0,
-      "notes": "If API POST /api/salary/<id> is 405, seeder uses PUT"
+      "notes": "pending C4 \u2014 engine currently last-write 50000; do not implement salary revision proration in Phase A"
     }
   ]
 }

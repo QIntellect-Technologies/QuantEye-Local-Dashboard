@@ -119,7 +119,9 @@ def row(
     else:
         absence_deduction = money(basic_p * absence_pct / 100.0)
         net_from_attendance = basic_p
-    unpaid_ded = money(basic_p * unpaid_leave / month_wd) if unpaid_leave and month_wd else 0.0
+    unpaid_ded = 0.0 if mode == "payable_days" else (
+        money(basic_p * unpaid_leave / month_wd) if unpaid_leave and month_wd else 0.0
+    )
     ot_rate = money(basic_p / OT_DIVISOR) if basic_p else 0.0
     ot_amount = money(ot_hours_approved * ot_rate)
     net = money(
@@ -253,7 +255,7 @@ def scenario_s4() -> Dict[str, Any]:
                 present=wd - 3,
                 paid_leave=2,
                 unpaid_leave=1,
-                notes="2 paid + 1 unpaid in September; holiday leave must be rejected",
+                notes="2 paid + 1 unpaid. payable_days already excludes unpaid; do not subtract a second unpaid-day deduction on top of 25/26 (that would double-count). Extra unpaid deduction only if deduct_unpaid_leave is on AND still counting unpaid as payable.",
             )
         ],
     }
@@ -383,7 +385,7 @@ def scenario_s9() -> Dict[str, Any]:
                 "present_days": wd,
                 "expected_basic_used": blended,
                 "expected_net": blended,
-                "notes": "If API POST /api/salary/<id> is 405, seeder uses PUT",
+                "notes": "pending C4 — engine currently last-write 50000; do not implement salary revision proration in Phase A",
             }
         ],
     }
