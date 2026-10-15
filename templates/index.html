@@ -6045,7 +6045,7 @@ async function fetchMultiLiveDetections() {
           </div>
           <div style="margin-top:16px; padding-top:12px; border-top:1px solid #dbe5ec;">
             <div style="font-weight:700; color:#173042;">Who it applies to</div>
-            <p class="payroll-panel-help">Pick everyone, or one branch, shift, department, job title, or person. A person setting wins over a group setting.</p>
+            <p class="payroll-panel-help">Pick everyone, or one branch, shift, department, job title, or person. Closer wins: one person → job title → department → shift → branch → everyone.</p>
             <form class="payroll-rule-form" onsubmit="event.preventDefault(); assignScopedPayLine();">
               <label class="payroll-rule-field">Who
                 <select id="payLineScopeType" class="form-select" onchange="fillPayLineScopeOptions()">
@@ -6116,7 +6116,7 @@ async function fetchMultiLiveDetections() {
         <div class="settings-leave-only" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div style="flex:1; min-width:240px;">
             <div style="font-weight:700; color:#173042;">Half-day leave</div>
-            <div id="halfLeaveQuotaDescription" style="font-size:0.82em; color:#64748b;">How should half-day leave be counted? Use each leave type’s own rules, set a monthly limit, or count two half days as one full day.</div>
+            <div id="halfLeaveQuotaDescription" style="font-size:0.82em; color:#64748b;">How should half-day leave be counted? Only one rule applies. Winner order: one person → department → company setting. If the company setting is “use each leave type’s own rules”, the leave type is used after that.</div>
           </div>
           <select id="halfLeaveQuotaMode" class="form-select" style="max-width:280px;" onchange="updateHalfLeaveQuotaModeUI(); savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle').checked)">
             <option value="category">Use each leave type’s own rules</option>
@@ -6131,7 +6131,7 @@ async function fetchMultiLiveDetections() {
           <!-- Department/Employee Specific Half Leave Rules -->
           <div style="flex-basis: 100%; margin-top:16px; padding-top:12px; border-top:1px solid #dbe5ec;">
             <div style="font-weight:700; color:#173042; margin-bottom:8px;">Half-day leave for one group</div>
-            <div style="font-size:0.82em; color:#64748b; margin-bottom:10px;">Use a different monthly limit for one department or one person.</div>
+            <div style="font-size:0.82em; color:#64748b; margin-bottom:10px;">A person rule beats a department rule. A department rule beats the company setting above. The winning rule is used instead of the others, not added on top.</div>
             <form id="halfLeaveSpecificRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); saveHalfLeaveSpecificRule();">
               <label class="payroll-rule-field">
                 Applies to
@@ -6274,7 +6274,7 @@ async function fetchMultiLiveDetections() {
         <div class="settings-overtime-only" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div style="flex:1; min-width:260px;">
             <div style="font-weight:700; color:#173042;">Maximum overtime</div>
-            <div style="font-size:0.82em; color:#64748b;">Set a maximum for each person. Extra overtime stays pending until someone approves or rejects it. Use 0 to turn this off.</div>
+            <div style="font-size:0.82em; color:#64748b;">Set a maximum. 0 turns this off. If someone types overtime over the max, it is not saved. Camera overtime over the max is saved as pending. A manager then approves or rejects the whole record. Hours are not split (for example 10 paid and 4 pending).</div>
             <div id="overtimeLimitSettingsMessage" role="status" style="font-size:0.8em; color:#64748b; margin-top:4px;">Loading overtime limit...</div>
           </div>
           <label for="overtimeMaxHours" style="display:flex; align-items:center; gap:8px; margin:0; font-size:0.86em; font-weight:700; color:#475569;">
@@ -6609,7 +6609,7 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="stat-content">
               <div class="stat-value" id="salaryTotalNet" style="font-size: 1.35em; font-weight: 800; color: #4f46e5;">--</div>
-              <div class="stat-label" style="font-size: 0.78em; color: #64748b; font-weight: 600;">Gross Monthly Package</div>
+              <div class="stat-label" style="font-size: 0.78em; color: #64748b; font-weight: 600;">Estimated net pay</div>
             </div>
           </div>
         </div>
@@ -6651,7 +6651,7 @@ async function fetchMultiLiveDetections() {
                 <th style="padding: 12px 14px; font-size: 0.75em; text-transform: uppercase; color: #475569; text-align: right;">Allowances</th>
                 <th style="padding: 12px 14px; font-size: 0.75em; text-transform: uppercase; color: #475569; text-align: right;">Deductions</th>
                 <th style="padding: 12px 14px; font-size: 0.75em; text-transform: uppercase; color: #475569; text-align: right;">OT Rate</th>
-                <th style="padding: 12px 14px; font-size: 0.75em; text-transform: uppercase; color: #475569; text-align: right;">Gross Net</th>
+                <th style="padding: 12px 14px; font-size: 0.75em; text-transform: uppercase; color: #475569; text-align: right;" title="Basic + extras − package cuts. Attendance is not included yet.">Est. net pay</th>
                 <th style="padding: 12px 14px; font-size: 0.75em; text-transform: uppercase; color: #475569; text-align: center;">Status</th>
                 <th style="padding: 12px 14px; font-size: 0.75em; text-transform: uppercase; color: #475569; text-align: right; min-width: 140px;">Actions</th>
               </tr>
@@ -6747,13 +6747,14 @@ async function fetchMultiLiveDetections() {
       <div style="background:#f2faff; border-bottom:1px solid #cfe8f7; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
         <div>
           <h3 id="payrollGuideTitle" style="font-size:1.15em; font-weight:800; color:#173042; margin:0;"><i class="fa-solid fa-book-open" style="color:#3d9fd4; margin-right:8px;"></i>Payroll Guide</h3>
-          <div style="color:#64748b; font-size:1rem; margin-top:4px;">Easy words. Sample pay of 60,000 only. This is not live staff data.</div>
+          <div style="color:#64748b; font-size:1rem; margin-top:4px;">Simple Guide for daily use. Advanced Rules for formulas. Sample pay is 60,000. Not live staff.</div>
         </div>
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closePayrollGuide()">Close</button>
       </div>
       <div class="payroll-guide-body">
         <nav class="payroll-guide-nav" aria-label="Guide sections">
-          <button type="button" class="is-active" data-guide-section="guide-overview" onclick="showPayrollGuideSection('guide-overview', this)">Overview</button>
+          <button type="button" class="is-active" data-guide-section="guide-overview" onclick="showPayrollGuideSection('guide-overview', this)">Simple Guide</button>
+          <button type="button" data-guide-section="guide-advanced" onclick="showPayrollGuideSection('guide-advanced', this)">Advanced Rules</button>
           <button type="button" data-guide-section="guide-general" onclick="showPayrollGuideSection('guide-general', this)">1. General</button>
           <button type="button" data-guide-section="guide-attendance" onclick="showPayrollGuideSection('guide-attendance', this)">2. Attendance</button>
           <button type="button" data-guide-section="guide-extras" onclick="showPayrollGuideSection('guide-extras', this)">3. Extra pay</button>
@@ -6764,34 +6765,94 @@ async function fetchMultiLiveDetections() {
         </nav>
         <div class="payroll-guide-content">
           <section id="guide-overview">
-            <h4>How take-home pay is built</h4>
-            <p>Every month, payroll starts from basic pay. Then it adds extra money and takes away cuts.</p>
-            <div class="formula">Take-home pay = Basic pay + extra money − cuts</div>
-            <div class="payroll-guide-note">All tables below use one sample person. Basic pay is 60,000. The month has 30 days and 26 work days. Names are not real staff.</div>
+            <h4>Simple Guide</h4>
+            <p>Set these 7 tabs in order. Click Save on each tab. Then open Payroll, pick the month, and Recalculate. Months you already locked do not change.</p>
             <table class="payroll-guide-table">
-              <thead><tr><th>Part</th><th>Plain meaning</th><th>Sample amount</th></tr></thead>
+              <thead><tr><th>Tab</th><th>What you set</th></tr></thead>
               <tbody>
-                <tr><td>Basic pay</td><td>Monthly salary you set on Salary packages</td><td>60,000</td></tr>
-                <tr><td>Extra money</td><td>House rent, bonus, overtime, rest-day extra</td><td>+ 6,000 house rent</td></tr>
-                <tr><td>Cuts</td><td>Tax, loan, unpaid leave, missed-day cut</td><td>− 2,000 tax</td></tr>
-                <tr><td>Take-home pay</td><td>Money paid this month</td><td>64,000</td></tr>
+                <tr><td>1. General</td><td>Money unit. How join or leave months are split.</td></tr>
+                <tr><td>2. Attendance</td><td>Pay for days present, or pay the full month then cut missed days.</td></tr>
+                <tr><td>3. Extra pay</td><td>Turn on extras. Add house rent, tax, or loan. Choose who it applies to.</td></tr>
+                <tr><td>4. Leave</td><td>Unpaid leave, half-day leave, missed-day cuts.</td></tr>
+                <tr><td>5. Overtime</td><td>Hourly rate, maximum hours, holiday extra.</td></tr>
+                <tr><td>6. Salary packages</td><td>Each person’s basic pay and overtime rate.</td></tr>
+                <tr><td>7. Special dates</td><td>Holidays, extra work days, or off days for one date.</td></tr>
               </tbody>
             </table>
-            <h5>The 7 tabs</h5>
-            <p>Set payroll one tab at a time. Click Save on each tab before you go to the next.</p>
+            <h5>Words we use</h5>
+            <p>Gross pay is money added, before cuts. Estimated net pay is the package view (basic + extras − package cuts). Take-home pay is what is paid after attendance, leave, overtime, and cuts.</p>
+            <div class="formula">Estimated net pay = Basic + extras − package cuts</div>
+            <div class="formula">Take-home pay = Gross pay − all cuts this month</div>
             <table class="payroll-guide-table">
-              <thead><tr><th>Tab</th><th>What you set</th><th>When you are done</th></tr></thead>
+              <thead><tr><th>Part</th><th>Plain meaning</th><th>Sample</th></tr></thead>
               <tbody>
-                <tr><td>1. General</td><td>Money unit and how join or leave months are split</td><td>Click Save</td></tr>
-                <tr><td>2. Attendance</td><td>Pay for days present, or pay the full month then cut missed days. Rest-day extra is here too</td><td>Click Save pay method</td></tr>
-                <tr><td>3. Extra pay</td><td>Turn on extras this company uses. Add house rent, tax, or loan. Choose who it applies to</td><td>Click Save features, then Save for this group</td></tr>
-                <tr><td>4. Leave</td><td>Unpaid leave, half-day leave, and missed-day cut rules</td><td>Add each rule</td></tr>
-                <tr><td>5. Overtime</td><td>Hourly overtime pay, limits, and extra pay on holidays or rest days</td><td>Click Save on each block</td></tr>
-                <tr><td>6. Salary packages</td><td>Each person’s basic pay and overtime rate</td><td>Edit a row, then save</td></tr>
-                <tr><td>7. Special dates</td><td>Holidays, extra work days, or off days for one date</td><td>Add the date, then save</td></tr>
+                <tr><td>Basic</td><td>Monthly salary on Salary packages</td><td>60,000</td></tr>
+                <tr><td>Gross pay</td><td>Basic + house rent + overtime + bonus (before cuts)</td><td>66,000</td></tr>
+                <tr><td>Estimated net pay</td><td>Package view only. Not yet attendance</td><td>64,000</td></tr>
+                <tr><td>Take-home pay</td><td>Money paid this month</td><td>Depends on days and cuts</td></tr>
               </tbody>
             </table>
-            <p>After you save, open Payroll, pick the month, and Recalculate. Months you already locked do not change.</p>
+            <h5>Is this day paid?</h5>
+            <p>This is for “Pay for days present”. If you pay full salary, missed days use the Leave tab cut rules instead.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Day type</th><th>Paid?</th></tr></thead>
+              <tbody>
+                <tr><td>Present (including late)</td><td>Yes</td></tr>
+                <tr><td>Paid leave</td><td>Yes</td></tr>
+                <tr><td>Unpaid leave</td><td>No</td></tr>
+                <tr><td>Missed day with no leave</td><td>No</td></tr>
+                <tr><td>Half-day leave</td><td>Depends on the Leave tab rule that wins</td></tr>
+                <tr><td>Rest day worked (no overtime)</td><td>Base pay for that day + rest-day extra if turned on</td></tr>
+                <tr><td>Holiday worked with approved overtime</td><td>Overtime pay + holiday extra if set</td></tr>
+                <tr><td>Normal rest day not worked</td><td>Not a work day</td></tr>
+              </tbody>
+            </table>
+            <p>Need formulas, who wins, rounding, or overtime limits? Open <strong>Advanced Rules</strong>.</p>
+          </section>
+
+          <section id="guide-advanced" hidden>
+            <h4>Advanced Rules</h4>
+            <p>This page is for HR leads. Sample basic pay is 60,000. Locked months do not change.</p>
+            <h5>Pay order</h5>
+            <p>Payroll always runs in this order:</p>
+            <div class="formula">Basic → Attendance → Leave / missed days → Overtime → Extras → Cuts → Take-home</div>
+            <h5>Who wins</h5>
+            <p>If more than one rule could apply, the closer rule wins. The winner replaces the others. It is not added on top.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Kind of rule</th><th>Winner order</th></tr></thead>
+              <tbody>
+                <tr><td>Extra pay items (house rent, tax, loan)</td><td>One person → job title → department → shift → branch → everyone. “Skip this person” turns that item off.</td></tr>
+                <tr><td>Half-day leave</td><td>One person → department → company setting. If the company setting is “use each leave type’s own rules”, the leave type is used after that.</td></tr>
+                <tr><td>Overtime maximum hours</td><td>One person → department → company maximum</td></tr>
+                <tr><td>Holiday / rest-day overtime extra</td><td>One person → department → that holiday’s extra → company extra</td></tr>
+              </tbody>
+            </table>
+            <p>Example: company says “count two half days as one full day”. Sales has a department rule of 4 half days a month. A Sales person uses the department rule, not the company two-half-days rule.</p>
+            <h5>Maximum overtime</h5>
+            <p>Example: maximum = 10 hours per month. Someone wants 14 hours.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>What happens</th><th>Yes / no</th></tr></thead>
+              <tbody>
+                <tr><td>Does payroll auto-pay 10 and leave 4 pending?</td><td>No. Hours are not split.</td></tr>
+                <tr><td>If typed in Overtime (manual)</td><td>Not saved. Message: over the maximum. Enter 10 or less, or raise the max.</td></tr>
+                <tr><td>If created by camera checkout</td><td>Saved as pending, with a note that it is over the max.</td></tr>
+                <tr><td>What a manager does next</td><td>Approve or reject the whole record. Not hour by hour.</td></tr>
+                <tr><td>Is pending overtime paid?</td><td>No. Only approved overtime is paid.</td></tr>
+                <tr><td>Maximum = 0</td><td>Limit is off.</td></tr>
+              </tbody>
+            </table>
+            <h5>Extra pay dates and caps</h5>
+            <p>A start date is required. A stop date is optional. Lowest / highest amount can cap a percent item. Example: 10% of 60,000 = 6,000, but a highest amount of 5,000 pays 5,000.</p>
+            <h5>Overtime rounding</h5>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Choice</th><th>4 hours from 60,000 ÷ 208</th></tr></thead>
+              <tbody>
+                <tr><td>Round the hourly rate first</td><td>288.46 × 4 = 1,153.84</td></tr>
+                <tr><td>Round the overtime amount at the end</td><td>4 × (60,000 ÷ 208) = 1,153.85</td></tr>
+              </tbody>
+            </table>
+            <h5>Locked months</h5>
+            <p>After Finalize, that month is frozen. Changing OT hours per month, holiday extra, or pay method today does not rewrite a locked month. Recalculate only changes open months.</p>
           </section>
 
           <section id="guide-general" hidden>
@@ -6849,7 +6910,7 @@ async function fetchMultiLiveDetections() {
                 <tr><td>24 present, 2 unpaid leave (if unpaid cut is on)</td><td>Those 2 days are not paid</td><td>Less than 55,384.62</td></tr>
               </tbody>
             </table>
-            <div class="payroll-guide-note">If you pick days present, missed-day cut rules on the Leave tab are off. Those days are already unpaid. Unpaid leave and half-day leave still work.</div>
+            <div class="payroll-guide-note">If you pick days present, missed-day cut rules on the Leave tab are off. Those days are already unpaid. Unpaid leave and half-day leave still work. Simple Guide has a full “is this day paid?” table.</div>
             <h5>Example: pay full salary, then cut</h5>
             <p>Sample: basic 60,000. Person missed 3 days with no leave. You added a Leave rule: 3 to 5 missed days = 5% cut.</p>
             <table class="payroll-guide-table">
@@ -6930,7 +6991,7 @@ async function fetchMultiLiveDetections() {
               </tbody>
             </table>
             <h5>Who it applies to</h5>
-            <p>After you add the item, save it for a group. A person setting wins over a department, branch, or everyone setting.</p>
+            <p>After you add the item, save it for a group. Closer wins: one person → job title → department → shift → branch → everyone. “Skip this person” turns that item off for them.</p>
             <table class="payroll-guide-table">
               <thead><tr><th>Who</th><th>Plain meaning</th><th>Sample</th></tr></thead>
               <tbody>
@@ -6960,15 +7021,17 @@ async function fetchMultiLiveDetections() {
               </tbody>
             </table>
             <h5>Half-day leave</h5>
-            <p>Choose how half days are counted for the whole company. You can also set a different monthly limit for one department or one person.</p>
+            <p>These three company choices do not run at the same time. Only one rule wins.</p>
+            <div class="formula">One person → department → company setting → leave type (only if company setting is “use each leave type’s own rules”)</div>
             <table class="payroll-guide-table">
               <thead><tr><th>Choice</th><th>Plain meaning</th><th>Sample</th></tr></thead>
               <tbody>
                 <tr><td>Use each leave type’s own rules</td><td>Follow the leave type you already set</td><td>Casual half day uses casual rules</td></tr>
-                <tr><td>Set a monthly limit</td><td>Only this many half days in the month</td><td>Limit 4. The 5th half day is extra</td></tr>
+                <tr><td>Set a monthly limit</td><td>Only this many half days in the month</td><td>Limit 4. The 5th is blocked</td></tr>
                 <tr><td>Count two half days as one full day</td><td>Every 2 half days = 1 full day</td><td>4 half days = 2 days</td></tr>
               </tbody>
             </table>
+            <p>A person rule replaces the department rule. A department rule replaces the company setting. They are not mixed.</p>
             <h5>Missed-day rules (only if you pay full salary)</h5>
             <p>These rules cut pay when someone is absent with no leave. Date ranges cannot overlap. They are off if you pay for days present, because those days are already unpaid.</p>
             <table class="payroll-guide-table">
@@ -7017,17 +7080,17 @@ async function fetchMultiLiveDetections() {
               </tbody>
             </table>
             <h5>Maximum overtime</h5>
-            <p>Set a maximum. Extra overtime stays pending until someone approves or rejects it. Use 0 to turn the limit off.</p>
+            <p>Set a maximum. 0 turns it off. Hours are not split. If max is 10 and someone wants 14, payroll does not pay 10 and leave 4 pending.</p>
             <table class="payroll-guide-table">
-              <thead><tr><th>Limit applies</th><th>Plain meaning</th><th>Sample</th></tr></thead>
+              <thead><tr><th>Limit applies</th><th>Plain meaning</th><th>If over the max</th></tr></thead>
               <tbody>
-                <tr><td>Each OT entry</td><td>One overtime request cannot be longer than the max</td><td>Max 4 hours on one request</td></tr>
-                <tr><td>Per day</td><td>All overtime that day cannot go past the max</td><td>Max 3 hours in one day</td></tr>
-                <tr><td>Per week</td><td>All overtime that week cannot go past the max</td><td>Max 10 hours in one week</td></tr>
-                <tr><td>Per calendar month</td><td>All overtime that month cannot go past the max</td><td>Max 20 hours in September</td></tr>
+                <tr><td>Each OT entry</td><td>One request cannot be longer than the max</td><td>Manual: not saved. Camera: pending for review</td></tr>
+                <tr><td>Per day</td><td>All overtime that day cannot go past the max</td><td>Same as above</td></tr>
+                <tr><td>Per week</td><td>All overtime that week cannot go past the max</td><td>Same as above</td></tr>
+                <tr><td>Per calendar month</td><td>All overtime that month cannot go past the max</td><td>Same as above</td></tr>
               </tbody>
             </table>
-            <p>You can set a different limit for one department or one person.</p>
+            <p>A manager then approves or rejects the whole pending record. Pending overtime is not paid. One person or department can have a different max. See Advanced Rules for a 10 vs 14 hour example.</p>
             <h5>Holiday / rest-day extra on overtime</h5>
             <p>This is extra on overtime hours, not the Attendance rest-day extra. Rest days come from the person’s shift week. Holidays come from your holiday list or Special dates.</p>
             <p>Sample normal overtime for 4 hours: 1,153.84. Hourly rate 288.46.</p>
@@ -7059,7 +7122,7 @@ async function fetchMultiLiveDetections() {
                 <tr><td>Allowances</td><td>Extra money on this package</td><td>6,000 house rent</td></tr>
                 <tr><td>Deductions</td><td>Cuts on this package</td><td>2,000 tax</td></tr>
                 <tr><td>OT rate</td><td>Pay per overtime hour for this person</td><td>300, or blank to use 288.46</td></tr>
-                <tr><td>Gross net</td><td>Quick view of basic + extras − cuts on the package</td><td>64,000 before attendance</td></tr>
+                <tr><td>Est. net pay</td><td>Basic + extras − package cuts. Attendance is not included yet</td><td>64,000</td></tr>
               </tbody>
             </table>
             <h5>Auto-set OT rates</h5>
@@ -7685,7 +7748,7 @@ async function fetchMultiLiveDetections() {
           <!-- Live Real-Time Breakdown Preview -->
           <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 14px 16px; margin-top: 18px;">
             <div style="font-size: 0.78em; font-weight: 800; text-transform: uppercase; color: #166534; margin-bottom: 8px;">
-              <i class="fa-solid fa-chart-pie me-1"></i> Estimated Monthly Gross Package
+              <i class="fa-solid fa-chart-pie me-1"></i> Estimated net pay (package only)
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: #374151; margin-bottom: 4px;">
               <span>Base Pay:</span>
@@ -7700,7 +7763,7 @@ async function fetchMultiLiveDetections() {
               <strong id="modalPreviewDeduct">PKR 0.00</strong>
             </div>
             <div style="border-top: 1px dashed #86efac; padding-top: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 1.05em; font-weight: 800; color: #166534;">
-              <span>(=) Net Estimated Package:</span>
+              <span>(=) Estimated net pay:</span>
               <span id="modalPreviewNet">PKR 0.00</span>
             </div>
           </div>
