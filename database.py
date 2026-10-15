@@ -48,6 +48,29 @@ from werkzeug.security import check_password_hash, generate_password_hash
 logger = get_logger(__name__)
 
 
+SALARY_MIN = 0.0
+SALARY_MAX = 100_000_000.0
+
+
+def parse_salary_amount(value: Any, default: Optional[float] = 0.0) -> float:
+    """Reject negative or absurd salary amounts before they are stored."""
+    if value is None or (isinstance(value, str) and str(value).strip() == ''):
+        if default is None:
+            raise ValueError('Salary is required')
+        value = default
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        raise ValueError('Salary must be a valid number') from None
+    if amount < SALARY_MIN:
+        raise ValueError('Salary cannot be negative')
+    if amount > SALARY_MAX:
+        raise ValueError('Salary cannot exceed {:,.0f}'.format(SALARY_MAX))
+    if amount != amount:  # NaN
+        raise ValueError('Salary must be a valid number')
+    return amount
+
+
 def _user_tenant(cursor, user_id: int) -> Tuple[str, str]:
     cursor.execute(
         "SELECT COALESCE(organization_id, 'DEFAULT_ORG'), COALESCE(branch_id, 'DEFAULT_BRANCH') FROM users WHERE id = ?",
@@ -1372,6 +1395,11 @@ def add_user(
         return None
 
     clean_name = name.strip()
+    try:
+        salary = parse_salary_amount(salary, default=0.0)
+    except ValueError as salary_err:
+        logger.warning("Rejected staff create for '%s': %s", clean_name, salary_err)
+        return None
     password = str(password).strip() if password else None
     if password and len(password) < 14:
         logger.warning("Rejected weak password when creating user '%s'", clean_name)
@@ -1617,7 +1645,13 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
     if not name or len(name.strip()) == 0:
         logger.warning("Attempted to update user with empty name")
         return False
-        
+    if salary is not None:
+        try:
+            salary = parse_salary_amount(salary, default=None)
+        except ValueError as salary_err:
+            logger.warning("Rejected staff update for ID %s: %s", user_id, salary_err)
+            return False
+
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -2925,6 +2959,16 @@ def get_detailed_attendance_report(
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+            attendance_source_name = 'Branch'
+            try:
+                cursor.execute("SELECT branch_name, company_name FROM branch_settings WHERE id = 1")
+                cfg_row = cursor.fetchone()
+                if cfg_row:
+                    attendance_source_name = (
+                        (cfg_row['branch_name'] or cfg_row['company_name'] or '').strip() or 'Branch'
+                    )
+            except Exception:
+                pass
 
             # Determine query date parameters
             if target_date == 'today' or (not target_date and not start_date):
@@ -3098,29 +3142,48 @@ def get_detailed_attendance_report(
             cursor.execute("SELECT id, name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes, working_days FROM shifts")
             all_shifts_lookup = {r['id']: dict(r) for r in cursor.fetchall()}
 
-            # Retrieve attendance logs with Check-In camera and Check-Out camera subqueries
-            att_query = f'''
-                SELECT a.user_id, 
-                       date(a.timestamp) as log_date,
-                       MIN(a.timestamp) as first_seen,
-                       MAX(a.timestamp) as last_seen,
-                       COUNT(*) as log_count,
-                       (SELECT a1.location FROM attendance a1 WHERE a1.user_id = a.user_id AND date(a1.timestamp) = date(a.timestamp) ORDER BY a1.timestamp ASC LIMIT 1) as checkin_location,
-                       (SELECT a1.device_id FROM attendance a1 WHERE a1.user_id = a.user_id AND date(a1.timestamp) = date(a.timestamp) ORDER BY a1.timestamp ASC LIMIT 1) as checkin_camera,
-                       (SELECT COALESCE(a2.checkout_location, a2.location) FROM attendance a2 WHERE a2.user_id = a.user_id AND date(a2.timestamp) = date(a.timestamp) ORDER BY a2.timestamp DESC LIMIT 1) as checkout_location,
-                       (SELECT COALESCE(a2.checkout_camera_id, a2.device_id) FROM attendance a2 WHERE a2.user_id = a.user_id AND date(a2.timestamp) = date(a.timestamp) ORDER BY a2.timestamp DESC LIMIT 1) as checkout_camera,
-                       (SELECT a1.source FROM attendance a1 WHERE a1.user_id = a.user_id AND date(a1.timestamp) = date(a.timestamp) ORDER BY a1.timestamp ASC LIMIT 1) as source,
-                       (SELECT a1.notes FROM attendance a1 WHERE a1.user_id = a.user_id AND date(a1.timestamp) = date(a.timestamp) ORDER BY a1.timestamp ASC LIMIT 1) as notes,
-                       (SELECT a1.marked_by FROM attendance a1 WHERE a1.user_id = a.user_id AND date(a1.timestamp) = date(a.timestamp) ORDER BY a1.timestamp ASC LIMIT 1) as marked_by,
-                       (SELECT a1.shift_id FROM attendance a1 WHERE a1.user_id = a.user_id AND date(a1.timestamp) = date(a.timestamp) AND a1.shift_id IS NOT NULL LIMIT 1) as record_shift_id
-                FROM attendance a
-                WHERE a.user_id IN ({placeholders})
-                  AND date(a.timestamp) >= ?
-                  AND date(a.timestamp) <= ?
-                GROUP BY a.user_id, log_date
-            '''
-            cursor.execute(att_query, (*user_ids, start_date, end_date))
-            att_map = {(r['user_id'], r['log_date']): dict(r) for r in cursor.fetchall()}
+            # One range query, aggregated in Python (avoids six correlated subqueries per day).
+            cursor.execute(
+                f'''
+                SELECT user_id, timestamp, location, device_id, checkout_location, checkout_camera_id,
+                       source, notes, marked_by, shift_id
+                FROM attendance
+                WHERE user_id IN ({placeholders})
+                  AND date(timestamp) >= ?
+                  AND date(timestamp) <= ?
+                ORDER BY user_id, timestamp
+                ''',
+                (*user_ids, start_date, end_date),
+            )
+            att_map = {}
+            for raw in cursor.fetchall():
+                ts = str(raw['timestamp'] or '')
+                log_date = ts.split('T', 1)[0].split(' ', 1)[0][:10]
+                key = (raw['user_id'], log_date)
+                rec = att_map.get(key)
+                if rec is None:
+                    att_map[key] = {
+                        'user_id': raw['user_id'],
+                        'log_date': log_date,
+                        'first_seen': raw['timestamp'],
+                        'last_seen': raw['timestamp'],
+                        'log_count': 1,
+                        'checkin_location': raw['location'],
+                        'checkin_camera': raw['device_id'],
+                        'checkout_location': raw['checkout_location'] or raw['location'],
+                        'checkout_camera': raw['checkout_camera_id'] or raw['device_id'],
+                        'source': raw['source'],
+                        'notes': raw['notes'],
+                        'marked_by': raw['marked_by'],
+                        'record_shift_id': raw['shift_id'],
+                    }
+                else:
+                    rec['last_seen'] = raw['timestamp']
+                    rec['log_count'] += 1
+                    rec['checkout_location'] = raw['checkout_location'] or raw['location'] or rec.get('checkout_location')
+                    rec['checkout_camera'] = raw['checkout_camera_id'] or raw['device_id'] or rec.get('checkout_camera')
+                    if rec.get('record_shift_id') is None and raw['shift_id'] is not None:
+                        rec['record_shift_id'] = raw['shift_id']
 
             # Retrieve manual absences
             cursor.execute(
@@ -3199,7 +3262,7 @@ def get_detailed_attendance_report(
                         effective_shift = shift_history[history_index]
                         history_index += 1
                     att = att_map.get((uid, cur_date))
-                    schedule_known = effective_shift is not None
+                    schedule_known = True
                     if att and att.get('record_shift_id') and att['record_shift_id'] in all_shifts_lookup:
                         rec_shift = all_shifts_lookup[att['record_shift_id']]
                         shift_id_for_day = rec_shift['id']
@@ -3225,7 +3288,7 @@ def get_detailed_attendance_report(
                     override_type = _resolve_calendar_override(
                         calendar_overrides, cur_date, uid, shift_id_for_day
                     )
-                    is_scheduled_workday = schedule_known and _is_scheduled_workday(
+                    is_scheduled_workday = _is_scheduled_workday(
                         dt_obj, shift_working_days, override_type
                     )
 
@@ -3284,12 +3347,21 @@ def get_detailed_attendance_report(
                                 if str(first_seen) != str(raw_last_seen):
                                     last_seen = raw_last_seen
 
-                        checkin_cam = att.get('checkin_camera') or att.get('device_id') or 'Camera #1'
-                        checkin_loc = att.get('checkin_location') or att.get('location') or 'Main Gate / Entrance'
-                        checkout_cam = att.get('checkout_camera') or (checkin_cam if last_seen else '-')
-                        checkout_loc = att.get('checkout_location') or (checkin_loc if last_seen else '-')
-                        loc = checkin_loc
-                        dev = checkin_cam
+                        is_manual_punch = str(att.get('source') or '').lower() == 'manual'
+                        if is_manual_punch:
+                            checkin_cam = 'Manual'
+                            checkin_loc = '—'
+                            checkout_cam = 'Manual' if last_seen else '-'
+                            checkout_loc = '—'
+                            loc = '—'
+                            dev = 'Manual'
+                        else:
+                            checkin_cam = att.get('checkin_camera') or att.get('device_id') or ''
+                            checkin_loc = att.get('checkin_location') or att.get('location') or ''
+                            checkout_cam = att.get('checkout_camera') or (checkin_cam if last_seen else '-')
+                            checkout_loc = att.get('checkout_location') or (checkin_loc if last_seen else '-')
+                            loc = checkin_loc
+                            dev = checkin_cam
 
                         # Determine late vs present vs checked_out
                         try:
@@ -3372,6 +3444,12 @@ def get_detailed_attendance_report(
 
                     day_source = att.get('source', 'manual' if is_manual_absent else 'auto') if att is not None else ('manual' if is_manual_absent else 'auto')
                     day_marked_by = (att.get('marked_by', 'Admin') if att and att.get('source') == 'manual' else ('Admin' if is_manual_absent else 'System')) if att is not None or is_manual_absent else 'System'
+                    if str(day_source).lower() == 'manual':
+                        day_source_label = 'Manual'
+                    elif att is not None:
+                        day_source_label = attendance_source_name
+                    else:
+                        day_source_label = '-'
                     emp_daily_records.append({
                         'date': cur_date,
                         'date_formatted': dt_obj.strftime("%d %b %Y"),
@@ -3399,7 +3477,7 @@ def get_detailed_attendance_report(
                         'checkin_location': loc if att else '-',
                         'checkout_location': checkout_loc if (att and last_seen) else '-',
                         'source': day_source,
-                        'source_label': 'Manual by Admin' if str(day_source).lower() == 'manual' else ('Auto by System' if day_source else '-'),
+                        'source_label': day_source_label,
                         'marked_by': day_marked_by,
                         'notes': att.get('notes', '') if att else '',
                         'shift_id': shift_id_for_day if schedule_known else None,
@@ -3515,8 +3593,9 @@ def get_detailed_attendance_report(
                         'first_seen': day_entry.get('first_seen'),
                         'last_seen': day_entry.get('last_seen'),
                         'location': day_entry.get('location', 'Main Gate / Entrance'),
-                        'device_id': day_entry.get('device_id', 'Camera #1'),
+                        'device_id': day_entry.get('device_id') or '',
                         'checkin_camera': day_entry.get('checkin_camera', '-'),
+                        'source_label': day_entry.get('source_label') or '',
                         'checkout_camera': day_entry.get('checkout_camera', '-'),
                         'checkin_location': day_entry.get('checkin_location', '-'),
                         'checkout_location': day_entry.get('checkout_location', '-'),
@@ -3579,7 +3658,9 @@ def get_detailed_attendance_report(
 
             for record in records:
                 source = record.get('source') or 'auto'
-                record['source_label'] = 'Manual by Admin' if str(source).lower() == 'manual' else ('Auto by System' if source else '-')
+                if record.get('source_label'):
+                    continue
+                record['source_label'] = 'Manual' if str(source).lower() == 'manual' else attendance_source_name
 
             response = {
                 'is_multi_day': is_multi_day,

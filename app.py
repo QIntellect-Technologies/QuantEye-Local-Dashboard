@@ -953,7 +953,10 @@ def create_user():
     department = data.get('department', '')
     position = data.get('position', data.get('designation', ''))
     cnic = data.get('cnic', '')
-    salary = float(data.get('salary', 0) or 0)
+    try:
+        salary = db.parse_salary_amount(data.get('salary', 0))
+    except ValueError as salary_err:
+        return jsonify({'error': str(salary_err)}), 400
     join_date = data.get('join_date', '')
     notes = data.get('notes', '')
     shift_id = int(data.get('shift_id', 1) or 1)
@@ -3893,6 +3896,10 @@ def api_add_staff():
         shift_id = 1
     current_tenant = get_current_tenant_id()
     current_branch = get_current_branch_id()
+    try:
+        salary = db.parse_salary_amount(data.get('salary', 0))
+    except ValueError as salary_err:
+        return jsonify({'success': False, 'message': str(salary_err)}), 400
     uid = db.add_user(
         name=data.get('name', ''),
         email=data.get('email', ''),
@@ -3902,7 +3909,7 @@ def api_add_staff():
         notes=data.get('notes', ''),
         cnic=data.get('cnic', ''),
         position=data.get('position', ''),
-        salary=float(data.get('salary', 0) or 0),
+        salary=salary,
         join_date=data.get('join_date', ''),
         shift_id=shift_id,
         checkin_cameras=data.get('checkin_cameras', 'all') or 'all',
@@ -3949,9 +3956,9 @@ def api_update_user(user_id):
 
     salary_val = data.get('salary')
     try:
-        salary = float(salary_val) if salary_val is not None and str(salary_val).strip() != '' else None
-    except (ValueError, TypeError):
-        salary = None
+        salary = db.parse_salary_amount(salary_val, default=None) if salary_val is not None and str(salary_val).strip() != '' else None
+    except ValueError as salary_err:
+        return jsonify({'error': str(salary_err)}), 400
 
     checkin_cameras = data.get('checkin_cameras')
     checkout_cameras = data.get('checkout_cameras')
@@ -4474,6 +4481,73 @@ def api_reports_export_excel():
         as_attachment=True,
         download_name=filename
     )
+
+
+@app.route('/api/reports/export/pdf', methods=['GET'])
+def api_reports_export_pdf():
+    """Export the filtered attendance report as a downloadable PDF."""
+    from payroll_extensions import simple_pdf_bytes
+
+    target_date = request.args.get('date', '').strip() or None
+    start_date = request.args.get('start_date', '').strip() or None
+    end_date = request.args.get('end_date', '').strip() or None
+    department = request.args.get('department', '').strip() or None
+    status = request.args.get('status', '').strip() or None
+    search = request.args.get('search', '').strip() or None
+    user_id = request.args.get('user_id', type=int)
+
+    report = db.get_detailed_attendance_report(
+        target_date=target_date,
+        start_date=start_date,
+        end_date=end_date,
+        department=department,
+        status_filter=status,
+        search_query=search,
+        user_id=user_id,
+        organization_id=get_current_tenant_id(),
+    )
+    records = report.get('records', [])
+    date_label = report.get('date_label', 'Today')
+    branch_cfg = db.get_branch_settings()
+    org_name = (branch_cfg.get('branch_name') or branch_cfg.get('company_name') or 'Organization').strip()
+    lines = [
+        org_name,
+        'Period: {}'.format(date_label),
+        'Department: {}'.format(department or 'All'),
+        'Status: {}'.format(status or 'All'),
+        'Generated: {}'.format(datetime.now().strftime('%d %b %Y %H:%M')),
+        '',
+    ]
+    is_multi_day = report.get('is_multi_day', False)
+    for rec in records[:80]:
+        if is_multi_day:
+            lines.append(
+                '#{} {} | P {} Abs {} Late {} | {}%'.format(
+                    rec.get('user_id'),
+                    rec.get('name'),
+                    rec.get('present_days'),
+                    rec.get('absent_days'),
+                    rec.get('late_days'),
+                    rec.get('attendance_rate'),
+                )
+            )
+        else:
+            lines.append(
+                '#{} {} | {} | {} | {} | {}'.format(
+                    rec.get('user_id'),
+                    rec.get('name'),
+                    rec.get('status'),
+                    rec.get('first_seen') or '-',
+                    rec.get('source_label') or rec.get('source') or '-',
+                    rec.get('checkin_camera') or '-',
+                )
+            )
+    if len(records) > 80:
+        lines.append('... and {} more employees'.format(len(records) - 80))
+    buffer = io.BytesIO(simple_pdf_bytes('Attendance Report', lines))
+    buffer.seek(0)
+    filename = 'attendance-report-{}.pdf'.format((date_label or 'period').replace(' ', '_'))
+    return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
 
 
 @app.route('/api/reports/export/csv', methods=['GET'])
@@ -5423,6 +5497,8 @@ def api_set_salary(user_id=None):
 
         if basic_salary < 0 or allowances < 0 or deductions < 0 or ot_rate < 0:
             return jsonify({'success': False, 'message': 'Salary, allowances, deductions, and OT rate must be non-negative'}), 400
+        if basic_salary > db.SALARY_MAX or allowances > db.SALARY_MAX or deductions > db.SALARY_MAX:
+            return jsonify({'success': False, 'message': f'Salary amounts cannot exceed {db.SALARY_MAX:,.0f}'}), 400
 
         ok = db.set_salary_config(
             user_id=uid,
@@ -5583,49 +5659,57 @@ def api_payroll_bonus_template():
         payroll_month, year, month = _parse_payroll_month_arg()
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment
-    tenant = payroll_tenant()
-    bonuses = {
-        int(row['user_id']): row
-        for row in db.list_payroll_bonuses(year, month, **tenant)
-    }
-    users = db.get_all_users(organization_id=tenant['organization_id'], branch_id=tenant['branch_id'])
-    workbook = openpyxl.Workbook()
-    sheet = workbook.active
-    sheet.title = 'Bonuses'
-    headers = ['Employee ID', 'Employee Name', 'Email', 'Amount', 'Note']
-    sheet.append(headers)
-    for cell in sheet[1]:
-        cell.font = Font(bold=True, color='FFFFFF')
-        cell.fill = PatternFill(start_color='0F2942', end_color='0F2942', fill_type='solid')
-        cell.alignment = Alignment(horizontal='center')
-    for user in users:
-        if not user.get('active', 1):
-            continue
-        existing = bonuses.get(int(user['id']), {})
-        sheet.append([
-            user['id'],
-            user.get('name') or '',
-            user.get('email') or '',
-            float(existing.get('amount') or 0),
-            existing.get('note') or '',
-        ])
-    sheet.append([])
-    sheet.append(['Instructions'])
-    sheet.append(['Match employees by Employee ID, Email, or exact Name.'])
-    sheet.append(['Amount is the bonus for this payroll month. Leave 0 if none.'])
-    sheet.append(['Off-days follow each employee Shift schedule, not a fixed Sunday.'])
-    buffer = io.BytesIO()
-    workbook.save(buffer)
-    buffer.seek(0)
-    filename = f'payroll-bonuses-{payroll_month}.xlsx'
-    return send_file(
-        buffer,
-        as_attachment=True,
-        download_name=filename,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    )
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        logger.exception('openpyxl is not installed')
+        return jsonify({'error': 'Excel export is unavailable because openpyxl is not installed on this server.'}), 500
+    try:
+        tenant = payroll_tenant()
+        bonuses = {
+            int(row['user_id']): row
+            for row in db.list_payroll_bonuses(year, month, **tenant)
+        }
+        users = db.get_all_users(organization_id=tenant['organization_id'], branch_id=tenant['branch_id'])
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = 'Bonuses'
+        headers = ['Employee ID', 'Employee Name', 'Email', 'Amount', 'Note']
+        sheet.append(headers)
+        for cell in sheet[1]:
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill(start_color='0F2942', end_color='0F2942', fill_type='solid')
+            cell.alignment = Alignment(horizontal='center')
+        for user in users:
+            if not user.get('active', 1):
+                continue
+            existing = bonuses.get(int(user['id']), {})
+            sheet.append([
+                user['id'],
+                user.get('name') or '',
+                user.get('email') or '',
+                float(existing.get('amount') or 0),
+                existing.get('note') or '',
+            ])
+        sheet.append([])
+        sheet.append(['Instructions'])
+        sheet.append(['Match employees by Employee ID, Email, or exact Name.'])
+        sheet.append(['Amount is the bonus for this payroll month. Leave 0 if none.'])
+        sheet.append(['Off-days follow each employee Shift schedule, not a fixed Sunday.'])
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        buffer.seek(0)
+        filename = f'payroll-bonuses-{payroll_month}.xlsx'
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+    except Exception as e:
+        logger.exception('Failed to build payroll bonus template')
+        return jsonify({'error': f'Failed to build bonus template: {e}'}), 500
 
 
 @app.route('/api/payroll/bonuses/upload', methods=['POST'])
@@ -6643,6 +6727,14 @@ def api_detect_local_webcams():
     Devices already opened by an active stream reader cannot be re-opened on Windows
     (DirectShow holds them exclusively), so those are reported as 'in_use' instead.
     """
+    host = (request.host or '').lower()
+    if 'railway.app' in host or os.environ.get('RAILWAY_ENVIRONMENT'):
+        return jsonify({
+            'webcams': [],
+            'probed_up_to': 0,
+            'scope': 'local-machine-only',
+            'message': 'Detect USB Webcams lists cameras attached to this Local Dashboard / EXE machine. It does not run on the cloud host and does not delete camera configs or attendance records.',
+        })
     max_index = max(1, min(request.args.get('max_index', getattr(config, 'WEBCAM_PROBE_MAX_INDEX', 6), type=int), 20))
 
     in_use = {}

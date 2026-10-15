@@ -1793,6 +1793,38 @@
         background: #ffffff !important;
       }
 
+      select.form-select,
+      select.form-control,
+      .form-select {
+        min-height: 38px;
+        border: 1.5px solid #cfe8f7;
+        border-radius: 8px;
+        padding: 7px 32px 7px 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #173042;
+        background-color: #ffffff;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+      select.form-select:focus,
+      select.form-control:focus {
+        border-color: #3d9fd4;
+        box-shadow: 0 0 0 3px rgba(61,159,212,0.15);
+        outline: none;
+      }
+      select.form-select option:checked,
+      select.form-select option:hover {
+        background: #eaf5ff;
+      }
+      .stats-grid .stat-box,
+      #overtime-view .kpi-card {
+        min-height: 118px;
+      }
+
       #enroll-view .enrollment-actions {
         display: flex;
         justify-content: flex-end;
@@ -2805,6 +2837,18 @@
   <body class="{% if not is_authenticated %}auth-required{% endif %}">
     <!-- Global Floating Toast Container -->
     <div id="toastContainer" class="app-toast-container" aria-live="polite"></div>
+    <div id="appConfirmModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:100000; align-items:center; justify-content:center; padding:20px;">
+      <div role="dialog" aria-modal="true" style="background:#fff; border-radius:14px; max-width:440px; width:100%; box-shadow:0 20px 50px rgba(15,23,42,0.25); overflow:hidden;">
+        <div style="padding:18px 20px 8px;">
+          <h3 id="appConfirmTitle" style="margin:0 0 8px; font-size:1.05rem; color:#173042;">Confirm</h3>
+          <p id="appConfirmMessage" style="margin:0; color:#475569; font-size:0.92rem; line-height:1.45;"></p>
+        </div>
+        <div style="padding:14px 20px 18px; display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn btn-outline-secondary" id="appConfirmCancel">Cancel</button>
+          <button type="button" class="btn btn-primary" id="appConfirmOk" style="background:#0284c7; border:none;">Confirm</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Left Persistent Sidebar Panel -->
     <div class="sidebar">
@@ -3173,7 +3217,7 @@
                 {% if not is_client_session or client_module_entitlements.payroll %}
                 <div class="col-md-6 payroll-only-ui">
                   <label class="form-label" for="enrollSalary">Basic Salary (PKR)</label>
-                  <input type="number" class="form-control" id="enrollSalary" placeholder="0" min="0" />
+                  <input type="number" class="form-control" id="enrollSalary" placeholder="0" min="0" max="100000000" step="0.01" />
                 </div>
                 {% endif %}
                 <div class="col-md-6">
@@ -3970,8 +4014,11 @@ async function fetchMultiLiveDetections() {
             <button id="mainReportRefreshBtn" type="button" onclick="fetchMainReport(true)" class="btn btn-outline" style="width:auto; padding:9px 18px; font-size:0.88em; border-color:#3d9fd4; color:#247eae;">
               <i class="fa-solid fa-rotate"></i> Refresh Data
             </button>
-            <button onclick="exportMainCSV()" class="btn btn-primary shadow" style="width:auto; padding:9px 20px; font-size:0.88em; background:#0284c7; border:none; color:white; font-weight:600;">
+            <button onclick="exportMainCSV()" class="btn btn-outline" style="width:auto; padding:9px 20px; font-size:0.88em; border-color:#3d9fd4; color:#247eae; font-weight:600;">
               <i class="fa-solid fa-file-csv"></i> Export CSV
+            </button>
+            <button onclick="exportMainPDF()" class="btn btn-primary shadow" style="width:auto; padding:9px 20px; font-size:0.88em; background:#0284c7; border:none; color:white; font-weight:600;">
+              <i class="fa-solid fa-file-pdf"></i> Export PDF
             </button>
           </div>
         </div>
@@ -4035,11 +4082,14 @@ async function fetchMultiLiveDetections() {
             </div>
             <!-- Custom Date Range Inputs -->
             <div id="mainCustomRangeGroup" style="display:none; align-items:center; gap:8px;">
-              <input type="date" id="mainStartDate" class="form-control" style="width:auto; padding:5px 10px; font-size:0.82em; min-height:32px;" onchange="handleMainDateRangeChange()" oninput="handleMainDateRangeChange()">
+              <input type="date" id="mainStartDate" class="form-control" style="width:auto; padding:5px 10px; font-size:0.82em; min-height:32px;">
               <span style="color:#94a3b8; font-size:0.82em;">&#8594;</span>
-              <input type="date" id="mainEndDate" class="form-control" style="width:auto; padding:5px 10px; font-size:0.82em; min-height:32px;" onchange="handleMainDateRangeChange()" oninput="handleMainDateRangeChange()">
-              <button type="button" class="btn btn-sm btn-primary" onclick="fetchMainReport()" style="padding:4px 12px; font-size:0.78em; background:#0284c7; border:none; color:#fff; font-weight:600; min-height:32px; cursor:pointer;">
+              <input type="date" id="mainEndDate" class="form-control" style="width:auto; padding:5px 10px; font-size:0.82em; min-height:32px;">
+              <button type="button" class="btn btn-sm btn-primary" onclick="applyMainReportFilters()" style="padding:4px 12px; font-size:0.78em; background:#0284c7; border:none; color:#fff; font-weight:600; min-height:32px; cursor:pointer;">
                 <i class="fa-solid fa-filter"></i> Apply
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" onclick="resetMainReportFilters()" style="padding:4px 12px; font-size:0.78em; min-height:32px;">
+                <i class="fa-solid fa-arrow-rotate-left"></i> Reset Filters
               </button>
             </div>
           </div>
@@ -4048,14 +4098,14 @@ async function fetchMultiLiveDetections() {
             <!-- Department -->
             <div style="position:relative;">
               <i class="fa-solid fa-building" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.78em; pointer-events:none;"></i>
-              <select id="mainDeptFilter" class="form-control" style="padding:7px 12px 7px 30px; font-size:0.83em; min-height:34px; border-radius:8px;" onchange="fetchMainReport()">
+              <select id="mainDeptFilter" class="form-select" style="padding:7px 12px 7px 30px; font-size:0.83em; min-height:34px; border-radius:8px;">
                 <option value="all">All Departments</option>
               </select>
             </div>
             <!-- Status -->
             <div style="position:relative;">
               <i class="fa-solid fa-circle-half-stroke" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.78em; pointer-events:none;"></i>
-              <select id="mainStatusFilter" class="form-control" style="padding:7px 12px 7px 30px; font-size:0.83em; min-height:34px; border-radius:8px;" onchange="fetchMainReport()">
+              <select id="mainStatusFilter" class="form-select" style="padding:7px 12px 7px 30px; font-size:0.83em; min-height:34px; border-radius:8px;">
                 <option value="all">All Statuses</option>
                 <option value="present">Present Only</option>
                 <option value="absent">Absent Only</option>
@@ -4066,6 +4116,14 @@ async function fetchMultiLiveDetections() {
             <div style="position:relative;">
               <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.8em; pointer-events:none;"></i>
               <input type="text" id="mainReportSearch" class="form-control" value="" autocomplete="off" placeholder="Search name, ID, department, CNIC..." style="padding:7px 14px 7px 34px; font-size:0.83em; min-height:34px; border-radius:8px; width:100%;" oninput="filterMainTableLocally()" onkeyup="filterMainTableLocally()">
+            </div>
+            <div style="display:flex; gap:8px; grid-column:1 / -1; justify-content:flex-end;">
+              <button type="button" class="btn btn-sm btn-primary" onclick="applyMainReportFilters()" style="background:#0284c7; border:none; font-weight:600; min-height:34px;">
+                <i class="fa-solid fa-filter"></i> Apply
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" onclick="resetMainReportFilters()" style="min-height:34px;">
+                <i class="fa-solid fa-arrow-rotate-left"></i> Reset Filters
+              </button>
             </div>
           </div>
         </div>
@@ -5104,7 +5162,7 @@ async function fetchMultiLiveDetections() {
             {% if not is_client_session or client_module_entitlements.payroll %}
             <div class="col-md-6 payroll-only-ui">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Basic Salary (PKR)</label>
-              <input type="number" min="0" class="form-control" id="editSalary" placeholder="e.g. 75000" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="number" min="0" max="100000000" step="0.01" class="form-control" id="editSalary" placeholder="e.g. 75000" style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
             {% endif %}
             <div class="col-md-6">
@@ -5377,7 +5435,15 @@ async function fetchMultiLiveDetections() {
         <h3 style="font-size: 1.15em; font-weight: 800; color: #173042; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
           <i class="fa-solid fa-building-user" style="color: #3d9fd4;"></i> Branch &amp; Organization
         </h3>
-        <p style="font-size: 0.88em; color: #64748b; margin-bottom: 18px;">Manage organization profile and branch location.</p>
+        <p style="font-size: 0.88em; color: #64748b; margin-bottom: 12px;">Manage organization profile and branch location.</p>
+        <div style="background:#f7fbff; border:1px solid #cfe8f7; border-radius:10px; padding:12px 14px; margin-bottom:18px; font-size:0.82em; color:#475569; line-height:1.55;">
+          <strong style="color:#173042;">Where these names appear</strong>
+          <ul style="margin:8px 0 0 18px; padding:0;">
+            <li><strong>Organization / Company Name</strong> is the sidebar and header label, and the Source column on camera-recorded attendance (not manual punches).</li>
+            <li><strong>City, phone, email, and admin name</strong> identify this branch on reports, payslips, and administrator contact display.</li>
+            <li>These values do not change Flask session tenancy. Browser identity still comes from the logged-in session.</li>
+          </ul>
+        </div>
         
         <form id="branchSettingsForm" onsubmit="event.preventDefault(); saveBranchSettings();">
           <div class="row g-3">
@@ -5507,7 +5573,7 @@ async function fetchMultiLiveDetections() {
             <span style="font-size: 0.82em; color: #64748b;">Configure and manage attendance cameras.</span>
           </div>
           <div style="display: flex; gap: 8px;">
-            <button class="btn btn-outline-secondary btn-sm" onclick="triggerWebcamDetection()" style="border-radius: 8px; font-weight: 600;">
+            <button class="btn btn-outline-secondary btn-sm" onclick="triggerWebcamDetection()" title="Scan USB/built-in cameras on this machine only. Does not delete camera configs or attendance." style="border-radius: 8px; font-weight: 600;">
               <i class="fa-solid fa-camera"></i> Detect USB Webcams
             </button>
             <button class="btn btn-primary btn-sm" onclick="openAddCameraModal()" style="border-radius: 8px; font-weight: 700; background: #3d9fd4; border: none;">
@@ -6987,6 +7053,43 @@ async function fetchMultiLiveDetections() {
         toast.querySelector('.toast-close').addEventListener('click', () => clearTimeout(timer));
       }
 
+      function appConfirm(message, title = 'Please confirm') {
+        return new Promise(resolve => {
+          const modal = document.getElementById('appConfirmModal');
+          const msg = document.getElementById('appConfirmMessage');
+          const ttl = document.getElementById('appConfirmTitle');
+          const ok = document.getElementById('appConfirmOk');
+          const cancel = document.getElementById('appConfirmCancel');
+          if (!modal || !msg || !ok || !cancel) {
+            resolve(window.confirm(message));
+            return;
+          }
+          if (ttl) ttl.textContent = title;
+          msg.textContent = message;
+          modal.style.display = 'flex';
+          const finish = (value) => {
+            modal.style.display = 'none';
+            ok.onclick = null;
+            cancel.onclick = null;
+            resolve(value);
+          };
+          ok.onclick = () => finish(true);
+          cancel.onclick = () => finish(false);
+        });
+      }
+      window.alert = function(message) {
+        showAppToast(String(message || ''), 'info', 4500);
+      };
+
+      function validateSalaryInput(raw, label = 'Salary') {
+        if (raw === '' || raw === null || raw === undefined) return { ok: true, value: 0 };
+        const amount = Number(raw);
+        if (!Number.isFinite(amount)) return { ok: false, error: `${label} must be a valid number.` };
+        if (amount < 0) return { ok: false, error: `${label} cannot be negative.` };
+        if (amount > 100000000) return { ok: false, error: `${label} cannot exceed 100,000,000.` };
+        return { ok: true, value: amount };
+      }
+
       // ================================================================
       // BUTTON LOADING STATE HELPER
       // Usage: const restore = setButtonLoading(btn, 'Saving...');
@@ -7032,49 +7135,28 @@ async function fetchMultiLiveDetections() {
           "system",
         );
 
-        // 1. Unconditionally initialize all UI tabs and data views immediately
+        // Load the visible Attendance Reports first; defer other tabs until they are opened.
+        try { if (typeof initMainReportsTab === 'function') initMainReportsTab(); } catch(e) { console.error("initMainReportsTab error:", e); }
         try { loadStats(); } catch(e) { console.error("loadStats error:", e); }
-        try { loadAttendanceLogs(); } catch(e) { console.error("loadAttendanceLogs error:", e); }
-        try { loadEnrolledUsers(); } catch(e) { console.error("loadEnrolledUsers error:", e); }
-        try { loadTabStaffDirectory(); } catch(e) { console.error("loadTabStaffDirectory error:", e); }
-        try { if (typeof loadCameraAssignmentDropdowns === 'function') loadCameraAssignmentDropdowns(); } catch(e) { console.error("loadCameraAssignmentDropdowns error:", e); }
-        try { if (window.entitledModules && window.entitledModules.shifts && typeof loadShiftsList === 'function') loadShiftsList(); } catch(e) { console.error("loadShiftsList error:", e); }
         try { if (typeof loadBranchSettings === 'function') loadBranchSettings(); } catch(e) { console.error("loadBranchSettings error:", e); }
         try { if (typeof loadDepartmentDropdowns === 'function') loadDepartmentDropdowns(); } catch(e) { console.error("loadDepartmentDropdowns error:", e); }
-        try { if (typeof loadLiveCameras === 'function') loadLiveCameras(); } catch(e) { console.error("loadLiveCameras error:", e); }
 
-        // 2. Perform backend initialization in background
-        try {
-          const resp = await fetch(`${API_BASE}/init`, { method: "POST" });
+        fetch(`${API_BASE}/init`, { method: "POST" }).then(async (resp) => {
           if (resp.ok) {
             const data = await resp.json();
-            addTerminalLine(
-              `System successfully initialized: ${data.message || 'Ready'}`,
-              "success",
-            );
+            addTerminalLine(`System successfully initialized: ${data.message || 'Ready'}`, "success");
           }
-        } catch (e) {
-          console.warn("Init API notice:", e);
-        }
-
-        // 3. Auto-start camera monitoring & live ticker feed automatically
-        isStreaming = true;
-        try { if (typeof startTickerFeed === 'function') startTickerFeed(); } catch(e) {}
+        }).catch((e) => console.warn("Init API notice:", e));
 
         window.triggerCentralDataSync = function() {
           try { if (typeof loadStats === 'function') loadStats(); } catch(e) {}
-          try { if (document.getElementById("reports-view")?.classList.contains("active") && typeof fetchMainReport === 'function') fetchMainReport(); } catch(e) {}
-          try { if (document.getElementById("staff-view")?.classList.contains("active") && typeof loadTabStaffDirectory === 'function') loadTabStaffDirectory(); } catch(e) {}
-          try { if (document.getElementById("shifts-view")?.classList.contains("active") && typeof loadShiftsList === 'function') loadShiftsList(); } catch(e) {}
-          try { if (document.getElementById("enroll-view")?.classList.contains("active") && typeof loadStaffDirectory === 'function') loadStaffDirectory(); } catch(e) {}
-          try { if (document.getElementById("locator-view")?.classList.contains("active") && typeof loadRoomsOccupancy === 'function') loadRoomsOccupancy(); } catch(e) {}
         };
 
         // Keep dashboard data synchronized with the database while the page is open
         if (!logSyncTimer) {
           logSyncTimer = setInterval(() => {
             triggerCentralDataSync();
-          }, 2000);
+          }, 15000);
         }
 
         // Initialize real backend connection health monitoring
@@ -8127,6 +8209,12 @@ async function fetchMultiLiveDetections() {
 
         if (!name) {
           showMessage("enrollmentMessage", "Full name is required.", "error");
+          return;
+        }
+        const salaryCheck = validateSalaryInput(salary, 'Basic salary');
+        if (!salaryCheck.ok) {
+          showMessage("enrollmentMessage", salaryCheck.error, "error");
+          showAppToast(salaryCheck.error, 'error');
           return;
         }
 
@@ -9415,6 +9503,12 @@ async function fetchMultiLiveDetections() {
           showMessage("editModalMessage", "Name is required", "error");
           return;
         }
+        const salaryCheck = validateSalaryInput(salary, 'Basic salary');
+        if (!salaryCheck.ok) {
+          showMessage("editModalMessage", salaryCheck.error, "error");
+          showAppToast(salaryCheck.error, 'error');
+          return;
+        }
 
         const btn = document.querySelector('#editUserModal button.btn-primary');
         const restoreBtn = setButtonLoading(btn, 'Saving...');
@@ -9968,18 +10062,60 @@ async function fetchMultiLiveDetections() {
         const customGroup = document.getElementById('mainCustomRangeGroup');
         if (customGroup) customGroup.style.display = 'flex';
 
-        if (s && e) {
-          if (s > e) {
-            const temp = s;
-            s = e;
-            e = temp;
-            if (sInput) sInput.value = s;
-            if (eInput) eInput.value = e;
-          }
-          fetchMainReport();
-        } else if (force) {
-          fetchMainReport();
+        if (s && e && s > e) {
+          const temp = s;
+          s = e;
+          e = temp;
+          if (sInput) sInput.value = s;
+          if (eInput) eInput.value = e;
         }
+        if (force) applyMainReportFilters();
+      }
+
+      function earliestStaffJoinDate() {
+        const rows = (mainReportData && mainReportData.records) || tabAllStaff || [];
+        const dates = rows.map(r => (r.join_date || '').slice(0, 10)).filter(Boolean).sort();
+        return dates[0] || '';
+      }
+
+      function applyJoinDateBounds() {
+        const minJoin = earliestStaffJoinDate();
+        const sInput = document.getElementById('mainStartDate');
+        const eInput = document.getElementById('mainEndDate');
+        if (sInput) sInput.min = minJoin || '';
+        if (eInput) eInput.min = minJoin || '';
+      }
+
+      function applyMainReportFilters() {
+        const sInput = document.getElementById('mainStartDate');
+        const eInput = document.getElementById('mainEndDate');
+        const s = sInput ? sInput.value : '';
+        const e = eInput ? eInput.value : '';
+        const minJoin = earliestStaffJoinDate();
+        if (currentMainFilterDate === 'custom' && minJoin && s && s < minJoin) {
+          showAppToast(`Start date cannot be earlier than the employee joining date (${minJoin}).`, 'warning', 5000);
+          if (sInput) sInput.value = minJoin;
+          return;
+        }
+        if (currentMainFilterDate === 'custom' && minJoin && e && e < minJoin) {
+          showAppToast(`End date cannot be earlier than the employee joining date (${minJoin}).`, 'warning', 5000);
+          return;
+        }
+        fetchMainReport();
+      }
+
+      function resetMainReportFilters() {
+        const dept = document.getElementById('mainDeptFilter');
+        const status = document.getElementById('mainStatusFilter');
+        const search = document.getElementById('mainReportSearch');
+        const sInput = document.getElementById('mainStartDate');
+        const eInput = document.getElementById('mainEndDate');
+        if (dept) dept.value = 'all';
+        if (status) status.value = 'all';
+        if (search) search.value = '';
+        if (sInput) sInput.value = '';
+        if (eInput) eInput.value = '';
+        setMainDateFilter('today');
       }
 
       function setMainDateFilter(preset) {
@@ -10076,6 +10212,7 @@ async function fetchMultiLiveDetections() {
           if (!res.ok) throw new Error(report.error || `Attendance report request failed (${res.status}).`);
           if (!report || !Array.isArray(report.records)) throw new Error('Attendance report returned an invalid response.');
           mainReportData = report;
+          applyJoinDateBounds();
           renderMainReportUI(mainReportData);
         } catch (err) {
           console.error("Failed to fetch main report:", err);
@@ -10353,15 +10490,16 @@ async function fetchMultiLiveDetections() {
             const st = String(r.status || 'absent').trim().toLowerCase();
             const hasAttendance = Boolean(r.first_seen) || ['present', 'late', 'checked_out'].includes(st);
             const isLeaveToday = ['on_leave', 'on_leave_unpaid'].includes(st) && !hasAttendance;
+            const lateBadge = '<span class="badge" style="background:#fef7e0; color:#b06000; border:1px solid #f9e29c; padding:3px 9px; font-size:0.76em; margin-left:4px;"><i class="fa-solid fa-clock"></i> Late</span>';
             if (isLeaveToday) {
               const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
               statusBadge = `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
             } else if (st === 'checked_out' || (r.last_seen && r.last_seen !== '--:--' && r.last_seen !== '-')) {
-              statusBadge = '<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-right-from-bracket"></i> Checked Out</span>';
+              statusBadge = '<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-right-from-bracket"></i> Checked Out</span>' + (st === 'late' ? lateBadge : '');
+            } else if (st === 'late') {
+              statusBadge = '<span class="badge" style="background:#e6f4ea; color:#1e8e3e; border:1px solid #a8dab5; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-check"></i> Present</span>' + lateBadge;
             } else if (st === 'present' || hasAttendance) {
               statusBadge = '<span class="badge" style="background:#e6f4ea; color:#1e8e3e; border:1px solid #a8dab5; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-check"></i> Present</span>';
-            } else if (st === 'late') {
-              statusBadge = '<span class="badge" style="background:#fef7e0; color:#b06000; border:1px solid #f9e29c; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-clock"></i> Late</span>';
             } else {
               statusBadge = '<span class="badge" style="background:#fce8e6; color:#d93025; border:1px solid #f5b4b0; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-xmark"></i> Absent</span>';
             }
@@ -10373,13 +10511,21 @@ async function fetchMultiLiveDetections() {
             const loc = String(r.location || '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             const pos = String(r.position || r.email || r.phone || 'Staff Member').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-            const source = r.source === 'manual' ? 'Manual by Admin' : 'Auto by System';
-            const markedBy = r.marked_by || (r.source === 'manual' ? 'Admin' : 'System');
+            const isManual = String(r.source || '').toLowerCase() === 'manual';
+            const source = r.source_label || (isManual ? 'Manual' : (document.getElementById('headerBranchNameText')?.textContent || 'Branch'));
+            const markedBy = r.marked_by || (isManual ? 'Admin' : 'System');
             const notesText = r.notes ? `<span title="${escapeHtml(r.notes)}" style="font-size:0.8em; color:#475569;">${escapeHtml(r.notes)}</span>` : '<span style="color:#94a3b8;">—</span>';
             const sourceBadge = `<div style="display:flex; align-items:center; gap:6px; flex-wrap:nowrap; white-space:nowrap;">
-              <span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${r.source === 'manual' ? '#e0f2fe' : '#f1f5f9'}; color:${r.source === 'manual' ? '#0369a1' : '#475569'};">${source}</span>
+              <span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${isManual ? '#e0f2fe' : '#f1f5f9'}; color:${isManual ? '#0369a1' : '#475569'};">${escapeHtml(source)}</span>
               <span style="font-size:0.75em; color:#64748b;">By: ${escapeHtml(markedBy)}</span>
             </div>`;
+            const cameraCell = isManual
+              ? `<div style="font-size:0.85em; color:#0369a1; font-weight:600;"><i class="fa-solid fa-keyboard fa-fw" style="margin-right:4px;"></i> Manual</div>`
+              : `<div style="font-size:0.85em; color:#334155;">
+                  <i class="fa-solid fa-camera fa-fw" style="color:#94a3b8; margin-right:4px;"></i> ${escapeHtml(r.checkin_camera || '—')}
+                  <br>
+                  <i class="fa-solid fa-location-dot fa-fw" style="color:#94a3b8; margin-right:4px;"></i> ${escapeHtml(r.checkin_location || '—')}
+                </div>`;
             
             tr.innerHTML = `
               <td style="padding:10px 14px; font-weight:600; color:#94a3b8; font-size:0.78em;">#${r.user_id}</td>
@@ -10398,11 +10544,7 @@ async function fetchMultiLiveDetections() {
               <td style="padding:10px 14px; font-size:0.8em; color:#475569;"><i class="fa-regular fa-clock" style="color:#94a3b8; margin-right:3px;"></i>${firstTime}</td>
               <td style="padding:10px 14px; font-size:0.8em; color:#475569;"><i class="fa-solid fa-eye" style="color:#94a3b8; margin-right:3px;"></i>${lastTime}</td>
               <td style="padding:10px 14px;">
-                <div style="font-size:0.85em; color:#334155;">
-                  <i class="fa-solid fa-camera fa-fw" style="color:#94a3b8; margin-right:4px;"></i> ${escapeHtml(r.checkin_camera || 'N/A')}
-                  <br>
-                  <i class="fa-solid fa-location-dot fa-fw" style="color:#94a3b8; margin-right:4px;"></i> ${escapeHtml(r.checkin_location || 'N/A')}
-                </div>
+                ${cameraCell}
               </td>
               <td style="padding:10px 14px;">
                 ${sourceBadge}
@@ -10426,13 +10568,21 @@ async function fetchMultiLiveDetections() {
               btn.addEventListener('click', function() { markMainUserPresent(r.user_id, targetDate, r.name, this); });
               actionCell.appendChild(btn);
             } else if (hasAttendance) {
+              const wrap = document.createElement('div');
+              wrap.style.cssText = 'display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;';
+              const editBtn = document.createElement('button');
+              editBtn.style.cssText = 'padding:4px 8px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #0284c7; color:#0369a1; background:#f0f9ff; cursor:pointer; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;';
+              editBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Edit';
+              editBtn.addEventListener('click', function() { openManualAttendanceForCorrection(r.user_id, targetDate, r.name, r.first_seen, r.last_seen, r.shift_id); });
               const btn = document.createElement('button');
               btn.style.cssText = 'padding:4px 8px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #dc2626; color:#b91c1c; background:#fef2f2; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
               btn.innerHTML = '<i class="fa-solid fa-xmark"></i> Mark Absent';
               btn.addEventListener('mouseenter', function() { this.style.background = '#fee2e2'; });
               btn.addEventListener('mouseleave', function() { this.style.background = '#fef2f2'; });
               btn.addEventListener('click', function() { markMainUserAbsent(r.user_id, targetDate, r.name, this); });
-              actionCell.appendChild(btn);
+              wrap.appendChild(editBtn);
+              wrap.appendChild(btn);
+              actionCell.appendChild(wrap);
             }
           }
 
@@ -10440,7 +10590,7 @@ async function fetchMultiLiveDetections() {
         });
       }
 
-      function showAppToast(message, type = 'info') {
+      function showAppToastDuplicateRemoved(message, type = 'info') {
         let container = document.getElementById('appToastContainer');
         if (!container) {
           container = document.createElement('div');
@@ -10682,6 +10832,8 @@ async function fetchMultiLiveDetections() {
       }
 
       async function markMainUserAbsent(userId, targetDate, userName, btnElement) {
+        const confirmed = await appConfirm(`Mark ${userName || 'this employee'} absent${targetDate && targetDate !== 'today' ? ' on ' + targetDate : ' for today'}? This replaces the current attendance status.`, 'Mark absent');
+        if (!confirmed) return;
         let originalContent = '';
         if (btnElement) {
           originalContent = btnElement.innerHTML;
@@ -10801,9 +10953,10 @@ async function fetchMultiLiveDetections() {
 
                 const checkInTime = formatMainTime(d.first_seen);
                 const checkOutTime = formatMainTime(d.last_seen);
-                const source = d.source === 'manual' ? 'Manual by Admin' : 'Auto by System';
-                const markedBy = d.marked_by || (d.source === 'manual' ? 'Admin' : 'System');
-                const sourceBadge = `<span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${d.source === 'manual' ? '#e0f2fe' : '#f1f5f9'}; color:${d.source === 'manual' ? '#0369a1' : '#475569'};">${source}</span>`;
+                const isManualDay = String(d.source || '').toLowerCase() === 'manual';
+                const source = d.source_label || (isManualDay ? 'Manual' : (document.getElementById('headerBranchNameText')?.textContent || 'Branch'));
+                const markedBy = d.marked_by || (isManualDay ? 'Admin' : 'System');
+                const sourceBadge = `<span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${isManualDay ? '#e0f2fe' : '#f1f5f9'}; color:${isManualDay ? '#0369a1' : '#475569'};">${escapeHtml(source)}</span>`;
                 const notesText = d.notes ? `<div style="font-size:0.75em; color:#64748b; margin-top:2px;">${escapeHtml(d.notes)}</div>` : '';
 
                 tr.innerHTML = `
@@ -10814,8 +10967,10 @@ async function fetchMultiLiveDetections() {
                   <td style="padding:8px 12px; color:#334155;"><i class="fa-solid fa-eye" style="color:#94a3b8; margin-right:3px;"></i>${checkOutTime}</td>
                   <td style="padding:8px 12px; color:#475569; font-size:0.78rem;">${d.shift_name || emp.shift_name || 'General'}</td>
                   <td style="padding:8px 12px; color:#475569; font-size:0.78rem;">
-                    <i class="fa-solid fa-camera fa-fw" style="color:#0284c7; margin-right:3px;"></i>${escapeHtml(d.checkin_camera || 'N/A')}<br>
-                    <i class="fa-solid fa-location-dot fa-fw" style="color:#0284c7; margin-right:3px;"></i>${escapeHtml(d.checkin_location || d.location || '-')}
+                    ${isManualDay
+                      ? '<i class="fa-solid fa-keyboard fa-fw" style="color:#0284c7; margin-right:3px;"></i>Manual'
+                      : `<i class="fa-solid fa-camera fa-fw" style="color:#0284c7; margin-right:3px;"></i>${escapeHtml(d.checkin_camera || '—')}<br>
+                    <i class="fa-solid fa-location-dot fa-fw" style="color:#0284c7; margin-right:3px;"></i>${escapeHtml(d.checkin_location || d.location || '—')}`}
                   </td>
                   <td style="padding:8px 12px;">
                     ${sourceBadge}
@@ -10900,6 +11055,11 @@ async function fetchMultiLiveDetections() {
       function exportMainCSV() {
         const query = buildMainExportQuery();
         window.location.href = `${API_BASE}/reports/export/csv?${query}`;
+      }
+
+      function exportMainPDF() {
+        const query = buildMainExportQuery();
+        window.location.href = `${API_BASE}/reports/export/pdf?${query}`;
       }
 
       // ================= STAFF DIRECTORY TAB LOGIC =================
@@ -13863,6 +14023,10 @@ async function fetchMultiLiveDetections() {
           if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">All salary amounts must be valid non-negative numbers.</div>`;
           return;
         }
+        if (basic > 100000000 || allow > 100000000 || deduct > 100000000) {
+          if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">Salary amounts cannot exceed 100,000,000.</div>`;
+          return;
+        }
 
         const originalBtnText = btn ? btn.innerHTML : '';
         if (btn) {
@@ -14577,15 +14741,19 @@ async function fetchMultiLiveDetections() {
           const resp = await fetch(`${API_BASE}/cameras/detect-webcams`);
           const data = await resp.json();
           const select = document.getElementById('modalWebcamSelect');
+          if (data.message && (!data.webcams || !data.webcams.length)) {
+            showAppToast(data.message, 'info', 6500);
+            return;
+          }
           if (select && data.webcams && data.webcams.length > 0) {
             select.innerHTML = data.webcams.map(w => `<option value="${w.index}">${w.name} (Index ${w.index})</option>`).join('');
             document.getElementById('modalCameraRtsp').value = select.value;
-            alert(`Detected ${data.webcams.length} connected camera(s): ` + data.webcams.map(w => w.name).join(', '));
+            showAppToast(`Detected ${data.webcams.length} USB camera(s) on this machine. This does not delete existing cameras or attendance.`, 'success', 5500);
           } else {
-            alert('No USB web cameras detected via DirectShow scan.');
+            showAppToast('No USB web cameras were found on this machine. This scan never deletes camera configurations or attendance records.', 'warning', 5500);
           }
         } catch (e) {
-          alert('Webcam detection error: ' + e.message);
+          showAppToast('Webcam detection error: ' + e.message, 'error');
         }
       }
 
@@ -16841,13 +17009,16 @@ async function fetchMultiLiveDetections() {
       renderOtLogPagination(totalItems, totalPages, startIndex, endIndex);
 
       if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted p-4">No overtime records match the selected criteria.</td></tr>';
+        const emptyMsg = !_allOvertimeRecords.length
+          ? 'No overtime requests have been submitted.'
+          : 'No overtime records match the selected criteria.';
+        tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted p-4">${emptyMsg}</td></tr>`;
         return;
       }
 
       tbody.innerHTML = pageGroups.map(group => {
         const records = group.records;
-        const pending = records.filter(r => (r.status || 'pending').toLowerCase() === 'pending');
+        const pending = records.filter(r => (r.status || '').toLowerCase() === 'pending');
         const approved = records.filter(r => (r.status || '').toLowerCase() === 'approved');
         const rejected = records.filter(r => (r.status || '').toLowerCase() === 'rejected');
         const hours = records.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
@@ -17232,7 +17403,7 @@ async function fetchMultiLiveDetections() {
             pending: [], approved: [], rejected: []
           };
         }
-        const st = (r.status || 'pending').toLowerCase();
+        const st = (r.status || '').toLowerCase();
         if (st === 'pending') empMap[uid].pending.push(r);
         else if (st === 'approved') empMap[uid].approved.push(r);
         else if (st === 'rejected') empMap[uid].rejected.push(r);
@@ -17244,12 +17415,15 @@ async function fetchMultiLiveDetections() {
       emps.sort((a,b) => b.pending.length - a.pending.length);
 
       // Update badge on tab
-      const totalPending = _allOvertimeRecords.filter(r => (r.status||'pending').toLowerCase()==='pending').length;
+      const totalPending = _allOvertimeRecords.filter(r => (r.status||'').toLowerCase()==='pending').length;
       const badge = document.getElementById('otApprovalBadge');
       if (badge) badge.textContent = totalPending > 0 ? totalPending : '';
 
       if (!emps.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted p-4">No pending overtime records match the selected criteria.</td></tr>';
+        const emptyMsg = !_allOvertimeRecords.filter(r => (r.status || '').toLowerCase() === 'pending').length
+          ? 'No overtime requests are waiting for approval.'
+          : 'No pending overtime records match the selected criteria.';
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted p-4">${emptyMsg}</td></tr>`;
         return;
       }
 
