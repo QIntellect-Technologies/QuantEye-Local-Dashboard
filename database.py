@@ -1249,7 +1249,7 @@ def init_db():
             logger.warning("Cloud Postgres bootstrap skipped: %s", error)
         return True
     except Exception as e:
-        logger.error(f"✗ Database initialization failed: {e}")
+        logger.exception("Database initialization failed: %s", e)
         return False
 
 

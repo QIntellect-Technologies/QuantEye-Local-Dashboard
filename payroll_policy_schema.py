@@ -5,6 +5,7 @@ calendar-day proration, 2 decimal places, PKR.
 """
 from __future__ import annotations
 
+import sqlite3
 from datetime import date
 from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
 
@@ -219,8 +220,43 @@ def _unique_index_columns(cursor, table: str) -> Iterable[Sequence[str]]:
         )
 
 
+def _table_exists(cursor, name: str) -> bool:
+    return bool(
+        cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (name,),
+        ).fetchone()
+    )
+
+
+def _recover_legacy_rename(cursor, live: str, leftover: str) -> None:
+    """Restore tables if a previous RENAME crashed under legacy_alter_table."""
+    leftover_exists = _table_exists(cursor, leftover)
+    live_exists = _table_exists(cursor, live)
+    if leftover_exists and not live_exists:
+        cursor.execute(f'ALTER TABLE "{leftover}" RENAME TO "{live}"')
+        return
+    if leftover_exists and live_exists:
+        live_count = cursor.execute(f'SELECT COUNT(*) FROM "{live}"').fetchone()[0]
+        leftover_count = cursor.execute(f'SELECT COUNT(*) FROM "{leftover}"').fetchone()[0]
+        if live_count == 0 and leftover_count > 0:
+            cursor.execute(f'DROP TABLE "{live}"')
+            cursor.execute(f'ALTER TABLE "{leftover}" RENAME TO "{live}"')
+        else:
+            cursor.execute(f'DROP TABLE "{leftover}"')
+
+
 def migrate_payroll_policy_tenant_scope(cursor) -> None:
     """Rebuild policy tables so each organization owns its own payroll rules."""
+    for live, leftover in (
+        ("leave_types", "leave_types_legacy_tenant"),
+        ("leave_types", "_leave_types_rebuild_old"),
+        ("company_holidays", "company_holidays_legacy_tenant"),
+        ("special_date_overrides", "special_date_overrides_legacy_tenant"),
+        ("payroll_scoped_rules", "payroll_scoped_rules_legacy_tenant"),
+        ("payroll_settings", "payroll_settings_legacy_tenant"),
+    ):
+        _recover_legacy_rename(cursor, live, leftover)
     _migrate_payroll_settings(cursor)
     _migrate_payroll_rules(cursor)
     _migrate_payroll_scoped_rules(cursor)
@@ -419,7 +455,7 @@ def _migrate_payroll_scoped_rules(cursor) -> None:
 
 
 def _migrate_leave_types(cursor) -> None:
-    if not cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='leave_types'").fetchone():
+    if not _table_exists(cursor, "leave_types"):
         return
     sql = _create_sql(cursor, "leave_types")
     cols = _columns(cursor, "leave_types")
@@ -428,7 +464,10 @@ def _migrate_leave_types(cursor) -> None:
     )
     if "organization_id" in cols and not global_name_unique:
         return
-    cursor.execute("ALTER TABLE leave_types RENAME TO leave_types_legacy_tenant")
+    old_table = "_leave_types_rebuild_old"
+    cursor.execute("PRAGMA legacy_alter_table = ON")
+    cursor.execute(f'DROP TABLE IF EXISTS "{old_table}"')
+    cursor.execute(f'ALTER TABLE leave_types RENAME TO "{old_table}"')
     cursor.execute(
         """
         CREATE TABLE leave_types (
@@ -455,11 +494,19 @@ def _migrate_leave_types(cursor) -> None:
         )
         """
     )
-    legacy = _columns(cursor, "leave_types_legacy_tenant")
-    org_sql = "COALESCE(NULLIF(organization_id, ''), 'DEFAULT_ORG')" if "organization_id" in legacy else "'DEFAULT_ORG'"
-    branch_sql = "COALESCE(NULLIF(branch_id, ''), 'DEFAULT_BRANCH')" if "branch_id" in legacy else "'DEFAULT_BRANCH'"
+    legacy = _columns(cursor, old_table)
+    org_sql = (
+        f'COALESCE(NULLIF("{old_table}".organization_id, \'\'), \'DEFAULT_ORG\')'
+        if "organization_id" in legacy
+        else "'DEFAULT_ORG'"
+    )
+    branch_sql = (
+        f'COALESCE(NULLIF("{old_table}".branch_id, \'\'), \'DEFAULT_BRANCH\')'
+        if "branch_id" in legacy
+        else "'DEFAULT_BRANCH'"
+    )
     def col(name, default):
-        return name if name in legacy else default
+        return f'"{old_table}"."{name}"' if name in legacy else default
     cursor.execute(
         f"""
         INSERT INTO leave_types (
@@ -468,16 +515,22 @@ def _migrate_leave_types(cursor) -> None:
             half_leave_allowance_count, half_leave_allowance_months, half_leaves_per_quota_day,
             half_leave_quota_type_id, organization_id, branch_id, created_at
         )
-        SELECT id, name, code, yearly_allowance, is_paid, description, {col('active', '1')},
+        SELECT "{old_table}".id, "{old_table}".name, "{old_table}".code,
+               "{old_table}".yearly_allowance, "{old_table}".is_paid, "{old_table}".description,
+               {col('active', '1')},
                {col('allowance_period', "'yearly'")}, {col('allowance_months', '12')},
                {col('half_leave_enabled', '0')}, {col('half_leave_mode', "'separate'")},
                {col('half_leave_allowance_count', '0')}, {col('half_leave_allowance_months', '12')},
                {col('half_leaves_per_quota_day', '2')}, {col('half_leave_quota_type_id', 'NULL')},
                {org_sql}, {branch_sql}, {col('created_at', 'CURRENT_TIMESTAMP')}
-        FROM leave_types_legacy_tenant
+        FROM "{old_table}"
         """
     )
-    cursor.execute("DROP TABLE leave_types_legacy_tenant")
+    try:
+        cursor.execute(f'DROP TABLE "{old_table}"')
+    except sqlite3.Error:
+        pass
+    cursor.execute("PRAGMA legacy_alter_table = OFF")
 
 
 def _copy_leave_types_to_existing_orgs(cursor) -> None:
@@ -570,10 +623,11 @@ def _migrate_company_holidays(cursor) -> None:
     date_only = any(columns == ("holiday_date",) for columns in unique_sets) or "holiday_date DATE NOT NULL UNIQUE" in sql
     if not date_only and tenant_unique in unique_sets:
         return
-    cursor.execute("ALTER TABLE company_holidays RENAME TO company_holidays_legacy_tenant")
+    staging = "company_holidays_rebuild_new"
+    cursor.execute(f'DROP TABLE IF EXISTS "{staging}"')
     cursor.execute(
-        """
-        CREATE TABLE company_holidays (
+        f"""
+        CREATE TABLE "{staging}" (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             holiday_date DATE NOT NULL,
@@ -588,23 +642,24 @@ def _migrate_company_holidays(cursor) -> None:
         )
         """
     )
-    legacy = _columns(cursor, "company_holidays_legacy_tenant")
+    legacy = _columns(cursor, "company_holidays")
     org_sql = "COALESCE(NULLIF(organization_id, ''), 'DEFAULT_ORG')" if "organization_id" in legacy else "'DEFAULT_ORG'"
     branch_sql = "COALESCE(NULLIF(branch_id, ''), 'DEFAULT_BRANCH')" if "branch_id" in legacy else "'DEFAULT_BRANCH'"
     end_sql = "end_date" if "end_date" in legacy else "holiday_date"
     premium_sql = "overtime_premium_percent" if "overtime_premium_percent" in legacy else "NULL"
     cursor.execute(
         f"""
-        INSERT INTO company_holidays (
+        INSERT INTO "{staging}" (
             id, name, holiday_date, end_date, description, is_recurring,
             overtime_premium_percent, organization_id, branch_id, created_at
         )
         SELECT id, name, holiday_date, {end_sql}, description, is_recurring,
                {premium_sql}, {org_sql}, {branch_sql}, created_at
-        FROM company_holidays_legacy_tenant
+        FROM company_holidays
         """
     )
-    cursor.execute("DROP TABLE company_holidays_legacy_tenant")
+    cursor.execute("DROP TABLE company_holidays")
+    cursor.execute(f'ALTER TABLE "{staging}" RENAME TO company_holidays')
 
 
 def _migrate_special_date_overrides(cursor) -> None:
@@ -617,10 +672,11 @@ def _migrate_special_date_overrides(cursor) -> None:
     cols = _columns(cursor, "special_date_overrides")
     if "organization_id" in cols and tenant_unique in unique_sets:
         return
-    cursor.execute("ALTER TABLE special_date_overrides RENAME TO special_date_overrides_legacy_tenant")
+    staging = "special_date_overrides_rebuild_new"
+    cursor.execute(f'DROP TABLE IF EXISTS "{staging}"')
     cursor.execute(
-        """
-        CREATE TABLE special_date_overrides (
+        f"""
+        CREATE TABLE "{staging}" (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             calendar_date TEXT NOT NULL,
             override_type TEXT NOT NULL CHECK(override_type IN ('working_day', 'off_day', 'holiday')),
@@ -636,23 +692,24 @@ def _migrate_special_date_overrides(cursor) -> None:
         )
         """
     )
-    legacy = _columns(cursor, "special_date_overrides_legacy_tenant")
+    legacy = _columns(cursor, "special_date_overrides")
     org_sql = "COALESCE(NULLIF(organization_id, ''), 'DEFAULT_ORG')" if "organization_id" in legacy else "'DEFAULT_ORG'"
     branch_sql = "COALESCE(NULLIF(branch_id, ''), 'DEFAULT_BRANCH')" if "branch_id" in legacy else "'DEFAULT_BRANCH'"
     scope_t = "scope_type" if "scope_type" in legacy else "'all'"
     scope_i = "scope_id" if "scope_id" in legacy else "0"
     cursor.execute(
         f"""
-        INSERT INTO special_date_overrides (
+        INSERT INTO "{staging}" (
             id, calendar_date, override_type, note, scope_type, scope_id,
             organization_id, branch_id, created_at, updated_at
         )
         SELECT id, calendar_date, override_type, note, {scope_t}, {scope_i},
                {org_sql}, {branch_sql}, created_at, updated_at
-        FROM special_date_overrides_legacy_tenant
+        FROM special_date_overrides
         """
     )
-    cursor.execute("DROP TABLE special_date_overrides_legacy_tenant")
+    cursor.execute("DROP TABLE special_date_overrides")
+    cursor.execute(f'ALTER TABLE "{staging}" RENAME TO special_date_overrides')
 
 
 def seed_leave_types_if_empty(cursor, organization_id: str, branch_id: str = DEFAULT_BRANCH) -> None:

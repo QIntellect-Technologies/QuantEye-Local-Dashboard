@@ -223,5 +223,84 @@ class UserNameMigrationTests(unittest.TestCase):
             )
 
 
+class LeaveTypesTenantMigrationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="quanteye-leave-types-migration-")
+        self.db_path = os.path.join(self.temp_dir.name, "legacy-leave.db")
+        self.original_db_path = db.DB_PATH
+        db.DB_PATH = self.db_path
+
+    def tearDown(self):
+        db.DB_PATH = self.original_db_path
+        try:
+            self.temp_dir.cleanup()
+        except OSError:
+            pass
+
+    def test_init_rebuilds_global_unique_leave_types_with_foreign_keys(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executescript("""
+                CREATE TABLE leave_types (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    code TEXT NOT NULL,
+                    yearly_allowance REAL DEFAULT 12.0,
+                    is_paid INTEGER DEFAULT 1,
+                    description TEXT,
+                    organization_id TEXT DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT DEFAULT 'DEFAULT_BRANCH'
+                );
+                CREATE TABLE employee_leave_balances (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    leave_type_id INTEGER NOT NULL,
+                    FOREIGN KEY(leave_type_id) REFERENCES leave_types(id)
+                );
+                INSERT INTO leave_types (id, name, code, yearly_allowance, is_paid, description)
+                VALUES (4, 'Casual Leave', 'casual', 10, 1, 'Short leave');
+                INSERT INTO employee_leave_balances (id, user_id, leave_type_id) VALUES (1, 9, 4);
+            """)
+        self.assertTrue(db.init_db())
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT id, name, organization_id FROM leave_types WHERE id = 4"
+            ).fetchone()
+            self.assertEqual(row, (4, "Casual Leave", "DEFAULT_ORG"))
+            leftover = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='leave_types_legacy_tenant'"
+            ).fetchone()
+            self.assertIsNone(leftover)
+            self.assertEqual(
+                conn.execute("SELECT leave_type_id FROM employee_leave_balances").fetchone()[0],
+                4,
+            )
+
+    def test_recovers_orphaned_leave_types_legacy_tenant_table(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executescript("""
+                CREATE TABLE leave_types_legacy_tenant (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    code TEXT NOT NULL,
+                    yearly_allowance REAL DEFAULT 12.0,
+                    is_paid INTEGER DEFAULT 1,
+                    description TEXT
+                );
+                INSERT INTO leave_types_legacy_tenant (id, name, code)
+                VALUES (8, 'Sick Leave', 'sick');
+            """)
+        self.assertTrue(db.init_db())
+        with sqlite3.connect(self.db_path) as conn:
+            names = {
+                row[0]
+                for row in conn.execute("SELECT name FROM leave_types").fetchall()
+            }
+            self.assertIn("Sick Leave", names)
+            leftover = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='leave_types_legacy_tenant'"
+            ).fetchone()
+            self.assertIsNone(leftover)
+
+
 if __name__ == "__main__":
     unittest.main()
