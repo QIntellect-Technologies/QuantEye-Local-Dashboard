@@ -1,0 +1,1486 @@
+{
+  "scenario": "S12",
+  "started": "2026-10-15T16:10:10.261425",
+  "finished": "2026-10-15T16:12:19.208326",
+  "db_path": "C:\\Users\\Imran\\AppData\\Local\\Temp\\qe-payroll-S12-smtzojyd\\attendance.db",
+  "error": null,
+  "comparison": {
+    "expected": {
+      "id": "S12",
+      "title": "200 employees full September (performance)",
+      "expected": {
+        "employee_count": 200,
+        "month": "2026-09",
+        "record_timings": [
+          "calculate",
+          "preview",
+          "export"
+        ]
+      }
+    },
+    "live_keys": [
+      "unlock",
+      "employee_count",
+      "record_len",
+      "timings_seconds",
+      "export_status"
+    ]
+  },
+  "result": {
+    "unlock": {
+      "pre_unlock_post_users": {
+        "status": 403,
+        "body": {
+          "message": "Staff Enrollment is disabled. Enable it from Settings with the staff enrollment key.",
+          "success": false
+        }
+      },
+      "unlock": {
+        "status": 200,
+        "body": {
+          "enrollment_enabled": true,
+          "message": "Staff Enrollment enabled. Add Employee is now available.",
+          "success": true
+        },
+        "key_used": "ENR-AUDIT-ORG1"
+      }
+    },
+    "employee_count": 200,
+    "record_len": 200,
+    "timings_seconds": {
+      "attendance_seed": 104.124,
+      "calculate": 1.284,
+      "export": 1.868
+    },
+    "export_status": 200
+  },
+  "api_log_tail": [
+    {
+      "method": "POST",
+      "path": "/api/users/197/assign-shift",
+      "status": 200,
+      "body": {
+        "effective_from": "2026-09-01",
+        "message": "Shift assigned to User #197",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/users",
+      "status": 201,
+      "body": {
+        "message": "User Perf 198 created successfully",
+        "name": "Perf 198",
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "success": true,
+        "user_id": 198
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/salary/198",
+      "status": 200,
+      "body": {
+        "config": {
+          "active": 1,
+          "allowances": 0.0,
+          "basic_salary": 50000.0,
+          "deductions": 0.0,
+          "department": "Ops",
+          "designation": "Staff",
+          "email": "p198@perf.audit",
+          "is_configured": 1,
+          "net_estimated": 50000.0,
+          "ot_rate": 0.0,
+          "updated_at": "2026-10-15 11:10:31",
+          "user_id": 198,
+          "user_name": "Perf 198"
+        },
+        "message": "Salary configuration saved successfully",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/users/198/assign-shift",
+      "status": 200,
+      "body": {
+        "effective_from": "2026-09-01",
+        "message": "Shift assigned to User #198",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/users",
+      "status": 201,
+      "body": {
+        "message": "User Perf 199 created successfully",
+        "name": "Perf 199",
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "success": true,
+        "user_id": 199
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/salary/199",
+      "status": 200,
+      "body": {
+        "config": {
+          "active": 1,
+          "allowances": 0.0,
+          "basic_salary": 50000.0,
+          "deductions": 0.0,
+          "department": "Ops",
+          "designation": "Staff",
+          "email": "p199@perf.audit",
+          "is_configured": 1,
+          "net_estimated": 50000.0,
+          "ot_rate": 0.0,
+          "updated_at": "2026-10-15 11:10:31",
+          "user_id": 199,
+          "user_name": "Perf 199"
+        },
+        "message": "Salary configuration saved successfully",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/users/199/assign-shift",
+      "status": 200,
+      "body": {
+        "effective_from": "2026-09-01",
+        "message": "Shift assigned to User #199",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/users",
+      "status": 201,
+      "body": {
+        "message": "User Perf 200 created successfully",
+        "name": "Perf 200",
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "success": true,
+        "user_id": 200
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/salary/200",
+      "status": 200,
+      "body": {
+        "config": {
+          "active": 1,
+          "allowances": 0.0,
+          "basic_salary": 50000.0,
+          "deductions": 0.0,
+          "department": "Ops",
+          "designation": "Staff",
+          "email": "p200@perf.audit",
+          "is_configured": 1,
+          "net_estimated": 50000.0,
+          "ot_rate": 0.0,
+          "updated_at": "2026-10-15 11:10:31",
+          "user_id": 200,
+          "user_name": "Perf 200"
+        },
+        "message": "Salary configuration saved successfully",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/users/200/assign-shift",
+      "status": 200,
+      "body": {
+        "effective_from": "2026-09-01",
+        "message": "Shift assigned to User #200",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "200 users marked present",
+        "processed": 200,
+        "succeeded": 200,
+        "success": true
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/payroll",
+      "status": 200,
+      "body": {
+        "attendance_pay_mode": "full_salary",
+        "branch_id": "BR-PAY-AUDIT-1",
+        "currency_code": "PKR",
+        "decimal_places": 2,
+        "deduct_unpaid_leave": 0,
+        "enable_advances": 0,
+        "enable_bonuses": 1,
+        "enable_individual_adjustments": 0,
+        "enable_insurance": 0,
+        "enable_loans": 0,
+        "enable_named_components": 0,
+        "enable_provident": 0,
+        "enable_salary_revisions": 0,
+        "enable_tax": 0,
+        "half_leave_quota_mode": "category",
+        "half_leaves_per_quota_day": 2,
+        "holiday_ot_fixed_amount": 0.0,
+        "holiday_ot_multiplier": 1.5,
+        "holiday_ot_pay_mode": "percent",
+        "holiday_ot_premium_active": 0,
+        "holiday_ot_premium_percent": 0.0,
+        "id": 7,
+        "non_working_day_ot_fixed_amount": 0.0,
+        "non_working_day_ot_multiplier": 1.5,
+        "non_working_day_ot_pay_mode": "percent",
+        "non_working_day_ot_premium_active": 0,
+        "non_working_day_ot_premium_percent": 0.0,
+        "off_day_attendance_pay_active": 0,
+        "off_day_attendance_pay_fixed_amount": 0.0,
+        "off_day_attendance_pay_mode": "multiplier",
+        "off_day_attendance_pay_multiplier": 1.5,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "ot_hour_divisor": 208.0,
+        "overtime_max_hours": 0.0,
+        "overtime_max_period": "day",
+        "proration_basis": "calendar_days",
+        "updated_at": "2026-10-15 11:10:10"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/settings/payroll",
+      "status": 200,
+      "body": {
+        "message": "Payroll settings saved.",
+        "settings": {
+          "attendance_pay_mode": "payable_days",
+          "branch_id": "BR-PAY-AUDIT-1",
+          "currency_code": "PKR",
+          "decimal_places": 2,
+          "deduct_unpaid_leave": 0,
+          "enable_advances": 0,
+          "enable_bonuses": 1,
+          "enable_individual_adjustments": 0,
+          "enable_insurance": 0,
+          "enable_loans": 0,
+          "enable_named_components": 0,
+          "enable_provident": 0,
+          "enable_salary_revisions": 0,
+          "enable_tax": 0,
+          "half_leave_quota_mode": "category",
+          "half_leaves_per_quota_day": 2,
+          "holiday_ot_fixed_amount": 0.0,
+          "holiday_ot_multiplier": 1.5,
+          "holiday_ot_pay_mode": "percent",
+          "holiday_ot_premium_active": 0,
+          "holiday_ot_premium_percent": 0.0,
+          "id": 7,
+          "non_working_day_ot_fixed_amount": 0.0,
+          "non_working_day_ot_multiplier": 1.5,
+          "non_working_day_ot_pay_mode": "percent",
+          "non_working_day_ot_premium_active": 0,
+          "non_working_day_ot_premium_percent": 0.0,
+          "off_day_attendance_pay_active": 0,
+          "off_day_attendance_pay_fixed_amount": 0.0,
+          "off_day_attendance_pay_mode": "multiplier",
+          "off_day_attendance_pay_multiplier": 1.5,
+          "organization_id": "ORG-PAY-AUDIT-1",
+          "ot_hour_divisor": 208.0,
+          "overtime_max_hours": 0.0,
+          "overtime_max_period": "day",
+          "proration_basis": "calendar_days",
+          "updated_at": "2026-10-15 11:12:16"
+        },
+        "success": true
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/payroll?month=2026-09&recalculate=1",
+      "status": 200,
+      "body": {
+        "attendance_pay_mode": "payable_days",
+        "can_finalize": true,
+        "employee_count": 200,
+        "is_finalized": false,
+        "month_complete": true,
+        "payroll_month": "2026-09",
+        "payroll_run_id": 1,
+        "period_end": "2026-09-30",
+        "period_start": "2026-09-01",
+        "records": [
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 50000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Ops",
+            "designation": "Staff",
+            "employee_id": 1,
+            "employee_name": "Perf 001",
+            "fixed_amount": 0.0,
+            "gross_salary": 50000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 50000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 240.38,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Perf Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 1
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 50000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Ops",
+            "designation": "Staff",
+            "employee_id": 2,
+            "employee_name": "Perf 002",
+            "fixed_amount": 0.0,
+            "gross_salary": 50000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 50000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 240.38,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Perf Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 2
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 50000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Ops",
+            "designation": "Staff",
+            "employee_id": 3,
+            "employee_name": "Perf 003",
+            "fixed_amount": 0.0,
+            "gross_salary": 50000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 50000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 240.38,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Perf Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 3
+          }
+        ],
+        "status": "Draft",
+        "total_adjustments": 0.0,
+        "total_allowances": 0.0,
+        "total_arrears": 0.0,
+        "total_basic_salary": 10000000.0,
+        "total_bonus": 0.0,
+        "total_deduction": 0.0,
+        "total_net_salary": 10000000.0,
+        "total_off_day_extra": 0.0,
+        "total_overtime": 0.0,
+        "_records_clipped": 200
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/payroll/export.xlsx?month=2026-09",
+      "status": 200,
+      "body": {
+        "binary": true,
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "bytes": 14167
+      }
+    }
+  ],
+  "users_in_db": 200,
+  "db_rows": {
+    "users": [
+      {
+        "id": 1,
+        "name": "Perf 001",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 2,
+        "name": "Perf 002",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 3,
+        "name": "Perf 003",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 4,
+        "name": "Perf 004",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 5,
+        "name": "Perf 005",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 6,
+        "name": "Perf 006",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 7,
+        "name": "Perf 007",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 8,
+        "name": "Perf 008",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 9,
+        "name": "Perf 009",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 10,
+        "name": "Perf 010",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 11,
+        "name": "Perf 011",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 12,
+        "name": "Perf 012",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 13,
+        "name": "Perf 013",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 14,
+        "name": "Perf 014",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 15,
+        "name": "Perf 015",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 16,
+        "name": "Perf 016",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 17,
+        "name": "Perf 017",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 18,
+        "name": "Perf 018",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 19,
+        "name": "Perf 019",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 20,
+        "name": "Perf 020",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 21,
+        "name": "Perf 021",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 22,
+        "name": "Perf 022",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 23,
+        "name": "Perf 023",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 24,
+        "name": "Perf 024",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 25,
+        "name": "Perf 025",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 26,
+        "name": "Perf 026",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 27,
+        "name": "Perf 027",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 28,
+        "name": "Perf 028",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 29,
+        "name": "Perf 029",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 30,
+        "name": "Perf 030",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 31,
+        "name": "Perf 031",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 32,
+        "name": "Perf 032",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 33,
+        "name": "Perf 033",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 34,
+        "name": "Perf 034",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 35,
+        "name": "Perf 035",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 36,
+        "name": "Perf 036",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 37,
+        "name": "Perf 037",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 38,
+        "name": "Perf 038",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 39,
+        "name": "Perf 039",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 40,
+        "name": "Perf 040",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 41,
+        "name": "Perf 041",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 42,
+        "name": "Perf 042",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 43,
+        "name": "Perf 043",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 44,
+        "name": "Perf 044",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 45,
+        "name": "Perf 045",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 46,
+        "name": "Perf 046",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 47,
+        "name": "Perf 047",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 48,
+        "name": "Perf 048",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 49,
+        "name": "Perf 049",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 50,
+        "name": "Perf 050",
+        "salary": 50000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      }
+    ],
+    "user_count": 200,
+    "attendance_by_day": [
+      {
+        "day": "2026-09-01",
+        "n": 200
+      },
+      {
+        "day": "2026-09-02",
+        "n": 200
+      },
+      {
+        "day": "2026-09-03",
+        "n": 200
+      },
+      {
+        "day": "2026-09-04",
+        "n": 200
+      },
+      {
+        "day": "2026-09-05",
+        "n": 200
+      },
+      {
+        "day": "2026-09-07",
+        "n": 200
+      },
+      {
+        "day": "2026-09-08",
+        "n": 200
+      },
+      {
+        "day": "2026-09-09",
+        "n": 200
+      },
+      {
+        "day": "2026-09-10",
+        "n": 200
+      },
+      {
+        "day": "2026-09-11",
+        "n": 200
+      },
+      {
+        "day": "2026-09-12",
+        "n": 200
+      },
+      {
+        "day": "2026-09-14",
+        "n": 200
+      },
+      {
+        "day": "2026-09-15",
+        "n": 200
+      },
+      {
+        "day": "2026-09-16",
+        "n": 200
+      },
+      {
+        "day": "2026-09-17",
+        "n": 200
+      },
+      {
+        "day": "2026-09-18",
+        "n": 200
+      },
+      {
+        "day": "2026-09-19",
+        "n": 200
+      },
+      {
+        "day": "2026-09-21",
+        "n": 200
+      },
+      {
+        "day": "2026-09-22",
+        "n": 200
+      },
+      {
+        "day": "2026-09-23",
+        "n": 200
+      },
+      {
+        "day": "2026-09-24",
+        "n": 200
+      },
+      {
+        "day": "2026-09-25",
+        "n": 200
+      },
+      {
+        "day": "2026-09-26",
+        "n": 200
+      },
+      {
+        "day": "2026-09-28",
+        "n": 200
+      },
+      {
+        "day": "2026-09-29",
+        "n": 200
+      },
+      {
+        "day": "2026-09-30",
+        "n": 200
+      }
+    ]
+  }
+}

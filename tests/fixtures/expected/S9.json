@@ -1,0 +1,21 @@
+{
+  "id": "S9",
+  "title": "Mid-month salary revision",
+  "assumptions": {
+    "from": 40000,
+    "to": 50000,
+    "effective_from": "2026-09-16",
+    "blended_calendar": 45000.0
+  },
+  "expected": [
+    {
+      "code": "E10",
+      "employee_name": "E10 Salary Change",
+      "attendance_pay_mode": "full_salary",
+      "present_days": 26,
+      "expected_basic_used": 45000.0,
+      "expected_net": 45000.0,
+      "notes": "If API POST /api/salary/<id> is 405, seeder uses PUT"
+    }
+  ]
+}

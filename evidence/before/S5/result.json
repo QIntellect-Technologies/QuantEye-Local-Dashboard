@@ -1,0 +1,2171 @@
+{
+  "scenario": "S5",
+  "started": "2026-10-15T16:03:18.307911",
+  "finished": "2026-10-15T16:03:26.220821",
+  "db_path": "C:\\Users\\Imran\\AppData\\Local\\Temp\\qe-payroll-S5-dgwspoy5\\attendance.db",
+  "error": null,
+  "comparison": {
+    "expected": {
+      "id": "S5",
+      "title": "Overtime statuses and rest-day OT",
+      "assumptions": {
+        "approved_hours": 4,
+        "pending_hours": 2,
+        "rejected_hours": 3,
+        "only_approved_pays": true,
+        "ot_divisor": 208.0
+      },
+      "expected": [
+        {
+          "code": "E8",
+          "employee_name": "E8 Overtime",
+          "basic": 60000.0,
+          "basic_prorated": 60000.0,
+          "attendance_pay_mode": "payable_days",
+          "month_scheduled_workdays": 26,
+          "eligible_scheduled_workdays": 26,
+          "proration_factor": 1.0,
+          "present_days": 26,
+          "late_days": 0,
+          "paid_leave_days": 0,
+          "unpaid_leave_days": 0,
+          "unexcused_absent_days": 0,
+          "half_leave_days": 0,
+          "payable_days": 26,
+          "absence_deduction_percent": 0.0,
+          "absence_deduction_fixed_pkr": 0.0,
+          "absence_deduction": 0.0,
+          "unpaid_leave_deduction": 0.0,
+          "hra": 0,
+          "tax": 0,
+          "overtime_hours_approved": 4.0,
+          "overtime_amount": 1153.84,
+          "bonus": 0,
+          "rest_day_extra": 0,
+          "expected_net": 61153.84,
+          "notes": "pending and rejected OT must not pay"
+        }
+      ]
+    },
+    "live_keys": [
+      "unlock",
+      "sunday_ot",
+      "over_max",
+      "payroll"
+    ]
+  },
+  "result": {
+    "unlock": {
+      "pre_unlock_post_users": {
+        "status": 403,
+        "body": {
+          "message": "Staff Enrollment is disabled. Enable it from Settings with the staff enrollment key.",
+          "success": false
+        }
+      },
+      "unlock": {
+        "status": 200,
+        "body": {
+          "enrollment_enabled": true,
+          "message": "Staff Enrollment enabled. Add Employee is now available.",
+          "success": true
+        },
+        "key_used": "ENR-AUDIT-ORG1"
+      }
+    },
+    "sunday_ot": {
+      "status": 201,
+      "body": {
+        "id": 8,
+        "limit_exceeded": false,
+        "limit_message": "",
+        "success": true
+      }
+    },
+    "over_max": {
+      "status": 201,
+      "body": {
+        "id": 9,
+        "limit_exceeded": false,
+        "limit_message": "",
+        "success": true
+      }
+    },
+    "payroll": [
+      {
+        "employee_name": "E10 Salary Change",
+        "basic_salary": 40000.0,
+        "allowances": 0.0,
+        "present_days": 26,
+        "absent_days": 0,
+        "late_days": 0,
+        "payable_days": 26,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 40000.0,
+        "deduction_amount": 0.0,
+        "net_salary": 40000.0,
+        "matched_rule": "Pay 26/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E13 Extra",
+        "basic_salary": 42000.0,
+        "allowances": 0.0,
+        "present_days": 26,
+        "absent_days": 0,
+        "late_days": 0,
+        "payable_days": 26,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 42000.0,
+        "deduction_amount": 0.0,
+        "net_salary": 42000.0,
+        "matched_rule": "Pay 26/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E1 Full Attend",
+        "basic_salary": 60000.0,
+        "allowances": 0.0,
+        "present_days": 26,
+        "absent_days": 0,
+        "late_days": 0,
+        "payable_days": 26,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 60000.0,
+        "deduction_amount": 0.0,
+        "net_salary": 60000.0,
+        "matched_rule": "Pay 26/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E9 Flex Pay",
+        "basic_salary": 60000.0,
+        "allowances": 0.0,
+        "present_days": 26,
+        "absent_days": 0,
+        "late_days": 0,
+        "payable_days": 26,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 60000.0,
+        "deduction_amount": 0.0,
+        "net_salary": 60000.0,
+        "matched_rule": "Pay 26/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E5 Leave Mix",
+        "basic_salary": 60000.0,
+        "allowances": 0.0,
+        "present_days": 23,
+        "absent_days": 1,
+        "late_days": 0,
+        "payable_days": 25,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 60000.0,
+        "deduction_amount": 2307.69,
+        "net_salary": 57692.31,
+        "matched_rule": "Pay 25/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E12 Deactivate",
+        "basic_salary": 60000.0,
+        "allowances": 0.0,
+        "present_days": 26,
+        "absent_days": 0,
+        "late_days": 0,
+        "payable_days": 26,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 60000.0,
+        "deduction_amount": 0.0,
+        "net_salary": 60000.0,
+        "matched_rule": "Pay 26/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E2 Two Absent",
+        "basic_salary": 60000.0,
+        "allowances": 0.0,
+        "present_days": 24,
+        "absent_days": 2,
+        "late_days": 0,
+        "payable_days": 24,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 60000.0,
+        "deduction_amount": 4615.38,
+        "net_salary": 55384.62,
+        "matched_rule": "Pay 24/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E3 Six Absent",
+        "basic_salary": 60000.0,
+        "allowances": 0.0,
+        "present_days": 20,
+        "absent_days": 6,
+        "late_days": 0,
+        "payable_days": 20,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 60000.0,
+        "deduction_amount": 13846.15,
+        "net_salary": 46153.85,
+        "matched_rule": "Pay 20/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E6 Join Mid",
+        "basic_salary": 40000.0,
+        "allowances": 0.0,
+        "present_days": 17,
+        "absent_days": 0,
+        "late_days": 0,
+        "payable_days": 17,
+        "month_scheduled_workdays": 17,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 40000.0,
+        "deduction_amount": 0.0,
+        "net_salary": 40000.0,
+        "matched_rule": "Pay 17/17 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E7 Exit Mid",
+        "basic_salary": 60000.0,
+        "allowances": 0.0,
+        "present_days": 16,
+        "absent_days": 10,
+        "late_days": 0,
+        "payable_days": 16,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 60000.0,
+        "deduction_amount": 23076.92,
+        "net_salary": 36923.08,
+        "matched_rule": "Pay 16/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E11 No Salary",
+        "basic_salary": 0.0,
+        "allowances": 0.0,
+        "present_days": 26,
+        "absent_days": 0,
+        "late_days": 0,
+        "payable_days": 26,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 0.0,
+        "deduction_amount": 0.0,
+        "net_salary": 0.0,
+        "matched_rule": "Pay 26/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E14 Absurd QA",
+        "basic_salary": 10000000.0,
+        "allowances": 0.0,
+        "present_days": 26,
+        "absent_days": 0,
+        "late_days": 0,
+        "payable_days": 26,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 10000000.0,
+        "deduction_amount": 0.0,
+        "net_salary": 10000000.0,
+        "matched_rule": "Pay 26/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E4 Late Half",
+        "basic_salary": 60000.0,
+        "allowances": 0.0,
+        "present_days": 23,
+        "absent_days": 0,
+        "late_days": 3,
+        "payable_days": 26,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_hours": 0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 60000.0,
+        "deduction_amount": 0.0,
+        "net_salary": 60000.0,
+        "matched_rule": "Pay 26/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      },
+      {
+        "employee_name": "E8 Overtime",
+        "basic_salary": 60000.0,
+        "allowances": 0.0,
+        "present_days": 26,
+        "absent_days": 0,
+        "late_days": 0,
+        "payable_days": 26,
+        "month_scheduled_workdays": 26,
+        "off_day_extra_pay": 0.0,
+        "overtime_amount": 2596.14,
+        "overtime_hours": 9.0,
+        "bonus_amount": 0.0,
+        "absence_deduction": 0.0,
+        "unpaid_leave_deduction": 0.0,
+        "half_leave_deduction": 0.0,
+        "custom_deductions": 0.0,
+        "pay_lines": [],
+        "gross_salary": 62596.14,
+        "deduction_amount": 0.0,
+        "net_salary": 62596.14,
+        "matched_rule": "Pay 26/26 working days",
+        "attendance_pay_mode": "payable_days",
+        "issues": null,
+        "remarks": null
+      }
+    ]
+  },
+  "api_log_tail": [
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/users/7",
+      "status": 200,
+      "body": {
+        "message": "Staff profile for E7 Exit Mid updated successfully",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/bulk-mark",
+      "status": 200,
+      "body": {
+        "action": "present",
+        "failed_user_ids": [],
+        "message": "1 users marked present",
+        "processed": 1,
+        "succeeded": 1,
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/overtime",
+      "status": 201,
+      "body": {
+        "id": 4,
+        "limit_exceeded": false,
+        "limit_message": "",
+        "success": true
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/overtime/4",
+      "status": 200,
+      "body": {
+        "approved_by": "Admin",
+        "id": 4,
+        "status": "approved",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/overtime",
+      "status": 201,
+      "body": {
+        "id": 5,
+        "limit_exceeded": false,
+        "limit_message": "",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/overtime",
+      "status": 201,
+      "body": {
+        "id": 6,
+        "limit_exceeded": false,
+        "limit_message": "",
+        "success": true
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/overtime/6",
+      "status": 200,
+      "body": {
+        "approved_by": "Admin",
+        "id": 6,
+        "status": "rejected",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/users/8/mark-present",
+      "status": 200,
+      "body": {
+        "message": "User ID 8 attendance saved successfully",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/overtime",
+      "status": 201,
+      "body": {
+        "id": 8,
+        "limit_exceeded": false,
+        "limit_message": "",
+        "success": true
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/overtime/8",
+      "status": 200,
+      "body": {
+        "approved_by": "Admin",
+        "id": 8,
+        "status": "approved",
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/overtime",
+      "status": 201,
+      "body": {
+        "id": 9,
+        "limit_exceeded": false,
+        "limit_message": "",
+        "success": true
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/payroll?month=2026-09&recalculate=1",
+      "status": 200,
+      "body": {
+        "attendance_pay_mode": "payable_days",
+        "can_finalize": true,
+        "employee_count": 14,
+        "is_finalized": false,
+        "month_complete": true,
+        "payroll_month": "2026-09",
+        "payroll_run_id": 1,
+        "period_end": "2026-09-30",
+        "period_start": "2026-09-01",
+        "records": [
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 40000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Admin",
+            "designation": "Staff",
+            "employee_id": 10,
+            "employee_name": "E10 Salary Change",
+            "fixed_amount": 0.0,
+            "gross_salary": 40000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 40000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 192.31,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 10
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 42000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Admin",
+            "designation": "Staff",
+            "employee_id": 13,
+            "employee_name": "E13 Extra",
+            "fixed_amount": 0.0,
+            "gross_salary": 42000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 42000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 201.92,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 13
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 60000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Finance",
+            "designation": "Staff",
+            "employee_id": 1,
+            "employee_name": "E1 Full Attend",
+            "fixed_amount": 0.0,
+            "gross_salary": 60000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 60000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 288.46,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 1
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 60000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Finance",
+            "designation": "Staff",
+            "employee_id": 9,
+            "employee_name": "E9 Flex Pay",
+            "fixed_amount": 0.0,
+            "gross_salary": 60000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 60000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 288.46,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 9
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 1,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 2,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 2307.69,
+            "basic_salary": 60000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 2307.69,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "HR",
+            "designation": "Staff",
+            "employee_id": 5,
+            "employee_name": "E5 Leave Mix",
+            "fixed_amount": 0.0,
+            "gross_salary": 60000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 3,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 25/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 57692.31,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 288.46,
+            "paid_leave_days": 2,
+            "pay_lines": [],
+            "payable_days": 25,
+            "present_days": 23,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 3,
+            "unpaid_leave_days": 1,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 5
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 60000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Ops",
+            "designation": "Staff",
+            "employee_id": 12,
+            "employee_name": "E12 Deactivate",
+            "fixed_amount": 0.0,
+            "gross_salary": 60000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 60000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 288.46,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 12
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 2,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 4615.38,
+            "basic_salary": 60000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 4615.38,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Ops",
+            "designation": "Staff",
+            "employee_id": 2,
+            "employee_name": "E2 Two Absent",
+            "fixed_amount": 0.0,
+            "gross_salary": 60000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 24/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 55384.62,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 288.46,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 24,
+            "present_days": 24,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 2
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 6,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 13846.15,
+            "basic_salary": 60000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 13846.15,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Ops",
+            "designation": "Staff",
+            "employee_id": 3,
+            "employee_name": "E3 Six Absent",
+            "fixed_amount": 0.0,
+            "gross_salary": 60000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 20/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 46153.85,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 288.46,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 20,
+            "present_days": 20,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 3
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 40000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Ops",
+            "designation": "Staff",
+            "employee_id": 6,
+            "employee_name": "E6 Join Mid",
+            "fixed_amount": 0.0,
+            "gross_salary": 40000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 17/17 working days",
+            "month_scheduled_workdays": 17,
+            "net_salary": 40000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 192.31,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 17,
+            "present_days": 17,
+            "rule_missing": false,
+            "scheduled_workdays": 17,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-11",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 6
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 10,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 23076.92,
+            "basic_salary": 60000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 23076.92,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Ops",
+            "designation": "Staff",
+            "employee_id": 7,
+            "employee_name": "E7 Exit Mid",
+            "fixed_amount": 0.0,
+            "gross_salary": 60000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 16/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 36923.08,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 288.46,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 16,
+            "present_days": 16,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 7
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 0.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "QA",
+            "designation": "Staff",
+            "employee_id": 11,
+            "employee_name": "E11 No Salary",
+            "fixed_amount": 0.0,
+            "gross_salary": 0.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 0.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 0.0,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Missing salary",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 11
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 10000000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "QA",
+            "designation": "Staff",
+            "employee_id": 14,
+            "employee_name": "E14 Absurd QA",
+            "fixed_amount": 0.0,
+            "gross_salary": 10000000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 10000000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 48076.92,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 14
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 60000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Support",
+            "designation": "Staff",
+            "employee_id": 4,
+            "employee_name": "E4 Late Half",
+            "fixed_amount": 0.0,
+            "gross_salary": 60000.0,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 3,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 60000.0,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 0.0,
+            "overtime_breakdown": [],
+            "overtime_hours": 0,
+            "overtime_rate": 288.46,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 23,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 4
+          },
+          {
+            "absence_deduction": 0.0,
+            "absent_days": 0,
+            "adjustment_amount": 0.0,
+            "allowances": 0.0,
+            "applied_rule_id": null,
+            "approved_leave_days": 0,
+            "arrears_amount": 0.0,
+            "attendance_pay_mode": "payable_days",
+            "attendance_shortfall": 0.0,
+            "basic_salary": 60000.0,
+            "bonus_amount": 0.0,
+            "calendar_details": [],
+            "custom_deductions": 0.0,
+            "deduct_unpaid_leave": false,
+            "deduction_amount": 0.0,
+            "deduction_percent": null,
+            "deduction_type": "percentage",
+            "department": "Support",
+            "designation": "Staff",
+            "employee_id": 8,
+            "employee_name": "E8 Overtime",
+            "fixed_amount": 0.0,
+            "gross_salary": 62596.14,
+            "half_leave_count": 0,
+            "half_leave_deduction": 0.0,
+            "late_days": 0,
+            "leave_days": 0,
+            "matched_half_leave_rule": "No half-leave deduction",
+            "matched_rule": "Pay 26/26 working days",
+            "month_scheduled_workdays": 26,
+            "net_salary": 62596.14,
+            "off_day_extra_pay": 0.0,
+            "off_days_worked": 0,
+            "overtime_amount": 2596.14,
+            "overtime_breakdown": [
+              {
+                "amount": 1153.84,
+                "date": "2026-09-02",
+                "day_type": "regular",
+                "hourly_rate": 288.46,
+                "hours": 4.0,
+                "premium_percent": 0.0
+              },
+              {
+                "amount": 1442.3,
+                "date": "2026-09-06",
+                "day_type": "non_working_day",
+                "hourly_rate": 288.46,
+                "hours": 5.0,
+                "premium_percent": 0.0
+              }
+            ],
+            "overtime_hours": 9.0,
+            "overtime_rate": 288.46,
+            "paid_leave_days": 0,
+            "pay_lines": [],
+            "payable_days": 26,
+            "present_days": 26,
+            "rule_missing": false,
+            "scheduled_workdays": 26,
+            "shift_details": [
+              {
+                "effective_from": "2026-09-01",
+                "shift_id": 2,
+                "shift_name": "Audit Mon-Sat",
+                "working_days": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ],
+            "shift_history_missing": false,
+            "status": "Draft",
+            "total_leave_days": 0,
+            "unpaid_leave_days": 0,
+            "unpaid_leave_deduction": 0.0,
+            "user_id": 8
+          }
+        ],
+        "status": "Draft",
+        "total_adjustments": 0.0,
+        "total_allowances": 0.0,
+        "total_arrears": 0.0,
+        "total_basic_salary": 10662000.0,
+        "total_bonus": 0.0,
+        "total_deduction": 43846.14,
+        "total_net_salary": 10620750.0,
+        "total_off_day_extra": 0.0,
+        "total_overtime": 2596.14
+      }
+    }
+  ],
+  "users_in_db": 14,
+  "db_rows": {
+    "users": [
+      {
+        "id": 1,
+        "name": "E1 Full Attend",
+        "salary": 60000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 2,
+        "name": "E2 Two Absent",
+        "salary": 60000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 3,
+        "name": "E3 Six Absent",
+        "salary": 60000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 4,
+        "name": "E4 Late Half",
+        "salary": 60000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 5,
+        "name": "E5 Leave Mix",
+        "salary": 60000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 6,
+        "name": "E6 Join Mid",
+        "salary": 60000.0,
+        "join_date": "2026-09-11",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 7,
+        "name": "E7 Exit Mid",
+        "salary": 60000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 8,
+        "name": "E8 Overtime",
+        "salary": 60000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 9,
+        "name": "E9 Flex Pay",
+        "salary": 60000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 10,
+        "name": "E10 Salary Change",
+        "salary": 40000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 11,
+        "name": "E11 No Salary",
+        "salary": 0.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 12,
+        "name": "E12 Deactivate",
+        "salary": 60000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 13,
+        "name": "E13 Extra",
+        "salary": 42000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      },
+      {
+        "id": 14,
+        "name": "E14 Absurd QA",
+        "salary": 10000000.0,
+        "join_date": "2026-09-01",
+        "exit_date": null,
+        "active": 1,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "branch_id": "BR-PAY-AUDIT-1"
+      }
+    ],
+    "user_count": 14,
+    "attendance_by_day": [
+      {
+        "day": "2026-09-01",
+        "n": 12
+      },
+      {
+        "day": "2026-09-02",
+        "n": 12
+      },
+      {
+        "day": "2026-09-03",
+        "n": 13
+      },
+      {
+        "day": "2026-09-04",
+        "n": 12
+      },
+      {
+        "day": "2026-09-05",
+        "n": 12
+      },
+      {
+        "day": "2026-09-06",
+        "n": 2
+      },
+      {
+        "day": "2026-09-07",
+        "n": 12
+      },
+      {
+        "day": "2026-09-08",
+        "n": 12
+      },
+      {
+        "day": "2026-09-09",
+        "n": 12
+      },
+      {
+        "day": "2026-09-10",
+        "n": 12
+      },
+      {
+        "day": "2026-09-11",
+        "n": 14
+      },
+      {
+        "day": "2026-09-12",
+        "n": 14
+      },
+      {
+        "day": "2026-09-14",
+        "n": 14
+      },
+      {
+        "day": "2026-09-15",
+        "n": 14
+      },
+      {
+        "day": "2026-09-16",
+        "n": 14
+      },
+      {
+        "day": "2026-09-17",
+        "n": 14
+      },
+      {
+        "day": "2026-09-18",
+        "n": 14
+      },
+      {
+        "day": "2026-09-19",
+        "n": 13
+      },
+      {
+        "day": "2026-09-21",
+        "n": 13
+      },
+      {
+        "day": "2026-09-22",
+        "n": 13
+      },
+      {
+        "day": "2026-09-23",
+        "n": 13
+      },
+      {
+        "day": "2026-09-24",
+        "n": 13
+      },
+      {
+        "day": "2026-09-25",
+        "n": 13
+      },
+      {
+        "day": "2026-09-26",
+        "n": 13
+      },
+      {
+        "day": "2026-09-28",
+        "n": 13
+      },
+      {
+        "day": "2026-09-29",
+        "n": 13
+      },
+      {
+        "day": "2026-09-30",
+        "n": 13
+      }
+    ]
+  }
+}

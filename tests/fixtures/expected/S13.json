@@ -1,0 +1,11 @@
+{
+  "id": "S13",
+  "title": "Two organizations, identical employee names/codes",
+  "expected": {
+    "org1_e1_net_isolated": true,
+    "org2_e1_net_isolated": true,
+    "identical_names": [
+      "E1 Full Attend"
+    ]
+  }
+}

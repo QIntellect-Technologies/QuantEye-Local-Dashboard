@@ -1,0 +1,13 @@
+{
+  "id": "S12",
+  "title": "200 employees full September (performance)",
+  "expected": {
+    "employee_count": 200,
+    "month": "2026-09",
+    "record_timings": [
+      "calculate",
+      "preview",
+      "export"
+    ]
+  }
+}

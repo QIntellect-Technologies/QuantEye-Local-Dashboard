@@ -1,0 +1,33 @@
+{
+  "id": "S14",
+  "title": "Module gates for three organizations",
+  "expected": {
+    "org1": {
+      "modules": [
+        "attendance",
+        "shifts",
+        "leave",
+        "overtime",
+        "payroll"
+      ],
+      "payroll": 200
+    },
+    "org2": {
+      "modules": [
+        "attendance",
+        "shifts",
+        "payroll"
+      ],
+      "leave": 403,
+      "overtime": 403,
+      "payroll": 200
+    },
+    "org3": {
+      "modules": [
+        "attendance",
+        "shifts"
+      ],
+      "payroll": 403
+    }
+  }
+}

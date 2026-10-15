@@ -1,0 +1,397 @@
+{
+  "scenario": "S14",
+  "started": "2026-10-15T16:08:44.345263",
+  "finished": "2026-10-15T16:08:44.537498",
+  "db_path": "C:\\Users\\Imran\\AppData\\Local\\Temp\\qe-payroll-S14-kfgue6p9\\attendance.db",
+  "error": null,
+  "comparison": {
+    "expected": {
+      "id": "S14",
+      "title": "Module gates for three organizations",
+      "expected": {
+        "org1": {
+          "modules": [
+            "attendance",
+            "shifts",
+            "leave",
+            "overtime",
+            "payroll"
+          ],
+          "payroll": 200
+        },
+        "org2": {
+          "modules": [
+            "attendance",
+            "shifts",
+            "payroll"
+          ],
+          "leave": 403,
+          "overtime": 403,
+          "payroll": 200
+        },
+        "org3": {
+          "modules": [
+            "attendance",
+            "shifts"
+          ],
+          "payroll": 403
+        }
+      }
+    },
+    "live_keys": [
+      "route_table"
+    ]
+  },
+  "result": {
+    "route_table": {
+      "org1_all": {
+        "/api/payroll?month=2026-09": {
+          "status": 200,
+          "error": null
+        },
+        "/api/settings/payroll": {
+          "status": 200,
+          "error": null
+        },
+        "/api/payroll-settings/scoped-rules/half-leave": {
+          "status": 200,
+          "error": "[]"
+        },
+        "/api/leaves": {
+          "status": 200,
+          "error": "[]"
+        },
+        "/api/overtime": {
+          "status": 200,
+          "error": "[]"
+        },
+        "/api/salary": {
+          "status": 200,
+          "error": "[]"
+        }
+      },
+      "org2_no_leave_ot": {
+        "/api/payroll?month=2026-09": {
+          "status": 200,
+          "error": null
+        },
+        "/api/settings/payroll": {
+          "status": 200,
+          "error": null
+        },
+        "/api/payroll-settings/scoped-rules/half-leave": {
+          "status": 403,
+          "error": "Leave module is not licensed for this organization."
+        },
+        "/api/leaves": {
+          "status": 403,
+          "error": "Leave module is not licensed for this organization."
+        },
+        "/api/overtime": {
+          "status": 403,
+          "error": "Overtime module is not licensed for this organization."
+        },
+        "/api/salary": {
+          "status": 200,
+          "error": "[]"
+        }
+      },
+      "org3_no_payroll": {
+        "/api/payroll?month=2026-09": {
+          "status": 403,
+          "error": "Payroll module is not licensed for this organization."
+        },
+        "/api/settings/payroll": {
+          "status": 403,
+          "error": "Payroll module is not licensed for this organization."
+        },
+        "/api/payroll-settings/scoped-rules/half-leave": {
+          "status": 403,
+          "error": "Payroll module is not licensed for this organization."
+        },
+        "/api/leaves": {
+          "status": 403,
+          "error": "Leave module is not licensed for this organization."
+        },
+        "/api/overtime": {
+          "status": 403,
+          "error": "Overtime module is not licensed for this organization."
+        },
+        "/api/salary": {
+          "status": 403,
+          "error": "Payroll module is not licensed for this organization."
+        }
+      }
+    }
+  },
+  "api_log_tail": [
+    {
+      "method": "GET",
+      "path": "/api/payroll?month=2026-09",
+      "status": 200,
+      "body": {
+        "attendance_pay_mode": "payable_days",
+        "can_finalize": true,
+        "employee_count": 0,
+        "is_finalized": false,
+        "month_complete": true,
+        "payroll_month": "2026-09",
+        "payroll_run_id": 1,
+        "period_end": "2026-09-30",
+        "period_start": "2026-09-01",
+        "records": [],
+        "status": "Draft",
+        "total_adjustments": 0,
+        "total_allowances": 0,
+        "total_arrears": 0,
+        "total_basic_salary": 0,
+        "total_bonus": 0,
+        "total_deduction": 0,
+        "total_net_salary": 0,
+        "total_off_day_extra": 0,
+        "total_overtime": 0
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/payroll",
+      "status": 200,
+      "body": {
+        "attendance_pay_mode": "full_salary",
+        "branch_id": "BR-PAY-AUDIT-1",
+        "currency_code": "PKR",
+        "decimal_places": 2,
+        "deduct_unpaid_leave": 0,
+        "enable_advances": 0,
+        "enable_bonuses": 1,
+        "enable_individual_adjustments": 0,
+        "enable_insurance": 0,
+        "enable_loans": 0,
+        "enable_named_components": 0,
+        "enable_provident": 0,
+        "enable_salary_revisions": 0,
+        "enable_tax": 0,
+        "half_leave_quota_mode": "category",
+        "half_leaves_per_quota_day": 2,
+        "holiday_ot_fixed_amount": 0.0,
+        "holiday_ot_multiplier": 1.5,
+        "holiday_ot_pay_mode": "percent",
+        "holiday_ot_premium_active": 0,
+        "holiday_ot_premium_percent": 0.0,
+        "id": 7,
+        "non_working_day_ot_fixed_amount": 0.0,
+        "non_working_day_ot_multiplier": 1.5,
+        "non_working_day_ot_pay_mode": "percent",
+        "non_working_day_ot_premium_active": 0,
+        "non_working_day_ot_premium_percent": 0.0,
+        "off_day_attendance_pay_active": 0,
+        "off_day_attendance_pay_fixed_amount": 0.0,
+        "off_day_attendance_pay_mode": "multiplier",
+        "off_day_attendance_pay_multiplier": 1.5,
+        "organization_id": "ORG-PAY-AUDIT-1",
+        "ot_hour_divisor": 208.0,
+        "overtime_max_hours": 0.0,
+        "overtime_max_period": "day",
+        "proration_basis": "calendar_days",
+        "updated_at": "2026-10-15 11:08:44"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/payroll-settings/scoped-rules/half-leave",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/leaves",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/overtime",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/salary",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/payroll?month=2026-09",
+      "status": 200,
+      "body": {
+        "attendance_pay_mode": "payable_days",
+        "can_finalize": true,
+        "employee_count": 0,
+        "is_finalized": false,
+        "month_complete": true,
+        "payroll_month": "2026-09",
+        "payroll_run_id": 2,
+        "period_end": "2026-09-30",
+        "period_start": "2026-09-01",
+        "records": [],
+        "status": "Draft",
+        "total_adjustments": 0,
+        "total_allowances": 0,
+        "total_arrears": 0,
+        "total_basic_salary": 0,
+        "total_bonus": 0,
+        "total_deduction": 0,
+        "total_net_salary": 0,
+        "total_off_day_extra": 0,
+        "total_overtime": 0
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/payroll",
+      "status": 200,
+      "body": {
+        "attendance_pay_mode": "full_salary",
+        "branch_id": "BR-PAY-AUDIT-2",
+        "currency_code": "PKR",
+        "decimal_places": 2,
+        "deduct_unpaid_leave": 0,
+        "enable_advances": 0,
+        "enable_bonuses": 1,
+        "enable_individual_adjustments": 0,
+        "enable_insurance": 0,
+        "enable_loans": 0,
+        "enable_named_components": 0,
+        "enable_provident": 0,
+        "enable_salary_revisions": 0,
+        "enable_tax": 0,
+        "half_leave_quota_mode": "category",
+        "half_leaves_per_quota_day": 2,
+        "holiday_ot_fixed_amount": 0.0,
+        "holiday_ot_multiplier": 1.5,
+        "holiday_ot_pay_mode": "percent",
+        "holiday_ot_premium_active": 0,
+        "holiday_ot_premium_percent": 0.0,
+        "id": 9,
+        "non_working_day_ot_fixed_amount": 0.0,
+        "non_working_day_ot_multiplier": 1.5,
+        "non_working_day_ot_pay_mode": "percent",
+        "non_working_day_ot_premium_active": 0,
+        "non_working_day_ot_premium_percent": 0.0,
+        "off_day_attendance_pay_active": 0,
+        "off_day_attendance_pay_fixed_amount": 0.0,
+        "off_day_attendance_pay_mode": "multiplier",
+        "off_day_attendance_pay_multiplier": 1.5,
+        "organization_id": "ORG-PAY-AUDIT-2",
+        "ot_hour_divisor": 208.0,
+        "overtime_max_hours": 0.0,
+        "overtime_max_period": "day",
+        "proration_basis": "calendar_days",
+        "updated_at": "2026-10-15 11:08:44"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/payroll-settings/scoped-rules/half-leave",
+      "status": 403,
+      "body": {
+        "error": "Leave module is not licensed for this organization.",
+        "module": "leave",
+        "success": false
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/leaves",
+      "status": 403,
+      "body": {
+        "error": "Leave module is not licensed for this organization.",
+        "module": "leave",
+        "success": false
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/overtime",
+      "status": 403,
+      "body": {
+        "error": "Overtime module is not licensed for this organization.",
+        "module": "overtime",
+        "success": false
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/salary",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/payroll?month=2026-09",
+      "status": 403,
+      "body": {
+        "error": "Payroll module is not licensed for this organization.",
+        "module": "payroll",
+        "success": false
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/payroll",
+      "status": 403,
+      "body": {
+        "error": "Payroll module is not licensed for this organization.",
+        "module": "payroll",
+        "success": false
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/payroll-settings/scoped-rules/half-leave",
+      "status": 403,
+      "body": {
+        "error": "Payroll module is not licensed for this organization.",
+        "module": "payroll",
+        "success": false
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/leaves",
+      "status": 403,
+      "body": {
+        "error": "Leave module is not licensed for this organization.",
+        "module": "leave",
+        "success": false
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/overtime",
+      "status": 403,
+      "body": {
+        "error": "Overtime module is not licensed for this organization.",
+        "module": "overtime",
+        "success": false
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/salary",
+      "status": 403,
+      "body": {
+        "error": "Payroll module is not licensed for this organization.",
+        "module": "payroll",
+        "success": false
+      }
+    }
+  ],
+  "users_in_db": 0,
+  "db_rows": {
+    "users": [],
+    "user_count": 0,
+    "attendance_by_day": []
+  }
+}
