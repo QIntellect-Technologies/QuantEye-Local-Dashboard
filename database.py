@@ -6398,43 +6398,43 @@ def update_payroll_settings(
     mode = str(half_leave_quota_mode or 'category').strip().lower()
     mode = {'separate': 'category', 'convert': 'monthly_convert'}.get(mode, mode)
     if mode not in ('category', 'monthly_cap', 'monthly_convert'):
-        return False
+        raise ValueError('Choose a valid half-leave quota mode.')
     try:
         conversion_count = int(half_leaves_per_quota_day)
     except (TypeError, ValueError, OverflowError):
-        return False
+        raise ValueError('Half-leave conversion count must be a positive integer.')
     if conversion_count < 1:
-        return False
+        raise ValueError('Half-leave conversion count must be a positive integer.')
     try:
         holiday_premium = float(holiday_ot_premium_percent)
         non_working_premium = float(non_working_day_ot_premium_percent)
     except (TypeError, ValueError, OverflowError):
-        return False
+        raise ValueError('Overtime premiums must be numbers between 0 and 1000.')
     if not (0 <= holiday_premium <= 1000 and 0 <= non_working_premium <= 1000):
-        return False
+        raise ValueError('Overtime premiums must be between 0 and 1000 percent.')
     org, branch = _tenant_ids(organization_id, branch_id)
     current = get_payroll_settings(organization_id=org, branch_id=branch)
     try:
         divisor = float(ot_hour_divisor if ot_hour_divisor is not None else current.get('ot_hour_divisor', DEFAULT_OT_DIVISOR))
     except (TypeError, ValueError, OverflowError):
-        return False
-    if divisor <= 0:
-        return False
+        raise ValueError('OT hour divisor must be a positive number.')
+    if divisor <= 0 or divisor != divisor:
+        raise ValueError('OT hour divisor must be a positive number.')
     basis = str(proration_basis if proration_basis is not None else current.get('proration_basis', DEFAULT_PRORATION_BASIS)).strip().lower()
     if basis not in VALID_PRORATION_BASES:
-        return False
+        raise ValueError('Choose calendar days, scheduled working days, or a 30-day month.')
     pay_mode = _normalize_attendance_pay_mode(
         attendance_pay_mode if attendance_pay_mode is not None else current.get('attendance_pay_mode')
     )
     currency = str(currency_code if currency_code is not None else current.get('currency_code', DEFAULT_CURRENCY)).strip().upper() or DEFAULT_CURRENCY
     if len(currency) > 8:
-        return False
+        raise ValueError('Currency code must be 8 characters or fewer.')
     try:
         places = int(decimal_places if decimal_places is not None else current.get('decimal_places', DEFAULT_DECIMAL_PLACES))
     except (TypeError, ValueError, OverflowError):
-        return False
+        raise ValueError('Decimal places must be a whole number from 0 to 6.')
     if not 0 <= places <= 6:
-        return False
+        raise ValueError('Decimal places must be a whole number from 0 to 6.')
     h_mode = _normalize_ot_pay_mode(
         holiday_ot_pay_mode if holiday_ot_pay_mode is not None else current.get('holiday_ot_pay_mode'),
         'percent',
@@ -6447,8 +6447,10 @@ def update_payroll_settings(
         off_day_attendance_pay_mode if off_day_attendance_pay_mode is not None else current.get('off_day_attendance_pay_mode'),
         'multiplier',
     )
-    if not h_mode or not nw_mode or not off_mode:
-        return False
+    if not h_mode or not nw_mode:
+        raise ValueError('Choose percent, multiplier, or a fixed hourly amount for overtime extra pay.')
+    if not off_mode:
+        raise ValueError('Rest-day extra must be a daily-rate multiplier or a fixed amount per rest day.')
     try:
         h_mult = float(holiday_ot_multiplier if holiday_ot_multiplier is not None else current.get('holiday_ot_multiplier') or 1.5)
         nw_mult = float(non_working_day_ot_multiplier if non_working_day_ot_multiplier is not None else current.get('non_working_day_ot_multiplier') or 1.5)
@@ -6457,9 +6459,9 @@ def update_payroll_settings(
         off_mult = float(off_day_attendance_pay_multiplier if off_day_attendance_pay_multiplier is not None else current.get('off_day_attendance_pay_multiplier') or 1.5)
         off_fixed = float(off_day_attendance_pay_fixed_amount if off_day_attendance_pay_fixed_amount is not None else current.get('off_day_attendance_pay_fixed_amount') or 0)
     except (TypeError, ValueError, OverflowError):
-        return False
-    if any(value < 0 for value in (h_mult, nw_mult, h_fixed, nw_fixed, off_mult, off_fixed)):
-        return False
+        raise ValueError('Extra-pay amounts must be valid numbers.')
+    if any(value < 0 or value != value for value in (h_mult, nw_mult, h_fixed, nw_fixed, off_mult, off_fixed)):
+        raise ValueError('Extra-pay amounts cannot be negative.')
     if off_day_attendance_pay_active is None:
         off_active = int(bool(current.get('off_day_attendance_pay_active')))
     else:
@@ -6481,82 +6483,113 @@ def update_payroll_settings(
             flag_values.append(int(bool(incoming_flags[key])))
         else:
             flag_values.append(int(bool(current.get(key, DEFAULT_FEATURE_FLAGS.get(key)))))
-    flag_sql = ", ".join(FEATURE_FLAGS)
-    flag_placeholders = ", ".join("?" for _ in FEATURE_FLAGS)
-    flag_updates = ",\n                    ".join(f"{key} = excluded.{key}" for key in FEATURE_FLAGS)
+    assignments = [
+        "deduct_unpaid_leave = ?",
+        "half_leave_quota_mode = ?",
+        "half_leaves_per_quota_day = ?",
+        "holiday_ot_premium_percent = ?",
+        "non_working_day_ot_premium_percent = ?",
+        "holiday_ot_premium_active = ?",
+        "non_working_day_ot_premium_active = ?",
+        "ot_hour_divisor = ?",
+        "proration_basis = ?",
+        "attendance_pay_mode = ?",
+        "currency_code = ?",
+        "decimal_places = ?",
+        "holiday_ot_pay_mode = ?",
+        "non_working_day_ot_pay_mode = ?",
+        "holiday_ot_multiplier = ?",
+        "non_working_day_ot_multiplier = ?",
+        "holiday_ot_fixed_amount = ?",
+        "non_working_day_ot_fixed_amount = ?",
+        "off_day_attendance_pay_active = ?",
+        "off_day_attendance_pay_mode = ?",
+        "off_day_attendance_pay_multiplier = ?",
+        "off_day_attendance_pay_fixed_amount = ?",
+    ]
+    assignments.extend(f"{key} = ?" for key in FEATURE_FLAGS)
+    params = (
+        int(bool(deduct_unpaid_leave)),
+        mode,
+        conversion_count,
+        holiday_premium,
+        non_working_premium,
+        holiday_active,
+        non_working_active,
+        divisor,
+        basis,
+        pay_mode,
+        currency,
+        places,
+        h_mode,
+        nw_mode,
+        h_mult,
+        nw_mult,
+        h_fixed,
+        nw_fixed,
+        off_active,
+        off_mode,
+        off_mult,
+        off_fixed,
+        *flag_values,
+    )
+    insert_columns = [
+        "organization_id",
+        "branch_id",
+        "deduct_unpaid_leave",
+        "half_leave_quota_mode",
+        "half_leaves_per_quota_day",
+        "holiday_ot_premium_percent",
+        "non_working_day_ot_premium_percent",
+        "holiday_ot_premium_active",
+        "non_working_day_ot_premium_active",
+        "ot_hour_divisor",
+        "proration_basis",
+        "attendance_pay_mode",
+        "currency_code",
+        "decimal_places",
+        "holiday_ot_pay_mode",
+        "non_working_day_ot_pay_mode",
+        "holiday_ot_multiplier",
+        "non_working_day_ot_multiplier",
+        "holiday_ot_fixed_amount",
+        "non_working_day_ot_fixed_amount",
+        "off_day_attendance_pay_active",
+        "off_day_attendance_pay_mode",
+        "off_day_attendance_pay_multiplier",
+        "off_day_attendance_pay_fixed_amount",
+        *FEATURE_FLAGS,
+    ]
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute(f'''
-                INSERT INTO payroll_settings (
-                    organization_id, branch_id, deduct_unpaid_leave, half_leave_quota_mode,
-                    half_leaves_per_quota_day, holiday_ot_premium_percent,
-                    non_working_day_ot_premium_percent, holiday_ot_premium_active,
-                    non_working_day_ot_premium_active, ot_hour_divisor, proration_basis, attendance_pay_mode,
-                    currency_code, decimal_places, holiday_ot_pay_mode, non_working_day_ot_pay_mode,
-                    holiday_ot_multiplier, non_working_day_ot_multiplier,
-                    holiday_ot_fixed_amount, non_working_day_ot_fixed_amount,
-                    off_day_attendance_pay_active, off_day_attendance_pay_mode,
-                    off_day_attendance_pay_multiplier, off_day_attendance_pay_fixed_amount,
-                    {flag_sql},
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {flag_placeholders}, CURRENT_TIMESTAMP)
-                ON CONFLICT(organization_id, branch_id) DO UPDATE SET
-                    deduct_unpaid_leave = excluded.deduct_unpaid_leave,
-                    half_leave_quota_mode = excluded.half_leave_quota_mode,
-                    half_leaves_per_quota_day = excluded.half_leaves_per_quota_day,
-                    holiday_ot_premium_percent = excluded.holiday_ot_premium_percent,
-                    non_working_day_ot_premium_percent = excluded.non_working_day_ot_premium_percent,
-                    holiday_ot_premium_active = excluded.holiday_ot_premium_active,
-                    non_working_day_ot_premium_active = excluded.non_working_day_ot_premium_active,
-                    ot_hour_divisor = excluded.ot_hour_divisor,
-                    proration_basis = excluded.proration_basis,
-                    attendance_pay_mode = excluded.attendance_pay_mode,
-                    currency_code = excluded.currency_code,
-                    decimal_places = excluded.decimal_places,
-                    holiday_ot_pay_mode = excluded.holiday_ot_pay_mode,
-                    non_working_day_ot_pay_mode = excluded.non_working_day_ot_pay_mode,
-                    holiday_ot_multiplier = excluded.holiday_ot_multiplier,
-                    non_working_day_ot_multiplier = excluded.non_working_day_ot_multiplier,
-                    holiday_ot_fixed_amount = excluded.holiday_ot_fixed_amount,
-                    non_working_day_ot_fixed_amount = excluded.non_working_day_ot_fixed_amount,
-                    off_day_attendance_pay_active = excluded.off_day_attendance_pay_active,
-                    off_day_attendance_pay_mode = excluded.off_day_attendance_pay_mode,
-                    off_day_attendance_pay_multiplier = excluded.off_day_attendance_pay_multiplier,
-                    off_day_attendance_pay_fixed_amount = excluded.off_day_attendance_pay_fixed_amount,
-                    {flag_updates},
-                    updated_at = CURRENT_TIMESTAMP
-            ''', (
-                org,
-                branch,
-                int(bool(deduct_unpaid_leave)),
-                mode,
-                conversion_count,
-                holiday_premium,
-                non_working_premium,
-                holiday_active,
-                non_working_active,
-                divisor,
-                basis,
-                pay_mode,
-                currency,
-                places,
-                h_mode,
-                nw_mode,
-                h_mult,
-                nw_mult,
-                h_fixed,
-                nw_fixed,
-                off_active,
-                off_mode,
-                off_mult,
-                off_fixed,
-                *flag_values,
-            ))
+            cur = conn.cursor()
+            migrate_payroll_policy_tenant_scope(cur)
+            row = cur.execute(
+                """
+                SELECT id FROM payroll_settings
+                 WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                   AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                 ORDER BY id
+                 LIMIT 1
+                """,
+                (org, branch),
+            ).fetchone()
+            if row:
+                cur.execute(
+                    f"UPDATE payroll_settings SET {', '.join(assignments)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (*params, row[0]),
+                )
+            else:
+                placeholders = ", ".join("?" for _ in insert_columns)
+                cur.execute(
+                    f"INSERT INTO payroll_settings ({', '.join(insert_columns)}) VALUES ({placeholders})",
+                    (org, branch, *params),
+                )
             conn.commit()
         return True
     except Exception as e:
         logger.error(f"Failed to update payroll settings: {e}")
-        return False
+        raise ValueError(f"Could not write payroll settings: {e}") from e
 
 
 def list_payroll_bonuses(

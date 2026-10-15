@@ -299,6 +299,30 @@ class PayrollBonusExtraPayTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("spreadsheet", response.mimetype)
 
+    def test_payroll_settings_put_saves_rest_day_amount(self):
+        response = self.client.put(
+            "/api/settings/payroll",
+            json={
+                "deduct_unpaid_leave": False,
+                "currency_code": "PKR",
+                "decimal_places": 2,
+                "proration_basis": "working_days",
+                "attendance_pay_mode": "payable_days",
+                "off_day_attendance_pay_active": True,
+                "off_day_attendance_pay_mode": "fixed_day",
+                "off_day_attendance_pay_fixed_amount": 1500,
+                "enable_named_components": True,
+                "enable_bonuses": True,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        body = response.get_json()
+        self.assertTrue(body["success"])
+        self.assertEqual(body["settings"]["attendance_pay_mode"], "payable_days")
+        self.assertEqual(body["settings"]["off_day_attendance_pay_mode"], "fixed_day")
+        self.assertEqual(float(body["settings"]["off_day_attendance_pay_fixed_amount"]), 1500.0)
+        self.assertTrue(body["settings"]["enable_named_components"])
+
 
 if __name__ == "__main__":
     unittest.main()

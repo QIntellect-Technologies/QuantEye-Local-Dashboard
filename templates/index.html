@@ -763,6 +763,59 @@
         font-weight: 500;
       }
 
+      #payroll-rules-tab {
+        font-size: 16px;
+        line-height: 1.45;
+        color: #1e293b;
+      }
+
+      #payroll-rules-tab h3 {
+        font-size: 1.45rem !important;
+      }
+
+      #payroll-rules-tab .payroll-panel {
+        padding: 20px 22px;
+      }
+
+      #payroll-rules-tab .payroll-panel h4 {
+        font-size: 1.2rem;
+      }
+
+      #payroll-rules-tab .payroll-panel-help,
+      #payroll-rules-tab p {
+        font-size: 1rem !important;
+        line-height: 1.45;
+        color: #334155 !important;
+      }
+
+      #payroll-rules-tab label,
+      #payroll-rules-tab .payroll-rule-field,
+      #payroll-rules-tab .payroll-rule-active {
+        font-size: 1rem !important;
+        color: #1e293b !important;
+      }
+
+      #payroll-rules-tab input[type="text"],
+      #payroll-rules-tab input[type="number"],
+      #payroll-rules-tab input[type="month"],
+      #payroll-rules-tab select,
+      #payroll-rules-tab .form-control,
+      #payroll-rules-tab .form-select {
+        font-size: 1.05rem !important;
+        min-height: 46px;
+      }
+
+      #payroll-rules-tab .log-table th,
+      #payroll-rules-tab .log-table td {
+        font-size: 0.98rem;
+        padding: 10px 12px;
+      }
+
+      #payroll-rules-tab .btn {
+        font-size: 0.98rem;
+        min-height: 42px;
+      }
+
       .payroll-quick-links {
         display: flex;
         flex-wrap: wrap;
@@ -5529,10 +5582,10 @@ async function fetchMultiLiveDetections() {
       <div class="card p-4 shadow-sm" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:16px;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
           <div>
-            <h3 style="font-size:1.15em; font-weight:800; color:#173042; margin:0;">
+            <h3 style="font-weight:800; color:#173042; margin:0;">
               <i class="fa-solid fa-percent" style="color:#3d9fd4; margin-right:6px;"></i> Payroll Settings
             </h3>
-            <p style="font-size:0.82em; color:#64748b; margin:6px 0 0;">This organization only. Net = basic + extras − deductions. Optional features stay off until you turn them on.</p>
+            <p style="color:#64748b; margin:6px 0 0;">This organization only. Net = basic + extras − deductions. Set a real amount on every extra you turn on (PKR, % of basic, or a rest-day multiplier).</p>
           </div>
           <div class="payroll-quick-links">
             <button type="button" class="btn btn-primary btn-sm" onclick="switchTab('payroll-view', document.getElementById('menuItemPayroll'))" style="background:#148f77; border:none; font-weight:700;">Open Payroll</button>
@@ -5592,26 +5645,26 @@ async function fetchMultiLiveDetections() {
 
         <section class="payroll-panel">
           <h4>Rest-day extra (attendance)</h4>
-          <p class="payroll-panel-help">Pays extra when someone is present on a shift off-day and there is no approved overtime that date. Off by default.</p>
-          <label style="display:flex; align-items:center; gap:8px; font-size:0.86em; font-weight:700; color:#475569; margin-bottom:10px;">
+          <p class="payroll-panel-help">Pays extra when someone is present on a shift off-day and there is no approved overtime that date. Choose a multiplier of daily rate (example 1.5) or a fixed PKR amount per rest day worked.</p>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:700; color:#475569; margin-bottom:10px;">
             <input id="offDayAttendancePayActive" class="form-check-input" type="checkbox" style="width:18px; height:18px; margin:0; accent-color:#0d9488;" onchange="updatePayrollExtraPayModeUI()">
             Enable rest-day extra pay
           </label>
-          <div id="offDayAttendancePayFields" style="display:none; gap:14px; flex-wrap:wrap; align-items:flex-end;">
-            <label style="font-size:0.86em; font-weight:700; color:#475569;">
+          <div id="offDayAttendancePayFields" style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;">
+            <label style="font-weight:700; color:#475569;">
               Pay as
-              <select id="offDayAttendancePayMode" class="form-select" style="margin-top:4px; width:220px;" onchange="updatePayrollExtraPayModeUI()">
+              <select id="offDayAttendancePayMode" class="form-select" style="margin-top:4px; width:240px;" onchange="updatePayrollExtraPayModeUI()">
                 <option value="multiplier">Multiplier of daily rate</option>
-                <option value="fixed_day">Fixed amount per rest day</option>
+                <option value="fixed_day">Fixed PKR per rest day</option>
               </select>
             </label>
-            <label id="offDayMultiplierWrap" style="font-size:0.86em; font-weight:700; color:#475569;">
+            <label id="offDayMultiplierWrap" style="font-weight:700; color:#475569;">
               Multiplier
-              <input id="offDayAttendancePayMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" style="width:110px; margin-top:4px;">
+              <input id="offDayAttendancePayMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" style="width:130px; margin-top:4px;">
             </label>
-            <label id="offDayFixedWrap" style="font-size:0.86em; font-weight:700; color:#475569; display:none;">
-              Amount per rest day
-              <input id="offDayAttendancePayFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" style="width:130px; margin-top:4px;">
+            <label id="offDayFixedWrap" style="font-weight:700; color:#475569; display:none;">
+              Amount per rest day (PKR)
+              <input id="offDayAttendancePayFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" style="width:180px; margin-top:4px;">
             </label>
             <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700;">Save extra pay</button>
           </div>
@@ -5619,29 +5672,45 @@ async function fetchMultiLiveDetections() {
 
         <section class="payroll-panel">
           <h4>Optional features</h4>
-          <p class="payroll-panel-help">Turn on only what this company uses. Off = existing monthly math. Tax is a pay line you define, not a hardcoded slab table.</p>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:8px 12px;">
-            <label style="display:flex; gap:8px; align-items:center; font-size:0.86em; font-weight:700; color:#475569;"><input id="flag_enable_named_components" type="checkbox" class="form-check-input" style="margin:0;"> Named pay lines</label>
-            <label style="display:flex; gap:8px; align-items:center; font-size:0.86em; font-weight:700; color:#475569;"><input id="flag_enable_bonuses" type="checkbox" class="form-check-input" style="margin:0;" checked> Excel bonuses</label>
-            <label style="display:flex; gap:8px; align-items:center; font-size:0.86em; font-weight:700; color:#475569;"><input id="flag_enable_individual_adjustments" type="checkbox" class="form-check-input" style="margin:0;"> One-person exceptions</label>
-            <label style="display:flex; gap:8px; align-items:center; font-size:0.86em; font-weight:700; color:#475569;"><input id="flag_enable_salary_revisions" type="checkbox" class="form-check-input" style="margin:0;"> Salary effective dates</label>
-            <label style="display:flex; gap:8px; align-items:center; font-size:0.86em; font-weight:700; color:#475569;"><input id="flag_enable_tax" type="checkbox" class="form-check-input" style="margin:0;"> Tax line</label>
-            <label style="display:flex; gap:8px; align-items:center; font-size:0.86em; font-weight:700; color:#475569;"><input id="flag_enable_loans" type="checkbox" class="form-check-input" style="margin:0;"> Loan line</label>
-            <label style="display:flex; gap:8px; align-items:center; font-size:0.86em; font-weight:700; color:#475569;"><input id="flag_enable_advances" type="checkbox" class="form-check-input" style="margin:0;"> Advance line</label>
-            <label style="display:flex; gap:8px; align-items:center; font-size:0.86em; font-weight:700; color:#475569;"><input id="flag_enable_provident" type="checkbox" class="form-check-input" style="margin:0;"> Provident line</label>
-            <label style="display:flex; gap:8px; align-items:center; font-size:0.86em; font-weight:700; color:#475569;"><input id="flag_enable_insurance" type="checkbox" class="form-check-input" style="margin:0;"> Insurance line</label>
+          <p class="payroll-panel-help">Turn on only what this company uses. Amounts are not hardcoded: you set PKR or % on the pay line, Excel file, or rest-day fields. Tax is a deduction line you define, not a slab table.</p>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px 14px;">
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_named_components" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Named pay lines<br><span style="font-weight:500; color:#475569;">HRA, conveyance, tax, loan: set default PKR or % below. Override per person on Salary packages.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_bonuses" type="checkbox" class="form-check-input" style="margin:3px 0 0;" checked><span>Excel bonuses<br><span style="font-weight:500; color:#475569;">Different PKR per employee each month in the Amount column.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_individual_adjustments" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>One-person exceptions<br><span style="font-weight:500; color:#475569;">Fixed PKR or multiplier for one staff member in Payroll.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_salary_revisions" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Salary effective dates<br><span style="font-weight:500; color:#475569;">Mid-month package change uses the new basic from that date.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_tax" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Tax line<br><span style="font-weight:500; color:#475569;">Add a deduction named Tax with a default amount or % of basic.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_loans" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Loan line<br><span style="font-weight:500; color:#475569;">Add a loan deduction with the monthly installment in PKR.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_advances" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Advance line<br><span style="font-weight:500; color:#475569;">Add an advance deduction with the recovery amount in PKR.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_provident" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Provident line<br><span style="font-weight:500; color:#475569;">Add PF as a % of basic or a fixed monthly PKR.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_insurance" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Insurance line<br><span style="font-weight:500; color:#475569;">Add insurance as a fixed monthly PKR or % of basic.</span></span></label>
           </div>
           <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; margin-top:12px;">Save features</button>
         </section>
 
         <section class="payroll-panel">
-          <h4>Named pay lines</h4>
-          <p class="payroll-panel-help">Create HRA, tax, loan, PF. Assign amounts on Salary packages. Unused if the feature above is off.</p>
+          <h4>Excel bonuses — amount per person</h4>
+          <p class="payroll-panel-help">Download the sheet, put PKR in Amount for each employee, then upload. Unused people can stay at 0. This is monthly, not a company-wide fixed price.</p>
+          <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+            <label style="font-weight:700; color:#475569;">
+              Bonus month
+              <input id="payrollBonusSettingsMonth" class="form-control" type="month" style="margin-top:4px; width:180px;">
+            </label>
+            <button type="button" class="btn btn-outline-secondary" onclick="downloadPayrollBonusTemplate()">Download template</button>
+            <label class="btn btn-primary" style="background:#148f77; border:none; font-weight:700; margin:0; cursor:pointer;">
+              Upload amounts
+              <input type="file" accept=".xlsx,.xls" hidden onchange="uploadPayrollBonusExcel(this)">
+            </label>
+          </div>
+        </section>
+
+        <section class="payroll-panel">
+          <h4>Named pay lines — default amount</h4>
+          <p class="payroll-panel-help">Example: HRA as 5000 PKR, or tax as 5% of basic. That default applies until you override it on Salary packages for one employee. Adding a line turns Named pay lines on.</p>
           <form class="payroll-rule-form" onsubmit="event.preventDefault(); savePayrollComponentType();">
-            <label class="payroll-rule-field">Name <input id="payrollComponentName" class="form-control" type="text" required></label>
-            <label class="payroll-rule-field">Code <input id="payrollComponentCode" class="form-control" type="text" required></label>
+            <label class="payroll-rule-field">Name <input id="payrollComponentName" class="form-control" type="text" required placeholder="HRA"></label>
+            <label class="payroll-rule-field">Code <input id="payrollComponentCode" class="form-control" type="text" required placeholder="HRA"></label>
             <label class="payroll-rule-field">Kind
-              <select id="payrollComponentKind" class="form-select"><option value="earning">Earning</option><option value="deduction">Deduction</option></select>
+              <select id="payrollComponentKind" class="form-select"><option value="earning">Earning (adds)</option><option value="deduction">Deduction (subtracts)</option></select>
             </label>
             <label class="payroll-rule-field">Category
               <select id="payrollComponentCategory" class="form-select">
@@ -5655,11 +5724,11 @@ async function fetchMultiLiveDetections() {
                 <option value="other">Other</option>
               </select>
             </label>
-            <label class="payroll-rule-field">Calc
-              <select id="payrollComponentMode" class="form-select"><option value="fixed">Fixed amount</option><option value="percent_basic">% of basic</option></select>
+            <label class="payroll-rule-field">How to calculate
+              <select id="payrollComponentMode" class="form-select"><option value="fixed">Fixed PKR each month</option><option value="percent_basic">Percent of basic</option></select>
             </label>
-            <label class="payroll-rule-field">Default
-              <input id="payrollComponentDefault" class="form-control" type="number" min="0" step="0.01" value="0">
+            <label class="payroll-rule-field">Default amount
+              <input id="payrollComponentDefault" class="form-control" type="number" min="0" step="0.01" value="0" placeholder="5000 or 5">
             </label>
             <div class="payroll-rule-actions">
               <button type="submit" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">Add pay line</button>
@@ -5667,8 +5736,8 @@ async function fetchMultiLiveDetections() {
           </form>
           <div class="log-table-wrapper">
             <table class="log-table" style="width:100%;">
-              <thead style="background:#f2faff;"><tr><th>Name</th><th>Code</th><th>Kind</th><th>Category</th><th></th></tr></thead>
-              <tbody id="payrollComponentTypesBody"><tr><td colspan="5" class="text-muted text-center p-3">No named pay lines yet.</td></tr></tbody>
+              <thead style="background:#f2faff;"><tr><th>Name</th><th>Code</th><th>Kind</th><th>Category</th><th>Calc</th><th>Default amount</th><th></th></tr></thead>
+              <tbody id="payrollComponentTypesBody"><tr><td colspan="7" class="text-muted text-center p-3">No named pay lines yet. Add one with a default PKR or %.</td></tr></tbody>
             </table>
           </div>
         </section>
@@ -12982,16 +13051,25 @@ async function fetchMultiLiveDetections() {
         show('nonWorkingOtPercentWrap', restMode === 'percent');
         show('nonWorkingOtMultiplierWrap', restMode === 'multiplier');
         show('nonWorkingOtFixedWrap', restMode === 'fixed_hour');
-        const offActive = Boolean(document.getElementById('offDayAttendancePayActive')?.checked);
         const offFields = document.getElementById('offDayAttendancePayFields');
-        if (offFields) offFields.style.display = offActive ? 'flex' : 'none';
+        if (offFields) offFields.style.display = 'flex';
         const offMode = document.getElementById('offDayAttendancePayMode')?.value || 'multiplier';
         show('offDayMultiplierWrap', offMode === 'multiplier');
         show('offDayFixedWrap', offMode === 'fixed_day');
       }
 
+      function payrollBonusMonthValue() {
+        const settingsMonth = document.getElementById('payrollBonusSettingsMonth');
+        const payrollMonth = document.getElementById('payrollMonth');
+        if (settingsMonth && !settingsMonth.value) {
+          const now = new Date();
+          settingsMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        }
+        return settingsMonth?.value || payrollMonth?.value || '';
+      }
+
       async function downloadPayrollBonusTemplate() {
-        const month = document.getElementById('payrollMonth')?.value;
+        const month = payrollBonusMonthValue();
         if (!month) {
           showAppToast('Choose a payroll month first.', 'error');
           return;
@@ -13000,7 +13078,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function uploadPayrollBonusExcel(input) {
-        const month = document.getElementById('payrollMonth')?.value;
+        const month = payrollBonusMonthValue();
         const file = input?.files?.[0];
         if (!month) {
           showAppToast('Choose a payroll month first.', 'error');
@@ -13061,14 +13139,21 @@ async function fetchMultiLiveDetections() {
           if (!response.ok) throw new Error(result.error || 'Failed to load pay lines');
           const types = result.types || [];
           window._payrollComponentTypes = types;
-          tbody.innerHTML = types.length ? types.map((row) => `
+          tbody.innerHTML = types.length ? types.map((row) => {
+            const isPercent = String(row.calc_mode || '') === 'percent_basic';
+            const amount = Number(row.default_amount || 0);
+            const amountLabel = isPercent ? `${amount}% of basic` : payrollMoney(amount);
+            return `
             <tr>
               <td>${payrollEscape(row.name)}</td>
               <td>${payrollEscape(row.code)}</td>
               <td>${payrollEscape(row.kind)}</td>
               <td>${payrollEscape(row.category)}</td>
+              <td>${isPercent ? '% of basic' : 'Fixed PKR'}</td>
+              <td>${payrollEscape(amountLabel)}</td>
               <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger" onclick="deletePayrollComponentType(${row.id})">Remove</button></td>
-            </tr>`).join('') : '<tr><td colspan="5" class="text-muted text-center p-3">No named pay lines yet.</td></tr>';
+            </tr>`;
+          }).join('') : '<tr><td colspan="7" class="text-muted text-center p-3">No named pay lines yet. Add one with a default PKR or %.</td></tr>';
         } catch (error) {
           tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center p-3">${payrollEscape(error.message)}</td></tr>`;
         }
@@ -13091,7 +13176,9 @@ async function fetchMultiLiveDetections() {
           });
           const result = await response.json();
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save pay line');
-          showAppToast('Pay line saved.', 'success');
+          const namedFlag = document.getElementById('flag_enable_named_components');
+          if (namedFlag) namedFlag.checked = true;
+          showAppToast('Pay line saved. Default amount applies until you override it on Salary packages.', 'success');
           await loadPayrollComponentTypes();
         } catch (error) {
           showAppToast(error.message, 'error');
@@ -13253,9 +13340,12 @@ async function fetchMultiLiveDetections() {
               deduct_unpaid_leave: Boolean(deductUnpaidLeave),
               half_leave_quota_mode: quotaMode?.value || 'category',
               half_leaves_per_quota_day: Math.max(1, parseInt(conversionCount?.value || '2', 10) || 1),
-              holiday_ot_premium_percent: Number(document.getElementById('holidayOtPremiumPercent')?.value || 0),
-              non_working_day_ot_premium_percent: Number(document.getElementById('nonWorkingDayOtPremiumPercent')?.value || 0),
-              ot_hour_divisor: Number(document.getElementById('payrollOtHourDivisor')?.value || 208),
+              holiday_ot_premium_percent: Number(document.getElementById('holidayOtPremiumPercent')?.value || 0) || 0,
+              non_working_day_ot_premium_percent: Number(document.getElementById('nonWorkingDayOtPremiumPercent')?.value || 0) || 0,
+              ot_hour_divisor: (() => {
+                const raw = Number(document.getElementById('payrollOtHourDivisor')?.value);
+                return Number.isFinite(raw) && raw > 0 ? raw : 208;
+              })(),
               proration_basis: document.getElementById('payrollProrationBasis')?.value || 'calendar_days',
               attendance_pay_mode: document.getElementById('payrollAttendancePayMode')?.value || 'full_salary',
               currency_code: (document.getElementById('payrollCurrencyCode')?.value || 'PKR').trim().toUpperCase(),

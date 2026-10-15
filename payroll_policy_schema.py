@@ -413,6 +413,15 @@ def _migrate_payroll_settings(cursor) -> None:
     ):
         if column not in cols:
             cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
+    unique_sets = set(_unique_index_columns(cursor, "payroll_settings"))
+    if ("organization_id", "branch_id") not in unique_sets:
+        try:
+            cursor.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_settings_tenant "
+                "ON payroll_settings(organization_id, branch_id)"
+            )
+        except Exception:
+            pass
     cursor.execute(
         """
         INSERT OR IGNORE INTO payroll_settings (organization_id, branch_id, deduct_unpaid_leave)

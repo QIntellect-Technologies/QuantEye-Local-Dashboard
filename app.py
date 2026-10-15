@@ -5807,6 +5807,21 @@ def api_save_payroll_component_type():
     )
     if not saved_id:
         return jsonify({'error': 'Enter a valid pay-line name, code, earning/deduction kind, and category.'}), 400
+    current = db.get_payroll_settings(**payroll_tenant())
+    if not current.get('enable_named_components'):
+        try:
+            db.update_payroll_settings(
+                bool(current.get('deduct_unpaid_leave')),
+                current.get('half_leave_quota_mode', 'category'),
+                current.get('half_leaves_per_quota_day', 2),
+                current.get('holiday_ot_premium_percent', 0),
+                current.get('non_working_day_ot_premium_percent', 0),
+                organization_id=current.get('organization_id') or get_current_tenant_id(),
+                branch_id=current.get('branch_id') or get_current_branch_id(),
+                feature_flags={'enable_named_components': True},
+            )
+        except ValueError:
+            logger.exception('Pay line saved but could not turn on named pay lines')
     return jsonify({'success': True, 'id': saved_id, 'types': db.list_payroll_component_types(**payroll_tenant())})
 
 
@@ -6288,37 +6303,42 @@ def api_update_payroll_settings():
         return jsonify({'error': 'Overtime premiums must be valid percentages between 0 and 1000'}), 400
     if not (0 <= holiday_premium <= 1000 and 0 <= non_working_premium <= 1000):
         return jsonify({'error': 'Overtime premiums must be between 0 and 1000 percent'}), 400
-    if not db.update_payroll_settings(
-        bool(value), quota_mode, conversion_count, holiday_premium, non_working_premium,
-        organization_id=current_settings.get('organization_id') or get_current_tenant_id(),
-        branch_id=current_settings.get('branch_id') or get_current_branch_id(),
-        ot_hour_divisor=data.get('ot_hour_divisor', current_settings.get('ot_hour_divisor')),
-        proration_basis=data.get('proration_basis', current_settings.get('proration_basis')),
-        attendance_pay_mode=data.get('attendance_pay_mode', current_settings.get('attendance_pay_mode')),
-        currency_code=data.get('currency_code', current_settings.get('currency_code')),
-        decimal_places=data.get('decimal_places', current_settings.get('decimal_places')),
-        holiday_ot_pay_mode=data.get('holiday_ot_pay_mode', current_settings.get('holiday_ot_pay_mode')),
-        non_working_day_ot_pay_mode=data.get('non_working_day_ot_pay_mode', current_settings.get('non_working_day_ot_pay_mode')),
-        holiday_ot_multiplier=data.get('holiday_ot_multiplier', current_settings.get('holiday_ot_multiplier')),
-        non_working_day_ot_multiplier=data.get('non_working_day_ot_multiplier', current_settings.get('non_working_day_ot_multiplier')),
-        holiday_ot_fixed_amount=data.get('holiday_ot_fixed_amount', current_settings.get('holiday_ot_fixed_amount')),
-        non_working_day_ot_fixed_amount=data.get('non_working_day_ot_fixed_amount', current_settings.get('non_working_day_ot_fixed_amount')),
-        off_day_attendance_pay_active=data.get(
-            'off_day_attendance_pay_active',
-            current_settings.get('off_day_attendance_pay_active'),
-        ),
-        off_day_attendance_pay_mode=data.get('off_day_attendance_pay_mode', current_settings.get('off_day_attendance_pay_mode')),
-        off_day_attendance_pay_multiplier=data.get(
-            'off_day_attendance_pay_multiplier',
-            current_settings.get('off_day_attendance_pay_multiplier'),
-        ),
-        off_day_attendance_pay_fixed_amount=data.get(
-            'off_day_attendance_pay_fixed_amount',
-            current_settings.get('off_day_attendance_pay_fixed_amount'),
-        ),
-        feature_flags={key: data.get(key, current_settings.get(key)) for key in db.FEATURE_FLAGS},
-    ):
-        return jsonify({'error': 'Failed to save payroll settings'}), 500
+    try:
+        db.update_payroll_settings(
+            bool(value), quota_mode, conversion_count, holiday_premium, non_working_premium,
+            organization_id=current_settings.get('organization_id') or get_current_tenant_id(),
+            branch_id=current_settings.get('branch_id') or get_current_branch_id(),
+            ot_hour_divisor=data.get('ot_hour_divisor', current_settings.get('ot_hour_divisor')),
+            proration_basis=data.get('proration_basis', current_settings.get('proration_basis')),
+            attendance_pay_mode=data.get('attendance_pay_mode', current_settings.get('attendance_pay_mode')),
+            currency_code=data.get('currency_code', current_settings.get('currency_code')),
+            decimal_places=data.get('decimal_places', current_settings.get('decimal_places')),
+            holiday_ot_pay_mode=data.get('holiday_ot_pay_mode', current_settings.get('holiday_ot_pay_mode')),
+            non_working_day_ot_pay_mode=data.get('non_working_day_ot_pay_mode', current_settings.get('non_working_day_ot_pay_mode')),
+            holiday_ot_multiplier=data.get('holiday_ot_multiplier', current_settings.get('holiday_ot_multiplier')),
+            non_working_day_ot_multiplier=data.get('non_working_day_ot_multiplier', current_settings.get('non_working_day_ot_multiplier')),
+            holiday_ot_fixed_amount=data.get('holiday_ot_fixed_amount', current_settings.get('holiday_ot_fixed_amount')),
+            non_working_day_ot_fixed_amount=data.get('non_working_day_ot_fixed_amount', current_settings.get('non_working_day_ot_fixed_amount')),
+            off_day_attendance_pay_active=data.get(
+                'off_day_attendance_pay_active',
+                current_settings.get('off_day_attendance_pay_active'),
+            ),
+            off_day_attendance_pay_mode=data.get('off_day_attendance_pay_mode', current_settings.get('off_day_attendance_pay_mode')),
+            off_day_attendance_pay_multiplier=data.get(
+                'off_day_attendance_pay_multiplier',
+                current_settings.get('off_day_attendance_pay_multiplier'),
+            ),
+            off_day_attendance_pay_fixed_amount=data.get(
+                'off_day_attendance_pay_fixed_amount',
+                current_settings.get('off_day_attendance_pay_fixed_amount'),
+            ),
+            feature_flags={key: data.get(key, current_settings.get(key)) for key in db.FEATURE_FLAGS},
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        logger.exception('Failed to save payroll settings')
+        return jsonify({'error': f'Failed to save payroll settings: {exc}'}), 500
     return jsonify({
         'success': True,
         'settings': db.get_payroll_settings(**payroll_tenant()),
