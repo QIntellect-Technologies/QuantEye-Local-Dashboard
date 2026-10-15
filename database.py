@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple, Any, Union, Sequence
 from logger_config import get_logger
 from config import DB_PATH, ATTENDANCE_LOG_RETENTION_DAYS
+from weekday_utils import WorkingDaysError, default_working_days, parse_working_days
 from payroll_policy_schema import (
     DEFAULT_CURRENCY,
     DEFAULT_DECIMAL_PLACES,
@@ -767,10 +768,11 @@ def init_db():
             conn.commit()
             cursor.execute("PRAGMA foreign_keys = ON")
 
+            cursor.execute("DROP TRIGGER IF EXISTS prevent_finalized_payroll_run_update")
             cursor.executescript('''
                 CREATE TRIGGER IF NOT EXISTS prevent_finalized_payroll_run_update
                 BEFORE UPDATE ON payroll_runs
-                WHEN OLD.status = 'Finalized'
+                WHEN OLD.status = 'Finalized' AND NEW.status != 'Reopened'
                 BEGIN
                     SELECT RAISE(ABORT, 'Finalized payroll runs are immutable');
                 END;
@@ -893,7 +895,7 @@ def init_db():
                 ("enable_bonuses", "INTEGER NOT NULL DEFAULT 1"),
                 ("enable_individual_adjustments", "INTEGER NOT NULL DEFAULT 0"),
                 ("enable_salary_revisions", "INTEGER NOT NULL DEFAULT 0"),
-                ("attendance_pay_mode", "TEXT NOT NULL DEFAULT 'full_salary'"),
+                ("attendance_pay_mode", "TEXT NOT NULL DEFAULT 'payable_days'"),
             ]:
                 if column not in payroll_setting_columns:
                     cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -1640,7 +1642,8 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
 def update_user(user_id: int, name: str, email: str | None = None, phone: str | None = None, department: str | None = None, notes: str | None = None,
                 position: str | None = None, cnic: str | None = None, salary: float | None = None, join_date: str | None = None,
                 shift_id: int | None = None, checkin_cameras: str | None = None, checkout_cameras: str | None = None,
-                shift_effective_from: str | None = None) -> bool:
+                shift_effective_from: str | None = None, exit_date: str | None = None,
+                confirm_shift_reclassify: bool = False) -> bool:
     """Update user information in database. HR fields and camera assignments left as None are preserved."""
     if not name or len(name.strip()) == 0:
         logger.warning("Attempted to update user with empty name")
@@ -1662,6 +1665,25 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
             previous_shift_id = current_shift_row[0]
             effective_date = _normalize_shift_effective_date(shift_effective_from)
             persisted_shift_id = shift_id if effective_date <= datetime.now().date().isoformat() else None
+            if shift_id is not None and (shift_id != previous_shift_id or shift_effective_from is not None):
+                affected_month = effective_date[:7]
+                org_row = cursor.execute(
+                    "SELECT COALESCE(organization_id,'DEFAULT_ORG'), COALESCE(branch_id,'DEFAULT_BRANCH') FROM users WHERE id = ?",
+                    (user_id,),
+                ).fetchone()
+                org_id = org_row[0] if org_row else 'DEFAULT_ORG'
+                branch_id = org_row[1] if org_row else 'DEFAULT_BRANCH'
+                if payroll_month_is_finalized(affected_month, org_id, branch_id):
+                    raise ValueError(PAYROLL_LOCK_MESSAGE)
+                past_logs = cursor.execute(
+                    "SELECT COUNT(*) FROM attendance_logs WHERE user_id = ? AND date(timestamp) >= ?",
+                    (user_id, effective_date),
+                ).fetchone()[0]
+                if past_logs and not confirm_shift_reclassify:
+                    raise ValueError(
+                        "Changing this shift effective date reclassifies processed attendance. "
+                        "Confirm to continue."
+                    )
             cursor.execute('''
                 UPDATE users 
                 SET name = ?, email = ?, phone = ?, department = ?, notes = ?,
@@ -1669,11 +1691,12 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                     cnic = COALESCE(?, cnic),
                     salary = COALESCE(?, salary),
                     join_date = COALESCE(?, join_date),
+                    exit_date = COALESCE(?, exit_date),
                     shift_id = COALESCE(?, shift_id),
                     checkin_cameras = COALESCE(?, checkin_cameras),
                     checkout_cameras = COALESCE(?, checkout_cameras)
                 WHERE id = ?
-            ''', (name.strip(), email, phone, department, notes, position, cnic, salary, join_date, persisted_shift_id, checkin_cameras, checkout_cameras, user_id))
+            ''', (name.strip(), email, phone, department, notes, position, cnic, salary, join_date, exit_date, persisted_shift_id, checkin_cameras, checkout_cameras, user_id))
             updated = cursor.rowcount > 0
             if updated and shift_id is not None and (shift_id != previous_shift_id or shift_effective_from is not None):
                 _record_employee_shift_history(cursor, user_id, shift_id, effective_date)
@@ -1686,6 +1709,34 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
     except Exception as e:
         logger.error(f"Failed to update user ID {user_id}: {e}")
         return False
+
+
+def deactivate_user(user_id: int, exit_date: Optional[str] = None, organization_id: Optional[str] = None) -> bool:
+    """Deactivate a staff member. exit_date is required (defaults to today at the API)."""
+    if not str(exit_date or '').strip():
+        raise ValueError('exit_date is required to deactivate an employee')
+    try:
+        datetime.strptime(str(exit_date)[:10], '%Y-%m-%d')
+    except (TypeError, ValueError) as exc:
+        raise ValueError('exit_date must use YYYY-MM-DD') from exc
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET active = 0, exit_date = ? WHERE id = ?",
+            (str(exit_date)[:10], user_id),
+        )
+        updated = cursor.rowcount > 0
+        conn.commit()
+        return updated
+
+
+def reactivate_user(user_id: int) -> bool:
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET active = 1 WHERE id = ?", (user_id,))
+        updated = cursor.rowcount > 0
+        conn.commit()
+        return updated
 
 
 def bulk_assign_cameras(user_ids: List[int] | str, checkin_cameras: str = 'all', checkout_cameras: str = 'all') -> Tuple[bool, int]:
@@ -1972,21 +2023,11 @@ def check_user_shift_allowed(user_id: int, dt: Optional[datetime] = None) -> Tup
 
 def _normalize_shift_working_days(working_days: Any = None) -> List[int]:
     if working_days is None:
-        return [0, 1, 2, 3, 4, 5]
-    if isinstance(working_days, str):
-        try:
-            working_days = json.loads(working_days)
-        except (TypeError, ValueError):
-            working_days = [day.strip() for day in working_days.split(',')]
-    if not isinstance(working_days, (list, tuple, set)):
-        raise ValueError("Working days must be a list of weekdays")
+        return default_working_days()
     try:
-        normalized = sorted({int(day) for day in working_days})
-    except (TypeError, ValueError, OverflowError) as e:
-        raise ValueError("Working days must use weekday numbers from 0 to 6") from e
-    if not normalized or any(day < 0 or day > 6 for day in normalized):
-        raise ValueError("Select at least one working day from Monday through Sunday")
-    return normalized
+        return parse_working_days(working_days)
+    except WorkingDaysError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _normalize_shift_effective_date(effective_from: Optional[str] = None) -> str:
@@ -3740,11 +3781,53 @@ def is_user_present_today(user_id: int, source: str | None = None) -> bool:
         return False
 
 
+PAYROLL_LOCK_MESSAGE = "Month is finalized. Reopen payroll to change this."
+
+
+def payroll_month_is_finalized(
+    payroll_month: str,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            """SELECT 1 FROM payroll_runs
+               WHERE payroll_month = ? AND status = 'Finalized'
+                 AND COALESCE(organization_id,'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id,'DEFAULT_BRANCH') = ?""",
+            (payroll_month, org, branch),
+        ).fetchone()
+        return bool(row)
+
+
+def raise_if_payroll_month_locked(
+    work_date: Optional[str],
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> None:
+    if not work_date:
+        return
+    month = str(work_date)[:7]
+    if payroll_month_is_finalized(month, organization_id, branch_id):
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                _write_payroll_audit(
+                    conn.cursor(), 'period_lock_blocked', organization_id, branch_id, month, 'system',
+                    {'date': work_date, 'message': PAYROLL_LOCK_MESSAGE},
+                )
+                conn.commit()
+        except Exception:
+            logger.exception('Failed to audit period lock')
+        raise ValueError(PAYROLL_LOCK_MESSAGE)
+
+
 def mark_user_absent_today(user_id: int, target_date: Optional[str] = None, organization_id: Optional[str] = None) -> bool:
     """Manually mark a user absent today or on a specific date, enforcing tenant isolation."""
     try:
         if target_date == 'today':
             target_date = None
+        lock_day = target_date or datetime.now().date().isoformat()
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT organization_id, branch_id FROM users WHERE id = ?", (user_id,))
@@ -3752,6 +3835,8 @@ def mark_user_absent_today(user_id: int, target_date: Optional[str] = None, orga
             if not u_row:
                 return False
             user_org = u_row[0] or 'DEFAULT_ORG'
+            user_branch = u_row[1] or 'DEFAULT_BRANCH'
+            raise_if_payroll_month_locked(lock_day, organization_id or user_org, user_branch)
             user_branch = u_row[1] or 'DEFAULT_BRANCH'
             if organization_id and organization_id != 'all':
                 if organization_id != 'DEFAULT_ORG' and user_org != organization_id:
@@ -3781,6 +3866,8 @@ def mark_user_absent_today(user_id: int, target_date: Optional[str] = None, orga
             conn.commit()
         logger.info(f"✓ Manually marked user ID {user_id} absent for {target_date or 'today'} (removed {deleted_count} logs, recorded manual_absent)")
         return True
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Failed to mark user ID {user_id} absent: {e}")
         return False
@@ -3915,6 +4002,7 @@ def mark_user_present_today(
             name, user_default_shift_id = user_row[0], user_row[1]
             user_org = user_row[2] or 'DEFAULT_ORG'
             user_branch = user_row[3] or 'DEFAULT_BRANCH'
+            raise_if_payroll_month_locked(actual_date, organization_id or user_org, user_branch)
             if organization_id and organization_id != 'all':
                 if organization_id != 'DEFAULT_ORG' and user_org != organization_id:
                     return False
@@ -4488,6 +4576,10 @@ def update_leave_status(leave_id: int, status: str = 'approved', approved_by: st
                         return False
                 elif leave['organization_id'] != organization_id:
                     return False
+            raise_if_payroll_month_locked(
+                str(leave['start_date'])[:10],
+                leave['organization_id'],
+            )
             if str(status or '').strip().lower() in ('pending', 'approved', 'partially_approved'):
                 conflict = _find_active_leave_overlap(
                     cursor, leave['user_id'], leave['start_date'], leave['end_date'], exclude_id=leave_id
@@ -4503,6 +4595,8 @@ def update_leave_status(leave_id: int, status: str = 'approved', approved_by: st
             )
             conn.commit()
             return cursor.rowcount > 0
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Update leave status error: {e}")
         return False
@@ -5646,6 +5740,12 @@ def update_overtime_status(
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            row = cursor.execute(
+                "SELECT ot_date, COALESCE(organization_id,'DEFAULT_ORG'), COALESCE(branch_id,'DEFAULT_BRANCH') FROM overtime WHERE id = ?",
+                (ot_id,),
+            ).fetchone()
+            if row:
+                raise_if_payroll_month_locked(str(row[0])[:10], row[1], row[2])
             query = """UPDATE overtime SET status = ?, approved_by = ?
                        WHERE id = ? AND LOWER(COALESCE(status, 'pending')) = 'pending'"""
             params: List[Any] = [status, approved_by, ot_id]
@@ -5662,6 +5762,8 @@ def update_overtime_status(
             cursor.execute(query, params)
             conn.commit()
             return cursor.rowcount > 0
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Update overtime status error: {e}")
         return False
@@ -5790,6 +5892,7 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
         if not owner:
             logger.error(f"Cannot set salary config: user {user_id} not found")
             return False
+        raise_if_payroll_month_locked(str(effective_from or date.today().isoformat())[:10], owner[1], owner[2])
         settings = get_payroll_settings(organization_id=owner[1], branch_id=owner[2])
         b_sal = max(0.0, float(basic_salary or 0.0))
         allow = max(0.0, float(allowances or 0.0))
@@ -5823,6 +5926,8 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
                 })
             conn.commit()
             return True
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Set salary config error for user {user_id}: {e}")
         return False
@@ -5998,10 +6103,17 @@ def get_payroll_settings(
         except sqlite3.Error:
             absence_count = 0
         settings['absence_rules_configured'] = bool(absence_count)
-        if _normalize_attendance_pay_mode(settings.get('attendance_pay_mode')) == 'full_salary' and not absence_count:
-            settings['notices'] = ['No absence rules configured']
+        settings['notices'] = []
+        mode = _normalize_attendance_pay_mode(settings.get('attendance_pay_mode'))
+        if mode == 'full_salary' and not absence_count:
+            settings['notices'].append('No absence rules configured')
+        if mode == 'full_salary':
+            settings['legacy_full_salary'] = True
+            settings['notices'].append(
+                "This organization still uses full monthly salary. New organizations default to days present."
+            )
         else:
-            settings['notices'] = []
+            settings['legacy_full_salary'] = False
         return settings
 
 
@@ -6603,6 +6715,12 @@ def update_payroll_settings(
                     (org, branch, *params),
                 )
             conn.commit()
+            previous_mode = _normalize_attendance_pay_mode(current.get('attendance_pay_mode'))
+            if previous_mode != pay_mode:
+                _write_payroll_audit(cur, 'attendance_pay_mode_changed', org, branch, date.today().isoformat()[:7], 'Admin', {
+                    'from': previous_mode, 'to': pay_mode,
+                })
+                conn.commit()
         return True
     except Exception as e:
         logger.error(f"Failed to update payroll settings: {e}")
@@ -6661,6 +6779,8 @@ def replace_payroll_bonuses(
 ) -> Dict[str, Any]:
     """Validate bonus rows. Duplicate employees are rejected (never silently summed). Commit only when commit=True."""
     org, branch = _tenant_ids(organization_id, branch_id)
+    if commit:
+        raise_if_payroll_month_locked(f'{int(year):04d}-{int(month):02d}-01', org, branch)
     limit = float(bonus_limit if bonus_limit is not None else DEFAULT_BONUS_LIMIT)
     errors: List[Dict[str, Any]] = []
     preview: List[Dict[str, Any]] = []
@@ -7670,6 +7790,14 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             ORDER BY u.department COLLATE NOCASE, u.name COLLATE NOCASE
         ''', (month_start.isoformat(), organization_id, branch_id, branch_id))
         employees = [dict(row) for row in cursor.fetchall()]
+        inactive_no_exit = [dict(row) for row in cursor.execute(
+            """SELECT id, name FROM users
+               WHERE COALESCE(active, 1) = 0
+                 AND (exit_date IS NULL OR TRIM(exit_date) = '')
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND (? IS NULL OR COALESCE(branch_id, 'DEFAULT_BRANCH') = ?)""",
+            (organization_id, branch_id, branch_id),
+        ).fetchall()]
 
         # Query approved overtime for this payroll month
         cursor.execute('''
@@ -7726,6 +7854,15 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
     payroll_notices: List[str] = []
     if attendance_mode == 'full_salary' and not absence_rules_configured:
         payroll_notices.append('No absence rules configured')
+    if attendance_mode == 'full_salary':
+        payroll_notices.append(
+            "This organization still uses full monthly salary. New organizations default to days present."
+        )
+    if inactive_no_exit:
+        names = ', '.join(item['name'] for item in inactive_no_exit)
+        payroll_notices.append(
+            f"Deactivated employees without an exit date are excluded from payroll: {names}"
+        )
 
     report = get_detailed_attendance_report(
         start_date=month_start.isoformat(),
@@ -7966,12 +8103,18 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             )
         unpaid_leave_deduction = round(basic_salary * unpaid_leave_days / month_scheduled_workdays, 2) if deduct_unpaid_leave and month_scheduled_workdays else 0.0
         attendance_shortfall = 0.0
+        issues_remarks = ''
         if attendance_mode == 'payable_days':
             earn_divisor = float(month_scheduled_workdays or 0)
             earn_factor = (float(payable_days) / earn_divisor) if earn_divisor else 0.0
             attendance_shortfall = _m((basic_salary + allowances) * (1.0 - earn_factor))
             absence_rule_deduction = 0.0
+            half_leave_deduction = 0.0
+            unpaid_leave_deduction = 0.0
+            matched_rule = None
+            deduction_percent = None
             rule_missing = False
+            issues_remarks = 'Rule not applied (pay method: payable days)'
         attendance_deduction = round(absence_rule_deduction + unpaid_leave_deduction + half_leave_deduction + attendance_shortfall, 2)
         deduction_amount = round(attendance_deduction + custom_deductions, 2)
 
@@ -7995,6 +8138,12 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             matched_rule_label = 'No absence deduction' if unexcused_absent_days == 0 else 'No matching rule'
         paid_leave_days = approved_leave_days
         total_leave_days = paid_leave_days + unpaid_leave_days
+        package = basic_salary + allowances
+        earn_div = float(month_scheduled_workdays or 0)
+        earned_so_far = _m(package * (float(payable_days) / earn_div) if earn_div else 0.0)
+        remaining_days = max(0, int(month_scheduled_workdays or 0) - int(scheduled_workdays or 0))
+        projected_payable = min(int(month_scheduled_workdays or 0), int(payable_days or 0) + remaining_days)
+        projected_month_end = _m(package * (float(projected_payable) / earn_div) if earn_div else 0.0)
         rows.append({
             'employee_id': employee_id,
             'user_id': employee_id,
@@ -8049,6 +8198,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'absence_deduction': absence_rule_deduction,
             'deduction_amount': deduction_amount,
             'rule_missing': rule_missing,
+            'issues_remarks': issues_remarks,
+            'earned_so_far': earned_so_far,
+            'projected_month_end': projected_month_end,
             'net_salary': net_salary,
             'status': 'Missing shift history' if shift_history_missing else (
                 'Missing salary' if basic_salary <= 0 else ('Missing payroll rule' if rule_missing else 'Draft')
@@ -8076,6 +8228,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         'total_net_salary': round(sum(row['net_salary'] for row in rows), 2),
         'absence_rules_configured': absence_rules_configured,
         'notices': payroll_notices,
+        'earned_so_far_label': f'Earned so far (through {period_end.isoformat()})',
+        'projected_month_end_label': 'Projected month-end',
+        'deactivated_policy': 'Included only when exit_date is set and on or after the month start. Deactivated with no exit date are excluded and listed in notices.',
         'records': rows,
     }
     if payroll_notices:
@@ -8097,9 +8252,12 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 conn.commit()
         except Exception:
             logger.exception('Failed to write full_salary notice audit')
-    preview['payroll_run_id'] = _persist_draft_monthly_payroll(
-        preview, organization_id=organization_id, branch_id=branch_id
-    )
+    if rows:
+        preview['payroll_run_id'] = _persist_draft_monthly_payroll(
+            preview, organization_id=organization_id, branch_id=branch_id
+        )
+    else:
+        preview['payroll_run_id'] = None
     finalized_run = get_monthly_payroll(
         payroll_month, organization_id=organization_id, branch_id=branch_id
     )
@@ -8385,10 +8543,10 @@ def finalize_monthly_payroll(
             run_month_end = run_month.replace(year=run_month.year + 1, month=1) - timedelta(days=1)
         else:
             run_month_end = run_month.replace(month=run_month.month + 1) - timedelta(days=1)
-        if period_end_value is not None and period_end_value < run_month_end:
+        if period_end_value is not None and period_end_value < run_month_end and not preview.get('finalize_early'):
             raise ValueError(
                 f"This month is still in progress through {period_end_value.isoformat()}. "
-                "Finalize after the last day of the month so attendance is complete."
+                "Use finalize early (admin) or wait until month-end."
             )
     if any(row.get('shift_history_missing') for row in preview.get('records', [])):
         raise ValueError("Configure shift assignment history for every employee before finalizing payroll")
@@ -8453,6 +8611,8 @@ def finalize_monthly_payroll(
                 'run_id': run_id,
                 'employee_count': preview.get('employee_count'),
                 'total_net_salary': preview.get('total_net_salary'),
+                'excluded': preview.get('excluded') or [],
+                'finalize_early': bool(preview.get('finalize_early')),
             })
             conn.commit()
         return get_monthly_payroll(
@@ -8463,6 +8623,39 @@ def finalize_monthly_payroll(
     except Exception as e:
         logger.error(f"Failed to finalize payroll for {preview.get('payroll_month')}: {e}")
         raise
+
+
+def reopen_monthly_payroll(
+    payroll_month: str,
+    reason: str,
+    organization_id: str = 'DEFAULT_ORG',
+    branch_id: Optional[str] = None,
+    actor: Optional[str] = None,
+) -> Dict[str, Any]:
+    if not str(reason or '').strip():
+        raise ValueError('A reopen reason is required')
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        row = cursor.execute(
+            """SELECT * FROM payroll_runs
+               WHERE payroll_month = ? AND status = 'Finalized'
+                 AND COALESCE(organization_id,'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id,'DEFAULT_BRANCH') = ?""",
+            (payroll_month, org, branch),
+        ).fetchone()
+        if not row:
+            raise ValueError(f'No finalized payroll for {payroll_month}')
+        cursor.execute(
+            "UPDATE payroll_runs SET status = 'Reopened' WHERE id = ?",
+            (row['id'],),
+        )
+        _write_payroll_audit(cursor, 'payroll_reopened', org, branch, payroll_month, actor or 'Admin', {
+            'run_id': row['id'], 'reason': reason.strip(), 'old_status': 'Finalized',
+        })
+        conn.commit()
+        return {'success': True, 'previous_run_id': row['id'], 'status': 'Reopened'}
 
 
 # ============================================
@@ -8920,11 +9113,13 @@ def get_camera_room_mappings(active_only: bool = True, organization_id: Optional
     return mappings
 
 
-# Automatically ensure schema and migrations are up-to-date on load
-try:
-    init_db()
-except Exception as _e:
-    logger.warning(f"Database auto-migration on import failed: {_e}")
+# Automatically ensure schema and migrations are up-to-date on load.
+# S18 restores a pre-migration fixture first; skip auto-init when asked.
+if os.environ.get("QINTELLECT_SKIP_AUTO_INIT") != "1":
+    try:
+        init_db()
+    except Exception as _e:
+        logger.warning(f"Database auto-migration on import failed: {_e}")
 
 if __name__ == '__main__':
     init_db()

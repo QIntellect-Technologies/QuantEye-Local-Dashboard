@@ -328,7 +328,8 @@ def slim_records(payroll: Any) -> List[dict]:
         "overtime_amount", "overtime_hours", "bonus_amount", "absence_deduction",
         "unpaid_leave_deduction", "half_leave_deduction", "custom_deductions",
         "pay_lines", "gross_salary", "deduction_amount", "net_salary", "matched_rule",
-        "attendance_pay_mode", "issues", "remarks",
+        "attendance_pay_mode", "issues", "remarks", "issues_remarks",
+        "earned_so_far", "projected_month_end", "exit_date",
     )
     out = []
     for row in (payroll or {}).get("records") or []:
@@ -906,25 +907,36 @@ def seed_scenario(api: LiveAPI, scenario_id: str) -> Dict[str, Any]:
         scheduled = scheduled_days_in_month(2026, 9, working_days=DEFAULT_WORKING_DAYS)
         bulk_present(api, [core["ids"]["E1"], core["ids"]["E11"]], scheduled)
         blocked = api.request("POST", "/api/payroll/finalize", json_body={"month": SEP_MONTH})
-        api.request(
-            "PUT",
-            f"/api/salary/{core['ids']['E11']}",
-            json_body={"user_id": core["ids"]["E11"], "basic_salary": 30000, "allowances": 0, "deductions": 0, "ot_rate": 0},
-        )
-        ok = api.request("POST", "/api/payroll/finalize", json_body={"month": SEP_MONTH})
+        excluded = api.request("POST", "/api/payroll/finalize", json_body={
+            "month": SEP_MONTH,
+            "excluded": [{"user_id": core["ids"]["E11"], "reason": "No salary configured this month"}],
+        })
         att = api.request("POST", f"/api/users/{core['ids']['E1']}/mark-absent", json_body={"date": "2026-09-04"})
+        salary_lock = api.request(
+            "PUT",
+            f"/api/salary/{core['ids']['E1']}",
+            json_body={"user_id": core["ids"]["E1"], "basic_salary": 61000, "allowances": 0, "deductions": 0, "ot_rate": 0, "effective_from": "2026-09-01"},
+        )
         reopen = api.request("POST", "/api/payroll/reopen", json_body={"month": SEP_MONTH, "reason": "audit reopen"})
         after = api.request("GET", f"/api/payroll?month={SEP_MONTH}")
+        recalc = get_payroll(api, SEP_MONTH)
+        ok = api.request("POST", "/api/payroll/finalize", json_body={
+            "month": SEP_MONTH,
+            "excluded": [{"user_id": core["ids"]["E11"], "reason": "No salary configured this month"}],
+        })
         return {
             "unlock": core["unlock"],
             "finalize_with_zero_salary": {"status": blocked[0], "body": blocked[1]},
-            "finalize_after_salary": {"status": ok[0], "success": (ok[1] or {}).get("success") if isinstance(ok[1], dict) else None},
+            "finalize_with_exclude": {"status": excluded[0], "success": (excluded[1] or {}).get("success") if isinstance(excluded[1], dict) else None},
             "mark_absent_after_finalize": {"status": att[0], "body": att[1]},
+            "salary_after_finalize": {"status": salary_lock[0], "body": salary_lock[1]},
             "reopen": {"method": "POST", "path": "/api/payroll/reopen", "status": reopen[0], "body": reopen[1]},
             "get_after_finalize": {
                 "status": after[0],
                 "is_finalized": (after[1] or {}).get("is_finalized") if isinstance(after[1], dict) else None,
             },
+            "re_finalize": {"status": ok[0]},
+            "recalc_after_reopen": slim_records(recalc),
         }
 
     if sid == "S17":

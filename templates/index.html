@@ -4444,6 +4444,7 @@ async function fetchMultiLiveDetections() {
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
           <button id="finalizePayrollButton" type="button" onclick="finalizeMonthlyPayroll()" class="btn btn-primary" style="min-height:40px; background:#148f77; border-color:#148f77;" disabled><i class="fa-solid fa-lock"></i> Finalize Payroll</button>
+          <button id="finalizePayrollEarlyButton" type="button" onclick="finalizeMonthlyPayroll(true)" class="btn btn-outline-danger" style="min-height:40px;" hidden><i class="fa-solid fa-bolt"></i> Finalize early</button>
         </div>
       </section>
 
@@ -5164,6 +5165,10 @@ async function fetchMultiLiveDetections() {
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Joining Date</label>
               <input type="date" class="form-control" id="editJoinDate" style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
+            <div class="col-md-6">
+              <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Exit Date</label>
+              <input type="date" class="form-control" id="editExitDate" style="border-color: #cfe8f7; font-size: 0.9em;" />
+            </div>
             {% if not is_client_session or client_module_entitlements.shifts %}
             <div class="col-md-6 settings-shifts-only">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Assigned Shift</label>
@@ -5641,6 +5646,10 @@ async function fetchMultiLiveDetections() {
             </select>
           </label>
           <div id="payrollFullSalaryNoRulesNotice" class="alert alert-warning py-2 mt-3 mb-0" hidden>No absence rules configured</div>
+          <div id="payrollLegacyFullSalaryBanner" class="alert alert-info py-2 mt-3 mb-0" hidden>
+            This organization still uses full monthly salary. New organizations default to days present.
+            <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="switchToPayableDays()">Switch to days present</button>
+          </div>
           <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; margin-top:12px;">Save pay method</button>
         </section>
 
@@ -5785,9 +5794,10 @@ async function fetchMultiLiveDetections() {
           </div>
         </section>
 
-        <section class="payroll-panel">
+        <section class="payroll-panel" id="payrollAbsenceSection">
           <h4>Absence deductions</h4>
-          <p class="payroll-panel-help">Unexcused absence brackets. Active ranges cannot overlap. Add at least one rule before you finalize a month with absences.</p>
+          <p class="payroll-panel-help" id="payrollAbsenceHelp">Unexcused absence brackets. Active ranges cannot overlap.</p>
+          <div id="payrollAbsenceUnusedBanner" class="alert alert-secondary py-2" hidden>Not used while pay method is ‘days present’</div>
           {% if not is_client_session or client_module_entitlements.leave %}
           <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
             <label for="deductUnpaidLeaveToggle" style="display:flex; align-items:center; gap:9px; margin:0; color:#334155; font-size:0.86em; font-weight:700; cursor:pointer;">
@@ -7379,7 +7389,7 @@ async function fetchMultiLiveDetections() {
         document.getElementById('payrollPeriodNote').textContent = isFinalized
           ? `Finalized snapshot · ${payroll.finalized_at || 'finalization time unavailable'}`
           : monthOpen
-            ? `Live through ${payroll.period_end || 'today'}. Scheduled / present / absent are the same date window. Finalize after month-end.`
+            ? `Live through ${payroll.period_end || 'today'}. ${payroll.earned_so_far_label || 'Earned so far'} vs ${payroll.projected_month_end_label || 'Projected month-end'}. Divisor is whole-month working days.`
             : (payMode === 'payable_days'
               ? `Complete month · Pay = payable days ÷ working days in the month × (basic + allowances), plus extras minus other deductions.`
               : `Complete month · Full salary minus absence brackets and other deductions.`);
@@ -7391,6 +7401,10 @@ async function fetchMultiLiveDetections() {
         const lockFinalize = isFinalized || issues.length > 0 || !records.length || monthOpen;
         finalizeButton.disabled = lockFinalize;
         if (finalizeToolbar) finalizeToolbar.disabled = lockFinalize;
+        const earlyBtn = document.getElementById('finalizePayrollEarlyButton');
+        if (earlyBtn) {
+          earlyBtn.hidden = isFinalized || !monthOpen || issues.length > 0 || !records.length;
+        }
         document.getElementById('payrollReviewState').textContent = state;
         document.getElementById('payrollRunStatusFilter').value = document.getElementById('payrollRunStatusFilter').value || 'all';
 
@@ -7402,7 +7416,12 @@ async function fetchMultiLiveDetections() {
         } else if (issues.length) {
           message.innerHTML = `<div class="alert alert-warning py-2 mb-0">${issues.length} employee${issues.length === 1 ? '' : 's'} need resolution before finalization. Use the Issues filter to review them.</div>`;
         } else if (monthOpen) {
-          message.innerHTML = `<div class="alert alert-warning py-2 mb-0">This is a live preview through ${payrollEscape(payroll.period_end || 'today')}. Recalculate anytime. Finalize is available on the last day of the month.</div>`;
+          const sample = records[0] || {};
+          message.innerHTML = `<div class="alert alert-warning py-2 mb-0">
+            <div><strong>${payrollEscape(payroll.earned_so_far_label || ('Earned so far (through ' + (payroll.period_end || 'today') + ')'))}:</strong> ${payrollMoney(sample.earned_so_far)}</div>
+            <div><strong>${payrollEscape(payroll.projected_month_end_label || 'Projected month-end')}:</strong> ${payrollMoney(sample.projected_month_end)}</div>
+            ${(payroll.notices || []).map(n => `<div>${payrollEscape(n)}</div>`).join('')}
+          </div>`;
         } else if ((payroll.notices || []).includes('No absence rules configured') || (payMode === 'full_salary' && payroll.absence_rules_configured === false)) {
           message.innerHTML = '<div class="alert alert-warning py-2 mb-0">No absence rules configured</div>';
         } else {
@@ -7660,7 +7679,7 @@ async function fetchMultiLiveDetections() {
                 <td class="text-center payroll-leave-only">${Number(row.unpaid_leave_days || 0)}</td>
                 <td class="text-center payroll-leave-only">${Number(row.total_leave_days || (Number(row.paid_leave_days || row.approved_leave_days || 0) + Number(row.unpaid_leave_days || 0)))}</td>` : ''}
                 <td class="text-center">${Number(row.payable_days || 0)}</td>
-                <td>${payrollEscape(row.matched_rule || 'No absence deduction')}</td>
+                <td>${payrollEscape(row.issues_remarks || row.matched_rule || 'No absence deduction')}</td>
                 <td>${row.deduction_type === 'fixed' ? 'Fixed PKR' : 'Percentage'}</td>
                 <td class="text-center">${payrollEscape(value)}</td>
                 ${payrollHasLeave() ? `<td class="text-end payroll-leave-only">${payrollMoney(row.half_leave_deduction || 0)}</td>` : ''}
@@ -7756,7 +7775,7 @@ async function fetchMultiLiveDetections() {
             <td>${Number(row.late_days || 0)}</td>
             ${hasLeave ? `<td class="payroll-leave-only">${paidLeaveDays}</td><td class="payroll-leave-only">${Number(row.unpaid_leave_days || 0)}</td><td class="payroll-leave-only">${totalLeaveDays}</td>` : ''}
             <td>${Number(row.payable_days || 0)}</td>
-            <td>${payrollEscape(row.matched_rule || 'No absence deduction')}${leaveRuleNote}</td>
+            <td>${payrollEscape(row.issues_remarks || row.matched_rule || 'No absence deduction')}${leaveRuleNote}</td>
             <td>${row.deduction_type === 'fixed' ? 'Fixed PKR' : 'Percentage'}</td>
             <td>${payrollEscape(value)}</td>
             ${hasLeave ? `<td class="text-end payroll-leave-only">${payrollMoney(row.half_leave_deduction || 0)}</td>` : ''}
@@ -7877,7 +7896,7 @@ async function fetchMultiLiveDetections() {
         }
       }
 
-      async function finalizeMonthlyPayroll() {
+      async function finalizeMonthlyPayroll(finalizeEarly) {
         if (!currentPayrollPreview || currentPayrollPreview.is_finalized) return;
         const month = currentPayrollPreview.payroll_month;
         const issues = currentPayrollPreview.records.filter(row => payrollIssueDetails(row).length);
@@ -7886,7 +7905,7 @@ async function fetchMultiLiveDetections() {
           return;
         }
         const confirmed = window.confirm(
-          `Payroll Review\n\n${payrollMonthLabel(month)}\nEmployees: ${currentPayrollPreview.employee_count}\nBasic salary: ${payrollMoney(currentPayrollPreview.total_basic_salary)}\nDeductions: ${payrollMoney(currentPayrollPreview.total_deduction)}\nTotal payable: ${payrollMoney(currentPayrollPreview.total_net_salary)}\n\nFinalize this immutable snapshot?`
+          `Payroll Review\n\n${payrollMonthLabel(month)}\nEmployees: ${currentPayrollPreview.employee_count}\nBasic salary: ${payrollMoney(currentPayrollPreview.total_basic_salary)}\nDeductions: ${payrollMoney(currentPayrollPreview.total_deduction)}\nTotal payable: ${payrollMoney(currentPayrollPreview.total_net_salary)}\n\n${finalizeEarly ? 'Finalize this month early (before month-end)?' : 'Finalize this immutable snapshot?'}`
         );
         if (!confirmed) return;
         const button = document.getElementById('finalizePayrollButton');
@@ -7895,7 +7914,7 @@ async function fetchMultiLiveDetections() {
           const response = await fetch(`${API_BASE}/payroll/finalize`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ month })
+            body: JSON.stringify({ month, finalize_early: Boolean(finalizeEarly) })
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || 'Failed to finalize payroll');
@@ -9469,6 +9488,7 @@ async function fetchMultiLiveDetections() {
           document.getElementById("editSalary").value = Number(user.salary) > 0 ? user.salary : "";
         }
         document.getElementById("editJoinDate").value = cleanVal(user.join_date);
+        if (document.getElementById("editExitDate")) document.getElementById("editExitDate").value = cleanVal(user.exit_date);
         if (document.getElementById("editShiftId")) {
           document.getElementById("editShiftId").value = user.shift_id || 1;
         }
@@ -9574,6 +9594,7 @@ async function fetchMultiLiveDetections() {
         const cnic = document.getElementById("editCNIC").value.trim();
         const salary = document.getElementById("editSalary") ? document.getElementById("editSalary").value : "";
         const join_date = document.getElementById("editJoinDate").value;
+        const exit_date = document.getElementById("editExitDate") ? document.getElementById("editExitDate").value : "";
         const shift_id = document.getElementById("editShiftId") ? parseInt(document.getElementById("editShiftId").value) : 1;
         const checkin_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("editCheckinCameras")) : 'all';
         const checkout_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("editCheckoutCameras")) : 'all';
@@ -9589,7 +9610,7 @@ async function fetchMultiLiveDetections() {
           const resp = await fetch(`${API_BASE}/users/${userId}/update`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, email, department, phone, notes, position, cnic, salary, join_date, shift_id, checkin_cameras, checkout_cameras }),
+            body: JSON.stringify({ name, email, department, phone, notes, position, cnic, salary, join_date, exit_date, shift_id, checkin_cameras, checkout_cameras }),
           });
           const data = await resp.json();
           if (resp.ok) {
@@ -9612,6 +9633,28 @@ async function fetchMultiLiveDetections() {
       }
 
       async function deleteUserProfile(userId, name) {
+        const today = new Date().toISOString().slice(0, 10);
+        const exitDate = prompt(`Deactivate '${name}'?\nExit date is required (default today). Enter YYYY-MM-DD:`, today);
+        if (!exitDate) return;
+        try {
+          const resp = await fetch(`${API_BASE}/users/${userId}/deactivate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ exit_date: exitDate }),
+          });
+          const data = await resp.json();
+          if (resp.ok) {
+            showAppToast(`Deactivated '${name}' from ${exitDate}`, 'success');
+            loadStaffDirectory();
+            loadStats();
+            return;
+          }
+          showAppToast(data.error || 'Deactivation failed', 'error');
+          return;
+        } catch (e) {
+          showAppToast(`Error: ${e.message}`, 'error');
+          return;
+        }
         if (!confirm(`WARNING:\nAre you absolutely sure you want to delete '${name}'?\n\nThis will permanently delete their profile, all trained biometric face embeddings, and attendance logs. This action CANNOT be undone.`)) return;
 
         addTerminalLine(`Deleting profile for '${name}' (ID: ${userId})...`, "warning");
@@ -12385,8 +12428,8 @@ async function fetchMultiLiveDetections() {
           showMessage("shiftModalMsg", "Shift name is required", "error");
           return;
         }
-        if (!working_days.length) {
-          showMessage("shiftModalMsg", "Select at least one scheduled working day", "error");
+        if (!working_days.length || new Set(working_days).size !== working_days.length || working_days.some(day => !Number.isInteger(day) || day < 0 || day > 6)) {
+          showMessage("shiftModalMsg", "working_days must be a non-empty list of unique integers 0-6 (Monday=0)", "error");
           return;
         }
         // Validate checkout grace (0-120)
@@ -12718,12 +12761,18 @@ async function fetchMultiLiveDetections() {
           const proration = document.getElementById('payrollProrationBasis');
           if (proration) proration.value = settings.proration_basis || 'calendar_days';
           const attendancePay = document.getElementById('payrollAttendancePayMode');
-          if (attendancePay) attendancePay.value = settings.attendance_pay_mode || 'full_salary';
+          if (attendancePay) attendancePay.value = settings.attendance_pay_mode || 'payable_days';
           const noRulesNotice = document.getElementById('payrollFullSalaryNoRulesNotice');
           if (noRulesNotice) {
             const showNotice = (settings.attendance_pay_mode === 'full_salary') && !settings.absence_rules_configured;
             noRulesNotice.hidden = !showNotice;
           }
+          const legacyBanner = document.getElementById('payrollLegacyFullSalaryBanner');
+          if (legacyBanner) legacyBanner.hidden = settings.attendance_pay_mode !== 'full_salary';
+          const unused = document.getElementById('payrollAbsenceUnusedBanner');
+          const absenceSection = document.getElementById('payrollAbsenceSection');
+          if (unused) unused.hidden = settings.attendance_pay_mode !== 'payable_days';
+          if (absenceSection) absenceSection.style.opacity = settings.attendance_pay_mode === 'payable_days' ? '0.55' : '1';
           const currencyInput = document.getElementById('payrollCurrencyCode');
           if (currencyInput) currencyInput.value = settings.currency_code || 'PKR';
           const decimalInput = document.getElementById('payrollDecimalPlaces');
@@ -13498,6 +13547,14 @@ async function fetchMultiLiveDetections() {
       async function deleteEmployeePayLine(id, userId) {
         const response = await fetch(`${API_BASE}/payroll/employee-components/${id}`, { method: 'DELETE' });
         if (response.ok) await loadEmployeePayLines(userId);
+      }
+
+      async function switchToPayableDays() {
+        const attendancePay = document.getElementById('payrollAttendancePayMode');
+        if (attendancePay) attendancePay.value = 'payable_days';
+        const deduct = document.getElementById('deductUnpaidLeaveToggle')?.checked;
+        await savePayrollSettings(Boolean(deduct));
+        showAppToast('Pay method switched to days present. Recalculate the current month to preview.', 'success');
       }
 
       async function savePayrollSettings(deductUnpaidLeave) {

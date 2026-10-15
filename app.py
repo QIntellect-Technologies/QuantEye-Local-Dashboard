@@ -37,7 +37,7 @@ from typing import Dict, List, Optional, Tuple, Any
 import sqlite3
 import uuid
 import numpy as np
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 import mimetypes
 import cv2
@@ -2770,6 +2770,31 @@ def api_delete_user(user_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/users/<int:user_id>/deactivate', methods=['POST'])
+def api_deactivate_user(user_id):
+    user = verify_user_access(user_id)
+    if not user:
+        return jsonify({'error': 'User not found or unauthorized'}), 404
+    data = request.get_json(silent=True) or {}
+    exit_date = str(data.get('exit_date') or date.today().isoformat())[:10]
+    try:
+        if not db.deactivate_user(user_id, exit_date=exit_date):
+            return jsonify({'error': 'Deactivation failed', 'field': 'exit_date'}), 400
+        return jsonify({'success': True, 'exit_date': exit_date, 'active': 0})
+    except ValueError as exc:
+        return jsonify({'error': str(exc), 'field': 'exit_date'}), 400
+
+
+@app.route('/api/users/<int:user_id>/reactivate', methods=['POST'])
+def api_reactivate_user(user_id):
+    user = verify_user_access(user_id)
+    if not user:
+        return jsonify({'error': 'User not found or unauthorized'}), 404
+    if not db.reactivate_user(user_id):
+        return jsonify({'error': 'Reactivation failed'}), 400
+    return jsonify({'success': True, 'active': 1})
+
+
 @app.route('/api/users/<int:user_id>/mark-absent', methods=['POST'])
 def api_mark_user_absent(user_id):
     try:
@@ -2784,6 +2809,10 @@ def api_mark_user_absent(user_id):
             return jsonify({'success': True, 'message': f'User ID {user_id} marked absent'}), 200
         else:
             return jsonify({'error': 'Failed to mark user absent'}), 400
+    except ValueError as e:
+        if str(e) == db.PAYROLL_LOCK_MESSAGE:
+            return jsonify({'error': str(e), 'reopen': '/api/payroll/reopen'}), 409
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         logger.error(f"API mark absent error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -3963,7 +3992,8 @@ def api_update_user(user_id):
     checkin_cameras = data.get('checkin_cameras')
     checkout_cameras = data.get('checkout_cameras')
 
-    success = db.update_user(
+    try:
+        success = db.update_user(
         user_id=user_id,
         name=name.strip(),
         email=data.get('email'),
@@ -3977,8 +4007,13 @@ def api_update_user(user_id):
         shift_id=shift_id,
         checkin_cameras=checkin_cameras,
         checkout_cameras=checkout_cameras,
-        shift_effective_from=data.get('shift_effective_from')
-    )
+        shift_effective_from=data.get('shift_effective_from'),
+        exit_date=data.get('exit_date'),
+        confirm_shift_reclassify=bool(data.get('confirm_shift_reclassify')),
+        )
+    except ValueError as exc:
+        status = 409 if str(exc) == db.PAYROLL_LOCK_MESSAGE or 'reclassifies' in str(exc) else 400
+        return jsonify({'error': str(exc), 'field': 'shift_effective_from' if 'shift' in str(exc).lower() else 'exit_date'}), status
     if success:
         refresh_embedding_cache()
         return jsonify({'success': True, 'message': f'Staff profile for {name.strip()} updated successfully'}), 200
@@ -4991,7 +5026,12 @@ def api_update_leave(leave_id):
     if not leave:
         return jsonify({'success': False, 'message': 'Leave request not found or unauthorized'}), 404
     data = request.get_json() or {}
-    updated = db.update_leave_status(leave_id, data.get('status', 'approved'), data.get('approved_by', 'Admin'), organization_id=current_tenant)
+    try:
+        updated = db.update_leave_status(leave_id, data.get('status', 'approved'), data.get('approved_by', 'Admin'), organization_id=current_tenant)
+    except ValueError as exc:
+        if str(exc) == db.PAYROLL_LOCK_MESSAGE:
+            return jsonify({'error': str(exc), 'reopen': '/api/payroll/reopen'}), 409
+        return jsonify({'error': str(exc)}), 400
     if not updated:
         return jsonify({'success': False, 'reason_code': 'overlapping_leave', 'message': 'This leave request overlaps another active leave or no longer exists. Please review the employee\'s leave dates.'}), 409
     return jsonify({'success': True})
@@ -5369,6 +5409,10 @@ def api_bulk_approve_overtime():
                     skipped.append({'id': ot_id, 'reason': 'already finalized'})
                 else:
                     errors.append({'id': ot_id, 'reason': 'update failed'})
+        except ValueError as e:
+            if str(e) == db.PAYROLL_LOCK_MESSAGE:
+                return jsonify({'error': str(e), 'reopen': '/api/payroll/reopen'}), 409
+            errors.append({'id': ot_id, 'reason': str(e)})
         except Exception as e:
             errors.append({'id': ot_id, 'reason': str(e)})
 
@@ -5516,6 +5560,10 @@ def api_set_salary(user_id=None):
                 'config': updated_cfg
             }), 200
         return jsonify({'success': False, 'message': f'Employee #{uid} not found or database error'}), 404
+    except ValueError as e:
+        if str(e) == db.PAYROLL_LOCK_MESSAGE:
+            return jsonify({'success': False, 'error': str(e), 'reopen': '/api/payroll/reopen'}), 409
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.exception("Failed to save salary configuration")
         return jsonify({'success': False, 'message': f'Failed to save salary configuration: {e}'}), 500
@@ -6324,17 +6372,26 @@ def api_finalize_monthly_payroll():
             organization_id=current_tenant,
             branch_id=current_branch,
         )
+        excluded = {int(item.get('user_id') or item.get('employee_id')): str(item.get('reason') or '').strip()
+                    for item in (data.get('excluded') or []) if item}
+        if any(not reason for reason in excluded.values()):
+            return jsonify({'error': 'Each excluded employee needs a mandatory reason', 'field': 'excluded'}), 400
+        if excluded:
+            preview['records'] = [row for row in preview['records'] if int(row.get('employee_id') or 0) not in excluded]
+            preview['excluded'] = [{'user_id': uid, 'reason': reason} for uid, reason in excluded.items()]
+        issues = []
+        for row in preview['records']:
+            if row.get('shift_history_missing'):
+                issues.append({'employee_id': row['employee_id'], 'employee_name': row['employee_name'], 'issue': 'missing_shift_history'})
+            if row['basic_salary'] <= 0:
+                issues.append({'employee_id': row['employee_id'], 'employee_name': row['employee_name'], 'issue': 'missing_salary'})
+            if row.get('rule_missing'):
+                issues.append({'employee_id': row['employee_id'], 'employee_name': row['employee_name'], 'issue': 'missing_rule'})
         if not preview['records']:
-            return jsonify({'error': 'There are no active employees to include in payroll'}), 400
-        missing_shift_history = [row['employee_name'] for row in preview['records'] if row.get('shift_history_missing')]
-        if missing_shift_history:
-            return jsonify({'error': 'Configure shift assignment history for: ' + ', '.join(missing_shift_history)}), 400
-        missing_salary = [row['employee_name'] for row in preview['records'] if row['basic_salary'] <= 0]
-        if missing_salary:
-            return jsonify({'error': 'Set a basic salary for: ' + ', '.join(missing_salary)}), 400
-        missing_rule = [row['employee_name'] for row in preview['records'] if row.get('rule_missing')]
-        if missing_rule:
-            return jsonify({'error': 'Configure an active absence rule for: ' + ', '.join(missing_rule)}), 400
+            return jsonify({'error': 'There are no active employees to include in payroll', 'issues': issues}), 400
+        if issues:
+            return jsonify({'error': 'Resolve or exclude blocking employees before finalize', 'issues': issues}), 400
+        preview['finalize_early'] = bool(data.get('finalize_early'))
         saved_run = db.finalize_monthly_payroll(
             preview,
             organization_id=current_tenant,
@@ -6349,6 +6406,29 @@ def api_finalize_monthly_payroll():
     except Exception as e:
         logger.exception("Failed to finalize payroll for %s", payroll_month)
         return jsonify({'error': f'Failed to finalize payroll: {e}'}), 500
+
+
+@app.route('/api/payroll/reopen', methods=['POST'])
+def api_reopen_monthly_payroll():
+    access_error = _require_admin_configuration()
+    if access_error:
+        return access_error
+    data = request.get_json(silent=True) or {}
+    payroll_month = str(data.get('month') or '').strip()
+    reason = str(data.get('reason') or '').strip()
+    if not payroll_month:
+        return jsonify({'error': 'Payroll month is required in YYYY-MM format', 'field': 'month'}), 400
+    try:
+        result = db.reopen_monthly_payroll(
+            payroll_month, reason, **payroll_tenant(),
+            actor=session.get('admin_name') or session.get('username') or 'Admin',
+        )
+        return jsonify(result)
+    except ValueError as exc:
+        return jsonify({'error': str(exc), 'field': 'reason' if 'reason' in str(exc).lower() else 'month'}), 400
+    except Exception as exc:
+        logger.exception('Failed to reopen payroll')
+        return jsonify({'error': str(exc)}), 500
 
 
 # ============================================

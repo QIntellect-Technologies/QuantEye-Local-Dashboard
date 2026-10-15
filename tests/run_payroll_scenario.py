@@ -113,6 +113,10 @@ def run_isolated(scenario: str, evidence_dir: Path, snapshot: Path) -> dict:
     shutil.copy2(snapshot, db_path)
     os.environ["QINTELLECT_DB_PATH"] = str(db_path)
     os.environ.setdefault("MAIN_DASHBOARD_URL", "http://127.0.0.1:9")
+    if scenario == "S18":
+        os.environ["QINTELLECT_SKIP_AUTO_INIT"] = "1"
+    else:
+        os.environ.pop("QINTELLECT_SKIP_AUTO_INIT", None)
 
     # Fresh process imports: drop cached dashboard modules bound to another DB.
     doomed = [name for name in list(sys.modules) if name in {
@@ -130,6 +134,18 @@ def run_isolated(scenario: str, evidence_dir: Path, snapshot: Path) -> dict:
 
     db_config.DB_PATH = str(db_path)
     db.DB_PATH = str(db_path)
+    pre_migration_schema = None
+    if scenario == "S18":
+        with sqlite3.connect(str(db_path)) as conn:
+            pre_migration_schema = {
+                "tables": [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY 1")],
+                "payroll_settings_sql": conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='payroll_settings'"
+                ).fetchone(),
+                "columns": [r[1] for r in conn.execute("PRAGMA table_info(payroll_settings)")],
+            }
+        db.init_db()
+        os.environ.pop("QINTELLECT_SKIP_AUTO_INIT", None)
     app_module.app.config["TESTING"] = True
     app_module.app.config["WTF_CSRF_ENABLED"] = False
 
@@ -162,6 +178,7 @@ def run_isolated(scenario: str, evidence_dir: Path, snapshot: Path) -> dict:
         "users_in_db": _count_users(db_path),
         "db_rows": _dump_db_rows(db_path),
         "payroll_settings_rows": _dump_settings(db_path),
+        "pre_migration_schema": pre_migration_schema,
     }
     out_dir = evidence_dir / scenario
     out_dir.mkdir(parents=True, exist_ok=True)
