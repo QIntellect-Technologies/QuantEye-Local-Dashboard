@@ -1,15 +1,15 @@
-code,employee_name,basic,basic_prorated,attendance_pay_mode,month_scheduled_workdays,eligible_scheduled_workdays,proration_factor,present_days,late_days,paid_leave_days,unpaid_leave_days,unexcused_absent_days,half_leave_days,payable_days,absence_deduction_percent,absence_deduction_fixed_pkr,absence_deduction,unpaid_leave_deduction,hra,tax,overtime_hours_approved,overtime_amount,bonus,rest_day_extra,expected_net,notes
-E1,E1 Full Attend,60000.0,60000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,60000.0,
-E2,E2 Two Absent,60000.0,60000.0,payable_days,26,26,1.0,24,0,0,0,2,0,24,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,55384.62,
-E3,E3 Six Absent,60000.0,60000.0,payable_days,26,26,1.0,20,0,0,0,6,0,20,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,46153.85,
-E4,E4 Late Half,60000.0,60000.0,payable_days,26,26,1.0,23,3,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,60000.0,
-E5,E5 Leave Mix,60000.0,60000.0,payable_days,26,26,1.0,23,0,2,1,0,0,25,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,57692.31,
-E6,E6 Join Mid,60000.0,40000.0,payable_days,26,17,0.666667,17,0,0,0,0,0,17,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,26153.85,
-E7,E7 Exit Mid,60000.0,36000.0,payable_days,26,16,0.6,16,0,0,0,0,0,16,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,22153.85,
-E8,E8 Overtime,60000.0,60000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,4,1153.84,0,0,61153.84,
-E9,E9 Flex Pay,60000.0,60000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,1000,0,61000.0,
-E10,E10 Salary Change,40000,40000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,40000.0,revision 16 Sep; blended depends on engine
-E11,E11 No Salary,0,0.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,0.0,salary 0 must appear and block finalize
-E12,E12 Deactivate,60000.0,60000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,60000.0,
-E13,E13 Extra,42000,42000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,42000.0,
-E14,E14 Absurd QA,10000000.0,10000000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,10000000.0,
+code,employee_name,basic,basic_prorated,attendance_pay_mode,month_scheduled_workdays,eligible_scheduled_workdays,proration_factor,present_days,late_days,paid_leave_days,unpaid_leave_days,unexcused_absent_days,half_leave_days,payable_days,absence_deduction_percent,absence_deduction_fixed_pkr,absence_deduction,unpaid_leave_deduction,hra,tax,overtime_hours_approved,overtime_amount,bonus,rest_day_extra,expected_net,notes,proration_basis,calendar_days_expected_net,working_days_expected_net
+E1,E1 Full Attend,60000.0,60000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,60000.0,,,,
+E2,E2 Two Absent,60000.0,60000.0,payable_days,26,26,1.0,24,0,0,0,2,0,24,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,55384.62,,,,
+E3,E3 Six Absent,60000.0,60000.0,payable_days,26,26,1.0,20,0,0,0,6,0,20,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,46153.85,,,,
+E4,E4 Late Half,60000.0,60000.0,payable_days,26,26,1.0,23,3,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,60000.0,,,,
+E5,E5 Leave Mix,60000.0,60000.0,payable_days,26,26,1.0,23,0,2,1,0,0,25,0.0,0.0,0.0,2307.69,0,0,0,0.0,0,0,55384.62,CSV ROUND(60000*25/26)-ROUND(60000*1/26),,,
+E6,E6 Join Mid,60000.0,39230.77,payable_days,26,17,0.653846,17,0,0,0,0,0,17,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,39230.77,CSV ROUND(60000*17/26) working_days; calendar_days ROUND(60000*20/30)=40000,working_days,40000.0,39230.77
+E7,E7 Exit Mid,60000.0,36923.08,payable_days,26,16,0.615385,16,0,0,0,0,0,16,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,36923.08,CSV ROUND(60000*16/26) working_days; calendar_days ROUND(60000*18/30)=36000,working_days,36000.0,36923.08
+E8,E8 Overtime,60000.0,60000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,4,1153.85,0,0,61153.85,CSV ROUND(60000+4*(60000/208)) round_at_end,,,
+E9,E9 Flex Pay,60000.0,60000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,1000,0,61000.0,,,,
+E10,E10 Salary Change,40000,40000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,45000.0,pending C4; CSV ROUND(40000*15/30+50000*15/30)=45000,,,
+E11,E11 No Salary,0,0.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,0.0,salary 0 must appear and block finalize,,,
+E12,E12 Deactivate,60000.0,60000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,60000.0,,,,
+E13,E13 Extra,42000,42000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,42000.0,,,,
+E14,E14 Absurd QA,10000000.0,10000000.0,payable_days,26,26,1.0,26,0,0,0,0,0,26,0.0,0.0,0.0,0.0,0,0,0,0.0,0,0,10000000.0,,,,

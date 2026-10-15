@@ -408,16 +408,53 @@ def scenario_s10() -> Dict[str, Any]:
         row(code="E7", name="E7 Exit Mid", basic=E1_BASIC, mode="payable_days", present=exit_p, exit_on=exit_d),
         row(code="E8", name="E8 Overtime", basic=E1_BASIC, mode="payable_days", present=n, ot_hours_approved=4),
         row(code="E9", name="E9 Flex Pay", basic=E1_BASIC, mode="payable_days", present=n, bonus=1000),
-        row(code="E10", name="E10 Salary Change", basic=40000, mode="payable_days", present=n, notes="revision 16 Sep; blended depends on engine"),
+        row(code="E10", name="E10 Salary Change", basic=40000, mode="payable_days", present=n, notes="pending C4"),
         row(code="E11", name="E11 No Salary", basic=0, mode="payable_days", present=n, notes="salary 0 must appear and block finalize"),
         row(code="E12", name="E12 Deactivate", basic=E1_BASIC, mode="payable_days", present=n),
         row(code="E13", name="E13 Extra", basic=42000, mode="payable_days", present=n),
         row(code="E14", name="E14 Absurd QA", basic=ABSURD_BASIC, mode="payable_days", present=n),
     ]
+    by = {item["code"]: item for item in rows}
+    # Strict CSV formulas from S10_hand_sheet_formulas.csv. Do not match the engine.
+    e5 = by["E5"]
+    e5["unpaid_leave_deduction"] = money(E1_BASIC * 1 / n)
+    e5["expected_net"] = money(money(E1_BASIC * 25 / n) - e5["unpaid_leave_deduction"])
+    e5["notes"] = "CSV ROUND(60000*25/26)-ROUND(60000*1/26)"
+    e6 = by["E6"]
+    e6["proration_basis"] = "working_days"
+    e6["proration_factor"] = round(join_p / n, 6)
+    e6["basic_prorated"] = money(E1_BASIC * join_p / n)
+    e6["expected_net"] = money(E1_BASIC * join_p / n)
+    e6["calendar_days_expected_net"] = money(E1_BASIC * 20 / 30)
+    e6["working_days_expected_net"] = e6["expected_net"]
+    e6["notes"] = "CSV ROUND(60000*17/26) working_days; calendar_days ROUND(60000*20/30)=40000"
+    e7 = by["E7"]
+    e7["proration_basis"] = "working_days"
+    e7["proration_factor"] = round(exit_p / n, 6)
+    e7["basic_prorated"] = money(E1_BASIC * exit_p / n)
+    e7["expected_net"] = money(E1_BASIC * exit_p / n)
+    e7["calendar_days_expected_net"] = money(E1_BASIC * 18 / 30)
+    e7["working_days_expected_net"] = e7["expected_net"]
+    e7["notes"] = "CSV ROUND(60000*16/26) working_days; calendar_days ROUND(60000*18/30)=36000"
+    e8 = by["E8"]
+    e8["overtime_amount"] = money(4 * (E1_BASIC / OT_DIVISOR))
+    e8["expected_net"] = money(E1_BASIC + 4 * (E1_BASIC / OT_DIVISOR))
+    e8["notes"] = "CSV ROUND(60000+4*(60000/208)) round_at_end"
+    e10 = by["E10"]
+    e10["expected_net"] = money(40000 * 15 / 30 + 50000 * 15 / 30)
+    e10["notes"] = "pending C4; CSV ROUND(40000*15/30+50000*15/30)=45000"
     return {
         "id": "S10",
         "title": "Full 14-employee September hand sheet",
-        "assumptions": {"month_scheduled_workdays": n, "scheduled_dates": [d.isoformat() for d in wd]},
+        "assumptions": {
+            "month_scheduled_workdays": n,
+            "scheduled_dates": [d.isoformat() for d in wd],
+            "expected_source": "S10_hand_sheet_formulas.csv",
+            "e6_e7_bases": {
+                "working_days": {"E6": money(E1_BASIC * join_p / n), "E7": money(E1_BASIC * exit_p / n)},
+                "calendar_days": {"E6": money(E1_BASIC * 20 / 30), "E7": money(E1_BASIC * 18 / 30)},
+            },
+        },
         "expected": rows,
     }
 
@@ -588,7 +625,14 @@ def dump_expected(dest: Path) -> None:
     csv_path = dest / "S10_hand_sheet.csv"
     rows: List[Dict[str, Any]] = list(s10["expected"])
     if rows:
+        fieldnames: List[str] = []
+        seen = set()
+        for item in rows:
+            for key in item.keys():
+                if key not in seen:
+                    seen.add(key)
+                    fieldnames.append(key)
         with csv_path.open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+            writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(rows)

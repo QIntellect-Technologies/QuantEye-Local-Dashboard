@@ -30,7 +30,18 @@
       "2026-09-28",
       "2026-09-29",
       "2026-09-30"
-    ]
+    ],
+    "expected_source": "S10_hand_sheet_formulas.csv",
+    "e6_e7_bases": {
+      "working_days": {
+        "E6": 39230.77,
+        "E7": 36923.08
+      },
+      "calendar_days": {
+        "E6": 40000.0,
+        "E7": 36000.0
+      }
+    }
   },
   "expected": [
     {
@@ -168,25 +179,25 @@
       "absence_deduction_percent": 0.0,
       "absence_deduction_fixed_pkr": 0.0,
       "absence_deduction": 0.0,
-      "unpaid_leave_deduction": 0.0,
+      "unpaid_leave_deduction": 2307.69,
       "hra": 0,
       "tax": 0,
       "overtime_hours_approved": 0,
       "overtime_amount": 0.0,
       "bonus": 0,
       "rest_day_extra": 0,
-      "expected_net": 57692.31,
-      "notes": ""
+      "expected_net": 55384.62,
+      "notes": "CSV ROUND(60000*25/26)-ROUND(60000*1/26)"
     },
     {
       "code": "E6",
       "employee_name": "E6 Join Mid",
       "basic": 60000.0,
-      "basic_prorated": 40000.0,
+      "basic_prorated": 39230.77,
       "attendance_pay_mode": "payable_days",
       "month_scheduled_workdays": 26,
       "eligible_scheduled_workdays": 17,
-      "proration_factor": 0.666667,
+      "proration_factor": 0.653846,
       "present_days": 17,
       "late_days": 0,
       "paid_leave_days": 0,
@@ -204,18 +215,21 @@
       "overtime_amount": 0.0,
       "bonus": 0,
       "rest_day_extra": 0,
-      "expected_net": 26153.85,
-      "notes": ""
+      "expected_net": 39230.77,
+      "notes": "CSV ROUND(60000*17/26) working_days; calendar_days ROUND(60000*20/30)=40000",
+      "proration_basis": "working_days",
+      "calendar_days_expected_net": 40000.0,
+      "working_days_expected_net": 39230.77
     },
     {
       "code": "E7",
       "employee_name": "E7 Exit Mid",
       "basic": 60000.0,
-      "basic_prorated": 36000.0,
+      "basic_prorated": 36923.08,
       "attendance_pay_mode": "payable_days",
       "month_scheduled_workdays": 26,
       "eligible_scheduled_workdays": 16,
-      "proration_factor": 0.6,
+      "proration_factor": 0.615385,
       "present_days": 16,
       "late_days": 0,
       "paid_leave_days": 0,
@@ -233,8 +247,11 @@
       "overtime_amount": 0.0,
       "bonus": 0,
       "rest_day_extra": 0,
-      "expected_net": 22153.85,
-      "notes": ""
+      "expected_net": 36923.08,
+      "notes": "CSV ROUND(60000*16/26) working_days; calendar_days ROUND(60000*18/30)=36000",
+      "proration_basis": "working_days",
+      "calendar_days_expected_net": 36000.0,
+      "working_days_expected_net": 36923.08
     },
     {
       "code": "E8",
@@ -259,11 +276,11 @@
       "hra": 0,
       "tax": 0,
       "overtime_hours_approved": 4,
-      "overtime_amount": 1153.84,
+      "overtime_amount": 1153.85,
       "bonus": 0,
       "rest_day_extra": 0,
-      "expected_net": 61153.84,
-      "notes": ""
+      "expected_net": 61153.85,
+      "notes": "CSV ROUND(60000+4*(60000/208)) round_at_end"
     },
     {
       "code": "E9",
@@ -320,8 +337,8 @@
       "overtime_amount": 0.0,
       "bonus": 0,
       "rest_day_extra": 0,
-      "expected_net": 40000.0,
-      "notes": "revision 16 Sep; blended depends on engine"
+      "expected_net": 45000.0,
+      "notes": "pending C4; CSV ROUND(40000*15/30+50000*15/30)=45000"
     },
     {
       "code": "E11",
