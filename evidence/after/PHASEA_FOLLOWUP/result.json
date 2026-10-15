@@ -1,0 +1,375 @@
+{
+  "db_path": "C:\\Users\\Imran\\AppData\\Local\\Temp\\qe-phase-a-followup-5bhcfavo\\attendance.db",
+  "s10_formula_expected": {
+    "E1": {
+      "expected_net": 60000.0,
+      "notes": ""
+    },
+    "E2": {
+      "expected_net": 55384.62,
+      "notes": ""
+    },
+    "E3": {
+      "expected_net": 46153.85,
+      "notes": ""
+    },
+    "E4": {
+      "expected_net": 60000.0,
+      "notes": ""
+    },
+    "E5": {
+      "expected_net": 55384.62,
+      "notes": "CSV ROUND(60000*25/26)-ROUND(60000*1/26)"
+    },
+    "E6": {
+      "expected_net": 39230.77,
+      "notes": "CSV ROUND(60000*17/26) working_days; calendar_days ROUND(60000*20/30)=40000"
+    },
+    "E7": {
+      "expected_net": 36923.08,
+      "notes": "CSV ROUND(60000*16/26) working_days; calendar_days ROUND(60000*18/30)=36000"
+    },
+    "E8": {
+      "expected_net": 61153.85,
+      "notes": "CSV ROUND(60000+4*(60000/208)) round_at_end"
+    },
+    "E9": {
+      "expected_net": 61000.0,
+      "notes": ""
+    },
+    "E10": {
+      "expected_net": 45000.0,
+      "notes": "pending C4; CSV ROUND(40000*15/30+50000*15/30)=45000"
+    },
+    "E11": {
+      "expected_net": 0.0,
+      "notes": "salary 0 must appear and block finalize"
+    },
+    "E12": {
+      "expected_net": 60000.0,
+      "notes": ""
+    },
+    "E13": {
+      "expected_net": 42000.0,
+      "notes": ""
+    },
+    "E14": {
+      "expected_net": 10000000.0,
+      "notes": ""
+    }
+  },
+  "s10_e6_e7_bases": {
+    "working_days": {
+      "E6": 39230.77,
+      "E7": 36923.08
+    },
+    "calendar_days": {
+      "E6": 40000.0,
+      "E7": 36000.0
+    }
+  },
+  "pre_finalize_leave": {
+    "status": 201,
+    "id": 1
+  },
+  "pre_finalize_ot": {
+    "status": 201,
+    "id": 1
+  },
+  "finalize_sep": {
+    "status": 201,
+    "success": true
+  },
+  "snapshot_keys": [
+    "attendance_counts",
+    "pay_line_types",
+    "pay_lines",
+    "rates",
+    "rules",
+    "settings"
+  ],
+  "snapshot_settings": {
+    "attendance_pay_mode": "payable_days",
+    "currency_code": "PKR",
+    "decimal_places": 2,
+    "deduct_unpaid_leave": false,
+    "ot_hour_divisor": 208.0,
+    "ot_rounding": "round_at_end",
+    "proration_basis": "working_days"
+  },
+  "leave_approve_finalized": {
+    "status": 409,
+    "body": {
+      "error": "Month is finalized. Reopen payroll to change this.",
+      "reopen": "/api/payroll/reopen"
+    }
+  },
+  "leave_add_finalized": {
+    "status": 409,
+    "body": {
+      "error": "Month is finalized. Reopen payroll to change this.",
+      "reopen": "/api/payroll/reopen"
+    }
+  },
+  "ot_approve_finalized": {
+    "status": 409,
+    "body": {
+      "error": "Month is finalized. Reopen payroll to change this.",
+      "reopen": "/api/payroll/reopen"
+    }
+  },
+  "settings_notices": [],
+  "existing_org_settings": {
+    "organization_id": "ORG-PAY-AUDIT-1",
+    "proration_basis": "working_days",
+    "ot_rounding": "round_at_end"
+  },
+  "preview": {
+    "after": [
+      {
+        "basic_salary": 40000.0,
+        "employee_name": "E10 Salary Change",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 192.30769230769232
+      },
+      {
+        "basic_salary": 42000.0,
+        "employee_name": "E13 Extra",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 201.92307692307693
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E1 Full Attend",
+        "net_salary": 60000.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E9 Flex Pay",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E5 Leave Mix",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E12 Deactivate",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E2 Two Absent",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E3 Six Absent",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E6 Join Mid",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E7 Exit Mid",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 0.0,
+        "employee_name": "E11 No Salary",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 0.0
+      },
+      {
+        "basic_salary": 10000000.0,
+        "employee_name": "E14 Absurd QA",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 48076.92307692308
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E4 Late Half",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E8 Overtime",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      }
+    ],
+    "after_settings": {
+      "ot_rounding": "round_at_end",
+      "proration_basis": "working_days"
+    },
+    "before": [
+      {
+        "basic_salary": 40000.0,
+        "employee_name": "E10 Salary Change",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 192.30769230769232
+      },
+      {
+        "basic_salary": 42000.0,
+        "employee_name": "E13 Extra",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 201.92307692307693
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E1 Full Attend",
+        "net_salary": 60000.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E9 Flex Pay",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E5 Leave Mix",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E12 Deactivate",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E2 Two Absent",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E3 Six Absent",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E6 Join Mid",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E7 Exit Mid",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 0.0,
+        "employee_name": "E11 No Salary",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 0.0
+      },
+      {
+        "basic_salary": 10000000.0,
+        "employee_name": "E14 Absurd QA",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 48076.92307692308
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E4 Late Half",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      },
+      {
+        "basic_salary": 60000.0,
+        "employee_name": "E8 Overtime",
+        "net_salary": 0.0,
+        "overtime_amount": 0.0,
+        "overtime_rate": 288.46153846153845
+      }
+    ],
+    "before_settings": {
+      "ot_rounding": "round_at_end",
+      "proration_basis": "working_days"
+    },
+    "finalized_unchanged": false,
+    "month": "2026-09"
+  },
+  "salary_report_api": {
+    "auto_fixed": false,
+    "mismatches": []
+  },
+  "put_settings_http": 200,
+  "after_put_rounding": "round_at_end",
+  "finalized_still_locked": true,
+  "finalize_oct_blocked": {
+    "status": 400,
+    "error": "This month is still in progress through 2026-10-15. Use finalize early (admin) or wait until month-end."
+  },
+  "finalize_oct_early": {
+    "status": 201,
+    "body": {
+      "success": true,
+      "error": null,
+      "issues": null
+    }
+  },
+  "shift_history_missing_after_delete": false,
+  "shift_history_confirm_dialog_in_ui": true,
+  "salary_mismatch_rows": [
+    {
+      "user_id": 1,
+      "salary_organization_id": "DEFAULT_ORG",
+      "salary_branch_id": "DEFAULT_BRANCH",
+      "user_organization_id": "ORG-PAY-AUDIT-1",
+      "user_branch_id": "BR-PAY-AUDIT-1",
+      "reported_at": "2026-10-15 13:17:32"
+    }
+  ],
+  "new_org_defaults": {
+    "proration_basis": "working_days",
+    "ot_rounding": "round_at_end"
+  },
+  "today": "2026-10-15"
+}

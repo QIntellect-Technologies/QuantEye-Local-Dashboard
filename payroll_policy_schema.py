@@ -1,7 +1,7 @@
 """Tenant-scope migrations and shared payroll policy defaults.
 
-Existing calculation behavior stays the default: OT divisor 208,
-calendar-day proration, 2 decimal places, PKR.
+Existing organizations keep calendar-day proration and round_rate_first OT.
+New organizations default to working_days proration and round_at_end OT.
 """
 from __future__ import annotations
 
@@ -13,7 +13,12 @@ from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
 DEFAULT_ORG = "DEFAULT_ORG"
 DEFAULT_BRANCH = "DEFAULT_BRANCH"
 DEFAULT_OT_DIVISOR = 208.0
-DEFAULT_PRORATION_BASIS = "calendar_days"
+# New organizations. Existing payroll_settings rows keep calendar_days / round_rate_first.
+DEFAULT_PRORATION_BASIS = "working_days"
+LEGACY_PRORATION_BASIS = "calendar_days"
+DEFAULT_OT_ROUNDING = "round_at_end"
+LEGACY_OT_ROUNDING = "round_rate_first"
+VALID_OT_ROUNDING = ("round_rate_first", "round_at_end")
 DEFAULT_CURRENCY = "PKR"
 DEFAULT_DECIMAL_PLACES = 2
 VALID_PRORATION_BASES = ("calendar_days", "working_days", "30_day")
@@ -43,6 +48,7 @@ DEFAULT_PAYROLL_SETTINGS = {
     "overtime_max_period": "day",
     "ot_hour_divisor": DEFAULT_OT_DIVISOR,
     "proration_basis": DEFAULT_PRORATION_BASIS,
+    "ot_rounding": DEFAULT_OT_ROUNDING,
     "attendance_pay_mode": DEFAULT_ATTENDANCE_PAY_MODE,
     "currency_code": DEFAULT_CURRENCY,
     "decimal_places": DEFAULT_DECIMAL_PLACES,
@@ -88,6 +94,11 @@ def _settings_map(settings: Any) -> Dict[str, Any]:
     return {}
 
 
+def normalize_ot_rounding(value: Any) -> str:
+    mode = str(value or "").strip().lower()
+    return mode if mode in VALID_OT_ROUNDING else LEGACY_OT_ROUNDING
+
+
 def overtime_entry_pay(
     ot_rate: float,
     hours: float,
@@ -98,57 +109,55 @@ def overtime_entry_pay(
 ) -> Tuple[float, float, float]:
     """Return (effective hourly rate, amount, equivalent extra percent) for approved OT hours.
 
-    Default mode is percent so existing 50% holiday / 25% rest-day premiums stay identical.
-    Multiplier 1.5 means 1.5× the normal overtime hourly rate. Fixed extra is per hour
-    on top of the normal overtime rate.
+    round_rate_first (existing orgs): money(rate) then money(hours * rounded_rate).
+    round_at_end (new orgs): money(hours * unrounded_rate * premium).
     """
     rate = float(ot_rate or 0.0)
     qty = float(hours or 0.0)
     cfg = _settings_map(settings)
+    rounding = normalize_ot_rounding(cfg.get("ot_rounding"))
     if qty <= 0:
         return money(rate, decimal_places), 0.0, 0.0
 
+    def _line(raw_effective: float, extra: float) -> Tuple[float, float, float]:
+        if rounding == "round_at_end":
+            return money(raw_effective, decimal_places), money(qty * raw_effective, decimal_places), extra
+        effective = money(raw_effective, decimal_places)
+        return effective, money(qty * effective, decimal_places), extra
+
     def _percent(percent: float) -> Tuple[float, float, float]:
         extra = float(percent or 0.0)
-        effective = money(rate * (1 + extra / 100.0), decimal_places)
-        return effective, money(qty * effective, decimal_places), extra
+        return _line(rate * (1 + extra / 100.0), extra)
 
     if day_type == "holiday":
         if holiday and holiday.get("overtime_premium_percent") is not None:
             return _percent(holiday.get("overtime_premium_percent") or 0.0)
         if not cfg.get("holiday_ot_premium_active"):
-            effective = money(rate, decimal_places)
-            return effective, money(qty * effective, decimal_places), 0.0
+            return _line(rate, 0.0)
         mode = str(cfg.get("holiday_ot_pay_mode") or "percent").strip().lower()
         if mode == "multiplier":
             factor = float(cfg.get("holiday_ot_multiplier") or 1.0)
-            effective = money(rate * factor, decimal_places)
-            return effective, money(qty * effective, decimal_places), (factor - 1.0) * 100.0
+            return _line(rate * factor, (factor - 1.0) * 100.0)
         if mode == "fixed_hour":
             extra = float(cfg.get("holiday_ot_fixed_amount") or 0.0)
-            effective = money(rate + extra, decimal_places)
             equiv = (extra / rate * 100.0) if rate else 0.0
-            return effective, money(qty * effective, decimal_places), equiv
+            return _line(rate + extra, equiv)
         return _percent(cfg.get("holiday_ot_premium_percent") or 0.0)
 
     if day_type == "non_working_day":
         if not cfg.get("non_working_day_ot_premium_active"):
-            effective = money(rate, decimal_places)
-            return effective, money(qty * effective, decimal_places), 0.0
+            return _line(rate, 0.0)
         mode = str(cfg.get("non_working_day_ot_pay_mode") or "percent").strip().lower()
         if mode == "multiplier":
             factor = float(cfg.get("non_working_day_ot_multiplier") or 1.0)
-            effective = money(rate * factor, decimal_places)
-            return effective, money(qty * effective, decimal_places), (factor - 1.0) * 100.0
+            return _line(rate * factor, (factor - 1.0) * 100.0)
         if mode == "fixed_hour":
             extra = float(cfg.get("non_working_day_ot_fixed_amount") or 0.0)
-            effective = money(rate + extra, decimal_places)
             equiv = (extra / rate * 100.0) if rate else 0.0
-            return effective, money(qty * effective, decimal_places), equiv
+            return _line(rate + extra, equiv)
         return _percent(cfg.get("non_working_day_ot_premium_percent") or 0.0)
 
-    effective = money(rate, decimal_places)
-    return effective, money(qty * effective, decimal_places), 0.0
+    return _line(rate, 0.0)
 
 
 def off_day_attendance_extra(
@@ -198,7 +207,7 @@ def proration_factor(
 ) -> float:
     mode = str(basis or DEFAULT_PRORATION_BASIS).strip().lower()
     if mode not in VALID_PRORATION_BASES:
-        mode = DEFAULT_PRORATION_BASIS
+        mode = LEGACY_PRORATION_BASIS
     if mode == "working_days":
         denom = max(int(full_month_workdays or 0), 1)
         numer = max(int(eligible_workdays or 0), 0)
@@ -293,6 +302,52 @@ def migrate_payroll_policy_tenant_scope(cursor) -> None:
     _migrate_company_holidays(cursor)
     _migrate_special_date_overrides(cursor)
     _copy_leave_types_to_existing_orgs(cursor)
+    report_salary_config_tenant_mismatches(cursor)
+
+
+def report_salary_config_tenant_mismatches(cursor) -> None:
+    """Add org/branch on salary_configs and list mis-tagged rows. Does not auto-fix.
+
+    Rollback: DROP TABLE salary_config_tenant_report; DROP COLUMN organization_id/branch_id
+    on salary_configs if they were added by this migration.
+    """
+    if not cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='salary_configs'").fetchone():
+        return
+    cols = _columns(cursor, "salary_configs")
+    if "organization_id" not in cols:
+        cursor.execute("ALTER TABLE salary_configs ADD COLUMN organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG'")
+    if "branch_id" not in cols:
+        cursor.execute("ALTER TABLE salary_configs ADD COLUMN branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH'")
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS salary_config_tenant_report (
+            user_id INTEGER NOT NULL,
+            salary_organization_id TEXT,
+            salary_branch_id TEXT,
+            user_organization_id TEXT,
+            user_branch_id TEXT,
+            reported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute("DELETE FROM salary_config_tenant_report")
+    cursor.execute(
+        """
+        INSERT INTO salary_config_tenant_report (
+            user_id, salary_organization_id, salary_branch_id,
+            user_organization_id, user_branch_id
+        )
+        SELECT sc.user_id,
+               COALESCE(sc.organization_id, 'DEFAULT_ORG'),
+               COALESCE(sc.branch_id, 'DEFAULT_BRANCH'),
+               COALESCE(u.organization_id, 'DEFAULT_ORG'),
+               COALESCE(u.branch_id, 'DEFAULT_BRANCH')
+        FROM salary_configs sc
+        JOIN users u ON u.id = sc.user_id
+        WHERE COALESCE(sc.organization_id, 'DEFAULT_ORG') != COALESCE(u.organization_id, 'DEFAULT_ORG')
+           OR COALESCE(sc.branch_id, 'DEFAULT_BRANCH') != COALESCE(u.branch_id, 'DEFAULT_BRANCH')
+        """
+    )
 
 
 def _migrate_payroll_settings(cursor) -> None:
@@ -385,6 +440,8 @@ def _migrate_payroll_settings(cursor) -> None:
     cols = _columns(cursor, "payroll_settings")
     for column, column_type in (
         ("ot_hour_divisor", "REAL NOT NULL DEFAULT 208"),
+        # Existing orgs keep calendar_days. New rows set working_days in ensure_payroll_settings_row.
+        # Rollback: DROP COLUMN proration_basis (SQLite 3.35+) or restore backup; existing rows stay calendar_days.
         ("proration_basis", "TEXT NOT NULL DEFAULT 'calendar_days'"),
         ("currency_code", "TEXT NOT NULL DEFAULT 'PKR'"),
         ("decimal_places", "INTEGER NOT NULL DEFAULT 2"),
@@ -410,6 +467,9 @@ def _migrate_payroll_settings(cursor) -> None:
         ("enable_individual_adjustments", "INTEGER NOT NULL DEFAULT 0"),
         ("enable_salary_revisions", "INTEGER NOT NULL DEFAULT 0"),
         ("attendance_pay_mode", "TEXT NOT NULL DEFAULT 'full_salary'"),
+        # Existing orgs keep round_rate_first. New rows set round_at_end in ensure_payroll_settings_row.
+        # Rollback: DROP COLUMN ot_rounding (SQLite 3.35+) or restore backup.
+        ("ot_rounding", "TEXT NOT NULL DEFAULT 'round_rate_first'"),
     ):
         if column not in cols:
             cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -820,9 +880,10 @@ def ensure_payroll_settings_row(cursor, organization_id: Optional[str], branch_i
     cursor.execute(
         """
         INSERT OR IGNORE INTO payroll_settings (
-            organization_id, branch_id, deduct_unpaid_leave, attendance_pay_mode
+            organization_id, branch_id, deduct_unpaid_leave, attendance_pay_mode,
+            proration_basis, ot_rounding
         )
-        VALUES (?, ?, 0, ?)
+        VALUES (?, ?, 0, ?, ?, ?)
         """,
-        (org, branch, DEFAULT_ATTENDANCE_PAY_MODE),
+        (org, branch, DEFAULT_ATTENDANCE_PAY_MODE, DEFAULT_PRORATION_BASIS, DEFAULT_OT_ROUNDING),
     )

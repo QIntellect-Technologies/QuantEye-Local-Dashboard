@@ -197,6 +197,7 @@ def settings_sql_dump() -> list:
             keep = (
                 "id", "organization_id", "branch_id", "attendance_pay_mode",
                 "deduct_unpaid_leave", "enable_salary_revisions", "enable_named_components",
+                "proration_basis", "ot_rounding",
                 "enable_tax", "updated_at",
             )
             out = []
@@ -224,7 +225,7 @@ def put_pay_mode(api: LiveAPI, mode: str, extra: Optional[dict] = None) -> Any:
             k: payload.get(k)
             for k in (
                 "attendance_pay_mode", "deduct_unpaid_leave", "organization_id", "branch_id",
-                "id", "enable_salary_revisions", "proration_basis",
+                "id", "enable_salary_revisions", "proration_basis", "ot_rounding",
             )
         },
         "http_status": st,

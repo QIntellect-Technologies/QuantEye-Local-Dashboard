@@ -5614,7 +5614,7 @@ async function fetchMultiLiveDetections() {
             </label>
             <label style="font-size:0.86em; font-weight:700; color:#475569; min-width:240px;">
               Join / exit proration
-              <select id="payrollProrationBasis" class="form-select" style="margin-top:4px;">
+              <select id="payrollProrationBasis" class="form-select" style="margin-top:4px;" onchange="previewPayrollSettingsImpact()">
                 <option value="calendar_days">Calendar days in the month</option>
                 <option value="working_days">Scheduled working days</option>
                 <option value="30_day">Fixed 30-day month</option>
@@ -5622,8 +5622,15 @@ async function fetchMultiLiveDetections() {
             </label>
             <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700;">Save</button>
           </div>
+          <p class="payroll-panel-help" id="payrollProrationExample" style="margin-top:10px;">
+            Example (join 11 Sep on a 60,000 package, Sep 2026): calendar days = 20/30 × 60,000 = 40,000. Scheduled working days = 17/26 × 60,000 = 39,230.77. Changing this does not rewrite months already finalized.
+          </p>
+          <div id="payrollLegacyCalendarProrationBanner" class="alert alert-info py-2 mt-3 mb-0" hidden>
+            Join/exit proration is calendar days. New organizations default to scheduled working days.
+          </div>
           {% if is_client_session and not client_module_entitlements.overtime %}
           <input id="payrollOtHourDivisor" type="hidden" value="208">
+          <input id="payrollOtRounding" type="hidden" value="round_rate_first">
           <input id="holidayOtPayMode" type="hidden" value="percent">
           <input id="holidayOtPremiumPercent" type="hidden" value="0">
           <input id="holidayOtMultiplier" type="hidden" value="1.5">
@@ -5884,7 +5891,21 @@ async function fetchMultiLiveDetections() {
             <input id="payrollOtHourDivisor" class="form-control" type="number" min="1" step="0.01" value="208" style="width:110px;">
             <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700;">Save</button>
           </label>
+          <label style="display:block; margin-top:12px; font-size:0.86em; font-weight:700; color:#475569; max-width:420px;">
+            Overtime rounding
+            <select id="payrollOtRounding" class="form-select" style="margin-top:4px;" onchange="previewPayrollSettingsImpact()">
+              <option value="round_rate_first">Round hourly rate first</option>
+              <option value="round_at_end">Round overtime amount at the end</option>
+            </select>
+          </label>
+          <p class="payroll-panel-help" style="margin-top:8px;">
+            Example: 4 approved hours, basic 60,000, divisor 208. Round rate first: rate 288.46 then 4 × 288.46 = 1,153.84. Round at end: 4 × (60,000/208) = 1,153.85. Changing this does not rewrite months already finalized.
+          </p>
+          <div id="payrollLegacyOtRoundRateFirstBanner" class="alert alert-info py-2 mt-3 mb-0" hidden>
+            Overtime still rounds the hourly rate first. New organizations round the overtime amount at the end.
+          </div>
         </div>
+        <div id="payrollSettingsImpactPreview" class="small" style="margin:8px 0 12px; color:#475569;"></div>
         <div class="settings-overtime-only" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div style="flex:1; min-width:260px;">
             <div style="font-weight:700; color:#173042;">Maximum Overtime</div>
@@ -7903,6 +7924,13 @@ async function fetchMultiLiveDetections() {
         if (issues.length) {
           document.getElementById('payrollReviewIssues').innerHTML = `<div class="alert alert-danger py-2 mb-0">Finalization blocked. Resolve: ${issues.map(row => payrollEscape(row.employee_name)).join(', ')}</div>`;
           return;
+        }
+        const missingShift = currentPayrollPreview.records.filter(row => row.shift_history_missing || row.status === 'Missing shift history');
+        if (missingShift.length) {
+          const shiftOk = window.confirm(
+            `Missing shift assignment history for:\n${missingShift.map(row => row.employee_name).join('\n')}\n\nConfigure shift history before finalizing. Continue anyway?`
+          );
+          if (!shiftOk) return;
         }
         const confirmed = window.confirm(
           `Payroll Review\n\n${payrollMonthLabel(month)}\nEmployees: ${currentPayrollPreview.employee_count}\nBasic salary: ${payrollMoney(currentPayrollPreview.total_basic_salary)}\nDeductions: ${payrollMoney(currentPayrollPreview.total_deduction)}\nTotal payable: ${payrollMoney(currentPayrollPreview.total_net_salary)}\n\n${finalizeEarly ? 'Finalize this month early (before month-end)?' : 'Finalize this immutable snapshot?'}`
@@ -12760,6 +12788,12 @@ async function fetchMultiLiveDetections() {
           if (otDivisor) otDivisor.value = settings.ot_hour_divisor ?? 208;
           const proration = document.getElementById('payrollProrationBasis');
           if (proration) proration.value = settings.proration_basis || 'calendar_days';
+          const otRounding = document.getElementById('payrollOtRounding');
+          if (otRounding) otRounding.value = settings.ot_rounding || 'round_rate_first';
+          const calendarBanner = document.getElementById('payrollLegacyCalendarProrationBanner');
+          if (calendarBanner) calendarBanner.hidden = settings.proration_basis !== 'calendar_days';
+          const otRoundBanner = document.getElementById('payrollLegacyOtRoundRateFirstBanner');
+          if (otRoundBanner) otRoundBanner.hidden = settings.ot_rounding !== 'round_rate_first';
           const attendancePay = document.getElementById('payrollAttendancePayMode');
           if (attendancePay) attendancePay.value = settings.attendance_pay_mode || 'payable_days';
           const noRulesNotice = document.getElementById('payrollFullSalaryNoRulesNotice');
@@ -12822,6 +12856,7 @@ async function fetchMultiLiveDetections() {
             await loadSpecificOvertimeLimitRules();
             updateOvertimeLimitRuleScopeOptions();
           }
+          await previewPayrollSettingsImpact();
         } catch (error) {
           if (message) message.textContent = error.message;
         } finally {
@@ -13549,6 +13584,33 @@ async function fetchMultiLiveDetections() {
         if (response.ok) await loadEmployeePayLines(userId);
       }
 
+      async function previewPayrollSettingsImpact() {
+        const box = document.getElementById('payrollSettingsImpactPreview');
+        const proration = document.getElementById('payrollProrationBasis')?.value;
+        const rounding = document.getElementById('payrollOtRounding')?.value;
+        const month = currentPayrollPreview?.payroll_month || new Date().toISOString().slice(0, 7);
+        if (!box) return;
+        try {
+          const response = await fetch(`${API_BASE}/settings/payroll/preview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proration_basis: proration, ot_rounding: rounding, month })
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Preview failed');
+          const beforeRows = result.before || [];
+          const afterRows = result.after || [];
+          const lines = afterRows.slice(0, 8).map((row, idx) => {
+            const prev = beforeRows[idx] || {};
+            return `${row.employee_name || 'Employee'}: ${payrollMoney(prev.net_salary)} → ${payrollMoney(row.net_salary)}`;
+          });
+          const lockNote = result.finalized_unchanged ? ' This month is already finalized; saved settings will not rewrite it.' : '';
+          box.textContent = `Current-month preview (${result.month}): ${lines.join('; ') || 'No employees.'}${lockNote}`;
+        } catch (error) {
+          box.textContent = error.message || 'Could not preview payroll settings.';
+        }
+      }
+
       async function switchToPayableDays() {
         const attendancePay = document.getElementById('payrollAttendancePayMode');
         if (attendancePay) attendancePay.value = 'payable_days';
@@ -13579,6 +13641,7 @@ async function fetchMultiLiveDetections() {
                 return Number.isFinite(raw) && raw > 0 ? raw : 208;
               })(),
               proration_basis: document.getElementById('payrollProrationBasis')?.value || 'calendar_days',
+              ot_rounding: document.getElementById('payrollOtRounding')?.value || 'round_rate_first',
               attendance_pay_mode: document.getElementById('payrollAttendancePayMode')?.value || 'full_salary',
               currency_code: (document.getElementById('payrollCurrencyCode')?.value || 'PKR').trim().toUpperCase(),
               decimal_places: Number(document.getElementById('payrollDecimalPlaces')?.value || 2),

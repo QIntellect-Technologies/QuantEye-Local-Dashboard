@@ -14,7 +14,12 @@ from payroll_policy_schema import (
     DEFAULT_OT_DIVISOR,
     DEFAULT_PAYROLL_SETTINGS,
     DEFAULT_PRORATION_BASIS,
+    DEFAULT_OT_ROUNDING,
+    LEGACY_OT_ROUNDING,
+    LEGACY_PRORATION_BASIS,
     VALID_PRORATION_BASES,
+    VALID_OT_ROUNDING,
+    normalize_ot_rounding as _normalize_ot_rounding,
     VALID_OFF_DAY_ATTENDANCE_MODES,
     normalize_attendance_pay_mode as _normalize_attendance_pay_mode,
     VALID_OT_PAY_MODES,
@@ -761,6 +766,8 @@ def init_db():
                 cursor.execute("ALTER TABLE payroll_runs ADD COLUMN branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH'")
             if 'finalized_by' not in payroll_run_columns:
                 cursor.execute("ALTER TABLE payroll_runs ADD COLUMN finalized_by TEXT")
+            if 'snapshot_json' not in payroll_run_columns:
+                cursor.execute("ALTER TABLE payroll_runs ADD COLUMN snapshot_json TEXT")
 
             conn.commit()
             cursor.execute("PRAGMA foreign_keys = OFF")
@@ -896,6 +903,7 @@ def init_db():
                 ("enable_individual_adjustments", "INTEGER NOT NULL DEFAULT 0"),
                 ("enable_salary_revisions", "INTEGER NOT NULL DEFAULT 0"),
                 ("attendance_pay_mode", "TEXT NOT NULL DEFAULT 'payable_days'"),
+                ("ot_rounding", "TEXT NOT NULL DEFAULT 'round_rate_first'"),
             ]:
                 if column not in payroll_setting_columns:
                     cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -4421,6 +4429,7 @@ def add_leave_request(
             u_row = cursor.fetchone()
             u_org = (u_row[0] if u_row else None) or 'DEFAULT_ORG'
             u_branch = (u_row[1] if u_row else None) or 'DEFAULT_BRANCH'
+            raise_if_payroll_month_locked(s_str, u_org, u_branch)
             cursor.execute(
                      '''INSERT INTO leave_requests (
                                 user_id, user_name, leave_type, leave_duration, start_date, end_date, reason,
@@ -4445,6 +4454,8 @@ def add_leave_request(
                 "branch_id": u_branch,
             })
             return leave_id
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Add leave request error: {e}")
         return None
@@ -4465,6 +4476,8 @@ def add_leave_requests(user_id: int, user_name: str, requests: List[Tuple[str, s
             u_row = cursor.fetchone()
             u_org = (u_row[0] if u_row else None) or 'DEFAULT_ORG'
             u_branch = (u_row[1] if u_row else None) or 'DEFAULT_BRANCH'
+            for _, start_date, _, _ in requests:
+                raise_if_payroll_month_locked(start_date, u_org, u_branch)
             ids = []
             for leave_type, start_date, end_date, reason in requests:
                 cursor.execute(
@@ -4475,6 +4488,8 @@ def add_leave_requests(user_id: int, user_name: str, requests: List[Tuple[str, s
                 ids.append(cursor.lastrowid)
             conn.commit()
             return ids
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Add leave request segments error: {e}")
         return None
@@ -4564,7 +4579,7 @@ def update_leave_status(leave_id: int, status: str = 'approved', approved_by: st
             cursor = conn.cursor()
             cursor.execute('BEGIN IMMEDIATE')
             cursor.execute(
-                "SELECT user_id, start_date, end_date, organization_id FROM leave_requests WHERE id = ?",
+                "SELECT user_id, start_date, end_date, organization_id, branch_id FROM leave_requests WHERE id = ?",
                 (leave_id,)
             )
             leave = cursor.fetchone()
@@ -4579,6 +4594,7 @@ def update_leave_status(leave_id: int, status: str = 'approved', approved_by: st
             raise_if_payroll_month_locked(
                 str(leave['start_date'])[:10],
                 leave['organization_id'],
+                leave['branch_id'] if 'branch_id' in leave.keys() else None,
             )
             if str(status or '').strip().lower() in ('pending', 'approved', 'partially_approved'):
                 conflict = _find_active_leave_overlap(
@@ -5499,6 +5515,7 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
             branch_id = user_branch
             organization_id = organization_id or 'DEFAULT_ORG'
             branch_id = branch_id or 'DEFAULT_BRANCH'
+            raise_if_payroll_month_locked(ot_date, organization_id, branch_id)
             cursor.execute(
                 '''INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, organization_id, branch_id)
                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
@@ -5516,6 +5533,8 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
                 "branch_id": branch_id,
             })
             return overtime_id
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Add overtime error: {e}")
         return None
@@ -5551,13 +5570,16 @@ def get_overtime_rate_preview(
             settings = cursor.execute('''
                 SELECT holiday_ot_premium_percent, non_working_day_ot_premium_percent,
                        holiday_ot_premium_active, non_working_day_ot_premium_active,
-                       COALESCE(ot_hour_divisor, 208) AS ot_hour_divisor
+                       COALESCE(ot_hour_divisor, 208) AS ot_hour_divisor,
+                       COALESCE(ot_rounding, 'round_rate_first') AS ot_rounding
                 FROM payroll_settings
                 WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
                   AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
             ''', (emp_org, emp_branch)).fetchone()
             divisor = float(settings['ot_hour_divisor'] if settings else DEFAULT_OT_DIVISOR) or DEFAULT_OT_DIVISOR
-            base_rate = round(configured_rate if configured_rate > 0 else (salary / divisor if salary > 0 else 0.0), 2)
+            raw_rate = configured_rate if configured_rate > 0 else (salary / divisor if salary > 0 else 0.0)
+            rounding = _normalize_ot_rounding(settings['ot_rounding'] if settings else None)
+            base_rate = round(raw_rate, 2) if rounding == 'round_rate_first' else float(raw_rate)
             day_type = _get_overtime_day_type(cursor, user_id, overtime_date)
             holiday = _get_company_holiday_for_date(
                 cursor, overtime_date, employee['organization_id'], employee['branch_id']
@@ -5901,15 +5923,20 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                '''INSERT INTO salary_configs (user_id, basic_salary, allowances, deductions, ot_rate, updated_at)
-                   VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                '''INSERT INTO salary_configs (
+                       user_id, basic_salary, allowances, deductions, ot_rate, updated_at,
+                       organization_id, branch_id
+                   )
+                   VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
                    ON CONFLICT(user_id) DO UPDATE SET
                    basic_salary=excluded.basic_salary,
                    allowances=excluded.allowances,
                    deductions=excluded.deductions,
                    ot_rate=excluded.ot_rate,
+                   organization_id=excluded.organization_id,
+                   branch_id=excluded.branch_id,
                    updated_at=CURRENT_TIMESTAMP''',
-                (user_id, b_sal, allow, deduct, ot)
+                (user_id, b_sal, allow, deduct, ot, owner[1], owner[2])
             )
             cursor.execute("UPDATE users SET salary = ? WHERE id = ?", (b_sal, user_id))
             if _payroll_flag_on(settings, 'enable_salary_revisions'):
@@ -5931,6 +5958,67 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
     except Exception as e:
         logger.error(f"Set salary config error for user {user_id}: {e}")
         return False
+
+
+def list_salary_config_tenant_report() -> List[Dict[str, Any]]:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute("SELECT * FROM salary_config_tenant_report ORDER BY user_id").fetchall()
+        except sqlite3.Error:
+            return []
+        return [dict(row) for row in rows]
+
+
+def preview_payroll_settings_impact(
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    proration_basis: Optional[str] = None,
+    ot_rounding: Optional[str] = None,
+    payroll_month: Optional[str] = None,
+) -> Dict[str, Any]:
+    month = payroll_month or date.today().strftime('%Y-%m')
+    before = calculate_monthly_payroll(
+        month, organization_id=organization_id, branch_id=branch_id, force_recalculate=True,
+    )
+    overrides = {}
+    if proration_basis:
+        overrides['proration_basis'] = proration_basis
+    if ot_rounding:
+        overrides['ot_rounding'] = ot_rounding
+    after = calculate_monthly_payroll(
+        month, organization_id=organization_id, branch_id=branch_id,
+        settings_overrides=overrides or None, force_recalculate=True,
+    )
+
+    def _slim(payroll):
+        if not isinstance(payroll, dict):
+            return []
+        return [
+            {
+                'employee_name': row.get('employee_name'),
+                'basic_salary': row.get('basic_salary'),
+                'net_salary': row.get('net_salary'),
+                'overtime_amount': row.get('overtime_amount'),
+                'overtime_rate': row.get('overtime_rate'),
+            }
+            for row in payroll.get('records') or []
+        ]
+
+    return {
+        'month': month,
+        'before_settings': {
+            'proration_basis': before.get('proration_basis') if isinstance(before, dict) else None,
+            'ot_rounding': before.get('ot_rounding') if isinstance(before, dict) else None,
+        },
+        'after_settings': {
+            'proration_basis': proration_basis or (before.get('proration_basis') if isinstance(before, dict) else None),
+            'ot_rounding': ot_rounding or (before.get('ot_rounding') if isinstance(before, dict) else None),
+        },
+        'before': _slim(before),
+        'after': _slim(after),
+        'finalized_unchanged': bool(get_monthly_payroll(month, organization_id=organization_id, branch_id=branch_id)),
+    }
 
 
 def reset_salary_config(user_id: int) -> bool:
@@ -6032,12 +6120,17 @@ def auto_calculate_ot_rates(
                 b_sal = float(emp['basic_salary'] or 0.0)
                 ot_rate = round(b_sal / rate_divisor, 2) if (b_sal > 0 and rate_divisor > 0) else 0.0
                 cursor.execute("""
-                    INSERT INTO salary_configs (user_id, basic_salary, allowances, deductions, ot_rate, updated_at)
-                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    INSERT INTO salary_configs (
+                        user_id, basic_salary, allowances, deductions, ot_rate, updated_at,
+                        organization_id, branch_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
                     ON CONFLICT(user_id) DO UPDATE SET
                     ot_rate = excluded.ot_rate,
+                    organization_id = excluded.organization_id,
+                    branch_id = excluded.branch_id,
                     updated_at = CURRENT_TIMESTAMP
-                """, (emp['id'], b_sal, float(emp['allowances'] or 0.0), float(emp['deductions'] or 0.0), ot_rate))
+                """, (emp['id'], b_sal, float(emp['allowances'] or 0.0), float(emp['deductions'] or 0.0), ot_rate, org, branch))
                 updated_count += 1
             conn.commit()
             return updated_count
@@ -6114,6 +6207,18 @@ def get_payroll_settings(
             )
         else:
             settings['legacy_full_salary'] = False
+        basis = str(settings.get('proration_basis') or LEGACY_PRORATION_BASIS)
+        rounding = _normalize_ot_rounding(settings.get('ot_rounding'))
+        settings['legacy_calendar_proration'] = basis == 'calendar_days'
+        settings['legacy_ot_round_rate_first'] = rounding == 'round_rate_first'
+        if basis == 'calendar_days':
+            settings['notices'].append(
+                "Join/exit proration is calendar days. New organizations default to scheduled working days."
+            )
+        if rounding == 'round_rate_first':
+            settings['notices'].append(
+                "Overtime still rounds the hourly rate first. New organizations round the overtime amount at the end."
+            )
         return settings
 
 
@@ -6508,6 +6613,7 @@ def update_payroll_settings(
     branch_id: Optional[str] = None,
     ot_hour_divisor: Optional[float] = None,
     proration_basis: Optional[str] = None,
+    ot_rounding: Optional[str] = None,
     attendance_pay_mode: Optional[str] = None,
     currency_code: Optional[str] = None,
     decimal_places: Optional[int] = None,
@@ -6552,6 +6658,11 @@ def update_payroll_settings(
     basis = str(proration_basis if proration_basis is not None else current.get('proration_basis', DEFAULT_PRORATION_BASIS)).strip().lower()
     if basis not in VALID_PRORATION_BASES:
         raise ValueError('Choose calendar days, scheduled working days, or a 30-day month.')
+    rounding = _normalize_ot_rounding(
+        ot_rounding if ot_rounding is not None else current.get('ot_rounding')
+    )
+    if ot_rounding is not None and str(ot_rounding).strip().lower() not in VALID_OT_ROUNDING:
+        raise ValueError('Choose round hourly rate first, or round the overtime amount at the end.')
     pay_mode = _normalize_attendance_pay_mode(
         attendance_pay_mode if attendance_pay_mode is not None else current.get('attendance_pay_mode')
     )
@@ -6622,6 +6733,7 @@ def update_payroll_settings(
         "non_working_day_ot_premium_active = ?",
         "ot_hour_divisor = ?",
         "proration_basis = ?",
+        "ot_rounding = ?",
         "attendance_pay_mode = ?",
         "currency_code = ?",
         "decimal_places = ?",
@@ -6647,6 +6759,7 @@ def update_payroll_settings(
         non_working_active,
         divisor,
         basis,
+        rounding,
         pay_mode,
         currency,
         places,
@@ -6674,6 +6787,7 @@ def update_payroll_settings(
         "non_working_day_ot_premium_active",
         "ot_hour_divisor",
         "proration_basis",
+        "ot_rounding",
         "attendance_pay_mode",
         "currency_code",
         "decimal_places",
@@ -6715,12 +6829,23 @@ def update_payroll_settings(
                     (org, branch, *params),
                 )
             conn.commit()
+            month_key = date.today().isoformat()[:7]
             previous_mode = _normalize_attendance_pay_mode(current.get('attendance_pay_mode'))
             if previous_mode != pay_mode:
-                _write_payroll_audit(cur, 'attendance_pay_mode_changed', org, branch, date.today().isoformat()[:7], 'Admin', {
+                _write_payroll_audit(cur, 'attendance_pay_mode_changed', org, branch, month_key, 'Admin', {
                     'from': previous_mode, 'to': pay_mode,
                 })
-                conn.commit()
+            prev_basis = str(current.get('proration_basis') or LEGACY_PRORATION_BASIS)
+            if prev_basis != basis:
+                _write_payroll_audit(cur, 'proration_basis_changed', org, branch, month_key, 'Admin', {
+                    'from': prev_basis, 'to': basis,
+                })
+            prev_round = _normalize_ot_rounding(current.get('ot_rounding'))
+            if prev_round != rounding:
+                _write_payroll_audit(cur, 'ot_rounding_changed', org, branch, month_key, 'Admin', {
+                    'from': prev_round, 'to': rounding,
+                })
+            conn.commit()
         return True
     except Exception as e:
         logger.error(f"Failed to update payroll settings: {e}")
@@ -7717,7 +7842,7 @@ def _sanitize_orphan_payroll_records() -> int:
         return 0
 
 
-def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Optional[int] = None, organization_id: str = 'DEFAULT_ORG', branch_id: Optional[str] = None) -> Dict[str, Any] | list:
+def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Optional[int] = None, organization_id: str = 'DEFAULT_ORG', branch_id: Optional[str] = None, settings_overrides: Optional[Dict[str, Any]] = None, force_recalculate: bool = False) -> Dict[str, Any] | list:
     """Build an attendance-based monthly payroll preview without saving it.
 
     Supports the modern single-string contract (YYYY-MM) and a legacy compatibility
@@ -7742,7 +7867,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
     finalized_run = get_monthly_payroll(
         payroll_month, organization_id=organization_id, branch_id=branch_id
     )
-    if finalized_run:
+    if finalized_run and not settings_overrides and not force_recalculate:
         return finalized_run
 
     today = datetime.now().date()
@@ -7757,9 +7882,14 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
     month_end = next_month - timedelta(days=1)
     period_end = min(month_end, today)
     payroll_settings = get_payroll_settings(organization_id=organization_id, branch_id=branch_id)
+    if settings_overrides:
+        payroll_settings = dict(payroll_settings)
+        payroll_settings.update({k: v for k, v in settings_overrides.items() if v is not None})
     deduct_unpaid_leave = bool(payroll_settings.get('deduct_unpaid_leave', 0))
     ot_hour_divisor = float(payroll_settings.get('ot_hour_divisor') or DEFAULT_OT_DIVISOR) or DEFAULT_OT_DIVISOR
     proration_basis = str(payroll_settings.get('proration_basis') or DEFAULT_PRORATION_BASIS)
+    ot_rounding = _normalize_ot_rounding(payroll_settings.get('ot_rounding'))
+    payroll_settings['ot_rounding'] = ot_rounding
     attendance_mode = _normalize_attendance_pay_mode(payroll_settings.get('attendance_pay_mode'))
     month_complete = period_end >= month_end
     decimal_places = int(payroll_settings.get('decimal_places') or DEFAULT_DECIMAL_PLACES)
@@ -7976,9 +8106,10 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         ot_hours = round(sum(entry['hours'] for entry in overtime_entries), 2)
         configured_ot_rate = float(employee.get('ot_rate') or 0.0)
         if configured_ot_rate > 0.0:
-            ot_rate = _m(configured_ot_rate)
+            ot_rate = _m(configured_ot_rate) if ot_rounding == 'round_rate_first' else float(configured_ot_rate)
         elif basic_salary > 0.0:
-            ot_rate = _m(basic_salary / ot_hour_divisor)
+            raw_ot_rate = basic_salary / ot_hour_divisor
+            ot_rate = _m(raw_ot_rate) if ot_rounding == 'round_rate_first' else raw_ot_rate
         else:
             ot_rate = 0.0
         overtime_breakdown = []
@@ -8231,6 +8362,42 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         'earned_so_far_label': f'Earned so far (through {period_end.isoformat()})',
         'projected_month_end_label': 'Projected month-end',
         'deactivated_policy': 'Included only when exit_date is set and on or after the month start. Deactivated with no exit date are excluded and listed in notices.',
+        'proration_basis': proration_basis,
+        'ot_rounding': ot_rounding,
+        'snapshot': {
+            'settings': {
+                'attendance_pay_mode': attendance_mode,
+                'proration_basis': proration_basis,
+                'ot_rounding': ot_rounding,
+                'ot_hour_divisor': ot_hour_divisor,
+                'decimal_places': decimal_places,
+                'deduct_unpaid_leave': deduct_unpaid_leave,
+                'currency_code': payroll_settings.get('currency_code'),
+            },
+            'rules': active_rules,
+            'pay_lines': extra_maps.get('assignments') if isinstance(extra_maps, dict) else [],
+            'pay_line_types': list((extra_maps.get('types') or {}).values()) if isinstance(extra_maps, dict) else [],
+            'rates': [
+                {
+                    'employee_id': row['employee_id'],
+                    'basic_salary': row['basic_salary'],
+                    'overtime_rate': row.get('overtime_rate'),
+                    'allowances': row.get('allowances'),
+                }
+                for row in rows
+            ],
+            'attendance_counts': [
+                {
+                    'employee_id': row['employee_id'],
+                    'present_days': row.get('present_days'),
+                    'absent_days': row.get('absent_days'),
+                    'payable_days': row.get('payable_days'),
+                    'scheduled_workdays': row.get('scheduled_workdays'),
+                    'month_scheduled_workdays': row.get('month_scheduled_workdays'),
+                }
+                for row in rows
+            ],
+        },
         'records': rows,
     }
     if payroll_notices:
@@ -8252,7 +8419,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 conn.commit()
         except Exception:
             logger.exception('Failed to write full_salary notice audit')
-    if rows:
+    if rows and not force_recalculate and not finalized_run:
         preview['payroll_run_id'] = _persist_draft_monthly_payroll(
             preview, organization_id=organization_id, branch_id=branch_id
         )
@@ -8261,7 +8428,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
     finalized_run = get_monthly_payroll(
         payroll_month, organization_id=organization_id, branch_id=branch_id
     )
-    if finalized_run:
+    if finalized_run and not settings_overrides and not force_recalculate:
         return finalized_run
     if month is not None and payroll_month.endswith(f"-{int(month):02d}"):
         return rows
@@ -8443,6 +8610,12 @@ def get_monthly_payroll(
             record['unpaid_leave_days'] = int(record.get('unpaid_leave_days') or 0)
             record['total_leave_days'] = int(record.get('total_leave_days') or (record['paid_leave_days'] + record['unpaid_leave_days']))
             result['records'].append(record)
+        raw_snap = result.get('snapshot_json')
+        if raw_snap:
+            try:
+                result['snapshot'] = json.loads(raw_snap)
+            except (TypeError, ValueError):
+                result['snapshot'] = None
     result['is_finalized'] = True
     result['total_allowances'] = round(sum(float(row.get('allowances') or 0) for row in result['records']), 2)
     result['total_overtime'] = round(sum(float(row.get('overtime_amount') or 0) for row in result['records']), 2)
@@ -8603,10 +8776,12 @@ def finalize_monthly_payroll(
                 raise RuntimeError("Failed to create payroll run")
             _insert_payroll_records(cursor, run_id, preview.get('records', []), finalized=False, organization_id=organization_id, branch_id=branch_id)
             cursor.execute("UPDATE payroll_records SET status = 'Finalized' WHERE payroll_run_id = ?", (run_id,))
+            snapshot_json = json.dumps(preview.get('snapshot') or {}, default=str)
             cursor.execute('''
-                UPDATE payroll_runs SET status = 'Finalized', finalized_at = CURRENT_TIMESTAMP, finalized_by = ?
+                UPDATE payroll_runs SET status = 'Finalized', finalized_at = CURRENT_TIMESTAMP, finalized_by = ?,
+                    snapshot_json = ?
                 WHERE id = ?
-            ''', (finalized_by, run_id,))
+            ''', (finalized_by, snapshot_json, run_id,))
             _write_payroll_audit(cursor, 'payroll_finalized', organization_id, branch_id, preview.get('payroll_month'), finalized_by, {
                 'run_id': run_id,
                 'employee_count': preview.get('employee_count'),

@@ -4977,20 +4977,25 @@ def api_add_leave():
             quota_through_date = quota_range[1]
 
     user = db.get_user_by_id(int(user_id))
-    lid = db.add_leave_request(
-        user_id=int(user_id),
-        user_name=user['name'] if user else data.get('user_name', ''),
-        leave_type=leave_type,
-        leave_duration=leave_duration,
-        start_date=start_date,
-        end_date=end_date,
-        reason=data.get('reason', ''),
-        paid_days=paid_days,
-        unpaid_days=unpaid_days,
-        quota_days=quota_days,
-        paid_through_date=paid_through_date,
-        quota_through_date=quota_through_date,
-    )
+    try:
+        lid = db.add_leave_request(
+            user_id=int(user_id),
+            user_name=user['name'] if user else data.get('user_name', ''),
+            leave_type=leave_type,
+            leave_duration=leave_duration,
+            start_date=start_date,
+            end_date=end_date,
+            reason=data.get('reason', ''),
+            paid_days=paid_days,
+            unpaid_days=unpaid_days,
+            quota_days=quota_days,
+            paid_through_date=paid_through_date,
+            quota_through_date=quota_through_date,
+        )
+    except ValueError as exc:
+        if str(exc) == db.PAYROLL_LOCK_MESSAGE:
+            return jsonify({'error': str(exc), 'reopen': '/api/payroll/reopen'}), 409
+        return jsonify({'error': str(exc)}), 400
     if not lid:
         return jsonify({'success': False, 'message': 'This leave request overlaps an existing active leave or could not be saved. Please review the employee\'s leave dates.'}), 409
     return jsonify({
@@ -5280,15 +5285,20 @@ def api_add_overtime():
         return jsonify({'success': False, 'error': f"Overtime limit exceeded: Maximum allowed is {limit_status['maximum_hours']:g} hours {limit_status['period_label']}."}), 400
     
     reason = str(data.get('reason') or '')
-    oid = db.add_overtime(
-        user_id=user_id,
-        user_name=user['name'],
-        ot_date=ot_date,
-        hours=hours,
-        reason=reason,
-        organization_id=current_tenant,
-        branch_id=current_branch,
-    )
+    try:
+        oid = db.add_overtime(
+            user_id=user_id,
+            user_name=user['name'],
+            ot_date=ot_date,
+            hours=hours,
+            reason=reason,
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
+    except ValueError as exc:
+        if str(exc) == db.PAYROLL_LOCK_MESSAGE:
+            return jsonify({'error': str(exc), 'reopen': '/api/payroll/reopen'}), 409
+        return jsonify({'error': str(exc)}), 400
     if not oid:
         return jsonify({'success': False, 'error': 'Failed to save overtime record'}), 500
     return jsonify({
@@ -5335,13 +5345,18 @@ def api_update_overtime(ot_id):
             'error': 'This overtime was not approved because the employee was absent on the overtime date.'
         }), 409
 
-    success = db.update_overtime_status(
-        ot_id,
-        status=new_status,
-        approved_by=approved_by,
-        organization_id=current_tenant,
-        branch_id=current_branch,
-    )
+    try:
+        success = db.update_overtime_status(
+            ot_id,
+            status=new_status,
+            approved_by=approved_by,
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
+    except ValueError as exc:
+        if str(exc) == db.PAYROLL_LOCK_MESSAGE:
+            return jsonify({'error': str(exc), 'reopen': '/api/payroll/reopen'}), 409
+        return jsonify({'error': str(exc)}), 400
     if not success:
         latest_record = db.get_overtime_by_id(
             ot_id, organization_id=current_tenant, branch_id=current_branch
@@ -6471,6 +6486,7 @@ def api_update_payroll_settings():
             branch_id=current_settings.get('branch_id') or get_current_branch_id(),
             ot_hour_divisor=data.get('ot_hour_divisor', current_settings.get('ot_hour_divisor')),
             proration_basis=data.get('proration_basis', current_settings.get('proration_basis')),
+            ot_rounding=data.get('ot_rounding', current_settings.get('ot_rounding')),
             attendance_pay_mode=data.get('attendance_pay_mode', current_settings.get('attendance_pay_mode')),
             currency_code=data.get('currency_code', current_settings.get('currency_code')),
             decimal_places=data.get('decimal_places', current_settings.get('decimal_places')),
@@ -6505,6 +6521,29 @@ def api_update_payroll_settings():
         'settings': db.get_payroll_settings(**payroll_tenant()),
         'message': 'Payroll settings saved.'
     })
+
+
+@app.route('/api/settings/payroll/preview', methods=['GET', 'POST'])
+def api_preview_payroll_settings():
+    data = request.get_json(silent=True) or {}
+    args = request.args
+    try:
+        return jsonify(db.preview_payroll_settings_impact(
+            **payroll_tenant(),
+            proration_basis=data.get('proration_basis') or args.get('proration_basis'),
+            ot_rounding=data.get('ot_rounding') or args.get('ot_rounding'),
+            payroll_month=data.get('month') or args.get('month'),
+        ))
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+
+@app.route('/api/salary/tenant-report', methods=['GET'])
+def api_salary_config_tenant_report():
+    access_error = _require_admin_configuration()
+    if access_error:
+        return access_error
+    return jsonify({'mismatches': db.list_salary_config_tenant_report(), 'auto_fixed': False})
 
 
 @app.route('/api/settings/payroll/overtime-rules', methods=['GET'])
@@ -7023,7 +7062,12 @@ def legacy_update_leave():
     leave_id = data.get('leave_id')
     if leave_id is None:
         return jsonify({'success': False, 'error': 'leave_id is required'}), 400
-    updated = db.update_leave_status(leave_id, data.get('status', 'approved'), 'Admin')
+    try:
+        updated = db.update_leave_status(leave_id, data.get('status', 'approved'), 'Admin')
+    except ValueError as exc:
+        if str(exc) == db.PAYROLL_LOCK_MESSAGE:
+            return jsonify({'error': str(exc), 'reopen': '/api/payroll/reopen'}), 409
+        return jsonify({'error': str(exc)}), 400
     if not updated:
         return jsonify({'success': False, 'message': 'This leave request overlaps another active leave or no longer exists. Please review the employee\'s leave dates.'}), 409
     return jsonify({'success': True})
