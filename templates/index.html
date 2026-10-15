@@ -783,9 +783,91 @@
 
       #payroll-rules-tab .payroll-panel-help,
       #payroll-rules-tab .alert {
-        font-size: 0.88rem !important;
-        line-height: 1.35;
-        color: #64748b !important;
+        font-size: 0.92rem !important;
+        line-height: 1.4;
+        color: #475569 !important;
+      }
+      .payroll-guide-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.62);
+        z-index: 11000;
+        padding: 24px;
+        overflow: auto;
+      }
+      .payroll-guide-overlay.is-open { display: flex; justify-content: center; align-items: flex-start; }
+      .payroll-guide-card {
+        width: min(1100px, 100%);
+        max-height: calc(100vh - 48px);
+        background: #fff;
+        border-radius: 16px;
+        border: 1px solid #cfe8f7;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        margin: auto;
+      }
+      .payroll-guide-body {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        min-height: 0;
+        flex: 1;
+      }
+      .payroll-guide-nav {
+        background: #f8fafc;
+        border-right: 1px solid #e2e8f0;
+        padding: 12px;
+        overflow: auto;
+      }
+      .payroll-guide-nav button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: transparent;
+        color: #334155;
+        font-weight: 700;
+        font-size: 0.86rem;
+        padding: 9px 10px;
+        border-radius: 8px;
+        margin-bottom: 4px;
+        cursor: pointer;
+      }
+      .payroll-guide-nav button:hover,
+      .payroll-guide-nav button.is-active { background: #e8f6fd; color: #0f4c6d; }
+      .payroll-guide-content { padding: 20px 24px 28px; overflow: auto; }
+      .payroll-guide-content h4 { color: #173042; font-weight: 800; margin: 0 0 8px; }
+      .payroll-guide-content p { color: #475569; margin: 0 0 12px; font-size: 0.95rem; }
+      .payroll-guide-content .formula {
+        background: #f2faff;
+        border: 1px solid #cfe8f7;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-weight: 700;
+        color: #0f4c6d;
+        margin: 0 0 14px;
+        font-size: 0.92rem;
+      }
+      .payroll-guide-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0 0 18px;
+        font-size: 0.9rem;
+      }
+      .payroll-guide-table th,
+      .payroll-guide-table td {
+        border: 1px solid #dbe5ec;
+        padding: 8px 10px;
+        text-align: left;
+      }
+      .payroll-guide-table th { background: #f2faff; color: #173042; }
+      .payroll-guide-table td { color: #334155; }
+      @media (max-width: 800px) {
+        .payroll-guide-body { grid-template-columns: 1fr; }
+        .payroll-guide-nav { display: flex; gap: 6px; overflow-x: auto; border-right: none; border-bottom: 1px solid #e2e8f0; }
+        .payroll-guide-nav button { white-space: nowrap; width: auto; }
       }
 
       #payroll-rules-tab label,
@@ -5601,9 +5683,12 @@ async function fetchMultiLiveDetections() {
             <h3 style="font-weight:800; color:#173042; margin:0;">
               <i class="fa-solid fa-percent" style="color:#3d9fd4; margin-right:6px;"></i> Payroll Settings
             </h3>
-            <p style="color:#64748b; margin:6px 0 0;">Set how this company calculates salary.</p>
+            <p style="color:#64748b; margin:6px 0 0;">Take-home pay = basic salary + extras − deductions. Open Payroll Guide for formulas and examples.</p>
           </div>
           <div class="payroll-quick-links">
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="openPayrollGuide()" style="border-color:#3d9fd4; color:#0f4c6d; font-weight:700;">
+              <i class="fa-solid fa-book-open" style="margin-right:6px;"></i>Payroll Guide
+            </button>
             <button type="button" class="btn btn-primary btn-sm" onclick="switchTab('payroll-view', document.getElementById('menuItemPayroll'))" style="background:#148f77; border:none; font-weight:700;">Open Payroll</button>
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="switchSettingsTab('salary-config-tab', document.getElementById('salaryConfigNavBtn'))">Salary packages</button>
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="switchSettingsTab('payroll-calendar-tab', document.getElementById('payrollCalendarNavBtn'))">Special dates</button>
@@ -5613,7 +5698,7 @@ async function fetchMultiLiveDetections() {
 
         <section class="payroll-panel">
           <h4>Currency</h4>
-          <p class="payroll-panel-help">Locked months are not changed.</p>
+          <p class="payroll-panel-help">Choose the currency shown on payslips. Saving does not change months you already locked.</p>
           <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;">
             <label style="font-size:0.86em; font-weight:700; color:#475569;">
               Currency
@@ -5634,7 +5719,7 @@ async function fetchMultiLiveDetections() {
             <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700;">Save</button>
           </div>
           <p class="payroll-panel-help" id="payrollProrationExample" style="margin-top:10px;">
-            Used only when someone joins or leaves during the month.
+            Used only when someone joins or leaves during the month. Payroll Guide shows a full example with a sample salary of 60,000.
           </p>
           <div id="payrollLegacyCalendarProrationBanner" class="alert alert-info py-2 mt-3 mb-0" hidden>
             This company uses all days in the month for join or leave pay.
@@ -5655,7 +5740,7 @@ async function fetchMultiLiveDetections() {
 
         <section class="payroll-panel">
           <h4>Attendance pay</h4>
-          <p class="payroll-panel-help">Choose how attendance changes salary.</p>
+          <p class="payroll-panel-help">Choose how attendance changes salary. You can change this later. Locked months stay as they are.</p>
           <label style="font-size:0.86em; font-weight:700; color:#475569; display:block; max-width:560px;">
             Pay method
             <select id="payrollAttendancePayMode" class="form-select" style="margin-top:4px;">
@@ -5673,7 +5758,7 @@ async function fetchMultiLiveDetections() {
 
         <section class="payroll-panel">
           <h4>Rest-day extra</h4>
-          <p class="payroll-panel-help">Extra pay when someone works on a rest day (and has no overtime that day).</p>
+          <p class="payroll-panel-help">Extra pay if someone works on a rest day and has no approved overtime that day. Use times daily rate (for example 1.5) or a fixed amount.</p>
           <label style="display:flex; align-items:center; gap:8px; font-weight:700; color:#475569; margin-bottom:10px;">
             <input id="offDayAttendancePayActive" class="form-check-input" type="checkbox" style="width:18px; height:18px; margin:0; accent-color:#0d9488;" onchange="updatePayrollExtraPayModeUI()">
             Enable rest-day extra pay
@@ -5700,24 +5785,24 @@ async function fetchMultiLiveDetections() {
 
         <section class="payroll-panel">
           <h4>Optional features</h4>
-          <p class="payroll-panel-help">Turn on only what you need.</p>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px 14px;">
-            <label style="display:flex; gap:8px; align-items:center; font-weight:700; color:#475569;"><input id="flag_enable_named_components" type="checkbox" class="form-check-input" style="margin:0;"><span>Extra pay items</span></label>
-            <label style="display:flex; gap:8px; align-items:center; font-weight:700; color:#475569;"><input id="flag_enable_bonuses" type="checkbox" class="form-check-input" style="margin:0;" checked><span>Excel bonuses</span></label>
-            <label style="display:flex; gap:8px; align-items:center; font-weight:700; color:#475569;"><input id="flag_enable_individual_adjustments" type="checkbox" class="form-check-input" style="margin:0;"><span>One-person extras</span></label>
-            <label style="display:flex; gap:8px; align-items:center; font-weight:700; color:#475569;"><input id="flag_enable_salary_revisions" type="checkbox" class="form-check-input" style="margin:0;"><span>Mid-month salary change</span></label>
-            <label style="display:flex; gap:8px; align-items:center; font-weight:700; color:#475569;"><input id="flag_enable_tax" type="checkbox" class="form-check-input" style="margin:0;"><span>Tax</span></label>
-            <label style="display:flex; gap:8px; align-items:center; font-weight:700; color:#475569;"><input id="flag_enable_loans" type="checkbox" class="form-check-input" style="margin:0;"><span>Loan</span></label>
-            <label style="display:flex; gap:8px; align-items:center; font-weight:700; color:#475569;"><input id="flag_enable_advances" type="checkbox" class="form-check-input" style="margin:0;"><span>Advance</span></label>
-            <label style="display:flex; gap:8px; align-items:center; font-weight:700; color:#475569;"><input id="flag_enable_provident" type="checkbox" class="form-check-input" style="margin:0;"><span>Provident fund</span></label>
-            <label style="display:flex; gap:8px; align-items:center; font-weight:700; color:#475569;"><input id="flag_enable_insurance" type="checkbox" class="form-check-input" style="margin:0;"><span>Insurance</span></label>
+          <p class="payroll-panel-help">Turn on only what this company uses. You set the amounts yourself.</p>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px 14px;">
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_named_components" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Extra pay items<br><span style="font-weight:500; color:#64748b;">House rent, tax, loan: set a default amount or % below.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_bonuses" type="checkbox" class="form-check-input" style="margin:3px 0 0;" checked><span>Excel bonuses<br><span style="font-weight:500; color:#64748b;">Different amount per person each month.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_individual_adjustments" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>One-person extras<br><span style="font-weight:500; color:#64748b;">A special amount for one staff member.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_salary_revisions" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Mid-month salary change<br><span style="font-weight:500; color:#64748b;">New basic starts from the change date.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_tax" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Tax<br><span style="font-weight:500; color:#64748b;">A deduction with a fixed amount or % of basic.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_loans" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Loan<br><span style="font-weight:500; color:#64748b;">Monthly loan installment.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_advances" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Advance<br><span style="font-weight:500; color:#64748b;">Amount recovered from salary.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_provident" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Provident fund<br><span style="font-weight:500; color:#64748b;">% of basic or a fixed monthly amount.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_insurance" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Insurance<br><span style="font-weight:500; color:#64748b;">Fixed monthly amount or % of basic.</span></span></label>
           </div>
           <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; margin-top:12px;">Save features</button>
         </section>
 
         <section class="payroll-panel">
           <h4>Excel bonuses</h4>
-          <p class="payroll-panel-help">Download, fill amounts, then upload. One month at a time.</p>
+          <p class="payroll-panel-help">Download the sheet, enter an amount for each person, then upload. Unused people can stay at 0. This is for one month only.</p>
           <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
             <label style="font-weight:700; color:#475569;">
               Bonus month
@@ -5733,7 +5818,7 @@ async function fetchMultiLiveDetections() {
 
         <section class="payroll-panel">
           <h4>Extra pay and deductions</h4>
-          <p class="payroll-panel-help">Add house rent, tax, and similar items. Then choose who gets them.</p>
+          <p class="payroll-panel-help">Add items like house rent or tax. Then choose who they apply to. A start date is required.</p>
           <form class="payroll-rule-form" onsubmit="event.preventDefault(); savePayrollComponentType();">
             <label class="payroll-rule-field">Name <input id="payrollComponentName" class="form-control" type="text" required placeholder="House rent"></label>
             <label class="payroll-rule-field">Short code <input id="payrollComponentCode" class="form-control" type="text" required placeholder="HRA"></label>
@@ -5776,7 +5861,7 @@ async function fetchMultiLiveDetections() {
           </div>
           <div style="margin-top:16px; padding-top:12px; border-top:1px solid #dbe5ec;">
             <div style="font-weight:700; color:#173042;">Who it applies to</div>
-            <p class="payroll-panel-help">Choose who this item applies to.</p>
+            <p class="payroll-panel-help">Pick everyone, or one branch, shift, department, job title, or person. A person setting wins over a group setting.</p>
             <form class="payroll-rule-form" onsubmit="event.preventDefault(); assignScopedPayLine();">
               <label class="payroll-rule-field">Who
                 <select id="payLineScopeType" class="form-select" onchange="fillPayLineScopeOptions()">
@@ -5826,9 +5911,9 @@ async function fetchMultiLiveDetections() {
 
         <section class="payroll-panel" id="payrollAbsenceSection">
           <h4>Missed days</h4>
-          <p class="payroll-panel-help" id="payrollAbsenceHelp">Cut pay for missed days when you pay full salary.</p>
+          <p class="payroll-panel-help" id="payrollAbsenceHelp">Rules for unpaid missed days when you pay full salary. Date ranges cannot overlap.</p>
           <div id="payrollAbsenceUnusedBanner" class="alert alert-secondary py-2" hidden>
-            These cuts are off because you pay for days present. Unpaid leave and half-day leave still work.
+            Missed-day cut rules are off because you pay for days present. Unpaid leave and half-day leave still work.
           </div>
           {% if not is_client_session or client_module_entitlements.leave %}
           <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
@@ -5845,7 +5930,7 @@ async function fetchMultiLiveDetections() {
         <div class="settings-leave-only" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div style="flex:1; min-width:240px;">
             <div style="font-weight:700; color:#173042;">Half-day leave</div>
-            <div id="halfLeaveQuotaDescription" style="font-size:0.82em; color:#64748b;">How to count half-day leave.</div>
+            <div id="halfLeaveQuotaDescription" style="font-size:0.82em; color:#64748b;">How should half-day leave be counted? Use each leave type’s own rules, set a monthly limit, or count two half days as one full day.</div>
           </div>
           <select id="halfLeaveQuotaMode" class="form-select" style="max-width:280px;" onchange="updateHalfLeaveQuotaModeUI(); savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle').checked)">
             <option value="category">Use each leave type’s own rules</option>
@@ -5860,7 +5945,7 @@ async function fetchMultiLiveDetections() {
           <!-- Department/Employee Specific Half Leave Rules -->
           <div style="flex-basis: 100%; margin-top:16px; padding-top:12px; border-top:1px solid #dbe5ec;">
             <div style="font-weight:700; color:#173042; margin-bottom:8px;">Half-day leave for one group</div>
-            <div style="font-size:0.82em; color:#64748b; margin-bottom:10px;">Different limit for one department or one person.</div>
+            <div style="font-size:0.82em; color:#64748b; margin-bottom:10px;">Use a different monthly limit for one department or one person.</div>
             <form id="halfLeaveSpecificRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); saveHalfLeaveSpecificRule();">
               <label class="payroll-rule-field">
                 Applies to
@@ -5907,10 +5992,10 @@ async function fetchMultiLiveDetections() {
         {% if not is_client_session or client_module_entitlements.overtime %}
         <section class="payroll-panel settings-overtime-only">
           <h4>Overtime</h4>
-          <p class="payroll-panel-help">Only approved overtime is paid.</p>
+          <p class="payroll-panel-help">Only approved overtime is paid. Pending overtime waits until someone approves it.</p>
         <div class="settings-overtime-only" style="padding:0 0 12px; margin-bottom:12px;">
           <div style="font-weight:700; color:#173042;">Overtime hourly rate</div>
-          <div style="font-size:0.82em; color:#64748b; margin:4px 0 10px;">Used when a person has no overtime rate on their salary. Default 208.</div>
+          <div style="font-size:0.82em; color:#64748b; margin:4px 0 10px;">If a person has no overtime rate on their salary, payroll uses basic salary ÷ this number. Default 208 is 8 hours × 26 days.</div>
           <label for="payrollOtHourDivisor" style="display:flex; align-items:center; gap:8px; margin:0; font-size:0.86em; font-weight:700; color:#475569;">
             Hours per month
             <input id="payrollOtHourDivisor" class="form-control" type="number" min="1" step="0.01" value="208" style="width:110px;">
@@ -5923,7 +6008,7 @@ async function fetchMultiLiveDetections() {
               <option value="round_at_end">Round the overtime amount at the end</option>
             </select>
           </label>
-          <p class="payroll-panel-help" style="margin-top:8px;">Locked months are not changed.</p>
+          <p class="payroll-panel-help" style="margin-top:8px;">Choose when to round overtime. Payroll Guide shows a full example. Locked months are not changed.</p>
           <div id="payrollLegacyOtRoundRateFirstBanner" class="alert alert-info py-2 mt-3 mb-0" hidden>
             This company rounds the hourly rate first.
           </div>
@@ -5932,7 +6017,7 @@ async function fetchMultiLiveDetections() {
         <div class="settings-overtime-only" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div style="flex:1; min-width:260px;">
             <div style="font-weight:700; color:#173042;">Maximum overtime</div>
-            <div style="font-size:0.82em; color:#64748b;">Hours over this limit stay pending. Use 0 to turn off.</div>
+            <div style="font-size:0.82em; color:#64748b;">Set a maximum for each person. Extra overtime stays pending until someone approves or rejects it. Use 0 to turn this off.</div>
             <div id="overtimeLimitSettingsMessage" role="status" style="font-size:0.8em; color:#64748b; margin-top:4px;">Loading overtime limit...</div>
           </div>
           <label for="overtimeMaxHours" style="display:flex; align-items:center; gap:8px; margin:0; font-size:0.86em; font-weight:700; color:#475569;">
@@ -5953,7 +6038,7 @@ async function fetchMultiLiveDetections() {
           <!-- Department/Employee Specific Overtime Limit Rules -->
           <div style="width:100%; margin-top:16px; border-top:1px solid #dbe5ec; padding-top:12px;">
             <div style="font-weight:700; color:#173042; margin-bottom:8px;">Overtime limit for one group</div>
-            <div style="font-size:0.82em; color:#64748b; margin-bottom:10px;">Different limit for one department or one person.</div>
+            <div style="font-size:0.82em; color:#64748b; margin-bottom:10px;">Use a different overtime limit for one department or one person.</div>
             <form id="overtimeLimitSpecificRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); saveSpecificOvertimeLimitRule();">
               <label class="payroll-rule-field">
                 Applies to
@@ -6007,7 +6092,7 @@ async function fetchMultiLiveDetections() {
 
         <div class="settings-overtime-only" style="padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div style="font-weight:700; color:#173042;">Holiday / rest-day extra pay</div>
-          <div style="font-size:0.82em; color:#64748b; margin:3px 0 10px;">Extra overtime pay on holidays and rest days.</div>
+          <div style="font-size:0.82em; color:#64748b; margin:3px 0 10px;">Extra overtime pay on public holidays and rest days. Rest days come from each person’s shift week, not from a fixed Sunday.</div>
           <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px;">
             <label style="font-size:0.86em; font-weight:700; color:#475569;">
               Public holiday extra
@@ -6458,6 +6543,126 @@ async function fetchMultiLiveDetections() {
   </footer>
 </div>
 <!-- End .main-panel -->
+
+  <div id="payrollGuideOverlay" class="payroll-guide-overlay" onclick="if(event.target===this) closePayrollGuide();">
+    <div class="payroll-guide-card" role="dialog" aria-labelledby="payrollGuideTitle">
+      <div style="background:#f2faff; border-bottom:1px solid #cfe8f7; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <h3 id="payrollGuideTitle" style="font-size:1.15em; font-weight:800; color:#173042; margin:0;"><i class="fa-solid fa-book-open" style="color:#3d9fd4; margin-right:8px;"></i>Payroll Guide</h3>
+          <div style="color:#64748b; font-size:0.88rem; margin-top:4px;">Sample figures only. These are not your live staff records.</div>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closePayrollGuide()">Close</button>
+      </div>
+      <div class="payroll-guide-body">
+        <nav class="payroll-guide-nav" aria-label="Guide sections">
+          <button type="button" class="is-active" onclick="showPayrollGuideSection('guide-overview', this)">Overview</button>
+          <button type="button" onclick="showPayrollGuideSection('guide-join', this)">Join or leave</button>
+          <button type="button" onclick="showPayrollGuideSection('guide-attendance', this)">Attendance pay</button>
+          <button type="button" onclick="showPayrollGuideSection('guide-extras', this)">Extra pay</button>
+          <button type="button" onclick="showPayrollGuideSection('guide-missed', this)">Missed days</button>
+          <button type="button" onclick="showPayrollGuideSection('guide-overtime', this)">Overtime</button>
+          <button type="button" onclick="showPayrollGuideSection('guide-rest', this)">Rest day &amp; holiday</button>
+        </nav>
+        <div class="payroll-guide-content">
+          <section id="guide-overview">
+            <h4>How take-home pay is built</h4>
+            <p>Payroll starts from the person’s basic salary, then adds extras and subtracts deductions.</p>
+            <div class="formula">Take-home pay = Basic + extras − deductions</div>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Part</th><th>What it means</th><th>Sample</th></tr></thead>
+              <tbody>
+                <tr><td>Basic</td><td>Monthly salary from Salary packages</td><td>60,000</td></tr>
+                <tr><td>Extras</td><td>House rent, bonus, overtime, rest-day extra</td><td>+ 6,000 house rent</td></tr>
+                <tr><td>Deductions</td><td>Tax, loan, unpaid leave, missed-day cuts</td><td>− 2,000 tax</td></tr>
+                <tr><td>Take-home</td><td>Amount paid this month</td><td>64,000</td></tr>
+              </tbody>
+            </table>
+            <p>Saving settings does not rewrite months you already locked. Recalculate an open month to see new numbers on the Payroll page.</p>
+          </section>
+          <section id="guide-join" hidden>
+            <h4>Join or leave mid-month</h4>
+            <p>When someone does not work the full month, salary is split by the method you choose. Sample: monthly salary 60,000, joins on 11 September, 30 calendar days, 26 work days, 17 work days after joining.</p>
+            <div class="formula">Split pay = (days this person is eligible ÷ days in the method) × 60,000</div>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Method</th><th>Calculation</th><th>Result</th></tr></thead>
+              <tbody>
+                <tr><td>All days in the month</td><td>20 ÷ 30 × 60,000</td><td>40,000</td></tr>
+                <tr><td>Work days only</td><td>17 ÷ 26 × 60,000</td><td>39,230.77</td></tr>
+                <tr><td>Always 30 days</td><td>20 ÷ 30 × 60,000</td><td>40,000</td></tr>
+              </tbody>
+            </table>
+            <p>If you also pay for days present, the month’s work days (for example 26) are used as the pay divisor so the same person is not reduced twice.</p>
+          </section>
+          <section id="guide-attendance" hidden>
+            <h4>Attendance pay</h4>
+            <p>Choose one company method. Sample person: 60,000 basic, 26 work days in the month.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Method</th><th>Formula</th><th>If present 24 days</th></tr></thead>
+              <tbody>
+                <tr><td>Pay for days present</td><td>Basic × (payable days ÷ work days)</td><td>60,000 × 24 ÷ 26 = 55,384.62</td></tr>
+                <tr><td>Pay full salary, then cut</td><td>Start from 60,000, then apply missed-day rules</td><td>Depends on the missed-day rule you add</td></tr>
+              </tbody>
+            </table>
+            <p>Payable days usually count present, late, and paid leave. Unpaid leave can still be deducted if that option is on.</p>
+          </section>
+          <section id="guide-extras" hidden>
+            <h4>Extra pay and deductions</h4>
+            <p>Create an item, then assign it to everyone or to one group. Sample basic salary 60,000.</p>
+            <div class="formula">Percent of basic = 60,000 × (percent ÷ 100)</div>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Item</th><th>How to calculate</th><th>Setting</th><th>Amount</th></tr></thead>
+              <tbody>
+                <tr><td>House rent</td><td>Percent of basic</td><td>10%</td><td>6,000 extra</td></tr>
+                <tr><td>Tax</td><td>Same amount every month</td><td>2,000</td><td>2,000 deducted</td></tr>
+                <tr><td>Loan</td><td>Same amount every month</td><td>5,000</td><td>5,000 deducted</td></tr>
+              </tbody>
+            </table>
+            <p>A person setting wins over a department or company setting. Lowest / highest amount can cap a percent item. Excel bonuses are a separate amount per person for one month.</p>
+          </section>
+          <section id="guide-missed" hidden>
+            <h4>Missed days and half-day leave</h4>
+            <p>Missed-day cut rules apply when you pay full salary. They are off when you pay for days present, because those days are already unpaid. Unpaid leave and half-day leave still work.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Rule</th><th>Formula</th><th>Sample (60,000 basic)</th></tr></thead>
+              <tbody>
+                <tr><td>Percent of salary</td><td>Basic × (percent ÷ 100)</td><td>5% = 3,000 cut</td></tr>
+                <tr><td>Fixed amount</td><td>The amount you enter</td><td>1,500 cut</td></tr>
+                <tr><td>Unpaid leave</td><td>Basic × unpaid days ÷ work days</td><td>2 unpaid days: 60,000 × 2 ÷ 26 = 4,615.38</td></tr>
+                <tr><td>Two half days = one full day</td><td>Every 2 half days count as 1 day off</td><td>4 half days = 2 days</td></tr>
+              </tbody>
+            </table>
+          </section>
+          <section id="guide-overtime" hidden>
+            <h4>Overtime</h4>
+            <p>Only approved overtime is paid. If the person has no overtime rate on their salary, payroll uses this hourly rate:</p>
+            <div class="formula">Hourly rate = basic salary ÷ hours per month (default 208 = 8 × 26)</div>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Step</th><th>Round hourly rate first</th><th>Round amount at the end</th></tr></thead>
+              <tbody>
+                <tr><td>Hourly rate</td><td>60,000 ÷ 208 = 288.46</td><td>60,000 ÷ 208 = 288.4615…</td></tr>
+                <tr><td>4 approved hours</td><td>4 × 288.46 = 1,153.84</td><td>4 × (60,000 ÷ 208) = 1,153.85</td></tr>
+              </tbody>
+            </table>
+            <p>A maximum hours limit (for example 10 hours per month) sends extra overtime to pending until someone approves or rejects it. Use 0 to turn the limit off.</p>
+          </section>
+          <section id="guide-rest" hidden>
+            <h4>Rest day and holiday extra</h4>
+            <p>Rest days follow each person’s shift week. Public holidays follow the company holiday list. They are not hardcoded to Sunday.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Setting</th><th>Formula</th><th>Sample daily rate 2,307.69</th></tr></thead>
+              <tbody>
+                <tr><td>Times daily rate 1.5</td><td>Daily rate × 1.5</td><td>3,461.54 extra</td></tr>
+                <tr><td>Fixed amount per rest day</td><td>The amount you enter</td><td>1,000 extra</td></tr>
+                <tr><td>Holiday overtime +5%</td><td>Normal OT × 1.05</td><td>1,153.84 × 1.05 = 1,211.53</td></tr>
+                <tr><td>Rest-day overtime × 2.5</td><td>Hourly rate × hours × 2.5</td><td>288.46 × 4 × 2.5 = 2,884.60</td></tr>
+              </tbody>
+            </table>
+            <p>Rest-day extra for attendance is paid only when the person is present on a rest day and has no approved overtime that date.</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Modals for Department, Designation, and Camera -->
   <!-- Add/Edit Department Modal -->
@@ -12601,7 +12806,7 @@ async function fetchMultiLiveDetections() {
           'depts-tab': { title: 'Department Management', subtitle: 'Manage departments used across the organization.' },
           'desigs-tab': { title: 'Designation Management', subtitle: 'Manage department-specific staff designations.' },
           'cameras-tab': { title: 'Camera Management', subtitle: 'Configure and manage attendance cameras.' },
-          'payroll-rules-tab': { title: 'Payroll Settings', subtitle: 'How this company calculates salary.' },
+          'payroll-rules-tab': { title: 'Payroll Settings', subtitle: 'Set salary rules for this company. Open Payroll Guide for formulas and examples.' },
           'payroll-calendar-tab': { title: 'Payroll Calendar', subtitle: 'Configure date-specific working days, closures, and holidays.' },
           'salary-config-tab': { title: 'Employee Salary Structure', subtitle: 'Configure employee basic pay, allowances, deductions, and hourly overtime rates.' }
         };
@@ -13739,6 +13944,32 @@ async function fetchMultiLiveDetections() {
           box.hidden = true;
           box.textContent = '';
         }
+      }
+
+      function openPayrollGuide() {
+        const overlay = document.getElementById('payrollGuideOverlay');
+        if (!overlay) return;
+        overlay.classList.add('is-open');
+        const first = overlay.querySelector('.payroll-guide-nav button');
+        if (first) showPayrollGuideSection('guide-overview', first);
+        document.addEventListener('keydown', payrollGuideEscHandler);
+      }
+
+      function payrollGuideEscHandler(event) {
+        if (event.key === 'Escape') closePayrollGuide();
+      }
+
+      function closePayrollGuide() {
+        document.getElementById('payrollGuideOverlay')?.classList.remove('is-open');
+        document.removeEventListener('keydown', payrollGuideEscHandler);
+      }
+
+      function showPayrollGuideSection(sectionId, button) {
+        document.querySelectorAll('.payroll-guide-content > section').forEach((section) => {
+          section.hidden = section.id !== sectionId;
+        });
+        document.querySelectorAll('.payroll-guide-nav button').forEach((item) => item.classList.remove('is-active'));
+        if (button) button.classList.add('is-active');
       }
 
       async function switchToPayableDays() {
