@@ -44,8 +44,8 @@
     <style id="server-rendered-client-entitlements">
       {% if not client_module_entitlements.attendance %}.sidebar-menu .menu-item[data-module="attendance"] { display: none !important; } #reports-view, #staff-view, #live-view, #enroll-view, #cameras-tab { display: none !important; } .settings-nav-btn[data-settings-module="attendance"] { display: none !important; }{% endif %}
       {% if not client_module_entitlements.payroll %}.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; } #payroll-view, #payroll-rules-tab, #payroll-calendar-tab, #salary-config-tab { display: none !important; } .settings-nav-btn[data-settings-module="payroll"], .payroll-only-ui { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.leave %}.sidebar-menu .menu-item[data-module="leave"] { display: none !important; } #leaves-view { display: none !important; } .settings-leave-only { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; } #overtime-view { display: none !important; } .settings-overtime-only { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.leave %}.sidebar-menu .menu-item[data-module="leave"] { display: none !important; } #leaves-view { display: none !important; } .settings-leave-only, .payroll-leave-only { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; } #overtime-view { display: none !important; } .settings-overtime-only, .payroll-overtime-only { display: none !important; }{% endif %}
       {% if not client_module_entitlements.shifts %}.sidebar-menu .menu-item[data-module="shifts"] { display: none !important; } #shifts-view { display: none !important; } .settings-shifts-only { display: none !important; }{% endif %}
     </style>
     <script>
@@ -4438,7 +4438,7 @@ async function fetchMultiLiveDetections() {
         <div id="payrollReviewIssues" style="margin:12px 0;"></div>
         <div class="log-table-wrapper" style="border:1px solid #cfe8f7; border-radius:8px;">
           <table class="log-table" style="min-width:1400px;">
-            <thead style="background:#f2faff; border-bottom:1px solid #cfe8f7;"><tr><th>Employee</th><th>Department</th><th>Designation</th><th class="text-end">Basic Salary</th><th>Scheduled</th><th>Present</th><th>Half Leaves</th><th>Absent</th><th>Late</th><th>Paid Leaves</th><th>Unpaid Leaves</th><th>Total Leaves</th><th>Payable Days</th><th>Rule</th><th>Type</th><th>Value</th><th class="text-end">Half-Leave Deduction</th><th class="text-end">Deduction</th><th class="text-end">Net Payable</th><th>Status / Issue</th><th class="text-center">OT Review</th></tr></thead>
+            <thead id="payrollReviewTableHead" style="background:#f2faff; border-bottom:1px solid #cfe8f7;"></thead>
             <tbody id="payrollReviewTableBody"></tbody>
           </table>
         </div>
@@ -7370,11 +7370,23 @@ async function fetchMultiLiveDetections() {
 
       let payrollActiveSubtab = 'salary';
 
+      function payrollHasLeave() {
+        if (!window.entitledModules) return !Array.isArray(window.clientSessionModules);
+        return Boolean(window.entitledModules.leave);
+      }
+
+      function payrollHasOvertime() {
+        if (!window.entitledModules) return !Array.isArray(window.clientSessionModules);
+        return Boolean(window.entitledModules.overtime);
+      }
+
       function getPayrollActiveColspan() {
-        if (payrollActiveSubtab === 'salary') return 11;
-        if (payrollActiveSubtab === 'attendance') return 10;
-        if (payrollActiveSubtab === 'deductions') return 8;
-        return 22;
+        const hasLeave = payrollHasLeave();
+        const hasOt = payrollHasOvertime();
+        if (payrollActiveSubtab === 'salary') return hasOt ? 11 : 10;
+        if (payrollActiveSubtab === 'attendance') return hasLeave ? 10 : 6;
+        if (payrollActiveSubtab === 'deductions') return hasLeave ? 8 : 7;
+        return hasLeave ? 22 : 17;
       }
 
       function switchPayrollSubtab(subtab) {
@@ -7390,15 +7402,19 @@ async function fetchMultiLiveDetections() {
         const desc = document.getElementById('payrollTabDescription');
         if (desc) {
           if (subtab === 'salary') {
-            desc.innerHTML = '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Salary &amp; Net Pay:</strong> Basic salary, allowances, overtime, deductions &amp; net pay.';
+            desc.innerHTML = payrollHasOvertime()
+              ? '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Salary &amp; Net Pay:</strong> Basic salary, allowances, overtime, deductions &amp; net pay.'
+              : '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Salary &amp; Net Pay:</strong> Basic salary, allowances, extras, deductions &amp; net pay.';
           } else if (subtab === 'attendance') {
-            desc.innerHTML = '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Attendance Breakdown:</strong> Scheduled days, present, absent, late, approved leaves, and payable days.';
-                      desc.innerHTML = '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Attendance Breakdown:</strong> Scheduled days, presence, half-leave occurrences, absences, approved leaves, and payable days.';
+            desc.innerHTML = payrollHasLeave()
+              ? '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Attendance Breakdown:</strong> Scheduled days, present, absent, late, approved leaves, and payable days.'
+              : '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Attendance Breakdown:</strong> Scheduled days, present, absent, late, and payable days.';
           } else if (subtab === 'deductions') {
-            desc.innerHTML = '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Deductions &amp; Rules:</strong> Matched policy rule, rule value, absence deduction &amp; fixed deductions.';
-                      desc.innerHTML = '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Deductions &amp; Rules:</strong> Matched absence and half-leave rules with their separate deductions.';
+            desc.innerHTML = payrollHasLeave()
+              ? '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Deductions &amp; Rules:</strong> Matched absence and half-leave rules with their separate deductions.'
+              : '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>Deductions &amp; Rules:</strong> Matched absence rule, rule value, absence deduction &amp; fixed deductions.';
           } else if (subtab === 'full') {
-            desc.innerHTML = '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>All Columns:</strong> Complete full matrix (horizontal scroll enabled).';
+            desc.innerHTML = '<i class="fa-solid fa-circle-info me-1" style="color:#0d9488;"></i> <strong>All Columns:</strong> Complete payroll matrix for licensed modules.';
           }
         }
 
@@ -7410,6 +7426,8 @@ async function fetchMultiLiveDetections() {
         const thead = document.getElementById('payrollTableHead');
         const table = document.getElementById('payrollMainTable');
         if (!thead || !table) return;
+        const hasLeave = payrollHasLeave();
+        const hasOt = payrollHasOvertime();
 
         if (payrollActiveSubtab === 'salary') {
           table.style.minWidth = '100%';
@@ -7418,7 +7436,7 @@ async function fetchMultiLiveDetections() {
               <th style="min-width:180px;">Employee</th>
               <th class="text-end" style="min-width:115px;">Basic Salary</th>
               <th class="text-end" style="min-width:95px;">Allowances</th>
-              <th class="text-end" style="min-width:110px;">Overtime Pay</th>
+              ${hasOt ? '<th class="text-end payroll-overtime-only" style="min-width:110px;">Overtime Pay</th>' : ''}
               <th class="text-end" style="min-width:90px;">Bonus</th>
               <th class="text-end" style="min-width:110px;">Rest-day extra</th>
               <th class="text-end" style="min-width:110px;">Deductions</th>
@@ -7429,18 +7447,16 @@ async function fetchMultiLiveDetections() {
             </tr>
           `;
         } else if (payrollActiveSubtab === 'attendance') {
-          table.style.minWidth = '1200px';
+          table.style.minWidth = hasLeave ? '1200px' : '900px';
           thead.innerHTML = `
             <tr>
               <th style="min-width:200px;">Employee</th>
               <th class="text-center" style="min-width:110px;">Scheduled</th>
               <th class="text-center" style="min-width:95px;">Present</th>
-              <th class="text-center" style="min-width:115px;">Half Leaves</th>
+              ${hasLeave ? '<th class="text-center payroll-leave-only" style="min-width:115px;">Half Leaves</th>' : ''}
               <th class="text-center" style="min-width:95px;">Absent</th>
               <th class="text-center" style="min-width:95px;">Late</th>
-              <th class="text-center" style="min-width:115px;">Paid Leaves</th>
-              <th class="text-center" style="min-width:120px;">Unpaid Leaves</th>
-              <th class="text-center" style="min-width:110px;">Total Leaves</th>
+              ${hasLeave ? '<th class="text-center payroll-leave-only" style="min-width:115px;">Paid Leaves</th><th class="text-center payroll-leave-only" style="min-width:120px;">Unpaid Leaves</th><th class="text-center payroll-leave-only" style="min-width:110px;">Total Leaves</th>' : ''}
               <th class="text-center" style="min-width:110px;">Payable Days</th>
             </tr>
           `;
@@ -7453,13 +7469,13 @@ async function fetchMultiLiveDetections() {
               <th style="min-width:180px;">Matched Policy Rule</th>
               <th class="text-center" style="min-width:110px;">Rule Value</th>
               <th class="text-end" style="min-width:125px;">Absence Deduction</th>
-              <th class="text-end" style="min-width:125px;">Half-Leave Deduction</th>
+              ${hasLeave ? '<th class="text-end payroll-leave-only" style="min-width:125px;">Half-Leave Deduction</th>' : ''}
               <th class="text-end" style="min-width:110px;">Fixed Custom</th>
               <th class="text-end" style="min-width:120px;">Total Deduction</th>
             </tr>
           `;
         } else {
-          table.style.minWidth = '1720px';
+          table.style.minWidth = hasLeave ? '1720px' : '1400px';
           thead.innerHTML = `
             <tr>
               <th>Employee ID</th>
@@ -7469,17 +7485,15 @@ async function fetchMultiLiveDetections() {
               <th class="text-end">Basic Salary</th>
               <th class="text-center">Scheduled Days</th>
               <th class="text-center">Present</th>
-              <th class="text-center">Half Leaves</th>
+              ${hasLeave ? '<th class="text-center payroll-leave-only">Half Leaves</th>' : ''}
               <th class="text-center">Absent</th>
               <th class="text-center">Late</th>
-              <th class="text-center">Paid Leaves</th>
-              <th class="text-center">Unpaid Leaves</th>
-              <th class="text-center">Total Leaves</th>
+              ${hasLeave ? '<th class="text-center payroll-leave-only">Paid Leaves</th><th class="text-center payroll-leave-only">Unpaid Leaves</th><th class="text-center payroll-leave-only">Total Leaves</th>' : ''}
               <th class="text-center">Payable Days</th>
               <th>Matched Rule</th>
               <th>Deduction Type</th>
               <th class="text-center">Rule Value</th>
-              <th class="text-end">Half-Leave Deduction</th>
+              ${hasLeave ? '<th class="text-end payroll-leave-only">Half-Leave Deduction</th>' : ''}
               <th class="text-end">Deduction</th>
               <th class="text-end">Net Payable</th>
               <th>Status</th>
@@ -7541,14 +7555,14 @@ async function fetchMultiLiveDetections() {
                 </td>
                 <td class="text-end font-monospace">${payrollMoney(row.basic_salary)}</td>
                 <td class="text-end font-monospace text-success">${Number(row.allowances || 0) > 0 ? '+ ' + payrollMoney(row.allowances) : '—'}</td>
-                <td class="text-end font-monospace text-info">${Number(row.overtime_amount || 0) > 0 ? '+ ' + payrollMoney(row.overtime_amount) + `<div style="font-size:0.72em; color:#64748b;">(${Number(row.overtime_hours || 0).toFixed(1)} hrs)</div>` : '—'}</td>
+                ${payrollHasOvertime() ? `<td class="text-end font-monospace text-info payroll-overtime-only">${Number(row.overtime_amount || 0) > 0 ? '+ ' + payrollMoney(row.overtime_amount) + `<div style="font-size:0.72em; color:#64748b;">(${Number(row.overtime_hours || 0).toFixed(1)} hrs)</div>` : '—'}</td>` : ''}
                 <td class="text-end font-monospace text-success">${Number(row.bonus_amount || 0) > 0 ? '+ ' + payrollMoney(row.bonus_amount) : '—'}</td>
                 <td class="text-end font-monospace text-success">${Number(row.off_day_extra_pay || 0) > 0 ? '+ ' + payrollMoney(row.off_day_extra_pay) + (Number(row.off_days_worked || 0) ? `<div style="font-size:0.72em; color:#64748b;">(${Number(row.off_days_worked)} rest day${Number(row.off_days_worked) === 1 ? '' : 's'})</div>` : '') : '—'}</td>
                 <td class="text-end font-monospace text-danger">${Number(row.deduction_amount || 0) > 0 ? '- ' + payrollMoney(row.deduction_amount) : 'PKR 0.00'}</td>
                 <td class="text-end font-monospace fw-bold" style="color:#0d9488; font-size:1.02em;">${payrollMoney(row.net_salary)}</td>
                 <td class="text-center"><span class="badge ${statusClass}">${payrollEscape(status)}</span></td>
                 <td>${rowIssues.length ? `<span class="text-danger small fw-semibold">${payrollEscape(rowIssues.join('; '))}</span>` : '<span class="text-muted small">—</span>'}</td>
-                <td class="text-center" style="white-space:nowrap;">${(window.entitledModules && window.entitledModules.overtime && !currentPayrollPreview.is_finalized) ? `<button type="button" class="btn btn-sm btn-outline-info me-1" onclick="openPayrollOtReview(${row.employee_id})" title="Review daily overtime"><i class="fa-solid fa-clock"></i> OT</button>` : ''}<button type="button" class="btn btn-sm btn-primary" onclick="downloadPayslipPdf(${row.employee_id})" style="background:#3d9fd4; border:none; font-weight:700;">Payslip</button></td>
+                <td class="text-center" style="white-space:nowrap;">${(payrollHasOvertime() && !currentPayrollPreview.is_finalized) ? `<button type="button" class="btn btn-sm btn-outline-info me-1 payroll-overtime-only" onclick="openPayrollOtReview(${row.employee_id})" title="Review daily overtime"><i class="fa-solid fa-clock"></i> OT</button>` : ''}<button type="button" class="btn btn-sm btn-primary" onclick="downloadPayslipPdf(${row.employee_id})" style="background:#3d9fd4; border:none; font-weight:700;">Payslip</button></td>
               </tr>`;
             } else if (payrollActiveSubtab === 'attendance') {
               return `<tr>
@@ -7558,18 +7572,18 @@ async function fetchMultiLiveDetections() {
                 </td>
                 <td class="text-center fw-semibold" style="color:#475569;">${Number(row.scheduled_workdays || 0)}</td>
                 <td class="text-center"><span class="badge bg-success-subtle text-success">${Number(row.present_days || 0)}</span></td>
-                <td class="text-center"><span class="badge ${Number(row.half_leave_count || 0) > 0 ? 'bg-info-subtle text-info' : 'bg-light text-muted'}">${Number(row.half_leave_count || 0)}</span></td>
+                ${payrollHasLeave() ? `<td class="text-center payroll-leave-only"><span class="badge ${Number(row.half_leave_count || 0) > 0 ? 'bg-info-subtle text-info' : 'bg-light text-muted'}">${Number(row.half_leave_count || 0)}</span></td>` : ''}
                 <td class="text-center"><span class="badge ${Number(row.absent_days || 0) > 0 ? 'bg-danger-subtle text-danger' : 'bg-light text-muted'}">${Number(row.absent_days || 0)}</span></td>
                 <td class="text-center"><span class="badge ${Number(row.late_days || 0) > 0 ? 'bg-warning-subtle text-warning-emphasis' : 'bg-light text-muted'}">${Number(row.late_days || 0)}</span></td>
-                <td class="text-center"><span class="badge ${Number((row.paid_leave_days != null ? row.paid_leave_days : row.approved_leave_days) || 0) > 0 ? 'bg-info-subtle text-info' : 'bg-light text-muted'}">${Number((row.paid_leave_days != null ? row.paid_leave_days : row.approved_leave_days) || 0)}</span></td>
-                <td class="text-center"><span class="badge ${Number(row.unpaid_leave_days || 0) > 0 ? 'bg-danger-subtle text-danger' : 'bg-light text-muted'}">${Number(row.unpaid_leave_days || 0)}</span></td>
-                <td class="text-center fw-semibold">${Number(row.total_leave_days || (Number(row.paid_leave_days || row.approved_leave_days || 0) + Number(row.unpaid_leave_days || 0)))}</td>
+                ${payrollHasLeave() ? `<td class="text-center payroll-leave-only"><span class="badge ${Number((row.paid_leave_days != null ? row.paid_leave_days : row.approved_leave_days) || 0) > 0 ? 'bg-info-subtle text-info' : 'bg-light text-muted'}">${Number((row.paid_leave_days != null ? row.paid_leave_days : row.approved_leave_days) || 0)}</span></td>
+                <td class="text-center payroll-leave-only"><span class="badge ${Number(row.unpaid_leave_days || 0) > 0 ? 'bg-danger-subtle text-danger' : 'bg-light text-muted'}">${Number(row.unpaid_leave_days || 0)}</span></td>
+                <td class="text-center fw-semibold payroll-leave-only">${Number(row.total_leave_days || (Number(row.paid_leave_days || row.approved_leave_days || 0) + Number(row.unpaid_leave_days || 0)))}</td>` : ''}
                 <td class="text-center fw-bold" style="color:#0d9488;">${Number(row.payable_days || 0)}</td>
               </tr>`;
             } else if (payrollActiveSubtab === 'deductions') {
               const matchedPolicyRules = [
                 row.matched_rule && row.matched_rule !== 'No absence deduction' ? row.matched_rule : '',
-                Number(row.half_leave_count || 0) > 0 ? `${Number(row.half_leave_count)} half leave(s): ${row.matched_half_leave_rule || 'No half-leave deduction'}` : ''
+                payrollHasLeave() && Number(row.half_leave_count || 0) > 0 ? `${Number(row.half_leave_count)} half leave(s): ${row.matched_half_leave_rule || 'No half-leave deduction'}` : ''
               ].filter(Boolean).join(' | ');
               return `<tr>
                 <td class="fw-semibold">
@@ -7577,11 +7591,10 @@ async function fetchMultiLiveDetections() {
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
                 </td>
                 <td class="text-end font-monospace">${payrollMoney(row.basic_salary)}</td>
-                <td><span class="badge bg-light text-dark border" style="font-size:0.82em;">${payrollEscape(row.matched_rule || 'No absence deduction')}</span></td>
-                <td><span class="badge bg-light text-dark border" style="font-size:0.82em;">${payrollEscape(matchedPolicyRules || 'No absence deduction')}</span></td>
+                <td><span class="badge bg-light text-dark border" style="font-size:0.82em;">${payrollEscape(matchedPolicyRules || row.matched_rule || 'No absence deduction')}</span></td>
                 <td class="text-center small">${payrollEscape(value)}</td>
                 <td class="text-end font-monospace text-danger">${payrollMoney(row.absence_deduction || 0)}</td>
-                <td class="text-end font-monospace text-danger">${payrollMoney(row.half_leave_deduction || 0)}</td>
+                ${payrollHasLeave() ? `<td class="text-end font-monospace text-danger payroll-leave-only">${payrollMoney(row.half_leave_deduction || 0)}</td>` : ''}
                 <td class="text-end font-monospace">${Number(row.custom_deduction || 0) > 0 ? payrollMoney(row.custom_deduction) : '—'}</td>
                 <td class="text-end font-monospace fw-bold text-danger">${payrollMoney(row.deduction_amount)}</td>
               </tr>`;
@@ -7594,17 +7607,17 @@ async function fetchMultiLiveDetections() {
                 <td class="text-end">${payrollMoney(row.basic_salary)}</td>
                 <td class="text-center">${Number(row.scheduled_workdays || 0)}</td>
                 <td class="text-center">${Number(row.present_days || 0)}</td>
-                <td class="text-center">${Number(row.half_leave_count || 0)}</td>
+                ${payrollHasLeave() ? `<td class="text-center payroll-leave-only">${Number(row.half_leave_count || 0)}</td>` : ''}
                 <td class="text-center">${Number(row.absent_days || 0)}</td>
                 <td class="text-center">${Number(row.late_days || 0)}</td>
-                <td class="text-center">${Number((row.paid_leave_days != null ? row.paid_leave_days : row.approved_leave_days) || 0)}</td>
-                <td class="text-center">${Number(row.unpaid_leave_days || 0)}</td>
-                <td class="text-center">${Number(row.total_leave_days || (Number(row.paid_leave_days || row.approved_leave_days || 0) + Number(row.unpaid_leave_days || 0)))}</td>
+                ${payrollHasLeave() ? `<td class="text-center payroll-leave-only">${Number((row.paid_leave_days != null ? row.paid_leave_days : row.approved_leave_days) || 0)}</td>
+                <td class="text-center payroll-leave-only">${Number(row.unpaid_leave_days || 0)}</td>
+                <td class="text-center payroll-leave-only">${Number(row.total_leave_days || (Number(row.paid_leave_days || row.approved_leave_days || 0) + Number(row.unpaid_leave_days || 0)))}</td>` : ''}
                 <td class="text-center">${Number(row.payable_days || 0)}</td>
                 <td>${payrollEscape(row.matched_rule || 'No absence deduction')}</td>
                 <td>${row.deduction_type === 'fixed' ? 'Fixed PKR' : 'Percentage'}</td>
                 <td class="text-center">${payrollEscape(value)}</td>
-                <td class="text-end">${payrollMoney(row.half_leave_deduction || 0)}</td>
+                ${payrollHasLeave() ? `<td class="text-end payroll-leave-only">${payrollMoney(row.half_leave_deduction || 0)}</td>` : ''}
                 <td class="text-end">${payrollMoney(row.deduction_amount)}</td>
                 <td class="text-end fw-bold">${payrollMoney(row.net_salary)}</td>
                 <td><span class="badge ${statusClass}">${payrollEscape(status)}</span></td>
@@ -7643,21 +7656,37 @@ async function fetchMultiLiveDetections() {
         const issues = records.filter(row => payrollIssueDetails(row).length);
         document.getElementById('payrollReviewPeriod').textContent = payrollMonthLabel(payroll.payroll_month);
         document.getElementById('payrollReviewState').textContent = payrollRunState(payroll);
+        const hasLeave = payrollHasLeave();
+        const hasOt = payrollHasOvertime();
         document.getElementById('payrollReviewSummary').innerHTML = [
           ['Employees', payroll.employee_count ?? records.length],
           ['Basic salary', payrollMoney(payroll.total_basic_salary)],
           ['Allowances', payrollMoney(payroll.total_allowances || 0)],
-          ['Overtime pay', payrollMoney(payroll.total_overtime || 0)],
+          hasOt ? ['Overtime pay', payrollMoney(payroll.total_overtime || 0)] : null,
           ['Bonuses', payrollMoney(payroll.total_bonus || 0)],
           ['Rest-day extra', payrollMoney(payroll.total_off_day_extra || 0)],
           ['Total Deductions', payrollMoney(payroll.total_deduction)],
           ['Net payable', payrollMoney(payroll.total_net_salary)],
           ['Employees with issues', issues.length]
-        ].map(([label, value]) => `<div class="payroll-review-metric"><strong>${payrollEscape(value)}</strong><span>${payrollEscape(label)}</span></div>`).join('');
+        ].filter(Boolean).map(([label, value]) => `<div class="payroll-review-metric"><strong>${payrollEscape(value)}</strong><span>${payrollEscape(label)}</span></div>`).join('');
         const issuesEl = document.getElementById('payrollReviewIssues');
         issuesEl.innerHTML = issues.length
           ? `<div class="alert alert-warning py-2 mb-0"><strong>Resolve before finalization:</strong> ${issues.map(row => `${payrollEscape(row.employee_name)} (${payrollEscape(payrollIssueDetails(row).join(', '))})`).join('; ')}</div>`
           : '<div class="alert alert-success py-2 mb-0">Every employee has a complete payroll calculation.</div>';
+        const reviewHead = document.getElementById('payrollReviewTableHead');
+        if (reviewHead) {
+          reviewHead.innerHTML = `<tr>
+            <th>Employee</th><th>Department</th><th>Designation</th><th class="text-end">Basic Salary</th>
+            <th>Scheduled</th><th>Present</th>
+            ${hasLeave ? '<th class="payroll-leave-only">Half Leaves</th>' : ''}
+            <th>Absent</th><th>Late</th>
+            ${hasLeave ? '<th class="payroll-leave-only">Paid Leaves</th><th class="payroll-leave-only">Unpaid Leaves</th><th class="payroll-leave-only">Total Leaves</th>' : ''}
+            <th>Payable Days</th><th>Rule</th><th>Type</th><th>Value</th>
+            ${hasLeave ? '<th class="text-end payroll-leave-only">Half-Leave Deduction</th>' : ''}
+            <th class="text-end">Deduction</th><th class="text-end">Net Payable</th><th>Status / Issue</th>
+            ${hasOt ? '<th class="text-center payroll-overtime-only">OT Review</th>' : ''}
+          </tr>`;
+        }
         document.getElementById('payrollReviewTableBody').innerHTML = records.map(row => {
           const rowIssues = payrollIssueDetails(row);
           const value = row.deduction_type === 'fixed' ? payrollMoney(row.fixed_amount) : `${Number(row.deduction_percent || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
@@ -7666,7 +7695,30 @@ async function fetchMultiLiveDetections() {
           const otReviewAction = payroll.is_finalized
             ? '<span class="text-muted small">Read-only</span>'
             : `<button type="button" class="btn btn-sm btn-outline-info" onclick="openPayrollOtReview(${row.employee_id})" title="Review daily overtime"><i class="fa-solid fa-clock"></i> Review OT</button>`;
-          return `<tr><td>${payrollEscape(row.employee_name)} <small class="text-muted">#${payrollEscape(row.employee_id)}</small></td><td>${payrollEscape(row.department || 'Unassigned')}</td><td>${payrollEscape(row.designation || 'Staff Member')}</td><td class="text-end">${payrollMoney(row.basic_salary)}</td><td>${Number(row.scheduled_workdays || 0)}</td><td>${Number(row.present_days || 0)}</td><td>${Number(row.half_leave_count || 0)}</td><td>${Number(row.absent_days || 0)}</td><td>${Number(row.late_days || 0)}</td><td>${paidLeaveDays}</td><td>${Number(row.unpaid_leave_days || 0)}</td><td>${totalLeaveDays}</td><td>${Number(row.payable_days || 0)}</td><td>${payrollEscape(row.matched_rule || 'No absence deduction')}<div class="small text-muted">${Number(row.half_leave_count || 0) ? payrollEscape(row.matched_half_leave_rule || 'No half-leave deduction') : ''}</div></td><td>${row.deduction_type === 'fixed' ? 'Fixed PKR' : 'Percentage'}</td><td>${payrollEscape(value)}</td><td class="text-end">${payrollMoney(row.half_leave_deduction || 0)}</td><td class="text-end">${payrollMoney(row.deduction_amount)}</td><td class="text-end fw-bold">${payrollMoney(row.net_salary)}</td><td>${payrollEscape(payrollStatusLabel(row, payroll.is_finalized))}${rowIssues.length ? `<div class="text-danger small">${payrollEscape(rowIssues.join('; '))}</div>` : ''}</td><td class="text-center">${otReviewAction}</td></tr>`;
+          const leaveRuleNote = hasLeave && Number(row.half_leave_count || 0)
+            ? `<div class="small text-muted">${payrollEscape(row.matched_half_leave_rule || 'No half-leave deduction')}</div>`
+            : '';
+          return `<tr>
+            <td>${payrollEscape(row.employee_name)} <small class="text-muted">#${payrollEscape(row.employee_id)}</small></td>
+            <td>${payrollEscape(row.department || 'Unassigned')}</td>
+            <td>${payrollEscape(row.designation || 'Staff Member')}</td>
+            <td class="text-end">${payrollMoney(row.basic_salary)}</td>
+            <td>${Number(row.scheduled_workdays || 0)}</td>
+            <td>${Number(row.present_days || 0)}</td>
+            ${hasLeave ? `<td class="payroll-leave-only">${Number(row.half_leave_count || 0)}</td>` : ''}
+            <td>${Number(row.absent_days || 0)}</td>
+            <td>${Number(row.late_days || 0)}</td>
+            ${hasLeave ? `<td class="payroll-leave-only">${paidLeaveDays}</td><td class="payroll-leave-only">${Number(row.unpaid_leave_days || 0)}</td><td class="payroll-leave-only">${totalLeaveDays}</td>` : ''}
+            <td>${Number(row.payable_days || 0)}</td>
+            <td>${payrollEscape(row.matched_rule || 'No absence deduction')}${leaveRuleNote}</td>
+            <td>${row.deduction_type === 'fixed' ? 'Fixed PKR' : 'Percentage'}</td>
+            <td>${payrollEscape(value)}</td>
+            ${hasLeave ? `<td class="text-end payroll-leave-only">${payrollMoney(row.half_leave_deduction || 0)}</td>` : ''}
+            <td class="text-end">${payrollMoney(row.deduction_amount)}</td>
+            <td class="text-end fw-bold">${payrollMoney(row.net_salary)}</td>
+            <td>${payrollEscape(payrollStatusLabel(row, payroll.is_finalized))}${rowIssues.length ? `<div class="text-danger small">${payrollEscape(rowIssues.join('; '))}</div>` : ''}</td>
+            ${hasOt ? `<td class="text-center payroll-overtime-only">${otReviewAction}</td>` : ''}
+          </tr>`;
         }).join('');
         const finalizeButton = document.getElementById('finalizePayrollButton');
         finalizeButton.disabled = payroll.is_finalized || issues.length > 0 || !records.length;
