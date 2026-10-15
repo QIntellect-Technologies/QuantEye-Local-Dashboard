@@ -419,6 +419,23 @@ def _migrate_payroll_settings(cursor) -> None:
         VALUES ('DEFAULT_ORG', 'DEFAULT_BRANCH', 0)
         """
     )
+    if cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='payroll_rules'").fetchone():
+        cursor.execute(
+            """
+            UPDATE payroll_settings
+               SET attendance_pay_mode = 'payable_days'
+             WHERE COALESCE(attendance_pay_mode, 'full_salary') = 'full_salary'
+               AND NOT EXISTS (
+                   SELECT 1 FROM payroll_rules r
+                    WHERE r.active = 1
+                      AND COALESCE(r.rule_basis, 'absence') = 'absence'
+                      AND COALESCE(r.organization_id, 'DEFAULT_ORG')
+                          = COALESCE(payroll_settings.organization_id, 'DEFAULT_ORG')
+                      AND COALESCE(r.branch_id, 'DEFAULT_BRANCH')
+                          = COALESCE(payroll_settings.branch_id, 'DEFAULT_BRANCH')
+               )
+            """
+        )
 
 
 def _migrate_payroll_rules(cursor) -> None:

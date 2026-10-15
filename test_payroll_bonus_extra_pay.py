@@ -240,8 +240,8 @@ class PayrollBonusExtraPayTests(unittest.TestCase):
         )
         payroll = db.calculate_monthly_payroll("2026-09", organization_id=ORG, branch_id=BRANCH)
         row = payroll["records"][0]
-        self.assertGreater(row["scheduled_workdays"], row["payable_days"])
-        expected_net = round(100000 * row["payable_days"] / row["scheduled_workdays"], 2)
+        self.assertGreater(row["month_scheduled_workdays"], row["payable_days"])
+        expected_net = round(100000 * row["payable_days"] / row["month_scheduled_workdays"], 2)
         self.assertEqual(row["net_salary"], expected_net)
         self.assertGreater(row["attendance_shortfall"], 0)
         with sqlite3.connect(db.DB_PATH) as conn:
@@ -262,6 +262,25 @@ class PayrollBonusExtraPayTests(unittest.TestCase):
                    ) VALUES (?, ?, 0.99, 'manual', ?, ?, ?)""",
                 (self.user_id, "Rest Day Worker", "2026-09-06 10:00:00", ORG, BRANCH),
             )
+
+    def test_payable_days_uses_full_month_working_days_as_divisor(self):
+        class FrozenDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 9, 15, 12, 0, 0)
+
+        db.update_payroll_settings(
+            False, "category", 2, 0, 0,
+            organization_id=ORG, branch_id=BRANCH,
+            attendance_pay_mode="payable_days",
+        )
+        with patch("database.datetime", FrozenDateTime):
+            payroll = db.calculate_monthly_payroll("2026-09", organization_id=ORG, branch_id=BRANCH)
+        row = payroll["records"][0]
+        self.assertLess(row["payable_days"], row["month_scheduled_workdays"])
+        expected_net = round(100000 * row["payable_days"] / row["month_scheduled_workdays"], 2)
+        self.assertEqual(row["net_salary"], expected_net)
+        self.assertLess(row["net_salary"], 100000)
 
     def test_finalize_blocked_until_month_ends(self):
         class FrozenDateTime(datetime):

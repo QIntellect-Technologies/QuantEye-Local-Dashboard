@@ -5583,7 +5583,7 @@ async function fetchMultiLiveDetections() {
           <label style="font-size:0.86em; font-weight:700; color:#475569; display:block; max-width:560px;">
             Attendance pay method
             <select id="payrollAttendancePayMode" class="form-select" style="margin-top:4px;">
-              <option value="payable_days">Pay for days present (present + late + paid leave ÷ scheduled days so far)</option>
+              <option value="payable_days">Pay for days present (payable days ÷ working days in the month)</option>
               <option value="full_salary">Pay full monthly salary, then apply absence brackets below</option>
             </select>
           </label>
@@ -7266,7 +7266,7 @@ async function fetchMultiLiveDetections() {
           : monthOpen
             ? `Live through ${payroll.period_end || 'today'}. Scheduled / present / absent are the same date window. Finalize after month-end.`
             : (payMode === 'payable_days'
-              ? `Complete month · Pay = payable days ÷ scheduled days of (basic + allowances), plus extras minus other deductions.`
+              ? `Complete month · Pay = payable days ÷ working days in the month × (basic + allowances), plus extras minus other deductions.`
               : `Complete month · Full salary minus absence brackets and other deductions.`);
         setPayrollStateBadge(state);
         populatePayrollDepartmentFilter(records);
@@ -7479,7 +7479,7 @@ async function fetchMultiLiveDetections() {
                 <td class="text-end font-monospace fw-bold" style="color:#0d9488; font-size:1.02em;">${payrollMoney(row.net_salary)}</td>
                 <td class="text-center"><span class="badge ${statusClass}">${payrollEscape(status)}</span></td>
                 <td>${rowIssues.length ? `<span class="text-danger small fw-semibold">${payrollEscape(rowIssues.join('; '))}</span>` : '<span class="text-muted small">—</span>'}</td>
-                <td class="text-center">${(window.entitledModules && window.entitledModules.overtime && !currentPayrollPreview.is_finalized) ? `<button type="button" class="btn btn-sm btn-outline-info" onclick="openPayrollOtReview(${row.employee_id})" title="Review daily overtime"><i class="fa-solid fa-clock"></i> Review OT</button>` : ''}<div><button type="button" class="btn btn-link btn-sm p-0" onclick="downloadPayslipPdf(${row.employee_id})">Payslip PDF</button></div></td>
+                <td class="text-center" style="white-space:nowrap;">${(window.entitledModules && window.entitledModules.overtime && !currentPayrollPreview.is_finalized) ? `<button type="button" class="btn btn-sm btn-outline-info me-1" onclick="openPayrollOtReview(${row.employee_id})" title="Review daily overtime"><i class="fa-solid fa-clock"></i> OT</button>` : ''}<button type="button" class="btn btn-sm btn-primary" onclick="downloadPayslipPdf(${row.employee_id})" style="background:#3d9fd4; border:none; font-weight:700;">Payslip</button></td>
               </tr>`;
             } else if (payrollActiveSubtab === 'attendance') {
               return `<tr>
@@ -7768,7 +7768,7 @@ async function fetchMultiLiveDetections() {
               <td class="text-end fw-bold">${payrollMoney(run.total_net_salary)}</td>
               <td><span class="badge ${badge}">${payrollEscape(run.status)}</span></td>
               <td>${payrollEscape(run.finalized_at || '—')}</td>
-              <td><button type="button" class="btn btn-outline-primary btn-sm" onclick="openPayrollHistoryMonth('${payrollEscape(run.payroll_month)}')"><i class="fa-solid fa-eye"></i> ${isFinalized ? 'View Snapshot' : 'Open Draft'}</button></td>
+              <td style="white-space:nowrap;"><button type="button" class="btn btn-primary btn-sm" onclick="openPayrollHistoryMonth('${payrollEscape(run.payroll_month)}')" style="background:#3d9fd4; border:none; font-weight:700;"><i class="fa-solid fa-eye"></i> ${isFinalized ? 'View' : 'Open'}</button></td>
             </tr>`;
           }).join('');
         } catch (error) {
@@ -13721,7 +13721,7 @@ async function fetchMultiLiveDetections() {
               </td>
               <td style="padding: 12px 14px; text-align:right;">
                 <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
-                  <button type="button" class="btn btn-sm btn-outline-primary" onclick="openEditSalaryModal(${item.user_id})" style="border-radius:6px; font-size:0.78em; padding:4px 9px;" title="Configure Salary Package">
+                  <button type="button" class="btn btn-sm btn-primary" onclick="openEditSalaryModal(${item.user_id})" style="border-radius:6px; font-size:0.78em; padding:4px 10px; background:#3d9fd4; border:none; font-weight:700;" title="Configure Salary Package">
                     <i class="fa-solid fa-pen-to-square"></i> Edit
                   </button>
                   ${isConfigured ? `

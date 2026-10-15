@@ -7431,6 +7431,12 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         ''', (organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH'))
         active_rules = [dict(row) for row in cursor.fetchall()]
 
+    absence_rules_configured = any(
+        (rule.get('rule_basis') or 'absence') == 'absence' for rule in active_rules
+    )
+    if attendance_mode == 'full_salary' and not absence_rules_configured:
+        attendance_mode = 'payable_days'
+
     report = get_detailed_attendance_report(
         start_date=month_start.isoformat(),
         end_date=month_end.isoformat(),
@@ -7666,7 +7672,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         unpaid_leave_deduction = round(basic_salary * unpaid_leave_days / month_scheduled_workdays, 2) if deduct_unpaid_leave and month_scheduled_workdays else 0.0
         attendance_shortfall = 0.0
         if attendance_mode == 'payable_days':
-            earn_factor = (float(payable_days) / float(scheduled_workdays)) if scheduled_workdays else 0.0
+            earn_divisor = float(month_scheduled_workdays or 0)
+            earn_factor = (float(payable_days) / earn_divisor) if earn_divisor else 0.0
             attendance_shortfall = _m((basic_salary + allowances) * (1.0 - earn_factor))
             absence_rule_deduction = 0.0
             rule_missing = False
@@ -7679,7 +7686,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         total_emp_deductions = round(deduction_amount + custom_deductions, 2)
         net_salary = round(max(0.0, gross_salary - total_emp_deductions), 2)
 
-        if matched_rule:
+        if attendance_mode == 'payable_days':
+            matched_rule_label = f'Pay {int(payable_days)}/{int(month_scheduled_workdays)} working days'
+        elif matched_rule:
             max_absent = matched_rule['max_absent_days']
             matched_rule_label = (
                 f"{matched_rule['min_absent_days']}+ absent days" if max_absent is None
