@@ -3359,11 +3359,28 @@ def integration_get_shifts():
         organization_id=organization_id,
         branch_id=branch_id,
     )
+    employees = db.get_all_users(
+        organization_id=organization_id,
+        branch_id=branch_id,
+    )
+    assignments = []
+    for employee in employees:
+        try:
+            shift_id = int(employee.get('shift_id') or 1)
+        except (TypeError, ValueError):
+            shift_id = 1
+        if shift_id < 1:
+            shift_id = 1
+        assignments.append({
+            'user_id': int(employee['id']),
+            'shift_id': shift_id,
+        })
     return jsonify({
         'success': True,
         'organization_id': organization_id,
         'branch_id': branch_id,
         'shifts': shifts,
+        'assignments': assignments,
         'count': len(shifts),
     }), 200
 
