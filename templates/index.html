@@ -860,7 +860,7 @@
       }
       .payroll-guide-body {
         display: grid;
-        grid-template-columns: 220px 1fr;
+        grid-template-columns: 240px 1fr;
         min-height: 0;
         flex: 1;
       }
@@ -888,7 +888,19 @@
       .payroll-guide-nav button.is-active { background: #e8f6fd; color: #0f4c6d; }
       .payroll-guide-content { padding: 20px 24px 28px; overflow: auto; }
       .payroll-guide-content h4 { color: #173042; font-weight: 800; margin: 0 0 8px; font-size: 1.35rem; }
+      .payroll-guide-content h5 { color: #0f4c6d; font-weight: 800; margin: 18px 0 8px; font-size: 1.12rem; }
       .payroll-guide-content p { color: #475569; margin: 0 0 12px; font-size: 1.08rem; }
+      .payroll-guide-content ol, .payroll-guide-content ul { margin: 0 0 14px; padding-left: 1.3rem; color: #475569; font-size: 1.08rem; }
+      .payroll-guide-content li { margin: 0 0 6px; }
+      .payroll-guide-note {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin: 0 0 16px;
+        color: #78350f;
+        font-size: 1.05rem;
+      }
       .payroll-guide-content .formula {
         background: #f2faff;
         border: 1px solid #cfe8f7;
@@ -6646,133 +6658,358 @@ async function fetchMultiLiveDetections() {
       <div style="background:#f2faff; border-bottom:1px solid #cfe8f7; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
         <div>
           <h3 id="payrollGuideTitle" style="font-size:1.15em; font-weight:800; color:#173042; margin:0;"><i class="fa-solid fa-book-open" style="color:#3d9fd4; margin-right:8px;"></i>Payroll Guide</h3>
-          <div style="color:#64748b; font-size:0.88rem; margin-top:4px;">Sample figures only. These are not your live staff records.</div>
+          <div style="color:#64748b; font-size:1rem; margin-top:4px;">Easy words. Sample pay of 60,000 only. This is not live staff data.</div>
         </div>
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closePayrollGuide()">Close</button>
       </div>
       <div class="payroll-guide-body">
         <nav class="payroll-guide-nav" aria-label="Guide sections">
-          <button type="button" class="is-active" onclick="showPayrollGuideSection('guide-overview', this)">Overview</button>
-          <button type="button" onclick="showPayrollGuideSection('guide-steps', this)">Setup steps</button>
-          <button type="button" onclick="showPayrollGuideSection('guide-join', this)">Join or leave</button>
-          <button type="button" onclick="showPayrollGuideSection('guide-attendance', this)">Attendance pay</button>
-          <button type="button" onclick="showPayrollGuideSection('guide-extras', this)">Extra pay</button>
-          <button type="button" onclick="showPayrollGuideSection('guide-missed', this)">Missed days</button>
-          <button type="button" onclick="showPayrollGuideSection('guide-overtime', this)">Overtime</button>
-          <button type="button" onclick="showPayrollGuideSection('guide-rest', this)">Rest day &amp; holiday</button>
+          <button type="button" class="is-active" data-guide-section="guide-overview" onclick="showPayrollGuideSection('guide-overview', this)">Overview</button>
+          <button type="button" data-guide-section="guide-general" onclick="showPayrollGuideSection('guide-general', this)">1. General</button>
+          <button type="button" data-guide-section="guide-attendance" onclick="showPayrollGuideSection('guide-attendance', this)">2. Attendance</button>
+          <button type="button" data-guide-section="guide-extras" onclick="showPayrollGuideSection('guide-extras', this)">3. Extra pay</button>
+          <button type="button" data-guide-section="guide-leave" onclick="showPayrollGuideSection('guide-leave', this)">4. Leave</button>
+          <button type="button" data-guide-section="guide-overtime" onclick="showPayrollGuideSection('guide-overtime', this)">5. Overtime</button>
+          <button type="button" data-guide-section="guide-packages" onclick="showPayrollGuideSection('guide-packages', this)">6. Salary packages</button>
+          <button type="button" data-guide-section="guide-calendar" onclick="showPayrollGuideSection('guide-calendar', this)">7. Special dates</button>
         </nav>
         <div class="payroll-guide-content">
           <section id="guide-overview">
             <h4>How take-home pay is built</h4>
-            <p>Payroll starts from the person’s basic salary, then adds extras and subtracts deductions.</p>
-            <div class="formula">Take-home pay = Basic + extras − deductions</div>
+            <p>Every month, payroll starts from basic pay. Then it adds extra money and takes away cuts.</p>
+            <div class="formula">Take-home pay = Basic pay + extra money − cuts</div>
+            <div class="payroll-guide-note">All tables below use one sample person. Basic pay is 60,000. The month has 30 days and 26 work days. Names are not real staff.</div>
             <table class="payroll-guide-table">
-              <thead><tr><th>Part</th><th>What it means</th><th>Sample</th></tr></thead>
+              <thead><tr><th>Part</th><th>Plain meaning</th><th>Sample amount</th></tr></thead>
               <tbody>
-                <tr><td>Basic</td><td>Monthly salary from Salary packages</td><td>60,000</td></tr>
-                <tr><td>Extras</td><td>House rent, bonus, overtime, rest-day extra</td><td>+ 6,000 house rent</td></tr>
-                <tr><td>Deductions</td><td>Tax, loan, unpaid leave, missed-day cuts</td><td>− 2,000 tax</td></tr>
-                <tr><td>Take-home</td><td>Amount paid this month</td><td>64,000</td></tr>
+                <tr><td>Basic pay</td><td>Monthly salary you set on Salary packages</td><td>60,000</td></tr>
+                <tr><td>Extra money</td><td>House rent, bonus, overtime, rest-day extra</td><td>+ 6,000 house rent</td></tr>
+                <tr><td>Cuts</td><td>Tax, loan, unpaid leave, missed-day cut</td><td>− 2,000 tax</td></tr>
+                <tr><td>Take-home pay</td><td>Money paid this month</td><td>64,000</td></tr>
               </tbody>
             </table>
-            <p>Saving settings does not rewrite months you already locked. Recalculate an open month to see new numbers on the Payroll page.</p>
-          </section>
-          <section id="guide-steps" hidden>
-            <h4>Set up payroll in 7 tabs</h4>
-            <p>Work through one tab at a time. Click Save on each tab before you move on. Open Payroll Guide any time you need a formula.</p>
+            <h5>The 7 tabs</h5>
+            <p>Set payroll one tab at a time. Click Save on each tab before you go to the next.</p>
             <table class="payroll-guide-table">
-              <thead><tr><th>Tab</th><th>What to do</th><th>When you are done</th></tr></thead>
+              <thead><tr><th>Tab</th><th>What you set</th><th>When you are done</th></tr></thead>
               <tbody>
-                <tr><td>1. General</td><td>Pick currency. Choose how join or leave months are split.</td><td>Click Save.</td></tr>
-                <tr><td>2. Attendance</td><td>Pay for days present, or pay full salary then cut missed days. Optional: extra pay for working a rest day.</td><td>Click Save pay method.</td></tr>
-                <tr><td>3. Extra pay</td><td>Turn on only the extras this company uses. Add house rent, tax, or loan. Then choose who it applies to.</td><td>Click Save features, then Save for this group.</td></tr>
-                <tr><td>4. Leave</td><td>Turn unpaid leave on if you need it. Set half-day leave. If you pay full salary, add missed-day cut rules.</td><td>Add each rule, then continue.</td></tr>
-                <tr><td>5. Overtime</td><td>Set the hourly rate divisor (default 208). Set extra pay for holiday or rest-day overtime.</td><td>Click Save on each overtime block.</td></tr>
-                <tr><td>6. Salary packages</td><td>Set each person’s basic pay and overtime rate.</td><td>Use Edit on a row, then save.</td></tr>
-                <tr><td>7. Special dates</td><td>Mark holidays, extra work days, or off days that override the weekly shift.</td><td>Add the date, then save.</td></tr>
+                <tr><td>1. General</td><td>Money unit and how join or leave months are split</td><td>Click Save</td></tr>
+                <tr><td>2. Attendance</td><td>Pay for days present, or pay the full month then cut missed days. Rest-day extra is here too</td><td>Click Save pay method</td></tr>
+                <tr><td>3. Extra pay</td><td>Turn on extras this company uses. Add house rent, tax, or loan. Choose who it applies to</td><td>Click Save features, then Save for this group</td></tr>
+                <tr><td>4. Leave</td><td>Unpaid leave, half-day leave, and missed-day cut rules</td><td>Add each rule</td></tr>
+                <tr><td>5. Overtime</td><td>Hourly overtime pay, limits, and extra pay on holidays or rest days</td><td>Click Save on each block</td></tr>
+                <tr><td>6. Salary packages</td><td>Each person’s basic pay and overtime rate</td><td>Edit a row, then save</td></tr>
+                <tr><td>7. Special dates</td><td>Holidays, extra work days, or off days for one date</td><td>Add the date, then save</td></tr>
               </tbody>
             </table>
-            <p>After settings are saved, open Payroll, pick the month, and Recalculate. Locked months do not change.</p>
+            <p>After you save, open Payroll, pick the month, and Recalculate. Months you already locked do not change.</p>
           </section>
-          <section id="guide-join" hidden>
-            <h4>Join or leave mid-month</h4>
-            <p>When someone does not work the full month, salary is split by the method you choose. Sample: monthly salary 60,000, joins on 11 September, 30 calendar days, 26 work days, 17 work days after joining.</p>
-            <div class="formula">Split pay = (days this person is eligible ÷ days in the method) × 60,000</div>
+
+          <section id="guide-general" hidden>
+            <h4>1. General</h4>
+            <p>This tab sets the money unit on payslips, how many digits after the point, and how pay is split when someone joins or leaves in the middle of the month.</p>
+            <h5>Currency</h5>
+            <p>Type the money unit shown on payslips, for example PKR. This does not convert money. It only shows the letters on the slip.</p>
+            <h5>Decimal places</h5>
+            <p>How many digits after the point. Use 2 for most companies (example: 1,153.84). Use 0 if you never use cents.</p>
             <table class="payroll-guide-table">
-              <thead><tr><th>Method</th><th>Calculation</th><th>Result</th></tr></thead>
+              <thead><tr><th>Setting</th><th>What it does</th><th>Sample</th></tr></thead>
               <tbody>
-                <tr><td>All days in the month</td><td>20 ÷ 30 × 60,000</td><td>40,000</td></tr>
-                <tr><td>Work days only</td><td>17 ÷ 26 × 60,000</td><td>39,230.77</td></tr>
-                <tr><td>Always 30 days</td><td>20 ÷ 30 × 60,000</td><td>40,000</td></tr>
+                <tr><td>Currency</td><td>Letters on the payslip</td><td>PKR</td></tr>
+                <tr><td>Decimal places = 2</td><td>Keep two digits after the point</td><td>1,153.84</td></tr>
+                <tr><td>Decimal places = 0</td><td>Whole numbers only</td><td>1,154</td></tr>
               </tbody>
             </table>
-            <p>If you also pay for days present, the month’s work days (for example 26) are used as the pay divisor so the same person is not reduced twice.</p>
+            <h5>Join or leave mid-month</h5>
+            <p>Use this only when someone does not work the full month. Full-month staff are not split.</p>
+            <p>Sample: basic pay 60,000. Joins on 11 September. September has 30 days. Company has 26 work days. After joining there are 20 days left in the month and 17 work days left.</p>
+            <div class="formula">Split pay = (days this person can be paid ÷ days in the method) × 60,000</div>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Choice on the tab</th><th>What it means</th><th>Sum</th><th>Pay</th></tr></thead>
+              <tbody>
+                <tr><td>All days in the month</td><td>Count every day, including rest days</td><td>20 ÷ 30 × 60,000</td><td>40,000</td></tr>
+                <tr><td>Work days only</td><td>Count only work days</td><td>17 ÷ 26 × 60,000</td><td>39,230.77</td></tr>
+                <tr><td>Always 30 days</td><td>Treat every month as 30 days</td><td>20 ÷ 30 × 60,000</td><td>40,000</td></tr>
+              </tbody>
+            </table>
+            <p>If Attendance is set to “Pay for days present”, the month’s work days (26) are used so the same person is not cut twice.</p>
+            <p>Click Save. Locked months stay as they are.</p>
           </section>
+
           <section id="guide-attendance" hidden>
-            <h4>Attendance pay</h4>
-            <p>Choose one company method. Sample person: 60,000 basic, 26 work days in the month.</p>
+            <h4>2. Attendance</h4>
+            <p>This tab chooses how attendance changes pay. It also has extra pay if someone works on a rest day with no overtime.</p>
+            <h5>Pay method</h5>
+            <p>Pick one method for the whole company. You can change it later. Locked months stay as they are.</p>
             <table class="payroll-guide-table">
-              <thead><tr><th>Method</th><th>Formula</th><th>If present 24 days</th></tr></thead>
+              <thead><tr><th>Choice</th><th>Plain meaning</th><th>When to use it</th></tr></thead>
               <tbody>
-                <tr><td>Pay for days present</td><td>Basic × (payable days ÷ work days)</td><td>60,000 × 24 ÷ 26 = 55,384.62</td></tr>
-                <tr><td>Pay full salary, then cut</td><td>Start from 60,000, then apply missed-day rules</td><td>Depends on the missed-day rule you add</td></tr>
+                <tr><td>Pay for days present</td><td>Pay only the days the person was there (and paid leave)</td><td>Daily or attendance-based pay</td></tr>
+                <tr><td>Pay full salary, then cut for missed days</td><td>Start from 60,000. Then cut using Leave tab rules</td><td>Monthly salary with absence cuts</td></tr>
               </tbody>
             </table>
-            <p>Payable days usually count present, late, and paid leave. Unpaid leave can still be deducted if that option is on.</p>
+            <h5>Example: pay for days present</h5>
+            <p>Sample: basic 60,000. 26 work days. Person was present 24 days (late still counts as present). Paid leave also counts. Unpaid leave does not.</p>
+            <div class="formula">Pay = 60,000 × (days to pay ÷ 26 work days)</div>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Days to pay</th><th>Sum</th><th>Pay</th></tr></thead>
+              <tbody>
+                <tr><td>26 (full month)</td><td>60,000 × 26 ÷ 26</td><td>60,000</td></tr>
+                <tr><td>24 present</td><td>60,000 × 24 ÷ 26</td><td>55,384.62</td></tr>
+                <tr><td>22 present + 2 paid leave</td><td>60,000 × 24 ÷ 26</td><td>55,384.62</td></tr>
+                <tr><td>24 present, 2 unpaid leave (if unpaid cut is on)</td><td>Those 2 days are not paid</td><td>Less than 55,384.62</td></tr>
+              </tbody>
+            </table>
+            <div class="payroll-guide-note">If you pick days present, missed-day cut rules on the Leave tab are off. Those days are already unpaid. Unpaid leave and half-day leave still work.</div>
+            <h5>Example: pay full salary, then cut</h5>
+            <p>Sample: basic 60,000. Person missed 3 days with no leave. You added a Leave rule: 3 to 5 missed days = 5% cut.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Step</th><th>What happens</th><th>Amount</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td>Start from full basic</td><td>60,000</td></tr>
+                <tr><td>2</td><td>3 missed days match the 5% rule</td><td>− 3,000</td></tr>
+                <tr><td>3</td><td>Pay after the cut</td><td>57,000</td></tr>
+              </tbody>
+            </table>
+            <p>If there is no missed-day rule yet, click Open Leave tab and add one.</p>
+            <h5>Rest-day extra (attendance, not overtime)</h5>
+            <p>A rest day comes from the person’s week shift. It is not always Sunday. This extra is paid only if the person is present on that rest day and has no approved overtime that date.</p>
+            <p>Daily rate in this sample: 60,000 ÷ 26 = 2,307.69.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Choice</th><th>What it means</th><th>Sample for 1 rest day</th></tr></thead>
+              <tbody>
+                <tr><td>Times the daily rate = 1.5</td><td>Extra = daily rate × 1.5</td><td>2,307.69 × 1.5 = 3,461.54 extra</td></tr>
+                <tr><td>Fixed amount per rest day = 1,000</td><td>Same extra every rest day worked</td><td>1,000 extra</td></tr>
+                <tr><td>Turned off</td><td>No extra for working a rest day</td><td>0</td></tr>
+              </tbody>
+            </table>
+            <p>If overtime was approved that date, overtime extra is used instead of this rest-day extra.</p>
           </section>
+
           <section id="guide-extras" hidden>
-            <h4>Extra pay and deductions</h4>
-            <p>Create an item, then assign it to everyone or to one group. Sample basic salary 60,000.</p>
+            <h4>3. Extra pay</h4>
+            <p>This tab turns features on, lets you upload a one-month bonus sheet, and lets you add items like house rent or tax.</p>
+            <h5>Optional features</h5>
+            <p>Turn on only what this company uses. Off means that feature is hidden and not used in pay.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Switch</th><th>What it does</th><th>You still must</th></tr></thead>
+              <tbody>
+                <tr><td>Extra pay items</td><td>Lets you add house rent, tax, loan, and similar items below</td><td>Add the item and choose who it applies to</td></tr>
+                <tr><td>Excel bonuses</td><td>Lets you upload a different bonus amount per person for one month</td><td>Download the sheet, fill amounts, upload</td></tr>
+                <tr><td>One-person extras</td><td>A special amount for one staff member</td><td>Set it on that person</td></tr>
+                <tr><td>Mid-month salary change</td><td>New basic starts from the change date</td><td>Enter the change date on the package</td></tr>
+                <tr><td>Tax / Loan / Advance / Provident / Insurance</td><td>Shows that kind of cut or saving</td><td>Set the amount or %</td></tr>
+              </tbody>
+            </table>
+            <h5>Excel bonuses</h5>
+            <ol>
+              <li>Pick the bonus month.</li>
+              <li>Download the sheet.</li>
+              <li>Type an amount for each person. People with no bonus can stay at 0.</li>
+              <li>Upload the sheet. This is for that month only.</li>
+            </ol>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Person (sample)</th><th>Bonus for September</th><th>Added to pay</th></tr></thead>
+              <tbody>
+                <tr><td>Sample A</td><td>5,000</td><td>+ 5,000</td></tr>
+                <tr><td>Sample B</td><td>0</td><td>0</td></tr>
+              </tbody>
+            </table>
+            <h5>Add an extra pay item</h5>
+            <p>First add the item. Then choose who it applies to. A start date is required.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Field</th><th>Plain meaning</th><th>Sample</th></tr></thead>
+              <tbody>
+                <tr><td>Name</td><td>What staff see</td><td>House rent</td></tr>
+                <tr><td>Short code</td><td>Short label</td><td>HRA</td></tr>
+                <tr><td>Type = Adds to pay</td><td>Extra money</td><td>House rent</td></tr>
+                <tr><td>Type = Takes from pay</td><td>A cut</td><td>Tax or loan</td></tr>
+                <tr><td>Same amount every month</td><td>Fixed number</td><td>Tax 2,000</td></tr>
+                <tr><td>Percent of basic salary</td><td>Basic × percent</td><td>10% of 60,000 = 6,000</td></tr>
+                <tr><td>Percent of total pay</td><td>Taken from total, not only basic</td><td>Use only if you need it</td></tr>
+                <tr><td>Amount per work day</td><td>Amount × work days</td><td>100 × 26 = 2,600</td></tr>
+                <tr><td>Amount per hour</td><td>Amount × hours</td><td>50 × 8 = 400</td></tr>
+              </tbody>
+            </table>
             <div class="formula">Percent of basic = 60,000 × (percent ÷ 100)</div>
             <table class="payroll-guide-table">
-              <thead><tr><th>Item</th><th>How to calculate</th><th>Setting</th><th>Amount</th></tr></thead>
+              <thead><tr><th>Item</th><th>How it is counted</th><th>Setting</th><th>This month</th></tr></thead>
               <tbody>
-                <tr><td>House rent</td><td>Percent of basic</td><td>10%</td><td>6,000 extra</td></tr>
-                <tr><td>Tax</td><td>Same amount every month</td><td>2,000</td><td>2,000 deducted</td></tr>
-                <tr><td>Loan</td><td>Same amount every month</td><td>5,000</td><td>5,000 deducted</td></tr>
+                <tr><td>House rent</td><td>Percent of basic</td><td>10%</td><td>+ 6,000</td></tr>
+                <tr><td>Tax</td><td>Same amount every month</td><td>2,000</td><td>− 2,000</td></tr>
+                <tr><td>Loan</td><td>Same amount every month</td><td>5,000</td><td>− 5,000</td></tr>
               </tbody>
             </table>
-            <p>A person setting wins over a department or company setting. Lowest / highest amount can cap a percent item. Excel bonuses are a separate amount per person for one month.</p>
-          </section>
-          <section id="guide-missed" hidden>
-            <h4>Missed days and half-day leave</h4>
-            <p>Missed-day cut rules apply when you pay full salary. They are off when you pay for days present, because those days are already unpaid. Unpaid leave and half-day leave still work.</p>
+            <h5>Who it applies to</h5>
+            <p>After you add the item, save it for a group. A person setting wins over a department, branch, or everyone setting.</p>
             <table class="payroll-guide-table">
-              <thead><tr><th>Rule</th><th>Formula</th><th>Sample (60,000 basic)</th></tr></thead>
+              <thead><tr><th>Who</th><th>Plain meaning</th><th>Sample</th></tr></thead>
               <tbody>
-                <tr><td>Percent of salary</td><td>Basic × (percent ÷ 100)</td><td>5% = 3,000 cut</td></tr>
-                <tr><td>Fixed amount</td><td>The amount you enter</td><td>1,500 cut</td></tr>
-                <tr><td>Unpaid leave</td><td>Basic × unpaid days ÷ work days</td><td>2 unpaid days: 60,000 × 2 ÷ 26 = 4,615.38</td></tr>
-                <tr><td>Two half days = one full day</td><td>Every 2 half days count as 1 day off</td><td>4 half days = 2 days</td></tr>
+                <tr><td>Everyone</td><td>Whole company</td><td>10% house rent for all</td></tr>
+                <tr><td>One branch / shift / department / job title</td><td>Only that group</td><td>Sales gets 8,000 house rent</td></tr>
+                <tr><td>One person</td><td>Only that person</td><td>This person gets 12,000</td></tr>
+                <tr><td>Skip this person</td><td>Do not give this item to that person</td><td>House rent off for them</td></tr>
+                <tr><td>Start date</td><td>Required. Item starts this day</td><td>1 September</td></tr>
+                <tr><td>Stop date</td><td>Optional end</td><td>30 September, or blank</td></tr>
+                <tr><td>Lowest / highest amount</td><td>Optional floor or cap on a percent item</td><td>Cap 8,000 so 10% cannot go above 8,000</td></tr>
               </tbody>
             </table>
           </section>
+
+          <section id="guide-leave" hidden>
+            <h4>4. Leave</h4>
+            <p>This tab sets unpaid leave, half-day leave, and missed-day cut rules.</p>
+            <h5>Deduct unpaid leave days</h5>
+            <p>Turn this on if unpaid leave should reduce pay. Paid leave does not reduce pay.</p>
+            <div class="formula">Unpaid leave cut = 60,000 × unpaid days ÷ 26 work days</div>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Unpaid days</th><th>Sum</th><th>Cut</th></tr></thead>
+              <tbody>
+                <tr><td>0</td><td>—</td><td>0</td></tr>
+                <tr><td>1</td><td>60,000 × 1 ÷ 26</td><td>2,307.69</td></tr>
+                <tr><td>2</td><td>60,000 × 2 ÷ 26</td><td>4,615.38</td></tr>
+              </tbody>
+            </table>
+            <h5>Half-day leave</h5>
+            <p>Choose how half days are counted for the whole company. You can also set a different monthly limit for one department or one person.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Choice</th><th>Plain meaning</th><th>Sample</th></tr></thead>
+              <tbody>
+                <tr><td>Use each leave type’s own rules</td><td>Follow the leave type you already set</td><td>Casual half day uses casual rules</td></tr>
+                <tr><td>Set a monthly limit</td><td>Only this many half days in the month</td><td>Limit 4. The 5th half day is extra</td></tr>
+                <tr><td>Count two half days as one full day</td><td>Every 2 half days = 1 full day</td><td>4 half days = 2 days</td></tr>
+              </tbody>
+            </table>
+            <h5>Missed-day rules (only if you pay full salary)</h5>
+            <p>These rules cut pay when someone is absent with no leave. Date ranges cannot overlap. They are off if you pay for days present, because those days are already unpaid.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Field</th><th>Plain meaning</th><th>Sample rule</th></tr></thead>
+              <tbody>
+                <tr><td>Rule applies to = Missed days (no leave)</td><td>Absent, and not on leave</td><td>3 to 5 missed days</td></tr>
+                <tr><td>Rule applies to = Half-leave occurrences</td><td>Count of half-day leaves</td><td>4 to 6 half days</td></tr>
+                <tr><td>Minimum / maximum</td><td>The range this rule covers</td><td>Min 3, max 5</td></tr>
+                <tr><td>Percent of salary</td><td>Cut = basic × percent</td><td>5% of 60,000 = 3,000</td></tr>
+                <tr><td>Fixed amount</td><td>Cut = the number you type</td><td>1,500</td></tr>
+                <tr><td>Active</td><td>Rule is used this month</td><td>On</td></tr>
+              </tbody>
+            </table>
+            <p>Sample: pay full salary. Two rules. Rule A: 1–2 missed days = 1,500 cut. Rule B: 3–5 missed days = 5% cut.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Missed days</th><th>Which rule</th><th>Cut from 60,000</th><th>Pay after cut</th></tr></thead>
+              <tbody>
+                <tr><td>0</td><td>None</td><td>0</td><td>60,000</td></tr>
+                <tr><td>2</td><td>Rule A</td><td>1,500</td><td>58,500</td></tr>
+                <tr><td>3</td><td>Rule B</td><td>3,000</td><td>57,000</td></tr>
+                <tr><td>6</td><td>No matching rule</td><td>0 from these rules</td><td>Add another rule if you need a cut</td></tr>
+              </tbody>
+            </table>
+          </section>
+
           <section id="guide-overtime" hidden>
-            <h4>Overtime</h4>
-            <p>Only approved overtime is paid. If the person has no overtime rate on their salary, payroll uses this hourly rate:</p>
-            <div class="formula">Hourly rate = basic salary ÷ hours per month (default 208 = 8 × 26)</div>
+            <h4>5. Overtime</h4>
+            <p>Only approved overtime is paid. Pending overtime waits until someone approves it. If the person has an overtime rate on Salary packages, that rate is used. If not, payroll uses basic pay ÷ hours per month.</p>
+            <h5>Hours per month</h5>
+            <p>Default 208 means 8 hours × 26 work days. Change it only if your company uses a different month hour count.</p>
+            <div class="formula">Hourly rate = 60,000 ÷ hours per month</div>
             <table class="payroll-guide-table">
-              <thead><tr><th>Step</th><th>Round hourly rate first</th><th>Round amount at the end</th></tr></thead>
+              <thead><tr><th>Hours per month</th><th>Hourly rate</th><th>4 approved hours</th></tr></thead>
               <tbody>
-                <tr><td>Hourly rate</td><td>60,000 ÷ 208 = 288.46</td><td>60,000 ÷ 208 = 288.4615…</td></tr>
+                <tr><td>208 (default)</td><td>60,000 ÷ 208 = 288.46</td><td>1,153.84</td></tr>
+                <tr><td>240</td><td>60,000 ÷ 240 = 250.00</td><td>1,000.00</td></tr>
+              </tbody>
+            </table>
+            <h5>Rounding</h5>
+            <p>Choose when to round. Locked months do not change.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Step</th><th>Round the hourly rate first</th><th>Round the overtime amount at the end</th></tr></thead>
+              <tbody>
+                <tr><td>Hourly rate</td><td>60,000 ÷ 208 = 288.46</td><td>Keep more digits, 288.4615…</td></tr>
                 <tr><td>4 approved hours</td><td>4 × 288.46 = 1,153.84</td><td>4 × (60,000 ÷ 208) = 1,153.85</td></tr>
               </tbody>
             </table>
-            <p>A maximum hours limit (for example 10 hours per month) sends extra overtime to pending until someone approves or rejects it. Use 0 to turn the limit off.</p>
-          </section>
-          <section id="guide-rest" hidden>
-            <h4>Rest day and holiday extra</h4>
-            <p>Rest days follow each person’s shift week. Public holidays follow the company holiday list. They are not hardcoded to Sunday.</p>
+            <h5>Maximum overtime</h5>
+            <p>Set a maximum. Extra overtime stays pending until someone approves or rejects it. Use 0 to turn the limit off.</p>
             <table class="payroll-guide-table">
-              <thead><tr><th>Setting</th><th>Formula</th><th>Sample daily rate 2,307.69</th></tr></thead>
+              <thead><tr><th>Limit applies</th><th>Plain meaning</th><th>Sample</th></tr></thead>
               <tbody>
-                <tr><td>Times daily rate 1.5</td><td>Daily rate × 1.5</td><td>3,461.54 extra</td></tr>
-                <tr><td>Fixed amount per rest day</td><td>The amount you enter</td><td>1,000 extra</td></tr>
-                <tr><td>Holiday overtime +5%</td><td>Normal OT × 1.05</td><td>1,153.84 × 1.05 = 1,211.53</td></tr>
-                <tr><td>Rest-day overtime × 2.5</td><td>Hourly rate × hours × 2.5</td><td>288.46 × 4 × 2.5 = 2,884.60</td></tr>
+                <tr><td>Each OT entry</td><td>One overtime request cannot be longer than the max</td><td>Max 4 hours on one request</td></tr>
+                <tr><td>Per day</td><td>All overtime that day cannot go past the max</td><td>Max 3 hours in one day</td></tr>
+                <tr><td>Per week</td><td>All overtime that week cannot go past the max</td><td>Max 10 hours in one week</td></tr>
+                <tr><td>Per calendar month</td><td>All overtime that month cannot go past the max</td><td>Max 20 hours in September</td></tr>
               </tbody>
             </table>
-            <p>Rest-day extra for attendance is paid only when the person is present on a rest day and has no approved overtime that date.</p>
+            <p>You can set a different limit for one department or one person.</p>
+            <h5>Holiday / rest-day extra on overtime</h5>
+            <p>This is extra on overtime hours, not the Attendance rest-day extra. Rest days come from the person’s shift week. Holidays come from your holiday list or Special dates.</p>
+            <p>Sample normal overtime for 4 hours: 1,153.84. Hourly rate 288.46.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Choice</th><th>What it means</th><th>Sample</th></tr></thead>
+              <tbody>
+                <tr><td>Percentage extra = 5%</td><td>Normal overtime + 5%</td><td>1,153.84 × 1.05 = 1,211.53</td></tr>
+                <tr><td>Times rate = 2.5</td><td>Hourly rate × hours × 2.5</td><td>288.46 × 4 × 2.5 = 2,884.60</td></tr>
+                <tr><td>Fixed extra per hour = 50</td><td>Normal overtime + (50 × hours)</td><td>1,153.84 + 200 = 1,353.84</td></tr>
+              </tbody>
+            </table>
+            <p>You can set a different extra % for one holiday, or for one department or one person.</p>
+          </section>
+
+          <section id="guide-packages" hidden>
+            <h4>6. Salary packages</h4>
+            <p>This tab is each person’s pay record. Basic pay here is the starting number for every other tab.</p>
+            <ol>
+              <li>Find the person with search or department filter.</li>
+              <li>Click Edit on that row.</li>
+              <li>Set basic pay. Add extras or cuts if needed.</li>
+              <li>Set overtime rate if this person has a special hourly rate. If you leave it blank, Overtime tab uses 60,000 ÷ 208.</li>
+              <li>Save. Recalculate the open month on Payroll to see new numbers.</li>
+            </ol>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Field on the row</th><th>Plain meaning</th><th>Sample</th></tr></thead>
+              <tbody>
+                <tr><td>Base pay</td><td>Monthly basic</td><td>60,000</td></tr>
+                <tr><td>Allowances</td><td>Extra money on this package</td><td>6,000 house rent</td></tr>
+                <tr><td>Deductions</td><td>Cuts on this package</td><td>2,000 tax</td></tr>
+                <tr><td>OT rate</td><td>Pay per overtime hour for this person</td><td>300, or blank to use 288.46</td></tr>
+                <tr><td>Gross net</td><td>Quick view of basic + extras − cuts on the package</td><td>64,000 before attendance</td></tr>
+              </tbody>
+            </table>
+            <h5>Auto-set OT rates</h5>
+            <p>This fills overtime rate as basic ÷ 208 for people who have no special rate.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Basic pay</th><th>Auto overtime rate (÷ 208)</th></tr></thead>
+              <tbody>
+                <tr><td>60,000</td><td>288.46 per hour</td></tr>
+                <tr><td>80,000</td><td>384.62 per hour</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="guide-calendar" hidden>
+            <h4>7. Special dates</h4>
+            <p>Use this tab to mark one date as a work day, off day, or holiday. That date then beats the normal weekly shift for the people you select.</p>
+            <table class="payroll-guide-table">
+              <thead><tr><th>Field</th><th>Plain meaning</th><th>Sample</th></tr></thead>
+              <tbody>
+                <tr><td>Date</td><td>The one day you are changing</td><td>14 August</td></tr>
+                <tr><td>Working Day</td><td>Treat as a work day, even if the shift says rest</td><td>Saturday work for a project</td></tr>
+                <tr><td>Off Day</td><td>Treat as rest, even if the shift says work</td><td>Company closed on Friday</td></tr>
+                <tr><td>Holiday</td><td>Public or company holiday. Overtime extra for holidays can apply</td><td>14 August holiday</td></tr>
+                <tr><td>Applies to = All employees</td><td>Everyone</td><td>National holiday</td></tr>
+                <tr><td>Applies to = One shift</td><td>Only that shift</td><td>Night shift works, day shift off</td></tr>
+                <tr><td>Applies to = One employee</td><td>Only that person</td><td>One person works a rest day</td></tr>
+                <tr><td>Note</td><td>Optional reason</td><td>Independence Day</td></tr>
+              </tbody>
+            </table>
+            <h5>How this changes pay</h5>
+            <table class="payroll-guide-table">
+              <thead><tr><th>You mark the date as</th><th>What payroll does</th></tr></thead>
+              <tbody>
+                <tr><td>Working Day</td><td>Counts as a work day for attendance and join/leave split</td></tr>
+                <tr><td>Off Day</td><td>Counts as a rest day. Rest-day extra can apply if the person works it</td></tr>
+                <tr><td>Holiday</td><td>Counts as a holiday. Holiday overtime extra can apply</td></tr>
+              </tbody>
+            </table>
+            <p>Weekly shift still applies on dates you did not mark. After you add dates, Recalculate the open month on Payroll.</p>
           </section>
         </div>
       </div>
@@ -14130,8 +14367,19 @@ async function fetchMultiLiveDetections() {
         const overlay = document.getElementById('payrollGuideOverlay');
         if (!overlay) return;
         overlay.classList.add('is-open');
-        const first = overlay.querySelector('.payroll-guide-nav button');
-        if (first) showPayrollGuideSection('guide-overview', first);
+        const guideByHub = {
+          general: 'guide-general',
+          attendance: 'guide-attendance',
+          extras: 'guide-extras',
+          leave: 'guide-leave',
+          overtime: 'guide-overtime',
+          packages: 'guide-packages',
+          calendar: 'guide-calendar'
+        };
+        const sectionId = guideByHub[lastPayrollHubTab] || 'guide-overview';
+        const button = overlay.querySelector(`[data-guide-section="${sectionId}"]`)
+          || overlay.querySelector('.payroll-guide-nav button');
+        showPayrollGuideSection(sectionId, button);
         document.addEventListener('keydown', payrollGuideEscHandler);
       }
 
