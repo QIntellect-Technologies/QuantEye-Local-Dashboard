@@ -5712,28 +5712,74 @@ def api_payroll_bonus_template():
         return jsonify({'error': f'Failed to build bonus template: {e}'}), 500
 
 
+@app.route('/api/payroll/bonuses', methods=['POST'])
+def api_save_payroll_bonus_row():
+    try:
+        payroll_month, year, month = _parse_payroll_month_arg()
+    except ValueError as e:
+        return jsonify({'error': str(e), 'field': 'month'}), 400
+    data = request.get_json(silent=True) or {}
+    try:
+        result = db.save_payroll_bonus_row(
+            year, month, int(data.get('user_id')), float(data.get('amount')),
+            str(data.get('note') or ''), **payroll_tenant(),
+        )
+    except (TypeError, ValueError) as exc:
+        return jsonify({'error': str(exc), 'field': 'amount'}), 400
+    if result.get('errors'):
+        err = result['errors'][0]
+        return jsonify({'error': err['error'], 'field': err.get('field'), 'errors': result['errors']}), 400
+    return jsonify({'success': True, 'bonuses': result.get('bonuses')})
+
+
 @app.route('/api/payroll/bonuses/upload', methods=['POST'])
 def api_upload_payroll_bonuses():
     try:
         payroll_month, year, month = _parse_payroll_month_arg()
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'error': str(e), 'field': 'month'}), 400
     uploaded = request.files.get('file') or request.files.get('bonus_file')
     if uploaded is None or not uploaded.filename:
-        return jsonify({'error': 'Upload an Excel file (.xlsx) with bonus rows.'}), 400
+        return jsonify({'error': 'Upload an Excel file (.xlsx) with bonus rows.', 'field': 'file'}), 400
+    filename = uploaded.filename.lower()
+    if not filename.endswith('.xlsx'):
+        return jsonify({'error': 'Wrong file type. Upload an .xlsx Excel workbook.', 'field': 'file'}), 400
+    uploaded.stream.seek(0, 2)
+    size = uploaded.stream.tell()
+    uploaded.stream.seek(0)
+    if size == 0:
+        return jsonify({'error': 'The uploaded file is empty.', 'field': 'file'}), 400
+    if size > 2 * 1024 * 1024:
+        return jsonify({'error': 'File is over 2 MB.', 'field': 'file'}), 400
+    file_month = str(request.form.get('file_month') or request.args.get('file_month') or '').strip()
+    if file_month and file_month != payroll_month:
+        return jsonify({'error': f'File month {file_month} does not match payroll month {payroll_month}.', 'field': 'month'}), 400
+    commit = str(request.form.get('confirm') or request.args.get('confirm') or '').lower() in ('1', 'true', 'yes')
     try:
         rows = _bonus_rows_from_workbook(uploaded)
-        result = db.replace_payroll_bonuses(year, month, rows, **payroll_tenant())
+        if not rows:
+            return jsonify({'error': 'The workbook has no bonus rows.', 'field': 'file'}), 400
+        result = db.replace_payroll_bonuses(year, month, rows, commit=commit, **payroll_tenant())
     except Exception as e:
         logger.exception('Failed to import payroll bonuses')
-        return jsonify({'error': f'Failed to import bonuses: {e}'}), 400
+        return jsonify({'error': str(e), 'field': 'file'}), 400
+    if result.get('errors') and commit:
+        return jsonify({'error': result['errors'][0]['error'], 'field': result['errors'][0].get('field'), **result}), 400
     return jsonify({
-        'success': True,
+        'success': bool(result.get('committed') or not result.get('errors')),
         'month': payroll_month,
         'imported': result['imported'],
+        'preview': result.get('preview') or [],
+        'errors': result.get('errors') or [],
         'unmatched': result['unmatched'],
+        'committed': result.get('committed'),
+        'duplicate_policy': 'reject',
         'bonuses': result['bonuses'],
-        'message': f"Imported {result['imported']} bonus row(s) for {payroll_month}.",
+        'message': (
+            f"Imported {result['imported']} bonus row(s) for {payroll_month}."
+            if result.get('committed') else
+            'Preview only. Confirm to commit. Duplicates are rejected, not summed.'
+        ),
     })
 
 

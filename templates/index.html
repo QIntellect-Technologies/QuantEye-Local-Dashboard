@@ -13193,19 +13193,28 @@ async function fetchMultiLiveDetections() {
         const form = new FormData();
         form.append('file', file);
         try {
-          const response = await fetch(`${API_BASE}/payroll/bonuses/upload?month=${encodeURIComponent(month)}`, {
+          const previewResp = await fetch(`${API_BASE}/payroll/bonuses/upload?month=${encodeURIComponent(month)}`, {
             method: 'POST',
             body: form
           });
+          const preview = await previewResp.json();
+          if (!previewResp.ok && preview.error) throw new Error(preview.error);
+          if ((preview.errors || []).length) {
+            showAppToast((preview.errors[0] && preview.errors[0].error) || preview.error || 'Bonus rows have errors', 'error');
+            return;
+          }
+          const summary = (preview.preview || []).map((row) => `${row.employee_name}: ${row.amount}`).join('\n') || preview.message;
+          if (!confirm(`Preview (duplicates are rejected, not summed):\n${summary}\n\nCommit this bonus file?`)) return;
+          const confirmForm = new FormData();
+          confirmForm.append('file', file);
+          confirmForm.append('confirm', '1');
+          const response = await fetch(`${API_BASE}/payroll/bonuses/upload?month=${encodeURIComponent(month)}&confirm=1`, {
+            method: 'POST',
+            body: confirmForm
+          });
           const result = await response.json();
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to import bonuses');
-          const unmatched = (result.unmatched || []).length;
-          showAppToast(
-            unmatched
-              ? `${result.message} ${unmatched} row(s) could not be matched.`
-              : result.message,
-            unmatched ? 'error' : 'success'
-          );
+          showAppToast(result.message, 'success');
           if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
             await loadMonthlyPayroll(month, true);
           }

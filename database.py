@@ -6646,6 +6646,9 @@ def get_payroll_bonus_amounts(
     }
 
 
+DEFAULT_BONUS_LIMIT = 1_000_000.0
+
+
 def replace_payroll_bonuses(
     year: int,
     month: int,
@@ -6653,8 +6656,15 @@ def replace_payroll_bonuses(
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
     source: str = 'excel',
+    commit: bool = False,
+    bonus_limit: Optional[float] = None,
 ) -> Dict[str, Any]:
+    """Validate bonus rows. Duplicate employees are rejected (never silently summed). Commit only when commit=True."""
     org, branch = _tenant_ids(organization_id, branch_id)
+    limit = float(bonus_limit if bonus_limit is not None else DEFAULT_BONUS_LIMIT)
+    errors: List[Dict[str, Any]] = []
+    preview: List[Dict[str, Any]] = []
+    seen: Dict[int, int] = {}
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         users = conn.execute(
@@ -6671,11 +6681,23 @@ def replace_payroll_bonuses(
         for row in users:
             by_name.setdefault(str(row['name'] or '').strip().lower(), []).append(dict(row))
 
-        matched: List[Tuple[int, float, str]] = []
-        unmatched: List[str] = []
-        for item in rows:
-            amount = float(item.get('amount') or 0)
+        for index, item in enumerate(rows, start=1):
+            raw_amount = item.get('amount')
             note = str(item.get('note') or '').strip()
+            try:
+                amount = float(raw_amount)
+            except (TypeError, ValueError, OverflowError):
+                errors.append({'row': index, 'field': 'amount', 'error': 'Amount must be numeric'})
+                continue
+            if amount < 0:
+                errors.append({'row': index, 'field': 'amount', 'error': 'Amount cannot be negative'})
+                continue
+            if amount == 0:
+                errors.append({'row': index, 'field': 'amount', 'error': 'Amount cannot be zero'})
+                continue
+            if amount > limit:
+                errors.append({'row': index, 'field': 'amount', 'error': f'Amount exceeds the organization bonus limit of {limit:g}'})
+                continue
             user = None
             raw_id = item.get('user_id') or item.get('employee_id')
             if raw_id not in (None, ''):
@@ -6689,39 +6711,67 @@ def replace_payroll_bonuses(
                 candidates = by_name.get(str(item.get('name')).strip().lower()) or []
                 if len(candidates) == 1:
                     user = candidates[0]
-            if user is None or amount < 0:
-                unmatched.append(str(item.get('name') or item.get('email') or raw_id or 'unknown'))
+            if user is None:
+                errors.append({'row': index, 'field': 'employee_id', 'error': f'Unknown employee ({item.get("name") or item.get("email") or raw_id})'})
                 continue
-            matched.append((int(user['id']), amount, note))
+            uid = int(user['id'])
+            if uid in seen:
+                errors.append({'row': index, 'field': 'employee_id', 'error': f'Duplicate employee #{uid}; duplicates are rejected, not summed'})
+                continue
+            seen[uid] = index
+            preview.append({'user_id': uid, 'employee_name': user.get('name'), 'amount': amount, 'note': note})
 
-        cursor = conn.cursor()
-        cursor.execute(
-            """DELETE FROM payroll_bonuses
-               WHERE year = ? AND month = ?
-                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
-            (int(year), int(month), org, branch),
-        )
-        for user_id, amount, note in matched:
+        if commit and not errors and preview:
+            cursor = conn.cursor()
             cursor.execute(
-                """
-                INSERT INTO payroll_bonuses (
-                    organization_id, branch_id, year, month, user_id, amount, note, source, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(organization_id, branch_id, year, month, user_id) DO UPDATE SET
-                    amount = excluded.amount,
-                    note = excluded.note,
-                    source = excluded.source,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (org, branch, int(year), int(month), user_id, amount, note, source),
+                """DELETE FROM payroll_bonuses
+                   WHERE year = ? AND month = ?
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (int(year), int(month), org, branch),
             )
-        conn.commit()
+            for item in preview:
+                cursor.execute(
+                    """
+                    INSERT INTO payroll_bonuses (
+                        organization_id, branch_id, year, month, user_id, amount, note, source, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(organization_id, branch_id, year, month, user_id) DO UPDATE SET
+                        amount = excluded.amount,
+                        note = excluded.note,
+                        source = excluded.source,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (org, branch, int(year), int(month), item['user_id'], item['amount'], item['note'], source),
+                )
+            _write_payroll_audit(cursor, 'bonuses_imported', org, branch, f'{int(year):04d}-{int(month):02d}', 'Admin', {
+                'imported': len(preview), 'source': source,
+            })
+            conn.commit()
     return {
-        'imported': len(matched),
-        'unmatched': unmatched,
-        'bonuses': list_payroll_bonuses(year, month, org, branch),
+        'imported': len(preview) if commit and not errors else 0,
+        'preview': preview,
+        'errors': errors,
+        'unmatched': [e['error'] for e in errors],
+        'committed': bool(commit and not errors and preview),
+        'duplicate_policy': 'reject',
+        'bonuses': list_payroll_bonuses(year, month, org, branch) if commit else preview,
     }
+
+
+def save_payroll_bonus_row(
+    year: int,
+    month: int,
+    user_id: int,
+    amount: float,
+    note: str = '',
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    return replace_payroll_bonuses(
+        year, month, [{'user_id': user_id, 'amount': amount, 'note': note}],
+        organization_id=organization_id, branch_id=branch_id, source='grid', commit=True,
+    )
 
 
 def list_payroll_component_types(organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:

@@ -684,8 +684,8 @@ def seed_scenario(api: LiveAPI, scenario_id: str) -> Dict[str, Any]:
         blob = io.BytesIO(bonus_xlsx([[core["ids"]["E1"], "E1 Full Attend", 500, "ok"]]))
         blob.seek(0)
         upload = api.client.post(
-            "/api/payroll/bonuses/upload?month=2026-09",
-            data={"file": (blob, "bonus.xlsx")},
+            "/api/payroll/bonuses/upload?month=2026-09&confirm=1",
+            data={"file": (blob, "bonus.xlsx"), "confirm": "1"},
             content_type="multipart/form-data",
         )
         try:
@@ -707,8 +707,8 @@ def seed_scenario(api: LiveAPI, scenario_id: str) -> Dict[str, Any]:
             buf = io.BytesIO(bonus_xlsx(rows))
             buf.seek(0)
             r = api.client.post(
-                f"/api/payroll/bonuses/upload?month={month}",
-                data={"file": (buf, f"{label}.xlsx")},
+                f"/api/payroll/bonuses/upload?month={month}&confirm=1",
+                data={"file": (buf, f"{label}.xlsx"), "confirm": "1"},
                 content_type="multipart/form-data",
             )
             try:
