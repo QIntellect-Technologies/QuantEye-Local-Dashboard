@@ -15,6 +15,7 @@ from payroll_policy_schema import (
     DEFAULT_PRORATION_BASIS,
     VALID_PRORATION_BASES,
     VALID_OFF_DAY_ATTENDANCE_MODES,
+    normalize_attendance_pay_mode as _normalize_attendance_pay_mode,
     VALID_OT_PAY_MODES,
     ensure_payroll_settings_row,
     migrate_payroll_policy_tenant_scope,
@@ -869,6 +870,7 @@ def init_db():
                 ("enable_bonuses", "INTEGER NOT NULL DEFAULT 1"),
                 ("enable_individual_adjustments", "INTEGER NOT NULL DEFAULT 0"),
                 ("enable_salary_revisions", "INTEGER NOT NULL DEFAULT 0"),
+                ("attendance_pay_mode", "TEXT NOT NULL DEFAULT 'full_salary'"),
             ]:
                 if column not in payroll_setting_columns:
                     cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -6296,6 +6298,7 @@ def update_payroll_settings(
     branch_id: Optional[str] = None,
     ot_hour_divisor: Optional[float] = None,
     proration_basis: Optional[str] = None,
+    attendance_pay_mode: Optional[str] = None,
     currency_code: Optional[str] = None,
     decimal_places: Optional[int] = None,
     holiday_ot_pay_mode: Optional[str] = None,
@@ -6339,6 +6342,9 @@ def update_payroll_settings(
     basis = str(proration_basis if proration_basis is not None else current.get('proration_basis', DEFAULT_PRORATION_BASIS)).strip().lower()
     if basis not in VALID_PRORATION_BASES:
         return False
+    pay_mode = _normalize_attendance_pay_mode(
+        attendance_pay_mode if attendance_pay_mode is not None else current.get('attendance_pay_mode')
+    )
     currency = str(currency_code if currency_code is not None else current.get('currency_code', DEFAULT_CURRENCY)).strip().upper() or DEFAULT_CURRENCY
     if len(currency) > 8:
         return False
@@ -6404,7 +6410,7 @@ def update_payroll_settings(
                     organization_id, branch_id, deduct_unpaid_leave, half_leave_quota_mode,
                     half_leaves_per_quota_day, holiday_ot_premium_percent,
                     non_working_day_ot_premium_percent, holiday_ot_premium_active,
-                    non_working_day_ot_premium_active, ot_hour_divisor, proration_basis,
+                    non_working_day_ot_premium_active, ot_hour_divisor, proration_basis, attendance_pay_mode,
                     currency_code, decimal_places, holiday_ot_pay_mode, non_working_day_ot_pay_mode,
                     holiday_ot_multiplier, non_working_day_ot_multiplier,
                     holiday_ot_fixed_amount, non_working_day_ot_fixed_amount,
@@ -6412,7 +6418,7 @@ def update_payroll_settings(
                     off_day_attendance_pay_multiplier, off_day_attendance_pay_fixed_amount,
                     {flag_sql},
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {flag_placeholders}, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {flag_placeholders}, CURRENT_TIMESTAMP)
                 ON CONFLICT(organization_id, branch_id) DO UPDATE SET
                     deduct_unpaid_leave = excluded.deduct_unpaid_leave,
                     half_leave_quota_mode = excluded.half_leave_quota_mode,
@@ -6423,6 +6429,7 @@ def update_payroll_settings(
                     non_working_day_ot_premium_active = excluded.non_working_day_ot_premium_active,
                     ot_hour_divisor = excluded.ot_hour_divisor,
                     proration_basis = excluded.proration_basis,
+                    attendance_pay_mode = excluded.attendance_pay_mode,
                     currency_code = excluded.currency_code,
                     decimal_places = excluded.decimal_places,
                     holiday_ot_pay_mode = excluded.holiday_ot_pay_mode,
@@ -6449,6 +6456,7 @@ def update_payroll_settings(
                 non_working_active,
                 divisor,
                 basis,
+                pay_mode,
                 currency,
                 places,
                 h_mode,
@@ -7344,6 +7352,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
     deduct_unpaid_leave = bool(payroll_settings.get('deduct_unpaid_leave', 0))
     ot_hour_divisor = float(payroll_settings.get('ot_hour_divisor') or DEFAULT_OT_DIVISOR) or DEFAULT_OT_DIVISOR
     proration_basis = str(payroll_settings.get('proration_basis') or DEFAULT_PRORATION_BASIS)
+    attendance_mode = _normalize_attendance_pay_mode(payroll_settings.get('attendance_pay_mode'))
+    month_complete = period_end >= month_end
     decimal_places = int(payroll_settings.get('decimal_places') or DEFAULT_DECIMAL_PLACES)
     def _m(value):
         return _payroll_money(value, decimal_places)
@@ -7459,11 +7469,15 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         eligible_records = [day for day in daily_records
                             if eligible_start.isoformat() <= str(day.get('date', '')) <= eligible_end.isoformat()]
         
-        # Schedule is calculated over the full eligible period within the month, ending at exited_on or month_end
+        # Join/exit proration uses the full remaining month. Attendance KPIs and
+        # payable-day pay use the live window through period_end (today for the current month).
         schedule_end = min(month_end, exited_on) if exited_on else month_end
-        schedule_records = [day for day in daily_records
+        month_schedule_records = [day for day in daily_records
                             if eligible_start.isoformat() <= str(day.get('date', '')) <= schedule_end.isoformat()]
-        scheduled_workdays = sum(bool(day.get('scheduled_workday')) for day in schedule_records)
+        period_schedule_records = [day for day in daily_records
+                            if eligible_start.isoformat() <= str(day.get('date', '')) <= eligible_end.isoformat()]
+        month_scheduled_workdays = sum(bool(day.get('scheduled_workday')) for day in month_schedule_records)
+        scheduled_workdays = sum(bool(day.get('scheduled_workday')) for day in period_schedule_records)
         shift_history_missing = any(day.get('shift_history_missing') for day in eligible_records)
         shift_details = list({
             (day['shift_id'], day['shift_effective_from']): {
@@ -7472,24 +7486,27 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 'effective_from': day['shift_effective_from'],
                 'working_days': day['shift_working_days'],
             }
-            for day in schedule_records if day.get('shift_id') is not None
+            for day in month_schedule_records if day.get('shift_id') is not None
         }.values())
         calendar_details = [
             {'date': day['date'], 'override_type': day['calendar_override']}
-            for day in schedule_records if day.get('calendar_override')
+            for day in month_schedule_records if day.get('calendar_override')
         ]
         present_days = sum(day.get('scheduled_workday', True) and day.get('status') in ('present', 'checked_out') for day in eligible_records)
         late_days = sum(day.get('scheduled_workday', True) and day.get('status') == 'late' for day in eligible_records)
         half_leave_count = sum(int(day.get('half_leave_count') or 0) for day in eligible_records)
-        unpaid_leave_days = sum(1 for day in schedule_records if day.get('scheduled_workday', True) and day.get('status') == 'on_leave_unpaid')
-        unexcused_absent_days = sum(day.get('status') == 'absent' for day in eligible_records)
-        absent_days = unexcused_absent_days + unpaid_leave_days
+        unpaid_leave_days = sum(1 for day in month_schedule_records if day.get('scheduled_workday', True) and day.get('status') == 'on_leave_unpaid')
+        unexcused_absent_days = sum(
+            bool(day.get('scheduled_workday')) and day.get('status') == 'absent' for day in eligible_records
+        )
+        absent_days = unexcused_absent_days + sum(
+            1 for day in eligible_records if day.get('scheduled_workday', True) and day.get('status') == 'on_leave_unpaid'
+        )
         
-        # TICKET-BUGFIX: Calculate approved leave over the full month schedule (schedule_records) 
-        # so mid-month previews correctly reflect future approved leaves within the month.
-        approved_leave_days = sum(day.get('scheduled_workday', True) and day.get('status') == 'on_leave' for day in schedule_records)
+        approved_leave_days = sum(day.get('scheduled_workday', True) and day.get('status') == 'on_leave' for day in month_schedule_records)
+        approved_leave_days_period = sum(day.get('scheduled_workday', True) and day.get('status') == 'on_leave' for day in eligible_records)
         
-        payable_days = min(scheduled_workdays, present_days + late_days + approved_leave_days)
+        payable_days = min(scheduled_workdays, present_days + late_days + approved_leave_days_period)
         
         full_month_workdays = sum(bool(day.get('scheduled_workday')) for day in daily_records)
         proration_factor = _payroll_proration_factor(
@@ -7498,7 +7515,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             schedule_end,
             month_start,
             month_end,
-            scheduled_workdays,
+            month_scheduled_workdays,
             full_month_workdays,
         )
         
@@ -7572,7 +7589,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             if str(day.get('date') or '') in ot_dates:
                 continue
             off_day_dates.append(str(day.get('date') or ''))
-        daily_rate = _m(basic_salary / scheduled_workdays) if scheduled_workdays else 0.0
+        daily_rate = _m(basic_salary / month_scheduled_workdays) if month_scheduled_workdays else 0.0
         adj_pack = {
             'extra_earn': 0.0, 'extra_deduct': 0.0, 'arrears': 0.0,
             'remaining_off_days': off_day_dates, 'lines': [],
@@ -7646,8 +7663,14 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 else float(matched_half_leave_rule['fixed_amount']),
                 2,
             )
-        unpaid_leave_deduction = round(basic_salary * unpaid_leave_days / scheduled_workdays, 2) if deduct_unpaid_leave and scheduled_workdays else 0.0
-        deduction_amount = round(absence_rule_deduction + unpaid_leave_deduction + half_leave_deduction, 2)
+        unpaid_leave_deduction = round(basic_salary * unpaid_leave_days / month_scheduled_workdays, 2) if deduct_unpaid_leave and month_scheduled_workdays else 0.0
+        attendance_shortfall = 0.0
+        if attendance_mode == 'payable_days':
+            earn_factor = (float(payable_days) / float(scheduled_workdays)) if scheduled_workdays else 0.0
+            attendance_shortfall = _m((basic_salary + allowances) * (1.0 - earn_factor))
+            absence_rule_deduction = 0.0
+            rule_missing = False
+        deduction_amount = round(absence_rule_deduction + unpaid_leave_deduction + half_leave_deduction + attendance_shortfall, 2)
 
         # Gross = Basic + Allowances + Approved Overtime + Excel bonus + rest-day extra + adjustments/arrears
         gross_salary = _m(
@@ -7709,6 +7732,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'total_leave_days': total_leave_days,
             'leave_days': total_leave_days,
             'payable_days': payable_days,
+            'month_scheduled_workdays': month_scheduled_workdays,
+            'attendance_pay_mode': attendance_mode,
+            'attendance_shortfall': attendance_shortfall,
             'shift_history_missing': shift_history_missing,
             'applied_rule_id': matched_rule['id'] if matched_rule else None,
             'matched_rule': matched_rule_label,
@@ -7730,6 +7756,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         'period_end': period_end.isoformat(),
         'status': 'Draft',
         'is_finalized': False,
+        'month_complete': month_complete,
+        'can_finalize': month_complete,
+        'attendance_pay_mode': attendance_mode,
         'employee_count': len(rows),
         'total_basic_salary': round(sum(row['basic_salary'] for row in rows), 2),
         'total_allowances': round(sum(row['allowances'] for row in rows), 2),
@@ -8018,6 +8047,22 @@ def finalize_monthly_payroll(
 ) -> Optional[Dict[str, Any]]:
     """Persist a reviewed payroll preview as an immutable monthly snapshot for tenant."""
     _sanitize_orphan_payroll_records()
+    try:
+        run_month = datetime.strptime(str(preview.get('payroll_month') or ''), "%Y-%m").date().replace(day=1)
+        period_end_value = datetime.strptime(str(preview.get('period_end') or '')[:10], "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        run_month = None
+        period_end_value = None
+    if run_month is not None:
+        if run_month.month == 12:
+            run_month_end = run_month.replace(year=run_month.year + 1, month=1) - timedelta(days=1)
+        else:
+            run_month_end = run_month.replace(month=run_month.month + 1) - timedelta(days=1)
+        if period_end_value is not None and period_end_value < run_month_end:
+            raise ValueError(
+                f"This month is still in progress through {period_end_value.isoformat()}. "
+                "Finalize after the last day of the month so attendance is complete."
+            )
     if any(row.get('shift_history_missing') for row in preview.get('records', [])):
         raise ValueError("Configure shift assignment history for every employee before finalizing payroll")
     if any(row['basic_salary'] <= 0 for row in preview.get('records', [])):

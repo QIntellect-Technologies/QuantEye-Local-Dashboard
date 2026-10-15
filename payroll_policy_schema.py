@@ -17,6 +17,8 @@ DEFAULT_PRORATION_BASIS = "calendar_days"
 DEFAULT_CURRENCY = "PKR"
 DEFAULT_DECIMAL_PLACES = 2
 VALID_PRORATION_BASES = ("calendar_days", "working_days", "30_day")
+VALID_ATTENDANCE_PAY_MODES = ("full_salary", "payable_days")
+DEFAULT_ATTENDANCE_PAY_MODE = "full_salary"
 VALID_OT_PAY_MODES = ("percent", "multiplier", "fixed_hour")
 VALID_OFF_DAY_ATTENDANCE_MODES = ("multiplier", "fixed_day")
 DEFAULT_EXAMPLE_MULTIPLIER = 1.5
@@ -41,6 +43,7 @@ DEFAULT_PAYROLL_SETTINGS = {
     "overtime_max_period": "day",
     "ot_hour_divisor": DEFAULT_OT_DIVISOR,
     "proration_basis": DEFAULT_PRORATION_BASIS,
+    "attendance_pay_mode": DEFAULT_ATTENDANCE_PAY_MODE,
     "currency_code": DEFAULT_CURRENCY,
     "decimal_places": DEFAULT_DECIMAL_PLACES,
     "holiday_ot_pay_mode": "percent",
@@ -206,6 +209,13 @@ def proration_factor(
     import calendar as _calendar
     _, total_days_in_month = _calendar.monthrange(month_start.year, month_start.month)
     return 1.0 if active_days >= total_days_in_month else (active_days / total_days_in_month)
+
+
+def normalize_attendance_pay_mode(value: Any) -> str:
+    mode = str(value or DEFAULT_ATTENDANCE_PAY_MODE).strip().lower()
+    if mode in ("days_worked", "worked_days", "attendance"):
+        return "payable_days"
+    return mode if mode in VALID_ATTENDANCE_PAY_MODES else DEFAULT_ATTENDANCE_PAY_MODE
 
 
 def _columns(cursor, table: str) -> Dict[str, int]:
@@ -399,6 +409,7 @@ def _migrate_payroll_settings(cursor) -> None:
         ("enable_bonuses", "INTEGER NOT NULL DEFAULT 1"),
         ("enable_individual_adjustments", "INTEGER NOT NULL DEFAULT 0"),
         ("enable_salary_revisions", "INTEGER NOT NULL DEFAULT 0"),
+        ("attendance_pay_mode", "TEXT NOT NULL DEFAULT 'full_salary'"),
     ):
         if column not in cols:
             cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")

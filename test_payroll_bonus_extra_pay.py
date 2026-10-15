@@ -5,7 +5,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import patch
 
 _LOCAL_DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -135,6 +135,7 @@ class PayrollBonusExtraPayTests(unittest.TestCase):
             holiday_ot_pay_mode="percent",
             non_working_day_ot_pay_mode="percent",
             off_day_attendance_pay_active=False,
+            attendance_pay_mode="full_salary",
         )
 
     def test_multiplier_and_fixed_helpers_are_configurable(self):
@@ -225,6 +226,54 @@ class PayrollBonusExtraPayTests(unittest.TestCase):
         self.assertEqual(row["off_day_extra_pay"], 0)
         self.assertEqual(row["overtime_hours"], 3.0)
         self.assertEqual(row["overtime_amount"], 900.0)
+
+    def test_payable_days_mode_scales_salary_to_attendance(self):
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.execute(
+                "DELETE FROM attendance WHERE user_id = ? AND date(timestamp) > '2026-09-10'",
+                (self.user_id,),
+            )
+        db.update_payroll_settings(
+            False, "category", 2, 0, 0,
+            organization_id=ORG, branch_id=BRANCH,
+            attendance_pay_mode="payable_days",
+        )
+        payroll = db.calculate_monthly_payroll("2026-09", organization_id=ORG, branch_id=BRANCH)
+        row = payroll["records"][0]
+        self.assertGreater(row["scheduled_workdays"], row["payable_days"])
+        expected_net = round(100000 * row["payable_days"] / row["scheduled_workdays"], 2)
+        self.assertEqual(row["net_salary"], expected_net)
+        self.assertGreater(row["attendance_shortfall"], 0)
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.execute("DELETE FROM attendance WHERE user_id = ?", (self.user_id,))
+            day = date(2026, 9, 1)
+            while day <= date(2026, 9, 30):
+                if day.weekday() <= 5:
+                    conn.execute(
+                        """INSERT INTO attendance (
+                               user_id, detected_name, confidence, source, timestamp, organization_id, branch_id
+                           ) VALUES (?, ?, 0.99, 'manual', ?, ?, ?)""",
+                        (self.user_id, "Rest Day Worker", f"{day.isoformat()} 09:00:00", ORG, BRANCH),
+                    )
+                day = date.fromordinal(day.toordinal() + 1)
+            conn.execute(
+                """INSERT INTO attendance (
+                       user_id, detected_name, confidence, source, timestamp, organization_id, branch_id
+                   ) VALUES (?, ?, 0.99, 'manual', ?, ?, ?)""",
+                (self.user_id, "Rest Day Worker", "2026-09-06 10:00:00", ORG, BRANCH),
+            )
+
+    def test_finalize_blocked_until_month_ends(self):
+        class FrozenDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 9, 15, 12, 0, 0)
+
+        with patch("database.datetime", FrozenDateTime):
+            preview = db.calculate_monthly_payroll("2026-09", organization_id=ORG, branch_id=BRANCH)
+            self.assertFalse(preview["month_complete"])
+            with self.assertRaises(ValueError):
+                db.finalize_monthly_payroll(preview, organization_id=ORG, branch_id=BRANCH)
 
     def test_bonus_template_downloads(self):
         response = self.client.get("/api/payroll/bonuses/template?month=2026-09")

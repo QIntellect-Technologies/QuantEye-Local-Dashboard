@@ -6210,6 +6210,7 @@ def api_update_payroll_settings():
         branch_id=current_settings.get('branch_id') or get_current_branch_id(),
         ot_hour_divisor=data.get('ot_hour_divisor', current_settings.get('ot_hour_divisor')),
         proration_basis=data.get('proration_basis', current_settings.get('proration_basis')),
+        attendance_pay_mode=data.get('attendance_pay_mode', current_settings.get('attendance_pay_mode')),
         currency_code=data.get('currency_code', current_settings.get('currency_code')),
         decimal_places=data.get('decimal_places', current_settings.get('decimal_places')),
         holiday_ot_pay_mode=data.get('holiday_ot_pay_mode', current_settings.get('holiday_ot_pay_mode')),

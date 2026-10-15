@@ -770,6 +770,20 @@
         margin-bottom: 16px;
       }
 
+      #salaryConfigTable {
+        min-width: 1100px;
+      }
+
+      #salaryConfigTable th:last-child,
+      #salaryConfigTable td:last-child {
+        position: sticky;
+        right: 0;
+        background: #ffffff;
+        z-index: 2;
+        min-width: 132px;
+        box-shadow: -8px 0 8px rgba(15, 23, 42, 0.04);
+      }
+
       @media (max-width: 1100px) {
         .payroll-rule-form {
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4240,6 +4254,9 @@ async function fetchMultiLiveDetections() {
           <button id="reviewPayrollButton" type="button" onclick="openPayrollReview()" class="btn btn-primary" style="min-height:40px; background:#148f77; border-color:#148f77;" disabled>
             <i class="fa-solid fa-clipboard-check"></i> Review Payroll
           </button>
+          <button id="finalizePayrollToolbarButton" type="button" onclick="finalizeMonthlyPayroll()" class="btn btn-primary" style="min-height:40px; background:#0f766e; border-color:#0f766e;" disabled>
+            <i class="fa-solid fa-lock"></i> Finalize
+          </button>
           <button type="button" class="btn btn-outline" style="min-height:40px; border-color:#3d9fd4; color:#247eae;" onclick="downloadPayrollExcel()">
             <i class="fa-solid fa-file-excel"></i> Export Excel
           </button>
@@ -5558,6 +5575,19 @@ async function fetchMultiLiveDetections() {
           <input id="nonWorkingDayOtMultiplier" type="hidden" value="1.5">
           <input id="nonWorkingDayOtFixedAmount" type="hidden" value="0">
           {% endif %}
+        </section>
+
+        <section class="payroll-panel">
+          <h4>How attendance affects salary</h4>
+          <p class="payroll-panel-help">Choose one. You can change this later; it does not rewrite months already finalized.</p>
+          <label style="font-size:0.86em; font-weight:700; color:#475569; display:block; max-width:560px;">
+            Attendance pay method
+            <select id="payrollAttendancePayMode" class="form-select" style="margin-top:4px;">
+              <option value="payable_days">Pay for days present (present + late + paid leave ÷ scheduled days so far)</option>
+              <option value="full_salary">Pay full monthly salary, then apply absence brackets below</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; margin-top:12px;">Save pay method</button>
         </section>
 
         <section class="payroll-panel">
@@ -7171,6 +7201,7 @@ async function fetchMultiLiveDetections() {
         if (payroll.is_finalized || payroll.status === 'Finalized') return 'Finalized';
         if (!(payroll.records || []).length) return 'Draft';
         if ((payroll.records || []).some(row => payrollIssueDetails(row).length)) return 'Has unresolved issues';
+        if (payroll.month_complete === false || payroll.can_finalize === false) return 'In progress';
         return 'Ready for Finalization';
       }
 
@@ -7180,6 +7211,7 @@ async function fetchMultiLiveDetections() {
         const styles = {
           'Draft': 'bg-secondary-subtle text-secondary',
           'Ready for Finalization': 'bg-success-subtle text-success',
+          'In progress': 'bg-warning-subtle text-warning-emphasis',
           'Has unresolved issues': 'bg-danger-subtle text-danger',
           'Finalized': 'bg-success text-white'
         };
@@ -7214,6 +7246,7 @@ async function fetchMultiLiveDetections() {
         const calculateButton = document.getElementById('calculatePayrollButton');
         const reviewButton = document.getElementById('reviewPayrollButton');
         const finalizeButton = document.getElementById('finalizePayrollButton');
+        const finalizeToolbar = document.getElementById('finalizePayrollToolbarButton');
 
         document.getElementById('payrollSelectedPeriod').textContent = payrollMonthLabel(payroll.payroll_month);
         document.getElementById('payrollStaffCount').textContent = payroll.employee_count ?? records.length;
@@ -7226,15 +7259,23 @@ async function fetchMultiLiveDetections() {
         document.getElementById('payrollLateTotal').textContent = records.reduce((sum, row) => sum + Number(row.late_days || 0), 0);
         document.getElementById('payrollPayableDaysTotal').textContent = records.reduce((sum, row) => sum + Number(row.payable_days || 0), 0);
         document.getElementById('payrollIssueCount').textContent = issues.length;
+        const payMode = payroll.attendance_pay_mode || 'full_salary';
+        const monthOpen = payroll.month_complete === false || payroll.can_finalize === false;
         document.getElementById('payrollPeriodNote').textContent = isFinalized
           ? `Finalized snapshot · ${payroll.finalized_at || 'finalization time unavailable'}`
-          : `Draft attendance through ${payroll.period_end || 'selected period'} · Net payable is Basic Salary minus the configured absence-rule deduction.`;
+          : monthOpen
+            ? `Live through ${payroll.period_end || 'today'}. Scheduled / present / absent are the same date window. Finalize after month-end.`
+            : (payMode === 'payable_days'
+              ? `Complete month · Pay = payable days ÷ scheduled days of (basic + allowances), plus extras minus other deductions.`
+              : `Complete month · Full salary minus absence brackets and other deductions.`);
         setPayrollStateBadge(state);
         populatePayrollDepartmentFilter(records);
         calculateButton.innerHTML = `<i class="fa-solid fa-calculator"></i> ${isFinalized ? 'Finalized Payroll' : (payroll.payroll_run_id ? 'Recalculate Payroll' : 'Calculate Payroll')}`;
         calculateButton.disabled = isFinalized;
         reviewButton.disabled = !records.length;
-        finalizeButton.disabled = isFinalized || issues.length > 0 || !records.length;
+        const lockFinalize = isFinalized || issues.length > 0 || !records.length || monthOpen;
+        finalizeButton.disabled = lockFinalize;
+        if (finalizeToolbar) finalizeToolbar.disabled = lockFinalize;
         document.getElementById('payrollReviewState').textContent = state;
         document.getElementById('payrollRunStatusFilter').value = document.getElementById('payrollRunStatusFilter').value || 'all';
 
@@ -7245,6 +7286,10 @@ async function fetchMultiLiveDetections() {
           message.innerHTML = '<div class="alert alert-warning py-2 mb-0">No active employees are available for this month. Payroll cannot be finalized.</div>';
         } else if (issues.length) {
           message.innerHTML = `<div class="alert alert-warning py-2 mb-0">${issues.length} employee${issues.length === 1 ? '' : 's'} need resolution before finalization. Use the Issues filter to review them.</div>`;
+        } else if (monthOpen) {
+          message.innerHTML = `<div class="alert alert-warning py-2 mb-0">This is a live preview through ${payrollEscape(payroll.period_end || 'today')}. Recalculate anytime. Finalize is available on the last day of the month.</div>`;
+        } else if (payMode === 'full_salary' && records.every(row => !row.applied_rule_id && Number(row.attendance_shortfall || 0) === 0)) {
+          message.innerHTML = '<div class="alert alert-warning py-2 mb-0">Full monthly salary is being paid. Add an absence bracket, or switch Payroll Settings to “Pay for days present”, then Recalculate.</div>';
         } else {
           message.innerHTML = '<div class="alert alert-success py-2 mb-0">All employee rows are ready for review and finalization.</div>';
         }
@@ -7311,7 +7356,7 @@ async function fetchMultiLiveDetections() {
               <th class="text-end" style="min-width:125px;">Net Payable</th>
               <th class="text-center" style="min-width:95px;">Status</th>
               <th style="min-width:130px;">Issues / Remarks</th>
-              <th class="text-center" style="min-width:125px;">OT Review</th>
+              <th class="text-center" style="min-width:125px;">Actions</th>
             </tr>
           `;
         } else if (payrollActiveSubtab === 'attendance') {
@@ -7434,7 +7479,7 @@ async function fetchMultiLiveDetections() {
                 <td class="text-end font-monospace fw-bold" style="color:#0d9488; font-size:1.02em;">${payrollMoney(row.net_salary)}</td>
                 <td class="text-center"><span class="badge ${statusClass}">${payrollEscape(status)}</span></td>
                 <td>${rowIssues.length ? `<span class="text-danger small fw-semibold">${payrollEscape(rowIssues.join('; '))}</span>` : '<span class="text-muted small">—</span>'}</td>
-                <td class="text-center">${currentPayrollPreview.is_finalized ? '<span class="text-muted small">Read-only</span>' : `<button type="button" class="btn btn-sm btn-outline-info" onclick="openPayrollOtReview(${row.employee_id})" title="Review daily overtime"><i class="fa-solid fa-clock"></i> Review OT</button>`}<div><button type="button" class="btn btn-link btn-sm p-0" onclick="downloadPayslipPdf(${row.employee_id})">Payslip PDF</button></div></td>
+                <td class="text-center">${(window.entitledModules && window.entitledModules.overtime && !currentPayrollPreview.is_finalized) ? `<button type="button" class="btn btn-sm btn-outline-info" onclick="openPayrollOtReview(${row.employee_id})" title="Review daily overtime"><i class="fa-solid fa-clock"></i> Review OT</button>` : ''}<div><button type="button" class="btn btn-link btn-sm p-0" onclick="downloadPayslipPdf(${row.employee_id})">Payslip PDF</button></div></td>
               </tr>`;
             } else if (payrollActiveSubtab === 'attendance') {
               return `<tr>
@@ -7632,6 +7677,8 @@ async function fetchMultiLiveDetections() {
         calculateButton.disabled = true;
         document.getElementById('reviewPayrollButton').disabled = true;
         document.getElementById('finalizePayrollButton').disabled = true;
+        const toolbarFinalize = document.getElementById('finalizePayrollToolbarButton');
+        if (toolbarFinalize) toolbarFinalize.disabled = true;
         message.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin"></i> Loading database payroll rows...</div>';
         tbody.innerHTML = `<tr><td colspan="${getPayrollActiveColspan()}" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading payroll...</td></tr>`;
         try {
@@ -12503,6 +12550,8 @@ async function fetchMultiLiveDetections() {
           if (otDivisor) otDivisor.value = settings.ot_hour_divisor ?? 208;
           const proration = document.getElementById('payrollProrationBasis');
           if (proration) proration.value = settings.proration_basis || 'calendar_days';
+          const attendancePay = document.getElementById('payrollAttendancePayMode');
+          if (attendancePay) attendancePay.value = settings.attendance_pay_mode || 'full_salary';
           const currencyInput = document.getElementById('payrollCurrencyCode');
           if (currencyInput) currencyInput.value = settings.currency_code || 'PKR';
           const decimalInput = document.getElementById('payrollDecimalPlaces');
@@ -12537,10 +12586,14 @@ async function fetchMultiLiveDetections() {
               ? `Current limit: ${maxHours} hours ${settings.overtime_max_period === 'per_entry' ? 'per OT entry' : `per ${settings.overtime_max_period || 'day'}`}.`
               : 'No OT hour limit is active.';
           }
-          if (message && toggle) {
-            const unpaidPolicy = toggle.checked ? 'Unpaid days are deducted from payroll.' : 'Unpaid days are not deducted from payroll.';
-            const halfLeavePolicy = describeHalfLeaveQuotaMode(quotaMode?.value || 'category', conversionCount?.value || 2);
-            message.textContent = `${unpaidPolicy} ${halfLeavePolicy}`;
+          if (message) {
+            if (window.entitledModules && window.entitledModules.leave && toggle) {
+              const unpaidPolicy = toggle.checked ? 'Unpaid days are deducted from payroll.' : 'Unpaid days are not deducted from payroll.';
+              const halfLeavePolicy = describeHalfLeaveQuotaMode(quotaMode?.value || 'category', conversionCount?.value || 2);
+              message.textContent = `${unpaidPolicy} ${halfLeavePolicy}`;
+            } else {
+              message.textContent = '';
+            }
           }
           if (window.entitledModules && window.entitledModules.overtime) {
             await loadOvertimePremiumRules();
@@ -13204,6 +13257,7 @@ async function fetchMultiLiveDetections() {
               non_working_day_ot_premium_percent: Number(document.getElementById('nonWorkingDayOtPremiumPercent')?.value || 0),
               ot_hour_divisor: Number(document.getElementById('payrollOtHourDivisor')?.value || 208),
               proration_basis: document.getElementById('payrollProrationBasis')?.value || 'calendar_days',
+              attendance_pay_mode: document.getElementById('payrollAttendancePayMode')?.value || 'full_salary',
               currency_code: (document.getElementById('payrollCurrencyCode')?.value || 'PKR').trim().toUpperCase(),
               decimal_places: Number(document.getElementById('payrollDecimalPlaces')?.value || 2),
               holiday_ot_pay_mode: document.getElementById('holidayOtPayMode')?.value || 'percent',
@@ -13241,8 +13295,12 @@ async function fetchMultiLiveDetections() {
           }
           updateHalfLeaveQuotaModeUI();
           if (message) {
-            const halfLeavePolicy = describeHalfLeaveQuotaMode(quotaMode?.value || 'category', conversionCount?.value || 2);
-            message.textContent = `${deductUnpaidLeave ? 'Unpaid days will be deducted from payroll.' : 'Unpaid days will not be deducted from payroll.'} ${halfLeavePolicy}`;
+            if (window.entitledModules && window.entitledModules.leave) {
+              const halfLeavePolicy = describeHalfLeaveQuotaMode(quotaMode?.value || 'category', conversionCount?.value || 2);
+              message.textContent = `${deductUnpaidLeave ? 'Unpaid days will be deducted from payroll.' : 'Unpaid days will not be deducted from payroll.'} ${halfLeavePolicy}`;
+            } else {
+              message.textContent = 'Payroll settings saved.';
+            }
           }
           showAppToast('Payroll settings saved.', 'success');
           if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
