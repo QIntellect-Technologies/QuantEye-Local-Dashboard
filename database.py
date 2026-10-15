@@ -4,12 +4,41 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional, Tuple, Any, Union
+from typing import List, Dict, Optional, Tuple, Any, Union, Sequence
 from logger_config import get_logger
 from config import DB_PATH, ATTENDANCE_LOG_RETENTION_DAYS
+from payroll_policy_schema import (
+    DEFAULT_CURRENCY,
+    DEFAULT_DECIMAL_PLACES,
+    DEFAULT_OT_DIVISOR,
+    DEFAULT_PAYROLL_SETTINGS,
+    DEFAULT_PRORATION_BASIS,
+    VALID_PRORATION_BASES,
+    VALID_OFF_DAY_ATTENDANCE_MODES,
+    VALID_OT_PAY_MODES,
+    ensure_payroll_settings_row,
+    migrate_payroll_policy_tenant_scope,
+    money as _payroll_money,
+    off_day_attendance_extra as _off_day_attendance_extra,
+    overtime_entry_pay as _overtime_entry_pay,
+    proration_factor as _payroll_proration_factor,
+    seed_leave_types_if_empty,
+    tenant_ids as _tenant_ids,
+)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 logger = get_logger(__name__)
+
+
+def _user_tenant(cursor, user_id: int) -> Tuple[str, str]:
+    cursor.execute(
+        "SELECT COALESCE(organization_id, 'DEFAULT_ORG'), COALESCE(branch_id, 'DEFAULT_BRANCH') FROM users WHERE id = ?",
+        (user_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return 'DEFAULT_ORG', 'DEFAULT_BRANCH'
+    return row[0], row[1]
 
 
 def _cloud_mirror(action: str, *args, **kwargs) -> None:
@@ -349,8 +378,8 @@ def init_db():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS leave_types (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    code TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    code TEXT NOT NULL,
                     yearly_allowance REAL DEFAULT 12.0,
                     is_paid INTEGER DEFAULT 1,
                     description TEXT,
@@ -363,7 +392,11 @@ def init_db():
                     half_leave_allowance_months INTEGER NOT NULL DEFAULT 12,
                     half_leaves_per_quota_day INTEGER NOT NULL DEFAULT 2,
                     half_leave_quota_type_id INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(organization_id, name),
+                    UNIQUE(organization_id, code)
                 )
             ''')
 
@@ -525,32 +558,20 @@ def init_db():
                 if column not in leave_request_columns:
                     cursor.execute(f"ALTER TABLE leave_requests ADD COLUMN {column} {column_type}")
 
-            # Seed default leave types if empty
-            cursor.execute("SELECT COUNT(*) FROM leave_types")
-            if cursor.fetchone()[0] == 0:
-                default_types = [
-                    ('Casual Leave', 'casual', 10.0, 1, 'Short-term casual leave'),
-                    ('Sick Leave', 'sick', 8.0, 1, 'Medical or health related leave'),
-                    ('Annual / Paid Leave', 'annual', 14.0, 1, 'Earned annual paid leave'),
-                    ('Unpaid Leave (LWP)', 'unpaid', 0.0, 0, 'Leave without pay'),
-                    ('Excess Paid Leave', 'excess_paid', 0.0, 1, 'Approved paid leave beyond standard quota')
-                ]
-                cursor.executemany(
-                    "INSERT INTO leave_types (name, code, yearly_allowance, is_paid, description) VALUES (?, ?, ?, ?, ?)",
-                    default_types
-                )
-
             # Company holidays table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS company_holidays (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
-                    holiday_date DATE NOT NULL UNIQUE,
+                    holiday_date DATE NOT NULL,
                     end_date DATE,
                     description TEXT,
                     is_recurring INTEGER DEFAULT 0,
                     overtime_premium_percent REAL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(organization_id, branch_id, holiday_date)
                 )
             ''')
             company_holiday_columns = {row[1] for row in cursor.execute("PRAGMA table_info(company_holidays)").fetchall()}
@@ -677,6 +698,8 @@ def init_db():
                 ("unpaid_leave_days", "INTEGER NOT NULL DEFAULT 0"),
                 ("unpaid_leave_deduction", "REAL NOT NULL DEFAULT 0.0"),
                 ("total_leave_days", "INTEGER NOT NULL DEFAULT 0"),
+                ("bonus_amount", "REAL NOT NULL DEFAULT 0.0"),
+                ("off_day_extra_pay", "REAL NOT NULL DEFAULT 0.0"),
             ]:
                 if column not in payroll_record_columns:
                     cursor.execute(f"ALTER TABLE payroll_records ADD COLUMN {column} {column_type}")
@@ -691,6 +714,8 @@ def init_db():
                 cursor.execute("ALTER TABLE payroll_runs ADD COLUMN organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG'")
             if 'branch_id' not in payroll_run_columns:
                 cursor.execute("ALTER TABLE payroll_runs ADD COLUMN branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH'")
+            if 'finalized_by' not in payroll_run_columns:
+                cursor.execute("ALTER TABLE payroll_runs ADD COLUMN finalized_by TEXT")
 
             conn.commit()
             cursor.execute("PRAGMA foreign_keys = OFF")
@@ -734,6 +759,8 @@ def init_db():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS payroll_rules (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
                     rule_basis TEXT NOT NULL DEFAULT 'absence',
                     min_absent_days INTEGER NOT NULL,
                     max_absent_days INTEGER,
@@ -761,7 +788,9 @@ def init_db():
 
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS payroll_settings (
-                    id INTEGER PRIMARY KEY CHECK(id = 1),
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
                     deduct_unpaid_leave INTEGER NOT NULL DEFAULT 0 CHECK(deduct_unpaid_leave IN (0, 1)),
                     half_leave_quota_mode TEXT NOT NULL DEFAULT 'category',
                     half_leaves_per_quota_day INTEGER NOT NULL DEFAULT 2,
@@ -771,7 +800,22 @@ def init_db():
                     non_working_day_ot_premium_active INTEGER NOT NULL DEFAULT 0,
                     overtime_max_hours REAL NOT NULL DEFAULT 0,
                     overtime_max_period TEXT NOT NULL DEFAULT 'day',
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    ot_hour_divisor REAL NOT NULL DEFAULT 208,
+                    proration_basis TEXT NOT NULL DEFAULT 'calendar_days',
+                    currency_code TEXT NOT NULL DEFAULT 'PKR',
+                    decimal_places INTEGER NOT NULL DEFAULT 2,
+                    holiday_ot_pay_mode TEXT NOT NULL DEFAULT 'percent',
+                    non_working_day_ot_pay_mode TEXT NOT NULL DEFAULT 'percent',
+                    holiday_ot_multiplier REAL NOT NULL DEFAULT 1.5,
+                    non_working_day_ot_multiplier REAL NOT NULL DEFAULT 1.5,
+                    holiday_ot_fixed_amount REAL NOT NULL DEFAULT 0,
+                    non_working_day_ot_fixed_amount REAL NOT NULL DEFAULT 0,
+                    off_day_attendance_pay_active INTEGER NOT NULL DEFAULT 0,
+                    off_day_attendance_pay_mode TEXT NOT NULL DEFAULT 'multiplier',
+                    off_day_attendance_pay_multiplier REAL NOT NULL DEFAULT 1.5,
+                    off_day_attendance_pay_fixed_amount REAL NOT NULL DEFAULT 0,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(organization_id, branch_id)
                 )
             ''')
             payroll_setting_columns = {row[1] for row in cursor.execute("PRAGMA table_info(payroll_settings)")}
@@ -786,6 +830,16 @@ def init_db():
                 ("non_working_day_ot_premium_active", "INTEGER NOT NULL DEFAULT 0"),
                 ("overtime_max_hours", "REAL NOT NULL DEFAULT 0"),
                 ("overtime_max_period", "TEXT NOT NULL DEFAULT 'day'"),
+                ("holiday_ot_pay_mode", "TEXT NOT NULL DEFAULT 'percent'"),
+                ("non_working_day_ot_pay_mode", "TEXT NOT NULL DEFAULT 'percent'"),
+                ("holiday_ot_multiplier", "REAL NOT NULL DEFAULT 1.5"),
+                ("non_working_day_ot_multiplier", "REAL NOT NULL DEFAULT 1.5"),
+                ("holiday_ot_fixed_amount", "REAL NOT NULL DEFAULT 0"),
+                ("non_working_day_ot_fixed_amount", "REAL NOT NULL DEFAULT 0"),
+                ("off_day_attendance_pay_active", "INTEGER NOT NULL DEFAULT 0"),
+                ("off_day_attendance_pay_mode", "TEXT NOT NULL DEFAULT 'multiplier'"),
+                ("off_day_attendance_pay_multiplier", "REAL NOT NULL DEFAULT 1.5"),
+                ("off_day_attendance_pay_fixed_amount", "REAL NOT NULL DEFAULT 0"),
             ]:
                 if column not in payroll_setting_columns:
                     cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -793,13 +847,14 @@ def init_db():
                 cursor.execute("UPDATE payroll_settings SET holiday_ot_premium_active = 1 WHERE holiday_ot_premium_percent > 0")
             if migrate_non_working_rule_active:
                 cursor.execute("UPDATE payroll_settings SET non_working_day_ot_premium_active = 1 WHERE non_working_day_ot_premium_percent > 0")
-            cursor.execute("INSERT OR IGNORE INTO payroll_settings (id, deduct_unpaid_leave) VALUES (1, 0)")
             cursor.execute("UPDATE payroll_settings SET half_leave_quota_mode = 'category' WHERE half_leave_quota_mode = 'separate'")
             cursor.execute("UPDATE payroll_settings SET half_leave_quota_mode = 'monthly_convert' WHERE half_leave_quota_mode = 'convert'")
 
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS payroll_scoped_rules (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
                     policy_type TEXT NOT NULL CHECK(policy_type IN ('half_leave_quota', 'overtime_premium', 'overtime_limit')),
                     scope_type TEXT NOT NULL CHECK(scope_type IN ('department', 'employee')),
                     scope_id INTEGER NOT NULL,
@@ -812,7 +867,7 @@ def init_db():
                     active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(policy_type, scope_type, scope_id, day_type)
+                    UNIQUE(policy_type, scope_type, scope_id, day_type, organization_id, branch_id)
                 )
             ''')
             
@@ -822,6 +877,8 @@ def init_db():
                 cursor.execute('''
                     CREATE TABLE payroll_scoped_rules (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                        branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
                         policy_type TEXT NOT NULL CHECK(policy_type IN ('half_leave_quota', 'overtime_premium', 'overtime_limit')),
                         scope_type TEXT NOT NULL CHECK(scope_type IN ('department', 'employee')),
                         scope_id INTEGER NOT NULL,
@@ -834,18 +891,20 @@ def init_db():
                         active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(policy_type, scope_type, scope_id, day_type)
+                        UNIQUE(policy_type, scope_type, scope_id, day_type, organization_id, branch_id)
                     )
                 ''')
                 cursor.execute('''
                     INSERT INTO payroll_scoped_rules (
                         id, policy_type, scope_type, scope_id, day_type,
                         half_leave_quota_mode, half_leaves_per_quota_day,
-                        overtime_premium_percent, active, created_at, updated_at
+                        overtime_premium_percent, active, created_at, updated_at,
+                        organization_id, branch_id
                     )
                     SELECT id, policy_type, scope_type, scope_id, day_type,
                            half_leave_quota_mode, half_leaves_per_quota_day,
-                           overtime_premium_percent, active, created_at, updated_at
+                           overtime_premium_percent, active, created_at, updated_at,
+                           'DEFAULT_ORG', 'DEFAULT_BRANCH'
                     FROM payroll_scoped_rules_legacy
                 ''')
                 cursor.execute("DROP TABLE payroll_scoped_rules_legacy")
@@ -858,9 +917,11 @@ def init_db():
                     note TEXT NOT NULL DEFAULT '',
                     scope_type TEXT NOT NULL DEFAULT 'all' CHECK(scope_type IN ('all', 'shift', 'employee')),
                     scope_id INTEGER NOT NULL DEFAULT 0,
+                    organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(calendar_date, scope_type, scope_id),
+                    UNIQUE(calendar_date, scope_type, scope_id, organization_id, branch_id),
                     CHECK((scope_type = 'all' AND scope_id = 0) OR (scope_type != 'all' AND scope_id > 0))
                 )
             ''')
@@ -875,20 +936,41 @@ def init_db():
                         note TEXT NOT NULL DEFAULT '',
                         scope_type TEXT NOT NULL DEFAULT 'all' CHECK(scope_type IN ('all', 'shift', 'employee')),
                         scope_id INTEGER NOT NULL DEFAULT 0,
+                        organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                        branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(calendar_date, scope_type, scope_id),
+                        UNIQUE(calendar_date, scope_type, scope_id, organization_id, branch_id),
                         CHECK((scope_type = 'all' AND scope_id = 0) OR (scope_type != 'all' AND scope_id > 0))
                     )
                 ''')
                 cursor.execute('''
                     INSERT INTO special_date_overrides (
-                        id, calendar_date, override_type, note, scope_type, scope_id, created_at, updated_at
+                        id, calendar_date, override_type, note, scope_type, scope_id,
+                        organization_id, branch_id, created_at, updated_at
                     )
-                    SELECT id, calendar_date, override_type, note, 'all', 0, created_at, updated_at
+                    SELECT id, calendar_date, override_type, note, 'all', 0,
+                           'DEFAULT_ORG', 'DEFAULT_BRANCH', created_at, updated_at
                     FROM special_date_overrides_legacy
                 ''')
                 cursor.execute("DROP TABLE special_date_overrides_legacy")
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS payroll_bonuses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
+                    year INTEGER NOT NULL,
+                    month INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    amount REAL NOT NULL DEFAULT 0,
+                    note TEXT NOT NULL DEFAULT '',
+                    source TEXT NOT NULL DEFAULT 'excel',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(organization_id, branch_id, year, month, user_id)
+                )
+            ''')
 
             # Branch / Organization Settings table
             cursor.execute('''
@@ -1114,6 +1196,13 @@ def init_db():
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_departments_org ON departments(organization_id, active)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_shifts_org ON shifts(organization_id, active)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_payroll_records_org ON payroll_records(organization_id)')
+
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            migrate_payroll_policy_tenant_scope(cursor)
+            ensure_payroll_settings_row(cursor, 'DEFAULT_ORG', 'DEFAULT_BRANCH')
+            seed_leave_types_if_empty(cursor, 'DEFAULT_ORG', 'DEFAULT_BRANCH')
+            cursor.execute("PRAGMA foreign_keys = ON")
+            conn.commit()
 
             # =========================================================================
             # PHASE 2.3 — LOCAL OUTBOX QUEUE (sync_outbox_queue)
@@ -1352,6 +1441,25 @@ def purge_organization_data(organization_id: str) -> bool:
             cursor.execute("DELETE FROM shifts WHERE organization_id = ?", (organization_id,))
             # 4. Delete cameras
             cursor.execute("DELETE FROM cameras WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM payroll_records WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM payroll_runs WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM payroll_rules WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM payroll_scoped_rules WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM payroll_bonuses WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM payroll_settings WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM special_date_overrides WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM company_holidays WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM leave_types WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM leave_requests WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM overtime WHERE organization_id = ?", (organization_id,))
+            cursor.execute(
+                "DELETE FROM employee_leave_balances WHERE user_id IN (SELECT id FROM users WHERE organization_id = ?)",
+                (organization_id,),
+            )
+            cursor.execute(
+                "DELETE FROM salary_configs WHERE user_id IN (SELECT id FROM users WHERE organization_id = ?)",
+                (organization_id,),
+            )
             # 5. Delete users
             cursor.execute("DELETE FROM users WHERE organization_id = ?", (organization_id,))
             conn.commit()
@@ -1960,8 +2068,11 @@ def _get_overtime_day_type(cursor: sqlite3.Cursor, user_id: int, overtime_date: 
 
         cursor.execute('''
             SELECT calendar_date, override_type, scope_type, scope_id
-            FROM special_date_overrides WHERE calendar_date = ?
-        ''', (overtime_date,))
+            FROM special_date_overrides
+            WHERE calendar_date = ?
+              AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+              AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+        ''', (overtime_date, organization_id, branch_id))
         overrides = {
             (row['calendar_date'], row['scope_type'], row['scope_id']): row['override_type']
             for row in cursor.fetchall()
@@ -2821,9 +2932,15 @@ def get_detailed_attendance_report(
             dt_end = datetime.strptime(end_date, "%Y-%m-%d")
             total_days = (dt_end - dt_start).days + 1
             date_list = [(dt_start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(total_days)]
+            report_org = organization_id or 'DEFAULT_ORG'
+            report_branch = branch_id or 'DEFAULT_BRANCH'
             cursor.execute(
-                "SELECT calendar_date, override_type, scope_type, scope_id FROM special_date_overrides WHERE calendar_date >= ? AND calendar_date <= ?",
-                (start_date, end_date),
+                """SELECT calendar_date, override_type, scope_type, scope_id
+                   FROM special_date_overrides
+                   WHERE calendar_date >= ? AND calendar_date <= ?
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND (? IS NULL OR COALESCE(branch_id, 'DEFAULT_BRANCH') = ?)""",
+                (start_date, end_date, report_org, branch_id, report_branch),
             )
             calendar_overrides = {
                 (row['calendar_date'], row['scope_type'], row['scope_id']): row['override_type']
@@ -2831,7 +2948,12 @@ def get_detailed_attendance_report(
             }
 
             # Automatically include company public holidays for all staff
-            cursor.execute("SELECT holiday_date, end_date, is_recurring FROM company_holidays")
+            cursor.execute(
+                """SELECT holiday_date, end_date, is_recurring FROM company_holidays
+                   WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND (? IS NULL OR COALESCE(branch_id, 'DEFAULT_BRANCH') = ?)""",
+                (report_org, branch_id, report_branch),
+            )
             for h_row in cursor.fetchall():
                 h_date = h_row['holiday_date']
                 e_date = h_row['end_date'] or h_date
@@ -3976,10 +4098,24 @@ def split_leave_request_dates(user_id: int, start_date: str, end_date: str, avai
             row = cursor.fetchone()
             working_days = set(_normalize_shift_working_days(row['working_days'])) if row and row['working_days'] else {0,1,2,3,4,5,6}
             
-            cursor.execute('SELECT holiday_date FROM company_holidays WHERE holiday_date >= ? AND holiday_date <= ?', (start_date, end_date))
+            org_id, branch_id = _user_tenant(cursor, user_id)
+            cursor.execute(
+                """SELECT holiday_date FROM company_holidays
+                   WHERE holiday_date >= ? AND holiday_date <= ?
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (start_date, end_date, org_id, branch_id),
+            )
             holidays = {r['holiday_date'] for r in cursor.fetchall()}
             
-            cursor.execute("SELECT calendar_date, override_type FROM special_date_overrides WHERE calendar_date >= ? AND calendar_date <= ? AND (scope_type = 'all' OR (scope_type = 'employee' AND scope_id = ?))", (start_date, end_date, user_id))
+            cursor.execute(
+                """SELECT calendar_date, override_type FROM special_date_overrides
+                   WHERE calendar_date >= ? AND calendar_date <= ?
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                     AND (scope_type = 'all' OR (scope_type = 'employee' AND scope_id = ?))""",
+                (start_date, end_date, org_id, branch_id, user_id),
+            )
             overrides = {r['calendar_date']: r['override_type'] for r in cursor.fetchall()}
             
             d1 = datetime.strptime(start_date, '%Y-%m-%d')
@@ -4281,13 +4417,24 @@ def delete_leave_request(leave_id: int, organization_id: Optional[str] = None) -
 # LEAVE TYPES & HOLIDAYS MANAGEMENT HELPERS
 # ============================================
 
-def get_leave_types() -> List[Dict]:
-    """Get all configured leave types."""
+def get_leave_types(
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[Dict]:
+    """Get leave types owned by the authenticated organization."""
+    org, branch = _tenant_ids(organization_id, branch_id)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM leave_types ORDER BY id ASC")
+            seed_leave_types_if_empty(cursor, org, branch)
+            conn.commit()
+            cursor.execute(
+                """SELECT * FROM leave_types
+                   WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                   ORDER BY id ASC""",
+                (org,),
+            )
             return [dict(r) for r in cursor.fetchall()]
     except Exception as e:
         logger.error(f"Get leave types error: {e}")
@@ -4301,8 +4448,10 @@ def add_leave_type(
     half_leave_mode: str = 'separate', half_leave_allowance_count: int = 0,
     half_leave_allowance_months: int = 12, half_leaves_per_quota_day: int = 2,
     half_leave_quota_type_id: Optional[int] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
 ) -> Optional[int]:
-    """Add a new leave type policy."""
+    """Add a new leave type policy for one organization."""
     try:
         default_months = {'monthly': 1, 'half_yearly': 6, 'yearly': 12}.get(allowance_period, 12)
         duration_months = int(allowance_months if allowance_months is not None else default_months)
@@ -4318,11 +4467,12 @@ def add_leave_type(
                 """INSERT INTO leave_types (
                        name, code, yearly_allowance, is_paid, description, allowance_period, allowance_months,
                        half_leave_enabled, half_leave_mode, half_leave_allowance_count,
-                       half_leave_allowance_months, half_leaves_per_quota_day, half_leave_quota_type_id
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       half_leave_allowance_months, half_leaves_per_quota_day, half_leave_quota_type_id,
+                       organization_id, branch_id
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (name, code, yearly_allowance, is_paid, description, allowance_period, duration_months,
                  int(bool(half_leave_enabled)), half_mode, half_count, half_months, half_conversion,
-                 half_leave_quota_type_id)
+                 half_leave_quota_type_id, *_tenant_ids(organization_id, branch_id))
             )
             conn.commit()
             return cursor.lastrowid
@@ -4338,8 +4488,9 @@ def update_leave_type(
     half_leave_mode: str = 'separate', half_leave_allowance_count: int = 0,
     half_leave_allowance_months: int = 12, half_leaves_per_quota_day: int = 2,
     half_leave_quota_type_id: Optional[int] = None,
+    organization_id: Optional[str] = None,
 ) -> bool:
-    """Update existing leave type policy."""
+    """Update an existing leave type owned by the organization."""
     try:
         default_months = {'monthly': 1, 'half_yearly': 6, 'yearly': 12}.get(allowance_period, 12)
         duration_months = int(allowance_months if allowance_months is not None else default_months)
@@ -4355,10 +4506,11 @@ def update_leave_type(
                 """UPDATE leave_types SET name = ?, yearly_allowance = ?, is_paid = ?, description = ?, active = ?,
                    allowance_period = ?, allowance_months = ?, half_leave_enabled = ?, half_leave_mode = ?,
                    half_leave_allowance_count = ?, half_leave_allowance_months = ?,
-                   half_leaves_per_quota_day = ?, half_leave_quota_type_id = ? WHERE id = ?""",
+                   half_leaves_per_quota_day = ?, half_leave_quota_type_id = ?
+                   WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
                 (name, yearly_allowance, is_paid, description, active, allowance_period, duration_months,
                  int(bool(half_leave_enabled)), half_mode, half_count, half_months, half_conversion,
-                 half_leave_quota_type_id, type_id)
+                 half_leave_quota_type_id, type_id, _tenant_ids(organization_id)[0])
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -4367,12 +4519,15 @@ def update_leave_type(
         return False
 
 
-def delete_leave_type(type_id: int) -> bool:
-    """Delete a leave type policy."""
+def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bool:
+    """Delete a leave type policy owned by the organization."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM leave_types WHERE id = ?", (type_id,))
+            cursor.execute(
+                "DELETE FROM leave_types WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?",
+                (type_id, _tenant_ids(organization_id)[0]),
+            )
             conn.commit()
             return cursor.rowcount > 0
     except Exception as e:
@@ -4533,8 +4688,14 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
             cursor.execute(user_query, params)
             users = [dict(u) for u in cursor.fetchall()]
 
-            # Leave types
-            cursor.execute("SELECT * FROM leave_types WHERE active = 1")
+            # Leave types for this organization only
+            org = organization_id or 'DEFAULT_ORG'
+            seed_leave_types_if_empty(cursor, org)
+            conn.commit()
+            cursor.execute(
+                "SELECT * FROM leave_types WHERE active = 1 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?",
+                (org,),
+            )
             ltypes = [dict(lt) for lt in cursor.fetchall()]
 
             result = []
@@ -4650,10 +4811,24 @@ def _count_scheduled_leave_days(cursor, user_id: int, start_date: str, end_date:
     row = cursor.fetchone()
     working_days = set(_normalize_shift_working_days(row['working_days'])) if row and row['working_days'] else {0,1,2,3,4,5,6}
 
-    cursor.execute("SELECT holiday_date FROM company_holidays WHERE holiday_date >= ? AND holiday_date <= ?", (start_date, end_date))
+    org_id, branch_id = _user_tenant(cursor, user_id)
+    cursor.execute(
+        """SELECT holiday_date FROM company_holidays
+           WHERE holiday_date >= ? AND holiday_date <= ?
+             AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+             AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+        (start_date, end_date, org_id, branch_id),
+    )
     holidays = {r['holiday_date'] for r in cursor.fetchall()}
 
-    cursor.execute("SELECT calendar_date, override_type FROM special_date_overrides WHERE calendar_date >= ? AND calendar_date <= ? AND (scope_type = 'all' OR (scope_type = 'employee' AND scope_id = ?))", (start_date, end_date, user_id))
+    cursor.execute(
+        """SELECT calendar_date, override_type FROM special_date_overrides
+           WHERE calendar_date >= ? AND calendar_date <= ?
+             AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+             AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+             AND (scope_type = 'all' OR (scope_type = 'employee' AND scope_id = ?))""",
+        (start_date, end_date, org_id, branch_id, user_id),
+    )
     overrides = {r['calendar_date']: r['override_type'] for r in cursor.fetchall()}
 
     try:
@@ -4753,10 +4928,14 @@ def check_leave_quota(
                         'leave_type_name': leave_type_code,
                     }
 
-            # Find leave type
+            # Find leave type owned by the employee's organization
+            org_id, _branch_id = _user_tenant(cursor, user_id) if user_id else ('DEFAULT_ORG', 'DEFAULT_BRANCH')
             cursor.execute(
-                "SELECT * FROM leave_types WHERE code = ? OR name = ? LIMIT 1",
-                (leave_type_code, leave_type_code)
+                """SELECT * FROM leave_types
+                   WHERE (code = ? OR name = ?)
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                   LIMIT 1""",
+                (leave_type_code, leave_type_code, org_id)
             )
             lt = cursor.fetchone()
             if not lt:
@@ -4786,8 +4965,13 @@ def check_leave_quota(
                         'leave_type_name': leave_name,
                         'half_leave_enabled': False,
                     }
+                org_id, branch_id = _user_tenant(cursor, user_id)
+                ensure_payroll_settings_row(cursor, org_id, branch_id)
                 org_policy = cursor.execute(
-                    "SELECT half_leave_quota_mode, half_leaves_per_quota_day FROM payroll_settings WHERE id = 1"
+                    """SELECT half_leave_quota_mode, half_leaves_per_quota_day FROM payroll_settings
+                       WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                         AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                    (org_id, branch_id),
                 ).fetchone()
                 scoped_policy = _get_scoped_payroll_rule(cursor, 'half_leave_quota', user_id)
                 policy_mode = str(
@@ -4906,7 +5090,12 @@ def check_leave_quota(
                         'half_leave_enabled': True,
                         'half_leave_mode': 'convert',
                     }
-                cursor.execute("SELECT code, name FROM leave_types WHERE id = ? AND active = 1", (target_id,))
+                cursor.execute(
+                    """SELECT code, name FROM leave_types
+                       WHERE id = ? AND active = 1
+                         AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
+                    (target_id, org_id),
+                )
                 target_type = cursor.fetchone()
                 if not target_type:
                     return {
@@ -5145,13 +5334,19 @@ def get_overtime_rate_preview(
                 return None
             configured_rate = float(employee['ot_rate'] or 0.0)
             salary = float(employee['basic_salary'] or employee['salary'] or 0.0)
-            base_rate = round(configured_rate if configured_rate > 0 else salary / 208.0, 2)
-            day_type = _get_overtime_day_type(cursor, user_id, overtime_date)
+            emp_org, emp_branch = str(employee['organization_id']), str(employee['branch_id'])
+            ensure_payroll_settings_row(cursor, emp_org, emp_branch)
             settings = cursor.execute('''
                 SELECT holiday_ot_premium_percent, non_working_day_ot_premium_percent,
-                       holiday_ot_premium_active, non_working_day_ot_premium_active
-                FROM payroll_settings WHERE id = 1
-            ''').fetchone()
+                       holiday_ot_premium_active, non_working_day_ot_premium_active,
+                       COALESCE(ot_hour_divisor, 208) AS ot_hour_divisor
+                FROM payroll_settings
+                WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                  AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+            ''', (emp_org, emp_branch)).fetchone()
+            divisor = float(settings['ot_hour_divisor'] if settings else DEFAULT_OT_DIVISOR) or DEFAULT_OT_DIVISOR
+            base_rate = round(configured_rate if configured_rate > 0 else (salary / divisor if salary > 0 else 0.0), 2)
+            day_type = _get_overtime_day_type(cursor, user_id, overtime_date)
             holiday = _get_company_holiday_for_date(
                 cursor, overtime_date, employee['organization_id'], employee['branch_id']
             ) if day_type == 'holiday' else None
@@ -5187,10 +5382,13 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                 SELECT o.*,
                        COALESCE(u.department, '') as department,
                        COALESCE(u.position, '') as designation,
-                       COALESCE(sc.ot_rate, CASE WHEN COALESCE(u.salary, sc.basic_salary, 0) > 0 THEN ROUND(COALESCE(u.salary, sc.basic_salary) / 208.0, 2) ELSE 0.0 END) as ot_rate
+                       COALESCE(sc.ot_rate, CASE WHEN COALESCE(u.salary, sc.basic_salary, 0) > 0 THEN ROUND(COALESCE(u.salary, sc.basic_salary) / COALESCE(ps.ot_hour_divisor, 208.0), 2) ELSE 0.0 END) as ot_rate
                 FROM overtime o
                 LEFT JOIN users u ON o.user_id = u.id
                 LEFT JOIN salary_configs sc ON o.user_id = sc.user_id
+                LEFT JOIN payroll_settings ps
+                  ON COALESCE(ps.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, o.organization_id, 'DEFAULT_ORG')
+                 AND COALESCE(ps.branch_id, 'DEFAULT_BRANCH') = COALESCE(u.branch_id, o.branch_id, 'DEFAULT_BRANCH')
                 WHERE 1=1
             """
             params = []
@@ -5223,20 +5421,32 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
             query += " ORDER BY o.ot_date DESC, o.created_at DESC"
             cursor.execute(query, params)
             overtime_rows = cursor.fetchall()
-            settings_row = cursor.execute(
-                "SELECT holiday_ot_premium_percent, non_working_day_ot_premium_percent, holiday_ot_premium_active, non_working_day_ot_premium_active FROM payroll_settings WHERE id = 1"
-            ).fetchone()
             records = []
+            settings_cache: Dict[Tuple[str, str], Any] = {}
             for r in overtime_rows:
                 d = dict(r)
                 hours = float(d.get('hours') or 0.0)
                 base_rate = float(d.get('ot_rate') or 0.0)
+                emp_org = str(d.get('organization_id') or 'DEFAULT_ORG')
+                emp_branch = str(d.get('branch_id') or 'DEFAULT_BRANCH')
+                cache_key = (emp_org, emp_branch)
+                if cache_key not in settings_cache:
+                    ensure_payroll_settings_row(cursor, emp_org, emp_branch)
+                    settings_cache[cache_key] = cursor.execute(
+                        """SELECT holiday_ot_premium_percent, non_working_day_ot_premium_percent,
+                                  holiday_ot_premium_active, non_working_day_ot_premium_active
+                           FROM payroll_settings
+                           WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                             AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                        cache_key,
+                    ).fetchone()
+                settings_row = settings_cache[cache_key]
                 day_type = _get_overtime_day_type(cursor, int(d['user_id']), str(d['ot_date']))
                 holiday = _get_company_holiday_for_date(
                     cursor,
                     str(d['ot_date']),
-                    str(d.get('organization_id') or 'DEFAULT_ORG'),
-                    str(d.get('branch_id') or 'DEFAULT_BRANCH'),
+                    emp_org,
+                    emp_branch,
                 ) if day_type == 'holiday' else None
                 premium = _get_overtime_premium_percent(cursor, str(d['ot_date']), day_type, settings_row, holiday)
                 effective_rate = round(base_rate * (1 + premium / 100), 2)
@@ -5548,12 +5758,26 @@ def get_salary_summary(organization_id: Optional[str] = None) -> Dict[str, Any]:
         }
 
 
-def auto_calculate_ot_rates(rate_divisor: float = 208.0) -> int:
-    """Auto-calculate hourly overtime rate (basic / 208) for active employees."""
+def auto_calculate_ot_rates(
+    rate_divisor: float = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> int:
+    """Auto-calculate hourly overtime rate for active employees of one organization."""
+    org, branch = _tenant_ids(organization_id, branch_id)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+            ensure_payroll_settings_row(cursor, org, branch)
+            if rate_divisor is None:
+                row = cursor.execute(
+                    """SELECT COALESCE(ot_hour_divisor, 208) FROM payroll_settings
+                       WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                         AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                    (org, branch),
+                ).fetchone()
+                rate_divisor = float(row[0] if row else DEFAULT_OT_DIVISOR) or DEFAULT_OT_DIVISOR
             cursor.execute("""
                 SELECT u.id, COALESCE(s.basic_salary, u.salary, 0.0) as basic_salary,
                        COALESCE(s.allowances, 0.0) as allowances,
@@ -5561,7 +5785,9 @@ def auto_calculate_ot_rates(rate_divisor: float = 208.0) -> int:
                 FROM users u
                 LEFT JOIN salary_configs s ON u.id = s.user_id
                 WHERE u.active = 1
-            """)
+                  AND COALESCE(u.organization_id, 'DEFAULT_ORG') = ?
+                  AND COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?
+            """, (org, branch))
             employees = cursor.fetchall()
             updated_count = 0
             for emp in employees:
@@ -5582,47 +5808,77 @@ def auto_calculate_ot_rates(rate_divisor: float = 208.0) -> int:
         return 0
 
 
-def get_payroll_rules(active_only: bool = False) -> List[Dict[str, Any]]:
-    """Return configured absence-based deduction rules."""
+def get_payroll_rules(
+    active_only: bool = False,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Return absence-based deduction rules for one organization/branch."""
+    org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        where = "WHERE active = 1" if active_only else ""
+        where = """WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"""
+        params: List[Any] = [org, branch]
+        if active_only:
+            where += " AND active = 1"
         cursor.execute(
-            f"SELECT * FROM payroll_rules {where} ORDER BY min_absent_days, max_absent_days, id"
+            f"SELECT * FROM payroll_rules {where} ORDER BY min_absent_days, max_absent_days, id",
+            params,
         )
         return [dict(row) for row in cursor.fetchall()]
 
 
-def get_payroll_settings() -> Dict[str, Any]:
-    """Return the organization-wide payroll options."""
+def get_payroll_settings(
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return payroll options owned by one organization/branch."""
+    org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM payroll_settings WHERE id = 1").fetchone()
-        return dict(row) if row else {
-            'id': 1,
-            'deduct_unpaid_leave': 0,
-            'half_leave_quota_mode': 'category',
-            'half_leaves_per_quota_day': 2,
-            'holiday_ot_premium_percent': 0.0,
-            'non_working_day_ot_premium_percent': 0.0,
-            'holiday_ot_premium_active': 0,
-            'non_working_day_ot_premium_active': 0,
-            'overtime_max_hours': 0.0,
-            'overtime_max_period': 'day',
+        cursor = conn.cursor()
+        ensure_payroll_settings_row(cursor, org, branch)
+        conn.commit()
+        row = cursor.execute(
+            """SELECT * FROM payroll_settings
+               WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+            (org, branch),
+        ).fetchone()
+        defaults = {
+            'organization_id': org,
+            'branch_id': branch,
+            **DEFAULT_PAYROLL_SETTINGS,
         }
+        return dict(row) if row else defaults
 
 
-def get_payroll_scope_options() -> Dict[str, List[Dict[str, Any]]]:
-    """Return active departments and employees for scoped payroll rules."""
+def get_payroll_scope_options(
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Return departments and employees for scoped payroll rules in the current tenant."""
+    org, branch = _tenant_ids(organization_id, branch_id)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             departments = [dict(row) for row in conn.execute(
-                "SELECT id, name FROM departments WHERE active = 1 ORDER BY name COLLATE NOCASE"
+                """SELECT id, name FROM departments
+                   WHERE active = 1
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                   ORDER BY name COLLATE NOCASE""",
+                (org, branch),
             ).fetchall()]
             employees = [dict(row) for row in conn.execute(
-                "SELECT id, name, COALESCE(department, '') AS department FROM users WHERE active = 1 ORDER BY name COLLATE NOCASE"
+                """SELECT id, name, COALESCE(department, '') AS department FROM users
+                   WHERE active = 1
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                   ORDER BY name COLLATE NOCASE""",
+                (org, branch),
             ).fetchall()]
             return {'departments': departments, 'employees': employees}
     except Exception as e:
@@ -5630,8 +5886,12 @@ def get_payroll_scope_options() -> Dict[str, List[Dict[str, Any]]]:
         return {'departments': [], 'employees': []}
 
 
-def get_payroll_scoped_rules() -> List[Dict[str, Any]]:
+def get_payroll_scoped_rules(
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """Return scoped payroll rules with readable department/employee names."""
+    org, branch = _tenant_ids(organization_id, branch_id)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -5643,15 +5903,24 @@ def get_payroll_scoped_rules() -> List[Dict[str, Any]]:
                 LEFT JOIN departments d ON r.scope_type = 'department' AND d.id = r.scope_id
                 LEFT JOIN users u ON r.scope_type = 'employee' AND u.id = r.scope_id
                 WHERE r.active = 1
+                  AND COALESCE(r.organization_id, 'DEFAULT_ORG') = ?
+                  AND COALESCE(r.branch_id, 'DEFAULT_BRANCH') = ?
                 ORDER BY r.policy_type, r.scope_type, department_name COLLATE NOCASE, employee_name COLLATE NOCASE, r.day_type
-            ''').fetchall()
+            ''', (org, branch)).fetchall()
             return [dict(row) for row in rows]
     except Exception as e:
         logger.error(f"Failed to load scoped payroll rules: {e}")
         return []
 
 
-def save_scoped_half_leave_rule(scope_type: str, scope_id: int, quota_mode: str, monthly_count: int) -> bool:
+def save_scoped_half_leave_rule(
+    scope_type: str,
+    scope_id: int,
+    quota_mode: str,
+    monthly_count: int,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     scope = str(scope_type or '').strip().lower()
     mode = str(quota_mode or '').strip().lower()
     if scope not in ('department', 'employee') or mode not in ('category', 'monthly_cap', 'monthly_convert'):
@@ -5665,24 +5934,32 @@ def save_scoped_half_leave_rule(scope_type: str, scope_id: int, quota_mode: str,
         return False
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            org, branch = _tenant_ids(organization_id, branch_id)
             conn.execute('''
                 INSERT INTO payroll_scoped_rules (
                     policy_type, scope_type, scope_id, day_type, half_leave_quota_mode,
-                    half_leaves_per_quota_day, active, updated_at
-                ) VALUES ('half_leave_quota', ?, ?, '', ?, ?, 1, CURRENT_TIMESTAMP)
-                ON CONFLICT(policy_type, scope_type, scope_id, day_type) DO UPDATE SET
+                    half_leaves_per_quota_day, active, updated_at, organization_id, branch_id
+                ) VALUES ('half_leave_quota', ?, ?, '', ?, ?, 1, CURRENT_TIMESTAMP, ?, ?)
+                ON CONFLICT(policy_type, scope_type, scope_id, day_type, organization_id, branch_id) DO UPDATE SET
                     half_leave_quota_mode = excluded.half_leave_quota_mode,
                     half_leaves_per_quota_day = excluded.half_leaves_per_quota_day,
                     active = 1,
                     updated_at = CURRENT_TIMESTAMP
-            ''', (scope, target_id, mode, count))
+            ''', (scope, target_id, mode, count, org, branch))
             conn.commit()
         return True
     except Exception as e:
         logger.error(f"Failed to save scoped half-leave rule: {e}")
         return False
 
-def save_scoped_overtime_limit_rule(scope_type: str, scope_id: int, max_hours: float, period: str) -> bool:
+def save_scoped_overtime_limit_rule(
+    scope_type: str,
+    scope_id: int,
+    max_hours: float,
+    period: str,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     scope = str(scope_type or '').strip().lower()
     p = str(period or '').strip().lower()
     if scope not in ('department', 'employee') or p not in ('day', 'week', 'month', 'per_entry'):
@@ -5696,17 +5973,18 @@ def save_scoped_overtime_limit_rule(scope_type: str, scope_id: int, max_hours: f
         return False
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            org, branch = _tenant_ids(organization_id, branch_id)
             conn.execute('''
                 INSERT INTO payroll_scoped_rules (
                     policy_type, scope_type, scope_id, day_type, overtime_max_hours,
-                    overtime_max_period, active, updated_at
-                ) VALUES ('overtime_limit', ?, ?, '', ?, ?, 1, CURRENT_TIMESTAMP)
-                ON CONFLICT(policy_type, scope_type, scope_id, day_type) DO UPDATE SET
+                    overtime_max_period, active, updated_at, organization_id, branch_id
+                ) VALUES ('overtime_limit', ?, ?, '', ?, ?, 1, CURRENT_TIMESTAMP, ?, ?)
+                ON CONFLICT(policy_type, scope_type, scope_id, day_type, organization_id, branch_id) DO UPDATE SET
                     overtime_max_hours = excluded.overtime_max_hours,
                     overtime_max_period = excluded.overtime_max_period,
                     active = 1,
                     updated_at = CURRENT_TIMESTAMP
-            ''', (scope, target_id, max_h, p))
+            ''', (scope, target_id, max_h, p, org, branch))
             conn.commit()
             return True
     except Exception as e:
@@ -5714,7 +5992,14 @@ def save_scoped_overtime_limit_rule(scope_type: str, scope_id: int, max_hours: f
         return False
 
 
-def save_scoped_overtime_premium_rule(scope_type: str, scope_id: int, day_type: str, premium_percent: float) -> bool:
+def save_scoped_overtime_premium_rule(
+    scope_type: str,
+    scope_id: int,
+    day_type: str,
+    premium_percent: float,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     scope = str(scope_type or '').strip().lower()
     kind = str(day_type or '').strip().lower()
     if scope not in ('department', 'employee') or kind not in ('holiday', 'non_working_day'):
@@ -5728,16 +6013,17 @@ def save_scoped_overtime_premium_rule(scope_type: str, scope_id: int, day_type: 
         return False
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            org, branch = _tenant_ids(organization_id, branch_id)
             conn.execute('''
                 INSERT INTO payroll_scoped_rules (
                     policy_type, scope_type, scope_id, day_type,
-                    overtime_premium_percent, active, updated_at
-                ) VALUES ('overtime_premium', ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-                ON CONFLICT(policy_type, scope_type, scope_id, day_type) DO UPDATE SET
+                    overtime_premium_percent, active, updated_at, organization_id, branch_id
+                ) VALUES ('overtime_premium', ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?, ?)
+                ON CONFLICT(policy_type, scope_type, scope_id, day_type, organization_id, branch_id) DO UPDATE SET
                     overtime_premium_percent = excluded.overtime_premium_percent,
                     active = 1,
                     updated_at = CURRENT_TIMESTAMP
-            ''', (scope, target_id, kind, premium))
+            ''', (scope, target_id, kind, premium, org, branch))
             conn.commit()
         return True
     except Exception as e:
@@ -5745,10 +6031,21 @@ def save_scoped_overtime_premium_rule(scope_type: str, scope_id: int, day_type: 
         return False
 
 
-def delete_payroll_scoped_rule(rule_id: int) -> bool:
+def delete_payroll_scoped_rule(
+    rule_id: int,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     try:
+        org, branch = _tenant_ids(organization_id, branch_id)
         with sqlite3.connect(DB_PATH) as conn:
-            cursor = conn.execute('DELETE FROM payroll_scoped_rules WHERE id = ?', (int(rule_id),))
+            cursor = conn.execute(
+                """DELETE FROM payroll_scoped_rules
+                   WHERE id = ?
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (int(rule_id), org, branch),
+            )
             conn.commit()
             return cursor.rowcount > 0
     except (TypeError, ValueError, OverflowError):
@@ -5774,19 +6071,29 @@ def _get_scoped_payroll_rule(
         department_name = str(dept_val or '').strip()
     department_id = None
     if department_name:
-        cursor.execute("SELECT id FROM departments WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1", (department_name,))
+        org_id, branch_id = _user_tenant(cursor, user_id)
+        cursor.execute(
+            """SELECT id FROM departments
+               WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+               LIMIT 1""",
+            (department_name, org_id),
+        )
         department = cursor.fetchone()
         if department:
             department_id = int(department['id'] if hasattr(department, 'keys') else department[0])
     conditions = ["(scope_type = 'employee' AND scope_id = ?)"]
     rule_day_type = day_type if policy_type == 'overtime_premium' else ''
-    params: List[Any] = [policy_type, rule_day_type, int(user_id)]
+    org_id, branch_id = _user_tenant(cursor, user_id)
+    params: List[Any] = [policy_type, rule_day_type, org_id, branch_id, int(user_id)]
     if department_id is not None:
         conditions.append("(scope_type = 'department' AND scope_id = ?)")
         params.append(department_id)
     query = f'''
         SELECT * FROM payroll_scoped_rules
         WHERE policy_type = ? AND day_type = ? AND active = 1
+          AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+          AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
           AND ({' OR '.join(conditions)})
         ORDER BY CASE scope_type WHEN 'employee' THEN 0 ELSE 1 END
         LIMIT 1
@@ -5801,7 +6108,12 @@ def _get_scoped_payroll_rule(
     return dict(zip(columns, row))
 
 
-def update_overtime_limit_settings(max_hours: float, period: str) -> bool:
+def update_overtime_limit_settings(
+    max_hours: float,
+    period: str,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     """Save the organization-wide overtime review limit."""
     try:
         hours = float(max_hours)
@@ -5810,11 +6122,17 @@ def update_overtime_limit_settings(max_hours: float, period: str) -> bool:
     scope = str(period or '').strip().lower()
     if not 0 <= hours <= 744 or scope not in ('per_entry', 'day', 'week', 'month'):
         return False
+    org, branch = _tenant_ids(organization_id, branch_id)
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute(
-                "UPDATE payroll_settings SET overtime_max_hours = ?, overtime_max_period = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-                (hours, scope),
+            cursor = conn.cursor()
+            ensure_payroll_settings_row(cursor, org, branch)
+            cursor.execute(
+                """UPDATE payroll_settings
+                   SET overtime_max_hours = ?, overtime_max_period = ?, updated_at = CURRENT_TIMESTAMP
+                   WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (hours, scope, org, branch),
             )
             conn.commit()
         return True
@@ -5835,8 +6153,13 @@ def _get_overtime_limit_status_for_cursor(
         maximum = float(rule['overtime_max_hours'])
         period = str(rule['overtime_max_period']).lower()
     else:
+        org_id, branch_id = _user_tenant(cursor, user_id)
+        ensure_payroll_settings_row(cursor, org_id, branch_id)
         settings = cursor.execute(
-            "SELECT overtime_max_hours, overtime_max_period FROM payroll_settings WHERE id = 1"
+            """SELECT overtime_max_hours, overtime_max_period FROM payroll_settings
+               WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+            (org_id, branch_id),
         ).fetchone()
         maximum = float(settings[0] or 0) if settings else 0.0
         period = str(settings[1] or 'day').lower() if settings else 'day'
@@ -5901,14 +6224,42 @@ def get_overtime_limit_status(user_id: int, ot_date: str, requested_hours: float
         return _get_overtime_limit_status_for_cursor(cursor, user_id, ot_date, requested_hours)
 
 
+def _normalize_ot_pay_mode(value: Any, fallback: str = 'percent') -> Optional[str]:
+    mode = str(value if value is not None else fallback or 'percent').strip().lower()
+    return mode if mode in VALID_OT_PAY_MODES else None
+
+
+def _normalize_off_day_pay_mode(value: Any, fallback: str = 'multiplier') -> Optional[str]:
+    mode = str(value if value is not None else fallback or 'multiplier').strip().lower()
+    aliases = {'fixed': 'fixed_day', 'fixed_amount': 'fixed_day', 'factor': 'multiplier'}
+    mode = aliases.get(mode, mode)
+    return mode if mode in VALID_OFF_DAY_ATTENDANCE_MODES else None
+
+
 def update_payroll_settings(
     deduct_unpaid_leave: bool,
     half_leave_quota_mode: str = 'category',
     half_leaves_per_quota_day: int = 2,
     holiday_ot_premium_percent: float = 0.0,
     non_working_day_ot_premium_percent: float = 0.0,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    ot_hour_divisor: Optional[float] = None,
+    proration_basis: Optional[str] = None,
+    currency_code: Optional[str] = None,
+    decimal_places: Optional[int] = None,
+    holiday_ot_pay_mode: Optional[str] = None,
+    non_working_day_ot_pay_mode: Optional[str] = None,
+    holiday_ot_multiplier: Optional[float] = None,
+    non_working_day_ot_multiplier: Optional[float] = None,
+    holiday_ot_fixed_amount: Optional[float] = None,
+    non_working_day_ot_fixed_amount: Optional[float] = None,
+    off_day_attendance_pay_active: Optional[bool] = None,
+    off_day_attendance_pay_mode: Optional[str] = None,
+    off_day_attendance_pay_multiplier: Optional[float] = None,
+    off_day_attendance_pay_fixed_amount: Optional[float] = None,
 ) -> bool:
-    """Save organization-wide payroll and half-leave quota policies."""
+    """Save organization-owned payroll and half-leave quota policies."""
     mode = str(half_leave_quota_mode or 'category').strip().lower()
     mode = {'separate': 'category', 'convert': 'monthly_convert'}.get(mode, mode)
     if mode not in ('category', 'monthly_cap', 'monthly_convert'):
@@ -5926,22 +6277,128 @@ def update_payroll_settings(
         return False
     if not (0 <= holiday_premium <= 1000 and 0 <= non_working_premium <= 1000):
         return False
+    org, branch = _tenant_ids(organization_id, branch_id)
+    current = get_payroll_settings(organization_id=org, branch_id=branch)
+    try:
+        divisor = float(ot_hour_divisor if ot_hour_divisor is not None else current.get('ot_hour_divisor', DEFAULT_OT_DIVISOR))
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if divisor <= 0:
+        return False
+    basis = str(proration_basis if proration_basis is not None else current.get('proration_basis', DEFAULT_PRORATION_BASIS)).strip().lower()
+    if basis not in VALID_PRORATION_BASES:
+        return False
+    currency = str(currency_code if currency_code is not None else current.get('currency_code', DEFAULT_CURRENCY)).strip().upper() or DEFAULT_CURRENCY
+    if len(currency) > 8:
+        return False
+    try:
+        places = int(decimal_places if decimal_places is not None else current.get('decimal_places', DEFAULT_DECIMAL_PLACES))
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not 0 <= places <= 6:
+        return False
+    h_mode = _normalize_ot_pay_mode(
+        holiday_ot_pay_mode if holiday_ot_pay_mode is not None else current.get('holiday_ot_pay_mode'),
+        'percent',
+    )
+    nw_mode = _normalize_ot_pay_mode(
+        non_working_day_ot_pay_mode if non_working_day_ot_pay_mode is not None else current.get('non_working_day_ot_pay_mode'),
+        'percent',
+    )
+    off_mode = _normalize_off_day_pay_mode(
+        off_day_attendance_pay_mode if off_day_attendance_pay_mode is not None else current.get('off_day_attendance_pay_mode'),
+        'multiplier',
+    )
+    if not h_mode or not nw_mode or not off_mode:
+        return False
+    try:
+        h_mult = float(holiday_ot_multiplier if holiday_ot_multiplier is not None else current.get('holiday_ot_multiplier') or 1.5)
+        nw_mult = float(non_working_day_ot_multiplier if non_working_day_ot_multiplier is not None else current.get('non_working_day_ot_multiplier') or 1.5)
+        h_fixed = float(holiday_ot_fixed_amount if holiday_ot_fixed_amount is not None else current.get('holiday_ot_fixed_amount') or 0)
+        nw_fixed = float(non_working_day_ot_fixed_amount if non_working_day_ot_fixed_amount is not None else current.get('non_working_day_ot_fixed_amount') or 0)
+        off_mult = float(off_day_attendance_pay_multiplier if off_day_attendance_pay_multiplier is not None else current.get('off_day_attendance_pay_multiplier') or 1.5)
+        off_fixed = float(off_day_attendance_pay_fixed_amount if off_day_attendance_pay_fixed_amount is not None else current.get('off_day_attendance_pay_fixed_amount') or 0)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if any(value < 0 for value in (h_mult, nw_mult, h_fixed, nw_fixed, off_mult, off_fixed)):
+        return False
+    if off_day_attendance_pay_active is None:
+        off_active = int(bool(current.get('off_day_attendance_pay_active')))
+    else:
+        off_active = int(bool(off_day_attendance_pay_active))
+
+    def _ot_active(pay_mode: str, percent: float, multiplier: float, fixed: float) -> int:
+        if pay_mode == 'multiplier':
+            return 1 if multiplier > 0 else 0
+        if pay_mode == 'fixed_hour':
+            return 1 if fixed > 0 else 0
+        return 1 if percent > 0 else 0
+
+    holiday_active = _ot_active(h_mode, holiday_premium, h_mult, h_fixed)
+    non_working_active = _ot_active(nw_mode, non_working_premium, nw_mult, nw_fixed)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute('''
                 INSERT INTO payroll_settings (
-                    id, deduct_unpaid_leave, half_leave_quota_mode,
+                    organization_id, branch_id, deduct_unpaid_leave, half_leave_quota_mode,
                     half_leaves_per_quota_day, holiday_ot_premium_percent,
-                    non_working_day_ot_premium_percent, updated_at
-                ) VALUES (1, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(id) DO UPDATE SET
+                    non_working_day_ot_premium_percent, holiday_ot_premium_active,
+                    non_working_day_ot_premium_active, ot_hour_divisor, proration_basis,
+                    currency_code, decimal_places, holiday_ot_pay_mode, non_working_day_ot_pay_mode,
+                    holiday_ot_multiplier, non_working_day_ot_multiplier,
+                    holiday_ot_fixed_amount, non_working_day_ot_fixed_amount,
+                    off_day_attendance_pay_active, off_day_attendance_pay_mode,
+                    off_day_attendance_pay_multiplier, off_day_attendance_pay_fixed_amount,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(organization_id, branch_id) DO UPDATE SET
                     deduct_unpaid_leave = excluded.deduct_unpaid_leave,
                     half_leave_quota_mode = excluded.half_leave_quota_mode,
                     half_leaves_per_quota_day = excluded.half_leaves_per_quota_day,
                     holiday_ot_premium_percent = excluded.holiday_ot_premium_percent,
                     non_working_day_ot_premium_percent = excluded.non_working_day_ot_premium_percent,
+                    holiday_ot_premium_active = excluded.holiday_ot_premium_active,
+                    non_working_day_ot_premium_active = excluded.non_working_day_ot_premium_active,
+                    ot_hour_divisor = excluded.ot_hour_divisor,
+                    proration_basis = excluded.proration_basis,
+                    currency_code = excluded.currency_code,
+                    decimal_places = excluded.decimal_places,
+                    holiday_ot_pay_mode = excluded.holiday_ot_pay_mode,
+                    non_working_day_ot_pay_mode = excluded.non_working_day_ot_pay_mode,
+                    holiday_ot_multiplier = excluded.holiday_ot_multiplier,
+                    non_working_day_ot_multiplier = excluded.non_working_day_ot_multiplier,
+                    holiday_ot_fixed_amount = excluded.holiday_ot_fixed_amount,
+                    non_working_day_ot_fixed_amount = excluded.non_working_day_ot_fixed_amount,
+                    off_day_attendance_pay_active = excluded.off_day_attendance_pay_active,
+                    off_day_attendance_pay_mode = excluded.off_day_attendance_pay_mode,
+                    off_day_attendance_pay_multiplier = excluded.off_day_attendance_pay_multiplier,
+                    off_day_attendance_pay_fixed_amount = excluded.off_day_attendance_pay_fixed_amount,
                     updated_at = CURRENT_TIMESTAMP
-            ''', (int(bool(deduct_unpaid_leave)), mode, conversion_count, holiday_premium, non_working_premium))
+            ''', (
+                org,
+                branch,
+                int(bool(deduct_unpaid_leave)),
+                mode,
+                conversion_count,
+                holiday_premium,
+                non_working_premium,
+                holiday_active,
+                non_working_active,
+                divisor,
+                basis,
+                currency,
+                places,
+                h_mode,
+                nw_mode,
+                h_mult,
+                nw_mult,
+                h_fixed,
+                nw_fixed,
+                off_active,
+                off_mode,
+                off_mult,
+                off_fixed,
+            ))
             conn.commit()
         return True
     except Exception as e:
@@ -5949,8 +6406,126 @@ def update_payroll_settings(
         return False
 
 
-def get_overtime_premium_rules() -> List[Dict[str, Any]]:
-    settings = get_payroll_settings()
+def list_payroll_bonuses(
+    year: int,
+    month: int,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT b.id, b.user_id, b.amount, b.note, b.source, b.year, b.month,
+                   u.name AS employee_name, u.email
+            FROM payroll_bonuses b
+            LEFT JOIN users u ON u.id = b.user_id
+            WHERE b.year = ? AND b.month = ?
+              AND COALESCE(b.organization_id, 'DEFAULT_ORG') = ?
+              AND COALESCE(b.branch_id, 'DEFAULT_BRANCH') = ?
+            ORDER BY u.name COLLATE NOCASE
+            """,
+            (int(year), int(month), org, branch),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_payroll_bonus_amounts(
+    year: int,
+    month: int,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Dict[int, float]:
+    return {
+        int(row['user_id']): float(row.get('amount') or 0)
+        for row in list_payroll_bonuses(year, month, organization_id, branch_id)
+    }
+
+
+def replace_payroll_bonuses(
+    year: int,
+    month: int,
+    rows: Sequence[Dict[str, Any]],
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    source: str = 'excel',
+) -> Dict[str, Any]:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        users = conn.execute(
+            """
+            SELECT id, name, email FROM users
+            WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+              AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+            """,
+            (org, branch),
+        ).fetchall()
+        by_id = {int(row['id']): dict(row) for row in users}
+        by_email = {str(row['email'] or '').strip().lower(): dict(row) for row in users if str(row['email'] or '').strip()}
+        by_name: Dict[str, List[Dict[str, Any]]] = {}
+        for row in users:
+            by_name.setdefault(str(row['name'] or '').strip().lower(), []).append(dict(row))
+
+        matched: List[Tuple[int, float, str]] = []
+        unmatched: List[str] = []
+        for item in rows:
+            amount = float(item.get('amount') or 0)
+            note = str(item.get('note') or '').strip()
+            user = None
+            raw_id = item.get('user_id') or item.get('employee_id')
+            if raw_id not in (None, ''):
+                try:
+                    user = by_id.get(int(raw_id))
+                except (TypeError, ValueError, OverflowError):
+                    user = None
+            if user is None and item.get('email'):
+                user = by_email.get(str(item.get('email')).strip().lower())
+            if user is None and item.get('name'):
+                candidates = by_name.get(str(item.get('name')).strip().lower()) or []
+                if len(candidates) == 1:
+                    user = candidates[0]
+            if user is None or amount < 0:
+                unmatched.append(str(item.get('name') or item.get('email') or raw_id or 'unknown'))
+                continue
+            matched.append((int(user['id']), amount, note))
+
+        cursor = conn.cursor()
+        cursor.execute(
+            """DELETE FROM payroll_bonuses
+               WHERE year = ? AND month = ?
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+            (int(year), int(month), org, branch),
+        )
+        for user_id, amount, note in matched:
+            cursor.execute(
+                """
+                INSERT INTO payroll_bonuses (
+                    organization_id, branch_id, year, month, user_id, amount, note, source, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(organization_id, branch_id, year, month, user_id) DO UPDATE SET
+                    amount = excluded.amount,
+                    note = excluded.note,
+                    source = excluded.source,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (org, branch, int(year), int(month), user_id, amount, note, source),
+            )
+        conn.commit()
+    return {
+        'imported': len(matched),
+        'unmatched': unmatched,
+        'bonuses': list_payroll_bonuses(year, month, org, branch),
+    }
+
+
+def get_overtime_premium_rules(
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    settings = get_payroll_settings(organization_id=organization_id, branch_id=branch_id)
     return [
         {
             'day_type': 'holiday',
@@ -5967,8 +6542,12 @@ def get_overtime_premium_rules() -> List[Dict[str, Any]]:
     ]
 
 
-def get_overtime_holiday_premium_rules() -> List[Dict[str, Any]]:
+def get_overtime_holiday_premium_rules(
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """Return company holidays with an explicitly configured OT premium."""
+    org, branch = _tenant_ids(organization_id, branch_id)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -5976,15 +6555,22 @@ def get_overtime_holiday_premium_rules() -> List[Dict[str, Any]]:
                 SELECT id, name, holiday_date, end_date, is_recurring, overtime_premium_percent
                 FROM company_holidays
                 WHERE overtime_premium_percent IS NOT NULL
+                  AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                  AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
                 ORDER BY holiday_date, name
-            ''').fetchall()
+            ''', (org, branch)).fetchall()
             return [dict(row) for row in rows]
     except Exception as e:
         logger.error(f"Failed to load holiday overtime premium rules: {e}")
         return []
 
 
-def set_company_holiday_overtime_premium(holiday_id: int, premium_percent: Optional[float]) -> bool:
+def set_company_holiday_overtime_premium(
+    holiday_id: int,
+    premium_percent: Optional[float],
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     """Set a holiday-specific OT premium, or clear it to use the global fallback."""
     if premium_percent is not None:
         try:
@@ -5997,9 +6583,13 @@ def set_company_holiday_overtime_premium(holiday_id: int, premium_percent: Optio
         premium = None
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            org, branch = _tenant_ids(organization_id, branch_id)
             cursor = conn.execute(
-                'UPDATE company_holidays SET overtime_premium_percent = ? WHERE id = ?',
-                (premium, int(holiday_id)),
+                """UPDATE company_holidays SET overtime_premium_percent = ?
+                   WHERE id = ?
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (premium, int(holiday_id), org, branch),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -6008,7 +6598,12 @@ def set_company_holiday_overtime_premium(holiday_id: int, premium_percent: Optio
         return False
 
 
-def save_overtime_premium_rule(day_type: str, premium_percent: float) -> bool:
+def save_overtime_premium_rule(
+    day_type: str,
+    premium_percent: float,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     fields = {
         'holiday': ('holiday_ot_premium_percent', 'holiday_ot_premium_active'),
         'non_working_day': ('non_working_day_ot_premium_percent', 'non_working_day_ot_premium_active'),
@@ -6024,9 +6619,13 @@ def save_overtime_premium_rule(day_type: str, premium_percent: float) -> bool:
     percent_column, active_column = fields[day_type]
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            org, branch = _tenant_ids(organization_id, branch_id)
+            ensure_payroll_settings_row(conn.cursor(), org, branch)
             conn.execute(
-                f"UPDATE payroll_settings SET {percent_column} = ?, {active_column} = 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-                (value,),
+                f"""UPDATE payroll_settings SET {percent_column} = ?, {active_column} = 1, updated_at = CURRENT_TIMESTAMP
+                    WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                      AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (value, org, branch),
             )
             conn.commit()
         return True
@@ -6035,7 +6634,12 @@ def save_overtime_premium_rule(day_type: str, premium_percent: float) -> bool:
         return False
 
 
-def set_overtime_premium_rule_active(day_type: str, active: bool) -> bool:
+def set_overtime_premium_rule_active(
+    day_type: str,
+    active: bool,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     active_columns = {
         'holiday': 'holiday_ot_premium_active',
         'non_working_day': 'non_working_day_ot_premium_active',
@@ -6045,9 +6649,13 @@ def set_overtime_premium_rule_active(day_type: str, active: bool) -> bool:
         return False
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            org, branch = _tenant_ids(organization_id, branch_id)
+            ensure_payroll_settings_row(conn.cursor(), org, branch)
             conn.execute(
-                f"UPDATE payroll_settings SET {active_column} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-                (int(bool(active)),),
+                f"""UPDATE payroll_settings SET {active_column} = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                      AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (int(bool(active)), org, branch),
             )
             conn.commit()
         return True
@@ -6056,7 +6664,11 @@ def set_overtime_premium_rule_active(day_type: str, active: bool) -> bool:
         return False
 
 
-def remove_overtime_premium_rule(day_type: str) -> bool:
+def remove_overtime_premium_rule(
+    day_type: str,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     fields = {
         'holiday': ('holiday_ot_premium_percent', 'holiday_ot_premium_active'),
         'non_working_day': ('non_working_day_ot_premium_percent', 'non_working_day_ot_premium_active'),
@@ -6067,8 +6679,13 @@ def remove_overtime_premium_rule(day_type: str) -> bool:
     percent_column, active_column = columns
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            org, branch = _tenant_ids(organization_id, branch_id)
+            ensure_payroll_settings_row(conn.cursor(), org, branch)
             conn.execute(
-                f"UPDATE payroll_settings SET {percent_column} = 0, {active_column} = 0, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
+                f"""UPDATE payroll_settings SET {percent_column} = 0, {active_column} = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                      AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (org, branch),
             )
             conn.commit()
         return True
@@ -6077,17 +6694,26 @@ def remove_overtime_premium_rule(day_type: str) -> bool:
         return False
 
 
-def get_special_date_overrides(start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_special_date_overrides(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """Return configured payroll calendar overrides, optionally bounded by date."""
-    clauses = []
-    params: List[Any] = []
+    org, branch = _tenant_ids(organization_id, branch_id)
+    clauses = [
+        "COALESCE(organization_id, 'DEFAULT_ORG') = ?",
+        "COALESCE(branch_id, 'DEFAULT_BRANCH') = ?",
+    ]
+    params: List[Any] = [org, branch]
     if start_date:
         clauses.append("calendar_date >= ?")
         params.append(start_date)
     if end_date:
         clauses.append("calendar_date <= ?")
         params.append(end_date)
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    where = f"WHERE {' AND '.join(clauses)}"
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -6105,6 +6731,8 @@ def save_special_date_override(
     override_id: Optional[int] = None,
     scope_type: Any = 'all',
     scope_id: Any = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create or update a unique payroll calendar override date."""
     date_text = str(calendar_date or '').strip()
@@ -6143,31 +6771,56 @@ def save_special_date_override(
                 cursor.execute(f"SELECT 1 FROM {table} WHERE id = ?", (target_scope_id,))
                 if not cursor.fetchone():
                     raise ValueError(f"{target_scope.title()} not found")
+            org, branch = _tenant_ids(organization_id, branch_id)
             if target_id is None:
                 cursor.execute(
-                    "INSERT INTO special_date_overrides (calendar_date, override_type, note, scope_type, scope_id) VALUES (?, ?, ?, ?, ?)",
-                    (normalized_date, mode, note_text, target_scope, target_scope_id),
+                    """INSERT INTO special_date_overrides (
+                           calendar_date, override_type, note, scope_type, scope_id, organization_id, branch_id
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (normalized_date, mode, note_text, target_scope, target_scope_id, org, branch),
                 )
                 target_id = cursor.lastrowid
             else:
-                cursor.execute("SELECT 1 FROM special_date_overrides WHERE id = ?", (target_id,))
+                cursor.execute(
+                    """SELECT 1 FROM special_date_overrides
+                       WHERE id = ?
+                         AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                         AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                    (target_id, org, branch),
+                )
                 if not cursor.fetchone():
                     raise ValueError("Special date not found")
                 cursor.execute(
-                    "UPDATE special_date_overrides SET calendar_date = ?, override_type = ?, note = ?, scope_type = ?, scope_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (normalized_date, mode, note_text, target_scope, target_scope_id, target_id),
+                    """UPDATE special_date_overrides
+                       SET calendar_date = ?, override_type = ?, note = ?, scope_type = ?, scope_id = ?, updated_at = CURRENT_TIMESTAMP
+                       WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ? AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                    (normalized_date, mode, note_text, target_scope, target_scope_id, target_id, org, branch),
                 )
             conn.commit()
     except sqlite3.IntegrityError as e:
         raise ValueError("A special date is already configured for this date") from e
-    return next(item for item in get_special_date_overrides() if item['id'] == target_id)
+    return next(
+        item for item in get_special_date_overrides(organization_id=organization_id, branch_id=branch_id)
+        if item['id'] == target_id
+    )
 
 
-def delete_special_date_override(override_id: int) -> bool:
+def delete_special_date_override(
+    override_id: int,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
     """Remove a payroll calendar override."""
+    org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM special_date_overrides WHERE id = ?", (override_id,))
+        cursor.execute(
+            """DELETE FROM special_date_overrides
+               WHERE id = ?
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+            (override_id, org, branch),
+        )
         conn.commit()
         return cursor.rowcount > 0
 
@@ -6182,6 +6835,8 @@ def _validate_payroll_rule_range(
     active: bool,
     exclude_rule_id: Optional[int] = None,
     rule_basis: str = 'absence',
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
 ) -> None:
     if rule_basis not in ('absence', 'half_leave'):
         raise ValueError("Rule basis must be absence or half leave")
@@ -6195,11 +6850,15 @@ def _validate_payroll_rule_range(
         raise ValueError("Deduction percentage must be between 0 and 100")
     if deduction_type == "fixed" and fixed_amount < 0:
         raise ValueError("Fixed deduction amount cannot be negative")
-    query = "SELECT id, min_absent_days, max_absent_days FROM payroll_rules WHERE rule_basis = ?"
-    params: Tuple[Any, ...] = (rule_basis,)
+    org, branch = _tenant_ids(organization_id, branch_id)
+    query = """SELECT id, min_absent_days, max_absent_days FROM payroll_rules
+               WHERE rule_basis = ?
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"""
+    params: Tuple[Any, ...] = (rule_basis, org, branch)
     if exclude_rule_id is not None:
         query += " AND id != ?"
-        params = (exclude_rule_id,)
+        params = (rule_basis, org, branch, exclude_rule_id)
     cursor.execute(query, params)
     for existing_id, existing_min, existing_max in cursor.fetchall():
         overlaps = (
@@ -6219,6 +6878,8 @@ def save_payroll_rule(
     deduction_type: Any = "percentage",
     fixed_amount: Any = 0,
     rule_basis: Any = 'absence',
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create or update a rule, rejecting ambiguous active ranges."""
     try:
@@ -6238,22 +6899,29 @@ def save_payroll_rule(
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("BEGIN IMMEDIATE")
+            org, branch = _tenant_ids(organization_id, branch_id)
             if target_id is not None:
-                cursor.execute("SELECT id FROM payroll_rules WHERE id = ?", (target_id,))
+                cursor.execute(
+                    """SELECT id FROM payroll_rules
+                       WHERE id = ?
+                         AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                         AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                    (target_id, org, branch),
+                )
                 if not cursor.fetchone():
                     raise ValueError("Payroll rule not found")
             _validate_payroll_rule_range(
                 cursor, min_days, max_days, mode, percent, amount, is_active,
-                target_id, basis,
+                target_id, basis, org, branch,
             )
 
             if target_id is None:
                 cursor.execute('''
                     INSERT INTO payroll_rules (
                         rule_basis, min_absent_days, max_absent_days, deduction_type,
-                        deduction_percent, fixed_amount, active
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (basis, min_days, max_days, mode, percent, amount, int(is_active)))
+                        deduction_percent, fixed_amount, active, organization_id, branch_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (basis, min_days, max_days, mode, percent, amount, int(is_active), org, branch))
                 target_id = cursor.lastrowid
             else:
                 cursor.execute('''
@@ -6261,9 +6929,14 @@ def save_payroll_rule(
                     SET rule_basis = ?, min_absent_days = ?, max_absent_days = ?, deduction_type = ?,
                         deduction_percent = ?, fixed_amount = ?, active = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                ''', (basis, min_days, max_days, mode, percent, amount, int(is_active), target_id))
+                      AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                      AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                ''', (basis, min_days, max_days, mode, percent, amount, int(is_active), target_id, org, branch))
             conn.commit()
-        return next(rule for rule in get_payroll_rules() if rule['id'] == target_id)
+        return next(
+            rule for rule in get_payroll_rules(organization_id=organization_id, branch_id=branch_id)
+            if rule['id'] == target_id
+        )
     except ValueError:
         raise
     except Exception as e:
@@ -6271,13 +6944,25 @@ def save_payroll_rule(
         raise
 
 
-def set_payroll_rule_active(rule_id: int, active: bool) -> Optional[Dict[str, Any]]:
+def set_payroll_rule_active(
+    rule_id: int,
+    active: bool,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     """Activate/deactivate a rule; activation must not overlap another active range."""
     with sqlite3.connect(DB_PATH, timeout=30) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("BEGIN IMMEDIATE")
-        cursor.execute("SELECT * FROM payroll_rules WHERE id = ?", (rule_id,))
+        org, branch = _tenant_ids(organization_id, branch_id)
+        cursor.execute(
+            """SELECT * FROM payroll_rules
+               WHERE id = ?
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+            (rule_id, org, branch),
+        )
         row = cursor.fetchone()
         if not row:
             return None
@@ -6285,14 +6970,20 @@ def set_payroll_rule_active(rule_id: int, active: bool) -> Optional[Dict[str, An
             _validate_payroll_rule_range(
                 cursor, row['min_absent_days'], row['max_absent_days'],
                 row['deduction_type'], row['deduction_percent'], row['fixed_amount'], True,
-                rule_id, row['rule_basis'],
+                rule_id, row['rule_basis'], org, branch,
             )
         cursor.execute(
-            "UPDATE payroll_rules SET active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (int(bool(active)), rule_id)
+            """UPDATE payroll_rules SET active = ?, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+            (int(bool(active)), rule_id, org, branch)
         )
         conn.commit()
-    return next(rule for rule in get_payroll_rules() if rule['id'] == rule_id)
+    return next(
+        rule for rule in get_payroll_rules(organization_id=organization_id, branch_id=branch_id)
+        if rule['id'] == rule_id
+    )
 
 
 def _sanitize_orphan_payroll_records() -> int:
@@ -6348,8 +7039,13 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         next_month = month_start.replace(month=month_start.month + 1)
     month_end = next_month - timedelta(days=1)
     period_end = min(month_end, today)
-    payroll_settings = get_payroll_settings()
+    payroll_settings = get_payroll_settings(organization_id=organization_id, branch_id=branch_id)
     deduct_unpaid_leave = bool(payroll_settings.get('deduct_unpaid_leave', 0))
+    ot_hour_divisor = float(payroll_settings.get('ot_hour_divisor') or DEFAULT_OT_DIVISOR) or DEFAULT_OT_DIVISOR
+    proration_basis = str(payroll_settings.get('proration_basis') or DEFAULT_PRORATION_BASIS)
+    decimal_places = int(payroll_settings.get('decimal_places') or DEFAULT_DECIMAL_PLACES)
+    def _m(value):
+        return _payroll_money(value, decimal_places)
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -6404,6 +7100,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             approved_ot_by_user.setdefault(overtime_user_id, []).append({
                 'ot_date': overtime_date,
                 'day_type': day_type,
+                'holiday': holiday,
                 'holiday_id': holiday.get('id') if holiday else None,
                 'holiday_name': holiday.get('name') if holiday else None,
                 'hours': float(overtime_row['total_ot_hours'] or 0.0),
@@ -6412,9 +7109,12 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
 
         cursor.execute('''
             SELECT id, rule_basis, min_absent_days, max_absent_days, deduction_type, deduction_percent, fixed_amount
-            FROM payroll_rules WHERE active = 1
+            FROM payroll_rules
+            WHERE active = 1
+              AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+              AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
             ORDER BY min_absent_days, max_absent_days, id
-        ''')
+        ''', (organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH'))
         active_rules = [dict(row) for row in cursor.fetchall()]
 
     report = get_detailed_attendance_report(
@@ -6424,6 +7124,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         branch_id=branch_id,
     )
     report_records = {record['user_id']: record for record in report.get('records', [])}
+    bonus_amounts = get_payroll_bonus_amounts(
+        month_start.year, month_start.month, organization_id, branch_id or 'DEFAULT_BRANCH'
+    )
     missing_reports = [employee['employee_id'] for employee in employees
                        if employee['employee_id'] not in report_records]
     if missing_reports:
@@ -6484,22 +7187,27 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         
         payable_days = min(scheduled_workdays, present_days + late_days + approved_leave_days)
         
-        # TICKET-18 & 19: Mid-Month Joiner & Mid-Month Exit Pro-Rata Calculation
-        import calendar
-        _, total_days_in_month = calendar.monthrange(month_start.year, month_start.month)
-        active_days_in_month = max(0, (schedule_end - eligible_start).days + 1)
-        proration_factor = 1.0 if active_days_in_month >= total_days_in_month else (active_days_in_month / total_days_in_month)
+        full_month_workdays = sum(bool(day.get('scheduled_workday')) for day in daily_records)
+        proration_factor = _payroll_proration_factor(
+            proration_basis,
+            eligible_start,
+            schedule_end,
+            month_start,
+            month_end,
+            scheduled_workdays,
+            full_month_workdays,
+        )
         
-        basic_salary = round(max(0.0, float(employee['basic_salary'] or 0)) * proration_factor, 2)
+        basic_salary = _m(max(0.0, float(employee['basic_salary'] or 0)) * proration_factor)
 
         # Apply calendar-based premiums to approved overtime hours.
         overtime_entries = approved_ot_by_user.get(employee_id, [])
         ot_hours = round(sum(entry['hours'] for entry in overtime_entries), 2)
         configured_ot_rate = float(employee.get('ot_rate') or 0.0)
         if configured_ot_rate > 0.0:
-            ot_rate = round(configured_ot_rate, 2)
+            ot_rate = _m(configured_ot_rate)
         elif basic_salary > 0.0:
-            ot_rate = round(basic_salary / 208.0, 2)
+            ot_rate = _m(basic_salary / ot_hour_divisor)
         else:
             ot_rate = 0.0
         overtime_breakdown = []
@@ -6509,15 +7217,20 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             if entry_hours <= 0:
                 continue
             day_type = overtime_entry['day_type']
-            premium_percent = float(overtime_entry['premium_percent'] or 0.0)
-            effective_rate = round(ot_rate * (1 + premium_percent / 100), 2)
-            category_amount = round(entry_hours * effective_rate, 2)
+            effective_rate, category_amount, premium_percent = _overtime_entry_pay(
+                ot_rate,
+                entry_hours,
+                day_type,
+                payroll_settings,
+                holiday=overtime_entry.get('holiday'),
+                decimal_places=decimal_places,
+            )
             overtime_amount += category_amount
             breakdown_entry = {
                 'day_type': day_type,
                 'date': overtime_entry['ot_date'],
                 'hours': round(entry_hours, 2),
-                'premium_percent': premium_percent,
+                'premium_percent': _m(premium_percent),
                 'hourly_rate': effective_rate,
                 'amount': category_amount,
             }
@@ -6525,7 +7238,24 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 breakdown_entry['holiday_id'] = overtime_entry['holiday_id']
                 breakdown_entry['holiday_name'] = overtime_entry['holiday_name']
             overtime_breakdown.append(breakdown_entry)
-        overtime_amount = round(overtime_amount, 2)
+        overtime_amount = _m(overtime_amount)
+
+        ot_dates = {str(entry.get('ot_date') or '') for entry in overtime_entries}
+        present_statuses = {'present', 'checked_out', 'late'}
+        off_days_worked = 0
+        for day in eligible_records:
+            if day.get('scheduled_workday'):
+                continue
+            if str(day.get('status') or '') not in present_statuses:
+                continue
+            if str(day.get('date') or '') in ot_dates:
+                continue
+            off_days_worked += 1
+        daily_rate = _m(basic_salary / scheduled_workdays) if scheduled_workdays else 0.0
+        off_day_extra_pay = _off_day_attendance_extra(
+            daily_rate, off_days_worked, payroll_settings, decimal_places
+        )
+        bonus_amount = _m(bonus_amounts.get(int(employee_id), 0.0))
 
         # Allowances and Custom Fixed Deductions from salary_configs
         allowances = round(max(0.0, float(employee.get('allowances') or 0.0)) * proration_factor, 2)
@@ -6568,11 +7298,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         unpaid_leave_deduction = round(basic_salary * unpaid_leave_days / scheduled_workdays, 2) if deduct_unpaid_leave and scheduled_workdays else 0.0
         deduction_amount = round(absence_rule_deduction + unpaid_leave_deduction + half_leave_deduction, 2)
 
-        # Final payroll calculation:
-        # Gross = Basic + Allowances + Approved Overtime
-        # Deductions = Absence Deduction + Custom Fixed Deductions
-        # Net = max(0.0, Gross - Deductions)
-        gross_salary = round(basic_salary + allowances + overtime_amount, 2)
+        # Gross = Basic + Allowances + Approved Overtime + Excel bonus + optional rest-day extra
+        gross_salary = _m(basic_salary + allowances + overtime_amount + bonus_amount + off_day_extra_pay)
         total_emp_deductions = round(deduction_amount + custom_deductions, 2)
         net_salary = round(max(0.0, gross_salary - total_emp_deductions), 2)
 
@@ -6600,6 +7327,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'overtime_rate': ot_rate,
             'overtime_amount': overtime_amount,
             'overtime_breakdown': overtime_breakdown,
+            'bonus_amount': bonus_amount,
+            'off_day_extra_pay': off_day_extra_pay,
+            'off_days_worked': off_days_worked,
             'gross_salary': gross_salary,
             'scheduled_workdays': scheduled_workdays,
             'shift_details': shift_details,
@@ -6648,6 +7378,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         'total_basic_salary': round(sum(row['basic_salary'] for row in rows), 2),
         'total_allowances': round(sum(row['allowances'] for row in rows), 2),
         'total_overtime': round(sum(row['overtime_amount'] for row in rows), 2),
+        'total_bonus': round(sum(row.get('bonus_amount', 0) for row in rows), 2),
+        'total_off_day_extra': round(sum(row.get('off_day_extra_pay', 0) for row in rows), 2),
         'total_deduction': round(sum(row['deduction_amount'] + row['custom_deductions'] for row in rows), 2),
         'total_net_salary': round(sum(row['net_salary'] for row in rows), 2),
         'records': rows,
@@ -6671,18 +7403,20 @@ def _insert_payroll_records(cursor: sqlite3.Cursor, run_id: int, rows: List[Dict
         INSERT INTO payroll_records (
             payroll_run_id, employee_id, employee_name, department, designation,
             basic_salary, allowances, custom_deductions, overtime_hours, overtime_rate,
-            overtime_amount, overtime_breakdown, gross_salary, scheduled_workdays, present_days, absent_days,
+            overtime_amount, overtime_breakdown, bonus_amount, off_day_extra_pay, gross_salary,
+            scheduled_workdays, present_days, absent_days,
             late_days, approved_leave_days, paid_leave_days, unpaid_leave_days, total_leave_days,
             unpaid_leave_deduction,
             payable_days, applied_rule_id, matched_rule,
             shift_details, calendar_details, deduction_type, deduction_percent,
             fixed_amount, deduction_amount, net_salary, status, organization_id, branch_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', [(
         run_id, row['employee_id'], row['employee_name'], row['department'], row['designation'],
         row.get('basic_salary', 0.0), row.get('allowances', 0.0), row.get('custom_deductions', 0.0),
         row.get('overtime_hours', 0.0), row.get('overtime_rate', 0.0), row.get('overtime_amount', 0.0),
         json.dumps(row.get('overtime_breakdown', [])),
+        row.get('bonus_amount', 0.0), row.get('off_day_extra_pay', 0.0),
         row.get('gross_salary', row.get('basic_salary', 0.0)),
         row['scheduled_workdays'], row['present_days'], row['absent_days'],
         row['late_days'], row['approved_leave_days'], row.get('paid_leave_days', row['approved_leave_days']),
@@ -6834,12 +7568,61 @@ def get_monthly_payroll(
     result['is_finalized'] = True
     result['total_allowances'] = round(sum(float(row.get('allowances') or 0) for row in result['records']), 2)
     result['total_overtime'] = round(sum(float(row.get('overtime_amount') or 0) for row in result['records']), 2)
+    result['total_bonus'] = round(sum(float(row.get('bonus_amount') or 0) for row in result['records']), 2)
+    result['total_off_day_extra'] = round(sum(float(row.get('off_day_extra_pay') or 0) for row in result['records']), 2)
     result['total_deduction'] = round(sum(float(row.get('deduction_amount') or 0) + float(row.get('custom_deductions') or 0) for row in result['records']), 2)
     result['total_net_salary'] = round(sum(float(row.get('net_salary') or 0) for row in result['records']), 2)
     return result
 
 
-def finalize_monthly_payroll(preview: Dict[str, Any], organization_id: str = 'DEFAULT_ORG', branch_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def get_employee_payslip(
+    payroll_month: str,
+    employee_id: int,
+    organization_id: str = 'DEFAULT_ORG',
+    branch_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Return one employee's payroll line as a payslip from the current month run."""
+    payroll = get_monthly_payroll(
+        payroll_month, organization_id=organization_id, branch_id=branch_id
+    ) or calculate_monthly_payroll(
+        payroll_month, organization_id=organization_id, branch_id=branch_id
+    )
+    if isinstance(payroll, list):
+        return None
+    settings = get_payroll_settings(organization_id=organization_id, branch_id=branch_id)
+    record = next(
+        (row for row in payroll.get('records', []) if int(row.get('employee_id') or row.get('user_id') or 0) == int(employee_id)),
+        None,
+    )
+    if not record:
+        return None
+    return {
+        'payroll_month': payroll.get('payroll_month'),
+        'period_start': payroll.get('period_start'),
+        'period_end': payroll.get('period_end'),
+        'status': payroll.get('status'),
+        'is_finalized': payroll.get('is_finalized'),
+        'currency_code': settings.get('currency_code') or DEFAULT_CURRENCY,
+        'finalized_at': payroll.get('finalized_at'),
+        'finalized_by': payroll.get('finalized_by'),
+        'employee': record,
+        'gross_salary': record.get('gross_salary'),
+        'deductions': {
+            'absence': record.get('absence_deduction') or 0,
+            'unpaid_leave': record.get('unpaid_leave_deduction') or 0,
+            'half_leave': record.get('half_leave_deduction') or 0,
+            'other': record.get('custom_deductions') or 0,
+        },
+        'net_salary': record.get('net_salary'),
+    }
+
+
+def finalize_monthly_payroll(
+    preview: Dict[str, Any],
+    organization_id: str = 'DEFAULT_ORG',
+    branch_id: Optional[str] = None,
+    finalized_by: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     """Persist a reviewed payroll preview as an immutable monthly snapshot for tenant."""
     _sanitize_orphan_payroll_records()
     if any(row.get('shift_history_missing') for row in preview.get('records', [])):
@@ -6898,9 +7681,9 @@ def finalize_monthly_payroll(preview: Dict[str, Any], organization_id: str = 'DE
             _insert_payroll_records(cursor, run_id, preview.get('records', []), finalized=False, organization_id=organization_id, branch_id=branch_id)
             cursor.execute("UPDATE payroll_records SET status = 'Finalized' WHERE payroll_run_id = ?", (run_id,))
             cursor.execute('''
-                UPDATE payroll_runs SET status = 'Finalized', finalized_at = CURRENT_TIMESTAMP
+                UPDATE payroll_runs SET status = 'Finalized', finalized_at = CURRENT_TIMESTAMP, finalized_by = ?
                 WHERE id = ?
-            ''', (run_id,))
+            ''', (finalized_by, run_id,))
             conn.commit()
         return get_monthly_payroll(
             preview['payroll_month'],

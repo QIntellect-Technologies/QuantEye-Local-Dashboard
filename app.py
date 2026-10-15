@@ -3694,6 +3694,13 @@ def get_current_branch_id() -> str:
     return 'DEFAULT_BRANCH'
 
 
+def payroll_tenant() -> Dict[str, str]:
+    return {
+        'organization_id': get_current_tenant_id(),
+        'branch_id': get_current_branch_id(),
+    }
+
+
 def verify_user_access(user_id: int, organization_id: Optional[str] = None) -> Optional[Dict]:
     """
     Tenant Isolation Security Verification Helper.
@@ -4930,7 +4937,10 @@ def api_delete_leave(leave_id):
 
 @app.route('/api/leave-types', methods=['GET'])
 def api_get_leave_types():
-    return jsonify(db.get_leave_types())
+    return jsonify(db.get_leave_types(
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
+    ))
 
 
 @app.route('/api/leave-types', methods=['POST'])
@@ -4941,7 +4951,10 @@ def api_add_leave_type():
     if not name or not code:
         return jsonify({'success': False, 'message': 'name and code are required'}), 400
 
-    existing_types = db.get_leave_types()
+    existing_types = db.get_leave_types(
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
+    )
     if any(str(item.get('name', '')).strip().casefold() == name.casefold() for item in existing_types):
         return jsonify({
             'success': False,
@@ -4968,7 +4981,9 @@ def api_add_leave_type():
         is_paid=int(data.get('is_paid', 1)),
         description=data.get('description', ''),
         allowance_period=allowance_period,
-        allowance_months=allowance_months
+        allowance_months=allowance_months,
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
     )
     if tid:
         return jsonify({'success': True, 'id': tid}), 201
@@ -4994,14 +5009,15 @@ def api_update_leave_type(type_id):
         description=data.get('description', ''),
         active=int(data.get('active', 1)),
         allowance_period=allowance_period,
-        allowance_months=allowance_months
+        allowance_months=allowance_months,
+        organization_id=get_current_tenant_id(),
     )
     return jsonify({'success': ok})
 
 
 @app.route('/api/leave-types/<int:type_id>', methods=['DELETE'])
 def api_delete_leave_type(type_id):
-    ok = db.delete_leave_type(type_id)
+    ok = db.delete_leave_type(type_id, organization_id=get_current_tenant_id())
     return jsonify({'success': ok})
 
 
@@ -5449,7 +5465,17 @@ def api_auto_ot_rates():
     try:
         data = request.get_json(silent=True) or {}
         divisor = float(data.get('divisor', 208.0) or 208.0)
-        count = db.auto_calculate_ot_rates(rate_divisor=divisor)
+        settings = db.get_payroll_settings(
+            organization_id=get_current_tenant_id(),
+            branch_id=get_current_branch_id(),
+        )
+        if 'divisor' not in data:
+            divisor = float(settings.get('ot_hour_divisor') or 208.0)
+        count = db.auto_calculate_ot_rates(
+            rate_divisor=divisor,
+            organization_id=get_current_tenant_id(),
+            branch_id=get_current_branch_id(),
+        )
         return jsonify({
             'success': True,
             'message': f'Successfully updated standard overtime rates for {count} active staff members',
@@ -5499,10 +5525,166 @@ def api_get_monthly_payroll():
         return jsonify({'error': f'Failed to calculate payroll: {e}'}), 500
 
 
+def _parse_payroll_month_arg(value: Optional[str] = None) -> Tuple[str, int, int]:
+    raw = str(value or request.args.get('month') or '').strip()
+    try:
+        parsed = datetime.strptime(raw, '%Y-%m')
+    except (TypeError, ValueError) as exc:
+        raise ValueError('Payroll month must use YYYY-MM format') from exc
+    return raw, parsed.year, parsed.month
+
+
+def _bonus_rows_from_workbook(file_storage) -> List[Dict[str, Any]]:
+    import openpyxl
+    workbook = openpyxl.load_workbook(file_storage, data_only=True, read_only=True)
+    try:
+        sheet = workbook.active
+        rows = list(sheet.iter_rows(values_only=True))
+    finally:
+        workbook.close()
+    if not rows:
+        return []
+    aliases = {
+        'employee_id': 'employee_id', 'user_id': 'employee_id', 'id': 'employee_id',
+        'emp_id': 'employee_id', 'staff_id': 'employee_id',
+        'employee_name': 'name', 'name': 'name', 'employee': 'name',
+        'email': 'email',
+        'amount': 'amount', 'bonus': 'amount', 'bonus_amount': 'amount',
+        'note': 'note', 'notes': 'note', 'remarks': 'note',
+    }
+    headers = [aliases.get(str(cell or '').strip().lower().replace(' ', '_')) for cell in rows[0]]
+    parsed: List[Dict[str, Any]] = []
+    for row in rows[1:]:
+        if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+            continue
+        item: Dict[str, Any] = {}
+        for key, cell in zip(headers, row):
+            if not key:
+                continue
+            item[key] = cell
+        parsed.append(item)
+    return parsed
+
+
+@app.route('/api/payroll/bonuses', methods=['GET'])
+def api_list_payroll_bonuses():
+    try:
+        _month, year, month = _parse_payroll_month_arg()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    bonuses = db.list_payroll_bonuses(year, month, **payroll_tenant())
+    return jsonify({'month': _month, 'bonuses': bonuses, 'count': len(bonuses)})
+
+
+@app.route('/api/payroll/bonuses/template', methods=['GET'])
+def api_payroll_bonus_template():
+    try:
+        payroll_month, year, month = _parse_payroll_month_arg()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    tenant = payroll_tenant()
+    bonuses = {
+        int(row['user_id']): row
+        for row in db.list_payroll_bonuses(year, month, **tenant)
+    }
+    users = db.get_all_users(organization_id=tenant['organization_id'], branch_id=tenant['branch_id'])
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = 'Bonuses'
+    headers = ['Employee ID', 'Employee Name', 'Email', 'Amount', 'Note']
+    sheet.append(headers)
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill(start_color='0F2942', end_color='0F2942', fill_type='solid')
+        cell.alignment = Alignment(horizontal='center')
+    for user in users:
+        if not user.get('active', 1):
+            continue
+        existing = bonuses.get(int(user['id']), {})
+        sheet.append([
+            user['id'],
+            user.get('name') or '',
+            user.get('email') or '',
+            float(existing.get('amount') or 0),
+            existing.get('note') or '',
+        ])
+    sheet.append([])
+    sheet.append(['Instructions'])
+    sheet.append(['Match employees by Employee ID, Email, or exact Name.'])
+    sheet.append(['Amount is the bonus for this payroll month. Leave 0 if none.'])
+    sheet.append(['Off-days follow each employee Shift schedule, not a fixed Sunday.'])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    filename = f'payroll-bonuses-{payroll_month}.xlsx'
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
+@app.route('/api/payroll/bonuses/upload', methods=['POST'])
+def api_upload_payroll_bonuses():
+    try:
+        payroll_month, year, month = _parse_payroll_month_arg()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    uploaded = request.files.get('file') or request.files.get('bonus_file')
+    if uploaded is None or not uploaded.filename:
+        return jsonify({'error': 'Upload an Excel file (.xlsx) with bonus rows.'}), 400
+    try:
+        rows = _bonus_rows_from_workbook(uploaded)
+        result = db.replace_payroll_bonuses(year, month, rows, **payroll_tenant())
+    except Exception as e:
+        logger.exception('Failed to import payroll bonuses')
+        return jsonify({'error': f'Failed to import bonuses: {e}'}), 400
+    return jsonify({
+        'success': True,
+        'month': payroll_month,
+        'imported': result['imported'],
+        'unmatched': result['unmatched'],
+        'bonuses': result['bonuses'],
+        'message': f"Imported {result['imported']} bonus row(s) for {payroll_month}.",
+    })
+
+
+@app.route('/api/payroll/payslip/<int:employee_id>', methods=['GET'])
+def api_get_employee_payslip(employee_id):
+    payroll_month = request.args.get('month', '').strip()
+    if not payroll_month:
+        return jsonify({'error': 'Payroll month is required in YYYY-MM format'}), 400
+    if not verify_user_access(employee_id):
+        return jsonify({'error': 'Employee not found or access denied'}), 404
+    try:
+        payslip = db.get_employee_payslip(
+            payroll_month,
+            employee_id,
+            organization_id=get_current_tenant_id(),
+            branch_id=get_current_branch_id(),
+        )
+        if not payslip:
+            return jsonify({'error': 'No payroll record found for this employee'}), 404
+        return jsonify(payslip)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.exception("Failed to load payslip")
+        return jsonify({'error': f'Failed to load payslip: {e}'}), 500
+
+
+@app.route('/api/payroll/scope-options', methods=['GET'])
+def api_get_payroll_scope_options():
+    return jsonify(db.get_payroll_scope_options(**payroll_tenant()))
+
+
 @app.route('/api/payroll-settings/scoped-rules/half-leave', methods=['GET'])
 def api_get_scoped_half_leave_rules():
     try:
-        all_rules = db.get_payroll_scoped_rules()
+        all_rules = db.get_payroll_scoped_rules(**payroll_tenant())
         half_leave_rules = [r for r in all_rules if r.get('policy_type') == 'half_leave_quota']
         return jsonify(half_leave_rules)
     except Exception as e:
@@ -5521,7 +5703,7 @@ def api_save_scoped_half_leave_rule():
         return jsonify({'error': 'Missing required fields'}), 400
         
     try:
-        success = db.save_scoped_half_leave_rule(scope_type, scope_id, quota_mode, monthly_count)
+        success = db.save_scoped_half_leave_rule(scope_type, scope_id, quota_mode, monthly_count, **payroll_tenant())
         if success:
             return jsonify({'success': True})
         return jsonify({'error': 'Failed to save rule. Ensure target exists and values are valid.'}), 400
@@ -5532,12 +5714,12 @@ def api_save_scoped_half_leave_rule():
 @app.route('/api/payroll-settings/scoped-rules/half-leave/<int:rule_id>', methods=['DELETE'])
 def api_delete_scoped_half_leave_rule(rule_id):
     try:
-        all_rules = db.get_payroll_scoped_rules()
+        all_rules = db.get_payroll_scoped_rules(**payroll_tenant())
         rule = next((r for r in all_rules if r['id'] == rule_id), None)
         if not rule or rule.get('policy_type') != 'half_leave_quota':
             return jsonify({'error': 'Rule not found or is not a half-leave rule'}), 404
             
-        success = db.delete_payroll_scoped_rule(rule_id)
+        success = db.delete_payroll_scoped_rule(rule_id, **payroll_tenant())
         if success:
             return jsonify({'success': True})
         return jsonify({'error': 'Rule could not be deleted'}), 400
@@ -5545,16 +5727,18 @@ def api_delete_scoped_half_leave_rule(rule_id):
         logger.exception("Failed to delete scoped rule")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/settings/payroll/scoped-rules/overtime-limit', methods=['GET'])
 @app.route('/api/payroll-settings/scoped-rules/overtime-limit', methods=['GET'])
 def api_get_scoped_overtime_limit_rules():
     try:
-        all_rules = db.get_payroll_scoped_rules()
+        all_rules = db.get_payroll_scoped_rules(**payroll_tenant())
         ot_limit_rules = [r for r in all_rules if r.get('policy_type') == 'overtime_limit']
         return jsonify(ot_limit_rules)
     except Exception as e:
         logger.exception("Failed to get scoped overtime limit rules")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/settings/payroll/scoped-rules/overtime-limit', methods=['POST'])
 @app.route('/api/payroll-settings/scoped-rules/overtime-limit', methods=['POST'])
 def api_save_scoped_overtime_limit_rule():
     data = request.json or {}
@@ -5573,7 +5757,7 @@ def api_save_scoped_overtime_limit_rule():
         return jsonify({'error': 'Maximum overtime hours must be from 0 to 744.'}), 400
         
     try:
-        success = db.save_scoped_overtime_limit_rule(scope_type, scope_id, max_h, period)
+        success = db.save_scoped_overtime_limit_rule(scope_type, scope_id, max_h, period, **payroll_tenant())
         if success:
             return jsonify({'success': True})
         return jsonify({'error': 'Failed to save rule. Ensure target exists and values are valid.'}), 400
@@ -5581,15 +5765,16 @@ def api_save_scoped_overtime_limit_rule():
         logger.exception("Failed to save scoped overtime limit rule")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/settings/payroll/scoped-rules/overtime-limit/<int:rule_id>', methods=['DELETE'])
 @app.route('/api/payroll-settings/scoped-rules/overtime-limit/<int:rule_id>', methods=['DELETE'])
 def api_delete_scoped_overtime_limit_rule(rule_id):
     try:
-        all_rules = db.get_payroll_scoped_rules()
+        all_rules = db.get_payroll_scoped_rules(**payroll_tenant())
         rule = next((r for r in all_rules if r['id'] == rule_id), None)
         if not rule or rule.get('policy_type') != 'overtime_limit':
             return jsonify({'error': 'Rule not found or is not an overtime-limit rule'}), 404
             
-        success = db.delete_payroll_scoped_rule(rule_id)
+        success = db.delete_payroll_scoped_rule(rule_id, **payroll_tenant())
         if success:
             return jsonify({'success': True})
         return jsonify({'error': 'Rule could not be deleted'}), 400
@@ -5600,7 +5785,7 @@ def api_delete_scoped_overtime_limit_rule(rule_id):
 @app.route('/api/payroll/rules', methods=['GET'])
 def api_get_payroll_rules():
     try:
-        return jsonify(db.get_payroll_rules(active_only=False))
+        return jsonify(db.get_payroll_rules(active_only=False, **payroll_tenant()))
     except Exception as e:
         logger.exception("Failed to load payroll rules")
         return jsonify({'error': f'Failed to load payroll rules: {e}'}), 500
@@ -5621,6 +5806,7 @@ def api_create_payroll_rule():
             fixed_amount=data.get('fixed_amount', 0),
             active=data.get('active', True),
             rule_basis=data.get('rule_basis', 'absence'),
+            **payroll_tenant(),
         )
         return jsonify({'success': True, 'rule': rule}), 201
     except ValueError as e:
@@ -5646,6 +5832,7 @@ def api_update_payroll_rule(rule_id):
             active=data.get('active', True),
             rule_id=rule_id,
             rule_basis=data.get('rule_basis', 'absence'),
+            **payroll_tenant(),
         )
         return jsonify({'success': True, 'rule': rule})
     except ValueError as e:
@@ -5661,7 +5848,7 @@ def api_deactivate_payroll_rule(rule_id):
     if access_error:
         return access_error
     try:
-        rule = db.set_payroll_rule_active(rule_id, False)
+        rule = db.set_payroll_rule_active(rule_id, False, **payroll_tenant())
         if not rule:
             return jsonify({'error': 'Payroll rule not found'}), 404
         return jsonify({'success': True, 'rule': rule})
@@ -5676,7 +5863,7 @@ def api_activate_payroll_rule(rule_id):
     if access_error:
         return access_error
     try:
-        rule = db.set_payroll_rule_active(rule_id, True)
+        rule = db.set_payroll_rule_active(rule_id, True, **payroll_tenant())
         if not rule:
             return jsonify({'error': 'Payroll rule not found'}), 404
         return jsonify({'success': True, 'rule': rule})
@@ -5690,7 +5877,7 @@ def api_activate_payroll_rule(rule_id):
 @app.route('/api/payroll/calendar', methods=['GET'])
 def api_get_payroll_calendar():
     try:
-        return jsonify(db.get_special_date_overrides())
+        return jsonify(db.get_special_date_overrides(**payroll_tenant()))
     except Exception as e:
         logger.exception("Failed to load payroll calendar overrides")
         return jsonify({'error': f'Failed to load payroll calendar: {e}'}), 500
@@ -5709,6 +5896,7 @@ def api_create_payroll_calendar_override():
             note=data.get('note', ''),
             scope_type=data.get('scope_type', 'all'),
             scope_id=data.get('scope_id'),
+            **payroll_tenant(),
         )
         return jsonify({'success': True, 'override': override}), 201
     except ValueError as e:
@@ -5732,6 +5920,7 @@ def api_update_payroll_calendar_override(override_id):
             override_id=override_id,
             scope_type=data.get('scope_type', 'all'),
             scope_id=data.get('scope_id'),
+            **payroll_tenant(),
         )
         return jsonify({'success': True, 'override': override})
     except ValueError as e:
@@ -5748,7 +5937,7 @@ def api_delete_payroll_calendar_override(override_id):
     if access_error:
         return access_error
     try:
-        if not db.delete_special_date_override(override_id):
+        if not db.delete_special_date_override(override_id, **payroll_tenant()):
             return jsonify({'error': 'Special date not found'}), 404
         return jsonify({'success': True})
     except Exception as e:
@@ -5794,6 +5983,7 @@ def api_finalize_monthly_payroll():
             preview,
             organization_id=current_tenant,
             branch_id=current_branch,
+            finalized_by=session.get('admin_name') or session.get('username') or session.get('organization_name') or 'Admin',
         )
         if not saved_run:
             return jsonify({'error': f'Payroll for {payroll_month} was finalized by another request'}), 409
@@ -5811,13 +6001,13 @@ def api_finalize_monthly_payroll():
 
 @app.route('/api/settings/payroll', methods=['GET'])
 def api_get_payroll_settings():
-    return jsonify(db.get_payroll_settings())
+    return jsonify(db.get_payroll_settings(**payroll_tenant()))
 
 
 @app.route('/api/settings/payroll', methods=['POST', 'PUT'])
 def api_update_payroll_settings():
     data = request.get_json(silent=True) or {}
-    current_settings = db.get_payroll_settings()
+    current_settings = db.get_payroll_settings(**payroll_tenant())
     value = data.get('deduct_unpaid_leave')
     if value not in (True, False, 0, 1):
         return jsonify({'error': 'deduct_unpaid_leave must be true or false'}), 400
@@ -5839,19 +6029,44 @@ def api_update_payroll_settings():
     if not (0 <= holiday_premium <= 1000 and 0 <= non_working_premium <= 1000):
         return jsonify({'error': 'Overtime premiums must be between 0 and 1000 percent'}), 400
     if not db.update_payroll_settings(
-        bool(value), quota_mode, conversion_count, holiday_premium, non_working_premium
+        bool(value), quota_mode, conversion_count, holiday_premium, non_working_premium,
+        organization_id=current_settings.get('organization_id') or get_current_tenant_id(),
+        branch_id=current_settings.get('branch_id') or get_current_branch_id(),
+        ot_hour_divisor=data.get('ot_hour_divisor', current_settings.get('ot_hour_divisor')),
+        proration_basis=data.get('proration_basis', current_settings.get('proration_basis')),
+        currency_code=data.get('currency_code', current_settings.get('currency_code')),
+        decimal_places=data.get('decimal_places', current_settings.get('decimal_places')),
+        holiday_ot_pay_mode=data.get('holiday_ot_pay_mode', current_settings.get('holiday_ot_pay_mode')),
+        non_working_day_ot_pay_mode=data.get('non_working_day_ot_pay_mode', current_settings.get('non_working_day_ot_pay_mode')),
+        holiday_ot_multiplier=data.get('holiday_ot_multiplier', current_settings.get('holiday_ot_multiplier')),
+        non_working_day_ot_multiplier=data.get('non_working_day_ot_multiplier', current_settings.get('non_working_day_ot_multiplier')),
+        holiday_ot_fixed_amount=data.get('holiday_ot_fixed_amount', current_settings.get('holiday_ot_fixed_amount')),
+        non_working_day_ot_fixed_amount=data.get('non_working_day_ot_fixed_amount', current_settings.get('non_working_day_ot_fixed_amount')),
+        off_day_attendance_pay_active=data.get(
+            'off_day_attendance_pay_active',
+            current_settings.get('off_day_attendance_pay_active'),
+        ),
+        off_day_attendance_pay_mode=data.get('off_day_attendance_pay_mode', current_settings.get('off_day_attendance_pay_mode')),
+        off_day_attendance_pay_multiplier=data.get(
+            'off_day_attendance_pay_multiplier',
+            current_settings.get('off_day_attendance_pay_multiplier'),
+        ),
+        off_day_attendance_pay_fixed_amount=data.get(
+            'off_day_attendance_pay_fixed_amount',
+            current_settings.get('off_day_attendance_pay_fixed_amount'),
+        ),
     ):
         return jsonify({'error': 'Failed to save payroll settings'}), 500
     return jsonify({
         'success': True,
-        'settings': db.get_payroll_settings(),
+        'settings': db.get_payroll_settings(**payroll_tenant()),
         'message': 'Payroll settings saved.'
     })
 
 
 @app.route('/api/settings/payroll/overtime-rules', methods=['GET'])
 def api_get_overtime_premium_rules():
-    return jsonify(db.get_overtime_premium_rules())
+    return jsonify(db.get_overtime_premium_rules(**payroll_tenant()))
 
 
 @app.route('/api/settings/payroll/overtime-limit', methods=['PUT'])
@@ -5866,11 +6081,11 @@ def api_update_overtime_limit_settings():
         return jsonify({'success': False, 'error': 'Maximum overtime hours must be from 0 to 744.'}), 400
     if period not in ('per_entry', 'day', 'week', 'month'):
         return jsonify({'success': False, 'error': 'Choose an OT entry, day, week, or calendar month limit.'}), 400
-    if not db.update_overtime_limit_settings(max_hours, period):
+    if not db.update_overtime_limit_settings(max_hours, period, **payroll_tenant()):
         return jsonify({'success': False, 'error': 'Failed to save overtime limit settings.'}), 500
     return jsonify({
         'success': True,
-        'settings': db.get_payroll_settings(),
+        'settings': db.get_payroll_settings(**payroll_tenant()),
         'message': 'Overtime limit saved.',
     })
 
@@ -5883,37 +6098,37 @@ def api_save_overtime_premium_rule():
         premium_percent = float(data.get('premium_percent'))
     except (TypeError, ValueError, OverflowError):
         return jsonify({'success': False, 'error': 'Premium must be a number between 0 and 1000.'}), 400
-    if not db.save_overtime_premium_rule(day_type, premium_percent):
+    if not db.save_overtime_premium_rule(day_type, premium_percent, **payroll_tenant()):
         return jsonify({'success': False, 'error': 'Choose a valid overtime rule and a premium between 0 and 1000 percent.'}), 400
-    return jsonify({'success': True, 'rules': db.get_overtime_premium_rules(), 'message': 'Overtime premium rule saved and activated.'})
+    return jsonify({'success': True, 'rules': db.get_overtime_premium_rules(**payroll_tenant()), 'message': 'Overtime premium rule saved and activated.'})
 
 
 @app.route('/api/settings/payroll/overtime-rules/<day_type>', methods=['PUT', 'DELETE'])
 def api_manage_overtime_premium_rule(day_type):
     if request.method == 'DELETE':
-        success = db.remove_overtime_premium_rule(day_type)
+        success = db.remove_overtime_premium_rule(day_type, **payroll_tenant())
         message = 'Overtime premium rule removed.'
     else:
         data = request.get_json(silent=True) or {}
         active = data.get('active')
         if active not in (True, False, 0, 1):
             return jsonify({'success': False, 'error': 'active must be true or false.'}), 400
-        success = db.set_overtime_premium_rule_active(day_type, bool(active))
+        success = db.set_overtime_premium_rule_active(day_type, bool(active), **payroll_tenant())
         message = 'Overtime premium rule activated.' if active else 'Overtime premium rule deactivated.'
     if not success:
         return jsonify({'success': False, 'error': 'Overtime premium rule not found.'}), 404
-    return jsonify({'success': True, 'rules': db.get_overtime_premium_rules(), 'message': message})
+    return jsonify({'success': True, 'rules': db.get_overtime_premium_rules(**payroll_tenant()), 'message': message})
 
 
 @app.route('/api/settings/payroll/overtime-holiday-rules', methods=['GET'])
 def api_get_overtime_holiday_premium_rules():
-    return jsonify(db.get_overtime_holiday_premium_rules())
+    return jsonify(db.get_overtime_holiday_premium_rules(**payroll_tenant()))
 
 
 @app.route('/api/settings/payroll/overtime-holiday-rules/<int:holiday_id>', methods=['PUT', 'DELETE'])
 def api_manage_overtime_holiday_premium_rule(holiday_id):
     if request.method == 'DELETE':
-        success = db.set_company_holiday_overtime_premium(holiday_id, None)
+        success = db.set_company_holiday_overtime_premium(holiday_id, None, **payroll_tenant())
         message = 'Holiday now uses the default public holiday premium.'
     else:
         data = request.get_json(silent=True) or {}
@@ -5923,13 +6138,13 @@ def api_manage_overtime_holiday_premium_rule(holiday_id):
             return jsonify({'success': False, 'error': 'Premium must be a number between 0 and 1000.'}), 400
         if not 0 <= premium_percent <= 1000:
             return jsonify({'success': False, 'error': 'Premium must be between 0 and 1000 percent.'}), 400
-        success = db.set_company_holiday_overtime_premium(holiday_id, premium_percent)
+        success = db.set_company_holiday_overtime_premium(holiday_id, premium_percent, **payroll_tenant())
         message = 'Holiday overtime premium saved.'
     if not success:
         return jsonify({'success': False, 'error': 'Holiday not found or premium could not be saved.'}), 404
     return jsonify({
         'success': True,
-        'rules': db.get_overtime_holiday_premium_rules(),
+        'rules': db.get_overtime_holiday_premium_rules(**payroll_tenant()),
         'message': message,
     })
 

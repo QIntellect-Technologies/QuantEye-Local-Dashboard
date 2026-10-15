@@ -4198,6 +4198,13 @@ async function fetchMultiLiveDetections() {
           <button id="manageSalaryPackagesButton" type="button" onclick="openSalaryConfigFromPayroll()" class="btn btn-outline" style="min-height:40px; border-color:#3d9fd4; color:#247eae;" title="Configure Employee Salary Packages">
             <i class="fa-solid fa-file-invoice-dollar"></i> Salary Structure
           </button>
+          <button id="downloadBonusTemplateButton" type="button" onclick="downloadPayrollBonusTemplate()" class="btn btn-outline" style="min-height:40px; border-color:#3d9fd4; color:#247eae;" title="Download Excel bonus template for this month">
+            <i class="fa-solid fa-file-excel"></i> Bonus template
+          </button>
+          <label class="btn btn-outline" style="min-height:40px; border-color:#3d9fd4; color:#247eae; margin:0; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+            <i class="fa-solid fa-upload"></i> Upload bonuses
+            <input id="payrollBonusExcelInput" type="file" accept=".xlsx" hidden onchange="uploadPayrollBonusExcel(this)">
+          </label>
           <button id="calculatePayrollButton" type="button" onclick="loadMonthlyPayroll(undefined, true)" class="btn btn-outline" style="min-height:40px; border-color:#148f77; color:#087f68;">
             <i class="fa-solid fa-calculator"></i> Calculate Payroll
           </button>
@@ -4294,6 +4301,8 @@ async function fetchMultiLiveDetections() {
               <th class="text-end" style="min-width:115px;">Basic Salary</th>
               <th class="text-end" style="min-width:95px;">Allowances</th>
               <th class="text-end" style="min-width:110px;">Overtime Pay</th>
+              <th class="text-end" style="min-width:90px;">Bonus</th>
+              <th class="text-end" style="min-width:110px;">Rest-day extra</th>
               <th class="text-end" style="min-width:110px;">Deductions</th>
               <th class="text-end" style="min-width:125px;">Net Payable</th>
               <th class="text-center" style="min-width:95px;">Status</th>
@@ -5413,12 +5422,66 @@ async function fetchMultiLiveDetections() {
     <!-- TAB 5: PAYROLL RULES -->
     <div id="payroll-rules-tab" class="settings-sub-tab" style="display: none;">
       <div class="card p-4 shadow-sm" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:16px;">
-        <div style="margin-bottom:18px;">
+        <div style="margin-bottom:22px;">
           <h3 style="font-size:1.15em; font-weight:800; color:#173042; margin:0;">
-            <i class="fa-solid fa-percent" style="color:#3d9fd4; margin-right:6px;"></i> Attendance-Based Deduction Rules
+            <i class="fa-solid fa-percent" style="color:#3d9fd4; margin-right:6px;"></i> Payroll Settings
           </h3>
-          <span style="font-size:0.82em; color:#64748b;">Choose a percentage or fixed PKR deduction for each absence range. Active ranges cannot overlap.</span>
+          <p style="font-size:0.88em; color:#64748b; margin:8px 0 0;">These rules apply only to <strong>this organization</strong>. Payroll uses approved records from Attendance, Leave Management, Overtime Management, and Shift Management. It does not replace those modules.</p>
         </div>
+
+        <div class="payroll-explain-box" style="padding:14px 16px; margin-bottom:20px; background:#f0f9ff; border:1px solid #bae6fd; border-radius:12px;">
+          <div style="font-weight:800; color:#173042; margin-bottom:8px;">How salary is calculated</div>
+          <div style="font-size:0.86em; color:#334155; line-height:1.55;">
+            <div><strong>Gross salary</strong> = Basic salary + Allowances + Approved overtime + Excel bonus + rest-day extra (if enabled)</div>
+            <div><strong>Deductions</strong> = Absence deductions + Unpaid leave (if enabled) + Other employee deductions</div>
+            <div><strong>Net salary</strong> = Gross salary − Deductions (never below zero)</div>
+          </div>
+        </div>
+
+        <section class="payroll-settings-section" style="margin-bottom:22px; padding-bottom:8px; border-bottom:1px solid #e2e8f0;">
+          <h4 style="font-size:1em; font-weight:800; color:#173042; margin:0 0 6px;">1. Basic Payroll Settings</h4>
+          <p style="font-size:0.82em; color:#64748b; margin:0 0 12px;">Display currency and rounding used on payroll amounts. Changing these does not rewrite historical finalized payroll.</p>
+          <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;">
+            <label style="font-size:0.86em; font-weight:700; color:#475569;">
+              Currency
+              <input id="payrollCurrencyCode" class="form-control" type="text" maxlength="8" value="PKR" style="width:110px; margin-top:4px;">
+              <div style="font-weight:500; color:#64748b; font-size:0.78em; margin-top:4px;">Shown on payroll and payslips (default PKR).</div>
+            </label>
+            <label style="font-size:0.86em; font-weight:700; color:#475569;">
+              Decimal places
+              <input id="payrollDecimalPlaces" class="form-control" type="number" min="0" max="6" step="1" value="2" style="width:90px; margin-top:4px;">
+              <div style="font-weight:500; color:#64748b; font-size:0.78em; margin-top:4px;">Usually 2 for currency amounts.</div>
+            </label>
+            <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700;">Save basic settings</button>
+          </div>
+        </section>
+
+        <section class="payroll-settings-section" style="margin-bottom:22px; padding-bottom:8px; border-bottom:1px solid #e2e8f0;">
+          <h4 style="font-size:1em; font-weight:800; color:#173042; margin:0 0 6px;">5. Salary Proration</h4>
+          <p style="font-size:0.82em; color:#64748b; margin:0 0 12px;">When an employee joins or leaves during the month, this method decides how much of the monthly salary they earn. The default matches the current working calculation (calendar days in the month).</p>
+          <label style="font-size:0.86em; font-weight:700; color:#475569; display:block; max-width:420px;">
+            Salary Proration Method
+            <select id="payrollProrationBasis" class="form-select" style="margin-top:4px;" onchange="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)">
+              <option value="calendar_days">Calendar days in the month (default)</option>
+              <option value="working_days">Scheduled working days</option>
+              <option value="30_day">Fixed 30-day month</option>
+            </select>
+            <div style="font-weight:500; color:#64748b; font-size:0.78em; margin-top:6px;">Example: joining on the 16th of a 30-day month with calendar days pays 15/30 of salary.</div>
+          </label>
+        </section>
+
+        <section class="payroll-settings-section" style="margin-bottom:22px; padding-bottom:8px; border-bottom:1px solid #e2e8f0;">
+          <h4 style="font-size:1em; font-weight:800; color:#173042; margin:0 0 6px;">6. Working Days</h4>
+          <p style="font-size:0.82em; color:#64748b; margin:0;">Each employee’s work schedule comes from <strong>Shift Management</strong> (including assigned working weekdays). Public holidays and special dates you configure for this organization are treated as non-working unless marked otherwise. Employee basic salary, allowances, and other deductions come from <strong>Employee Salary Structure</strong>.</p>
+        </section>
+
+        <section class="payroll-settings-section" style="margin-bottom:22px; padding-bottom:8px; border-bottom:1px solid #e2e8f0;">
+          <h4 style="font-size:1em; font-weight:800; color:#173042; margin:0 0 6px;">7. Payroll Finalization</h4>
+          <p style="font-size:0.82em; color:#64748b; margin:0;">On the Payroll page, review the month then Finalize. A finalized month is locked and cannot be overwritten. Future months cannot be calculated. Only approved overtime is paid; pending overtime is ignored until approved in Overtime Management.</p>
+        </section>
+
+        <h4 style="font-size:1em; font-weight:800; color:#173042; margin:0 0 8px;">3. Absence &amp; Leave</h4>
+        <p style="font-size:0.82em; color:#64748b; margin:0 0 14px;">Absence deductions use the brackets below. Paid and unpaid leave come from approved Leave Management records. Paid leave does not reduce salary. Unpaid leave reduces salary only if you enable the toggle.</p>
 
         {% if not is_client_session or client_module_entitlements.leave %}
         <div class="settings-leave-only" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
@@ -5496,6 +5559,17 @@ async function fetchMultiLiveDetections() {
         {% endif %}
 
         {% if not is_client_session or client_module_entitlements.overtime %}
+        <h4 style="font-size:1em; font-weight:800; color:#173042; margin:18px 0 8px;">2. Overtime</h4>
+        <p style="font-size:0.82em; color:#64748b; margin:0 0 12px;">Payroll pays <strong>approved</strong> overtime only from Overtime Management. Set the hourly conversion and extra pay for holidays or days off.</p>
+        <div class="settings-overtime-only" style="padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
+          <div style="font-weight:700; color:#173042;">Overtime Hourly Rate</div>
+          <div style="font-size:0.82em; color:#64748b; margin:4px 0 10px;">If an employee has no overtime rate on their salary record, Payroll divides basic salary by this number to get an hourly rate. The default 208 is 8 hours × 26 days.</div>
+          <label for="payrollOtHourDivisor" style="display:flex; align-items:center; gap:8px; margin:0; font-size:0.86em; font-weight:700; color:#475569;">
+            Monthly Overtime Hour Divisor
+            <input id="payrollOtHourDivisor" class="form-control" type="number" min="1" step="0.01" value="208" style="width:110px;">
+            <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700;">Save</button>
+          </label>
+        </div>
         <div class="settings-overtime-only" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
           <div style="flex:1; min-width:260px;">
             <div style="font-weight:700; color:#173042;">Maximum Overtime</div>
@@ -5573,18 +5647,78 @@ async function fetchMultiLiveDetections() {
         </div>
 
         <div class="settings-overtime-only" style="padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
-          <div style="font-weight:700; color:#173042;">Overtime Day Premiums</div>
-          <div style="font-size:0.82em; color:#64748b; margin:3px 0 10px;">Premium is added to the employee's regular OT rate. Enter 100% for double OT; 50% adds half of the regular rate.</div>
+          <div style="font-weight:700; color:#173042;">Holiday / rest-day extra pay</div>
+          <div style="font-size:0.82em; color:#64748b; margin:3px 0 10px;">Use a percentage, a multiplier (example 1.5×), or a fixed extra amount per overtime hour. Rest days come from each employee’s shift week and company holidays — they are not hardcoded to Sunday.</div>
+          <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px;">
+            <label style="font-size:0.86em; font-weight:700; color:#475569;">
+              Public holiday OT pay as
+              <select id="holidayOtPayMode" class="form-select" style="margin-top:4px; width:210px;" onchange="updatePayrollExtraPayModeUI()">
+                <option value="percent">Percentage extra</option>
+                <option value="multiplier">Multiplier (e.g. 1.5×)</option>
+                <option value="fixed_hour">Fixed extra per hour</option>
+              </select>
+            </label>
+            <label id="holidayOtPercentWrap" style="font-size:0.86em; font-weight:700; color:#475569;">
+              Public holiday premium (%)
+              <input id="holidayOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" value="0" style="width:110px; margin-top:4px;">
+            </label>
+            <label id="holidayOtMultiplierWrap" style="font-size:0.86em; font-weight:700; color:#475569; display:none;">
+              Holiday OT multiplier
+              <input id="holidayOtMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" style="width:110px; margin-top:4px;">
+            </label>
+            <label id="holidayOtFixedWrap" style="font-size:0.86em; font-weight:700; color:#475569; display:none;">
+              Extra per OT hour
+              <input id="holidayOtFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" style="width:110px; margin-top:4px;">
+            </label>
+            <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; align-self:flex-end;">Save holiday extra</button>
+          </div>
           <div style="display:flex; gap:14px; flex-wrap:wrap;">
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <label for="holidayOtPremiumPercent" style="margin:0; font-size:0.86em; font-weight:700; color:#475569;">Public holiday premium (%)</label>
-              <input id="holidayOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" value="0" style="width:110px;">
-              <button type="button" class="btn btn-primary btn-sm" onclick="saveOvertimePremiumRule('holiday')" style="background:#3d9fd4; border:none; font-weight:700;">Save &amp; Activate</button>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <label for="nonWorkingDayOtPremiumPercent" style="margin:0; font-size:0.86em; font-weight:700; color:#475569;">Scheduled day off premium (%)</label>
-              <input id="nonWorkingDayOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" value="0" style="width:110px;">
-              <button type="button" class="btn btn-primary btn-sm" onclick="saveOvertimePremiumRule('non_working_day')" style="background:#3d9fd4; border:none; font-weight:700;">Save &amp; Activate</button>
+            <label style="font-size:0.86em; font-weight:700; color:#475569;">
+              Shift rest-day OT pay as
+              <select id="nonWorkingDayOtPayMode" class="form-select" style="margin-top:4px; width:210px;" onchange="updatePayrollExtraPayModeUI()">
+                <option value="percent">Percentage extra</option>
+                <option value="multiplier">Multiplier (e.g. 1.5×)</option>
+                <option value="fixed_hour">Fixed extra per hour</option>
+              </select>
+            </label>
+            <label id="nonWorkingOtPercentWrap" style="font-size:0.86em; font-weight:700; color:#475569;">
+              Rest-day OT premium (%)
+              <input id="nonWorkingDayOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" value="0" style="width:110px; margin-top:4px;">
+            </label>
+            <label id="nonWorkingOtMultiplierWrap" style="font-size:0.86em; font-weight:700; color:#475569; display:none;">
+              Rest-day OT multiplier
+              <input id="nonWorkingDayOtMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" style="width:110px; margin-top:4px;">
+            </label>
+            <label id="nonWorkingOtFixedWrap" style="font-size:0.86em; font-weight:700; color:#475569; display:none;">
+              Extra per OT hour
+              <input id="nonWorkingDayOtFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" style="width:110px; margin-top:4px;">
+            </label>
+            <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; align-self:flex-end;">Save rest-day extra</button>
+          </div>
+          <div style="margin-top:14px; padding-top:12px; border-top:1px solid #dbe5ec;">
+            <div style="font-weight:700; color:#173042;">Pay extra when someone works a rest day (no overtime record)</div>
+            <div style="font-size:0.82em; color:#64748b; margin:3px 0 10px;">Optional. If attendance is present on a shift off-day or holiday and there is no approved overtime that date, payroll can add a multiplier of the daily rate (example 1.5×) or a fixed amount per day. Off if unused, so existing payroll stays the same.</div>
+            <label style="display:flex; align-items:center; gap:8px; font-size:0.86em; font-weight:700; color:#475569; margin-bottom:10px;">
+              <input id="offDayAttendancePayActive" class="form-check-input" type="checkbox" style="width:18px; height:18px; margin:0; accent-color:#0d9488;" onchange="updatePayrollExtraPayModeUI()">
+              Enable rest-day attendance extra pay
+            </label>
+            <div id="offDayAttendancePayFields" style="display:none; gap:14px; flex-wrap:wrap;">
+              <label style="font-size:0.86em; font-weight:700; color:#475569;">
+                Extra pay as
+                <select id="offDayAttendancePayMode" class="form-select" style="margin-top:4px; width:220px;" onchange="updatePayrollExtraPayModeUI()">
+                  <option value="multiplier">Multiplier of daily rate</option>
+                  <option value="fixed_day">Fixed amount per rest day</option>
+                </select>
+              </label>
+              <label id="offDayMultiplierWrap" style="font-size:0.86em; font-weight:700; color:#475569;">
+                Rest-day multiplier
+                <input id="offDayAttendancePayMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" style="width:110px; margin-top:4px;">
+              </label>
+              <label id="offDayFixedWrap" style="font-size:0.86em; font-weight:700; color:#475569; display:none;">
+                Fixed amount per rest day
+                <input id="offDayAttendancePayFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" style="width:130px; margin-top:4px;">
+              </label>
+              <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; align-self:flex-end;">Save rest-day attendance pay</button>
             </div>
           </div>
           <div style="margin-top:14px; padding-top:12px; border-top:1px solid #dbe5ec;">
@@ -5656,6 +5790,8 @@ async function fetchMultiLiveDetections() {
         </div>
         {% endif %}
 
+        <div style="font-weight:700; color:#173042; margin:8px 0 6px;">Absence Deduction</div>
+        <div style="font-size:0.82em; color:#64748b; margin:0 0 12px;">Controls how much salary is deducted when an employee is absent without approved leave. Add brackets such as 1–2 days = 5%. Ranges that are active cannot overlap.</div>
         <form id="payrollRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); savePayrollRule();">
           <input id="payrollRuleId" type="hidden" value="">
           <label for="payrollRuleBasis" class="payroll-rule-field">
@@ -6831,7 +6967,9 @@ async function fetchMultiLiveDetections() {
 
       function payrollMoney(value) {
         const amount = Number(value || 0);
-        return `PKR ${amount.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const currency = window._payrollCurrencyCode || 'PKR';
+        const places = Number.isFinite(Number(window._payrollDecimalPlaces)) ? Number(window._payrollDecimalPlaces) : 2;
+        return `${currency} ${amount.toLocaleString('en-PK', { minimumFractionDigits: places, maximumFractionDigits: places })}`;
       }
 
       function setDefaultPayrollMonth() {
@@ -6948,7 +7086,7 @@ async function fetchMultiLiveDetections() {
       let payrollActiveSubtab = 'salary';
 
       function getPayrollActiveColspan() {
-        if (payrollActiveSubtab === 'salary') return 9;
+        if (payrollActiveSubtab === 'salary') return 11;
         if (payrollActiveSubtab === 'attendance') return 10;
         if (payrollActiveSubtab === 'deductions') return 8;
         return 22;
@@ -6996,6 +7134,8 @@ async function fetchMultiLiveDetections() {
               <th class="text-end" style="min-width:115px;">Basic Salary</th>
               <th class="text-end" style="min-width:95px;">Allowances</th>
               <th class="text-end" style="min-width:110px;">Overtime Pay</th>
+              <th class="text-end" style="min-width:90px;">Bonus</th>
+              <th class="text-end" style="min-width:110px;">Rest-day extra</th>
               <th class="text-end" style="min-width:110px;">Deductions</th>
               <th class="text-end" style="min-width:125px;">Net Payable</th>
               <th class="text-center" style="min-width:95px;">Status</th>
@@ -7117,6 +7257,8 @@ async function fetchMultiLiveDetections() {
                 <td class="text-end font-monospace">${payrollMoney(row.basic_salary)}</td>
                 <td class="text-end font-monospace text-success">${Number(row.allowances || 0) > 0 ? '+ ' + payrollMoney(row.allowances) : '—'}</td>
                 <td class="text-end font-monospace text-info">${Number(row.overtime_amount || 0) > 0 ? '+ ' + payrollMoney(row.overtime_amount) + `<div style="font-size:0.72em; color:#64748b;">(${Number(row.overtime_hours || 0).toFixed(1)} hrs)</div>` : '—'}</td>
+                <td class="text-end font-monospace text-success">${Number(row.bonus_amount || 0) > 0 ? '+ ' + payrollMoney(row.bonus_amount) : '—'}</td>
+                <td class="text-end font-monospace text-success">${Number(row.off_day_extra_pay || 0) > 0 ? '+ ' + payrollMoney(row.off_day_extra_pay) + (Number(row.off_days_worked || 0) ? `<div style="font-size:0.72em; color:#64748b;">(${Number(row.off_days_worked)} rest day${Number(row.off_days_worked) === 1 ? '' : 's'})</div>` : '') : '—'}</td>
                 <td class="text-end font-monospace text-danger">${Number(row.deduction_amount || 0) > 0 ? '- ' + payrollMoney(row.deduction_amount) : 'PKR 0.00'}</td>
                 <td class="text-end font-monospace fw-bold" style="color:#0d9488; font-size:1.02em;">${payrollMoney(row.net_salary)}</td>
                 <td class="text-center"><span class="badge ${statusClass}">${payrollEscape(status)}</span></td>
@@ -7221,6 +7363,8 @@ async function fetchMultiLiveDetections() {
           ['Basic salary', payrollMoney(payroll.total_basic_salary)],
           ['Allowances', payrollMoney(payroll.total_allowances || 0)],
           ['Overtime pay', payrollMoney(payroll.total_overtime || 0)],
+          ['Bonuses', payrollMoney(payroll.total_bonus || 0)],
+          ['Rest-day extra', payrollMoney(payroll.total_off_day_extra || 0)],
           ['Total Deductions', payrollMoney(payroll.total_deduction)],
           ['Net payable', payrollMoney(payroll.total_net_salary)],
           ['Employees with issues', issues.length]
@@ -12183,6 +12327,29 @@ async function fetchMultiLiveDetections() {
           }
           if (overtimeMaxHours) overtimeMaxHours.value = settings.overtime_max_hours ?? 0;
           if (overtimeMaxPeriod) overtimeMaxPeriod.value = settings.overtime_max_period || 'day';
+          const otDivisor = document.getElementById('payrollOtHourDivisor');
+          if (otDivisor) otDivisor.value = settings.ot_hour_divisor ?? 208;
+          const proration = document.getElementById('payrollProrationBasis');
+          if (proration) proration.value = settings.proration_basis || 'calendar_days';
+          const currencyInput = document.getElementById('payrollCurrencyCode');
+          if (currencyInput) currencyInput.value = settings.currency_code || 'PKR';
+          const decimalInput = document.getElementById('payrollDecimalPlaces');
+          if (decimalInput) decimalInput.value = settings.decimal_places ?? 2;
+          window._payrollCurrencyCode = settings.currency_code || 'PKR';
+          window._payrollDecimalPlaces = settings.decimal_places ?? 2;
+          const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
+          setVal('holidayOtPayMode', settings.holiday_ot_pay_mode || 'percent');
+          setVal('nonWorkingDayOtPayMode', settings.non_working_day_ot_pay_mode || 'percent');
+          setVal('holidayOtMultiplier', settings.holiday_ot_multiplier ?? 1.5);
+          setVal('nonWorkingDayOtMultiplier', settings.non_working_day_ot_multiplier ?? 1.5);
+          setVal('holidayOtFixedAmount', settings.holiday_ot_fixed_amount ?? 0);
+          setVal('nonWorkingDayOtFixedAmount', settings.non_working_day_ot_fixed_amount ?? 0);
+          const offActive = document.getElementById('offDayAttendancePayActive');
+          if (offActive) offActive.checked = Boolean(settings.off_day_attendance_pay_active);
+          setVal('offDayAttendancePayMode', settings.off_day_attendance_pay_mode || 'multiplier');
+          setVal('offDayAttendancePayMultiplier', settings.off_day_attendance_pay_multiplier ?? 1.5);
+          setVal('offDayAttendancePayFixedAmount', settings.off_day_attendance_pay_fixed_amount ?? 0);
+          updatePayrollExtraPayModeUI();
           if (overtimeLimitMessage) {
             const maxHours = Number(settings.overtime_max_hours) || 0;
             overtimeLimitMessage.textContent = maxHours > 0
@@ -12571,14 +12738,75 @@ async function fetchMultiLiveDetections() {
         }
       }
 
+      function updatePayrollExtraPayModeUI() {
+        const holidayMode = document.getElementById('holidayOtPayMode')?.value || 'percent';
+        const restMode = document.getElementById('nonWorkingDayOtPayMode')?.value || 'percent';
+        const show = (id, visible) => { const el = document.getElementById(id); if (el) el.style.display = visible ? '' : 'none'; };
+        show('holidayOtPercentWrap', holidayMode === 'percent');
+        show('holidayOtMultiplierWrap', holidayMode === 'multiplier');
+        show('holidayOtFixedWrap', holidayMode === 'fixed_hour');
+        show('nonWorkingOtPercentWrap', restMode === 'percent');
+        show('nonWorkingOtMultiplierWrap', restMode === 'multiplier');
+        show('nonWorkingOtFixedWrap', restMode === 'fixed_hour');
+        const offActive = Boolean(document.getElementById('offDayAttendancePayActive')?.checked);
+        const offFields = document.getElementById('offDayAttendancePayFields');
+        if (offFields) offFields.style.display = offActive ? 'flex' : 'none';
+        const offMode = document.getElementById('offDayAttendancePayMode')?.value || 'multiplier';
+        show('offDayMultiplierWrap', offMode === 'multiplier');
+        show('offDayFixedWrap', offMode === 'fixed_day');
+      }
+
+      async function downloadPayrollBonusTemplate() {
+        const month = document.getElementById('payrollMonth')?.value;
+        if (!month) {
+          showAppToast('Choose a payroll month first.', 'error');
+          return;
+        }
+        window.location.href = `${API_BASE}/payroll/bonuses/template?month=${encodeURIComponent(month)}`;
+      }
+
+      async function uploadPayrollBonusExcel(input) {
+        const month = document.getElementById('payrollMonth')?.value;
+        const file = input?.files?.[0];
+        if (!month) {
+          showAppToast('Choose a payroll month first.', 'error');
+          if (input) input.value = '';
+          return;
+        }
+        if (!file) return;
+        const form = new FormData();
+        form.append('file', file);
+        try {
+          const response = await fetch(`${API_BASE}/payroll/bonuses/upload?month=${encodeURIComponent(month)}`, {
+            method: 'POST',
+            body: form
+          });
+          const result = await response.json();
+          if (!response.ok || !result.success) throw new Error(result.error || 'Failed to import bonuses');
+          const unmatched = (result.unmatched || []).length;
+          showAppToast(
+            unmatched
+              ? `${result.message} ${unmatched} row(s) could not be matched.`
+              : result.message,
+            unmatched ? 'error' : 'success'
+          );
+          if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
+            await loadMonthlyPayroll(month, true);
+          }
+        } catch (error) {
+          showAppToast(error.message, 'error');
+        } finally {
+          if (input) input.value = '';
+        }
+      }
+
       async function savePayrollSettings(deductUnpaidLeave) {
         const toggle = document.getElementById('deductUnpaidLeaveToggle');
         const message = document.getElementById('payrollSettingsMessage');
         const quotaMode = document.getElementById('halfLeaveQuotaMode');
         const conversionCount = document.getElementById('halfLeavesPerQuotaDay');
-        if (!toggle) return;
-        const previousValue = toggle.dataset.saved === 'true';
-        toggle.disabled = true;
+        const previousValue = toggle ? toggle.dataset.saved === 'true' : Boolean(deductUnpaidLeave);
+        if (toggle) toggle.disabled = true;
         try {
           const response = await fetch(`${API_BASE}/settings/payroll`, {
             method: 'PUT',
@@ -12586,13 +12814,33 @@ async function fetchMultiLiveDetections() {
             body: JSON.stringify({
               deduct_unpaid_leave: Boolean(deductUnpaidLeave),
               half_leave_quota_mode: quotaMode?.value || 'category',
-              half_leaves_per_quota_day: Math.max(1, parseInt(conversionCount?.value || '2', 10) || 1)
+              half_leaves_per_quota_day: Math.max(1, parseInt(conversionCount?.value || '2', 10) || 1),
+              holiday_ot_premium_percent: Number(document.getElementById('holidayOtPremiumPercent')?.value || 0),
+              non_working_day_ot_premium_percent: Number(document.getElementById('nonWorkingDayOtPremiumPercent')?.value || 0),
+              ot_hour_divisor: Number(document.getElementById('payrollOtHourDivisor')?.value || 208),
+              proration_basis: document.getElementById('payrollProrationBasis')?.value || 'calendar_days',
+              currency_code: (document.getElementById('payrollCurrencyCode')?.value || 'PKR').trim().toUpperCase(),
+              decimal_places: Number(document.getElementById('payrollDecimalPlaces')?.value || 2),
+              holiday_ot_pay_mode: document.getElementById('holidayOtPayMode')?.value || 'percent',
+              non_working_day_ot_pay_mode: document.getElementById('nonWorkingDayOtPayMode')?.value || 'percent',
+              holiday_ot_multiplier: Number(document.getElementById('holidayOtMultiplier')?.value || 1.5),
+              non_working_day_ot_multiplier: Number(document.getElementById('nonWorkingDayOtMultiplier')?.value || 1.5),
+              holiday_ot_fixed_amount: Number(document.getElementById('holidayOtFixedAmount')?.value || 0),
+              non_working_day_ot_fixed_amount: Number(document.getElementById('nonWorkingDayOtFixedAmount')?.value || 0),
+              off_day_attendance_pay_active: Boolean(document.getElementById('offDayAttendancePayActive')?.checked),
+              off_day_attendance_pay_mode: document.getElementById('offDayAttendancePayMode')?.value || 'multiplier',
+              off_day_attendance_pay_multiplier: Number(document.getElementById('offDayAttendancePayMultiplier')?.value || 1.5),
+              off_day_attendance_pay_fixed_amount: Number(document.getElementById('offDayAttendancePayFixedAmount')?.value || 0)
             })
           });
           const result = await response.json();
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save payroll settings');
-          toggle.checked = Boolean(result.settings?.deduct_unpaid_leave ?? deductUnpaidLeave);
-          toggle.dataset.saved = String(toggle.checked);
+          if (toggle) {
+            toggle.checked = Boolean(result.settings?.deduct_unpaid_leave ?? deductUnpaidLeave);
+            toggle.dataset.saved = String(toggle.checked);
+          }
+          window._payrollCurrencyCode = result.settings?.currency_code || 'PKR';
+          window._payrollDecimalPlaces = result.settings?.decimal_places ?? 2;
           if (quotaMode) quotaMode.value = result.settings?.half_leave_quota_mode || 'category';
           if (conversionCount) {
             conversionCount.value = result.settings?.half_leaves_per_quota_day || 2;
@@ -12607,11 +12855,11 @@ async function fetchMultiLiveDetections() {
             await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
           }
         } catch (error) {
-          toggle.checked = previousValue;
+          if (toggle) toggle.checked = previousValue;
           if (message) message.textContent = error.message;
           showAppToast(error.message, 'error');
         } finally {
-          toggle.disabled = false;
+          if (toggle) toggle.disabled = false;
         }
       }
 
