@@ -3,7 +3,7 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple, Any, Union, Sequence
 from logger_config import get_logger
 from config import DB_PATH, ATTENDANCE_LOG_RETENTION_DAYS
@@ -24,6 +24,23 @@ from payroll_policy_schema import (
     proration_factor as _payroll_proration_factor,
     seed_leave_types_if_empty,
     tenant_ids as _tenant_ids,
+)
+from payroll_extensions import (
+    DEFAULT_FEATURE_FLAGS,
+    FEATURE_FLAGS,
+    VALID_ADJ_MODES,
+    VALID_ADJ_TYPES,
+    VALID_CALC_MODES,
+    VALID_COMPONENT_CATEGORIES,
+    VALID_COMPONENT_KINDS,
+    apply_adjustments as _apply_payroll_adjustments,
+    ensure_payroll_extension_tables,
+    flag_on as _payroll_flag_on,
+    named_component_totals as _named_component_totals,
+    payroll_excel_bytes,
+    payslip_pdf_bytes,
+    prorate_packages as _prorate_packages,
+    write_audit as _write_payroll_audit,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -700,6 +717,9 @@ def init_db():
                 ("total_leave_days", "INTEGER NOT NULL DEFAULT 0"),
                 ("bonus_amount", "REAL NOT NULL DEFAULT 0.0"),
                 ("off_day_extra_pay", "REAL NOT NULL DEFAULT 0.0"),
+                ("pay_lines", "TEXT NOT NULL DEFAULT '[]'"),
+                ("arrears_amount", "REAL NOT NULL DEFAULT 0.0"),
+                ("adjustment_amount", "REAL NOT NULL DEFAULT 0.0"),
             ]:
                 if column not in payroll_record_columns:
                     cursor.execute(f"ALTER TABLE payroll_records ADD COLUMN {column} {column_type}")
@@ -840,6 +860,15 @@ def init_db():
                 ("off_day_attendance_pay_mode", "TEXT NOT NULL DEFAULT 'multiplier'"),
                 ("off_day_attendance_pay_multiplier", "REAL NOT NULL DEFAULT 1.5"),
                 ("off_day_attendance_pay_fixed_amount", "REAL NOT NULL DEFAULT 0"),
+                ("enable_named_components", "INTEGER NOT NULL DEFAULT 0"),
+                ("enable_tax", "INTEGER NOT NULL DEFAULT 0"),
+                ("enable_loans", "INTEGER NOT NULL DEFAULT 0"),
+                ("enable_advances", "INTEGER NOT NULL DEFAULT 0"),
+                ("enable_provident", "INTEGER NOT NULL DEFAULT 0"),
+                ("enable_insurance", "INTEGER NOT NULL DEFAULT 0"),
+                ("enable_bonuses", "INTEGER NOT NULL DEFAULT 1"),
+                ("enable_individual_adjustments", "INTEGER NOT NULL DEFAULT 0"),
+                ("enable_salary_revisions", "INTEGER NOT NULL DEFAULT 0"),
             ]:
                 if column not in payroll_setting_columns:
                     cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -955,6 +984,7 @@ def init_db():
                 ''')
                 cursor.execute("DROP TABLE special_date_overrides_legacy")
 
+            ensure_payroll_extension_tables(cursor)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS payroll_bonuses (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1446,6 +1476,11 @@ def purge_organization_data(organization_id: str) -> bool:
             cursor.execute("DELETE FROM payroll_rules WHERE organization_id = ?", (organization_id,))
             cursor.execute("DELETE FROM payroll_scoped_rules WHERE organization_id = ?", (organization_id,))
             cursor.execute("DELETE FROM payroll_bonuses WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM payroll_employee_components WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM payroll_component_types WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM payroll_adjustments WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM salary_revisions WHERE organization_id = ?", (organization_id,))
+            cursor.execute("DELETE FROM payroll_audit_log WHERE organization_id = ?", (organization_id,))
             cursor.execute("DELETE FROM payroll_settings WHERE organization_id = ?", (organization_id,))
             cursor.execute("DELETE FROM special_date_overrides WHERE organization_id = ?", (organization_id,))
             cursor.execute("DELETE FROM company_holidays WHERE organization_id = ?", (organization_id,))
@@ -5659,22 +5694,26 @@ def get_salary_config(user_id: int) -> Optional[Dict]:
         return None
 
 
-def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float = 0.0, deductions: float = 0.0, ot_rate: float = 0.0) -> bool:
+def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float = 0.0, deductions: float = 0.0, ot_rate: float = 0.0, effective_from: Optional[str] = None) -> bool:
     """Insert or update salary configuration for a user and synchronize users.salary."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            # Verify user exists
-            cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
-            if not cursor.fetchone():
-                logger.error(f"Cannot set salary config: user {user_id} not found")
-                return False
-
-            b_sal = max(0.0, float(basic_salary or 0.0))
-            allow = max(0.0, float(allowances or 0.0))
-            deduct = max(0.0, float(deductions or 0.0))
-            ot = max(0.0, float(ot_rate or 0.0))
-
+            cursor.execute(
+                "SELECT id, COALESCE(organization_id,'DEFAULT_ORG'), COALESCE(branch_id,'DEFAULT_BRANCH') FROM users WHERE id = ?",
+                (user_id,),
+            )
+            owner = cursor.fetchone()
+        if not owner:
+            logger.error(f"Cannot set salary config: user {user_id} not found")
+            return False
+        settings = get_payroll_settings(organization_id=owner[1], branch_id=owner[2])
+        b_sal = max(0.0, float(basic_salary or 0.0))
+        allow = max(0.0, float(allowances or 0.0))
+        deduct = max(0.0, float(deductions or 0.0))
+        ot = max(0.0, float(ot_rate or 0.0))
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
             cursor.execute(
                 '''INSERT INTO salary_configs (user_id, basic_salary, allowances, deductions, ot_rate, updated_at)
                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -5686,8 +5725,19 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
                    updated_at=CURRENT_TIMESTAMP''',
                 (user_id, b_sal, allow, deduct, ot)
             )
-            # Synchronize with users.salary to protect Payroll V1 baseline
             cursor.execute("UPDATE users SET salary = ? WHERE id = ?", (b_sal, user_id))
+            if _payroll_flag_on(settings, 'enable_salary_revisions'):
+                start = str(effective_from or date.today().isoformat())[:10]
+                cursor.execute(
+                    """INSERT INTO salary_revisions (
+                           organization_id, branch_id, user_id, effective_from,
+                           basic_salary, allowances, deductions, ot_rate
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (owner[1], owner[2], user_id, start, b_sal, allow, deduct, ot),
+                )
+                _write_payroll_audit(cursor, 'salary_revised', owner[1], owner[2], start[:7], 'Admin', {
+                    'user_id': user_id, 'basic_salary': b_sal, 'effective_from': start,
+                })
             conn.commit()
             return True
     except Exception as e:
@@ -6258,6 +6308,7 @@ def update_payroll_settings(
     off_day_attendance_pay_mode: Optional[str] = None,
     off_day_attendance_pay_multiplier: Optional[float] = None,
     off_day_attendance_pay_fixed_amount: Optional[float] = None,
+    feature_flags: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Save organization-owned payroll and half-leave quota policies."""
     mode = str(half_leave_quota_mode or 'category').strip().lower()
@@ -6336,9 +6387,19 @@ def update_payroll_settings(
 
     holiday_active = _ot_active(h_mode, holiday_premium, h_mult, h_fixed)
     non_working_active = _ot_active(nw_mode, non_working_premium, nw_mult, nw_fixed)
+    incoming_flags = feature_flags or {}
+    flag_values = []
+    for key in FEATURE_FLAGS:
+        if key in incoming_flags and incoming_flags[key] is not None:
+            flag_values.append(int(bool(incoming_flags[key])))
+        else:
+            flag_values.append(int(bool(current.get(key, DEFAULT_FEATURE_FLAGS.get(key)))))
+    flag_sql = ", ".join(FEATURE_FLAGS)
+    flag_placeholders = ", ".join("?" for _ in FEATURE_FLAGS)
+    flag_updates = ",\n                    ".join(f"{key} = excluded.{key}" for key in FEATURE_FLAGS)
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute('''
+            conn.execute(f'''
                 INSERT INTO payroll_settings (
                     organization_id, branch_id, deduct_unpaid_leave, half_leave_quota_mode,
                     half_leaves_per_quota_day, holiday_ot_premium_percent,
@@ -6349,8 +6410,9 @@ def update_payroll_settings(
                     holiday_ot_fixed_amount, non_working_day_ot_fixed_amount,
                     off_day_attendance_pay_active, off_day_attendance_pay_mode,
                     off_day_attendance_pay_multiplier, off_day_attendance_pay_fixed_amount,
+                    {flag_sql},
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {flag_placeholders}, CURRENT_TIMESTAMP)
                 ON CONFLICT(organization_id, branch_id) DO UPDATE SET
                     deduct_unpaid_leave = excluded.deduct_unpaid_leave,
                     half_leave_quota_mode = excluded.half_leave_quota_mode,
@@ -6373,6 +6435,7 @@ def update_payroll_settings(
                     off_day_attendance_pay_mode = excluded.off_day_attendance_pay_mode,
                     off_day_attendance_pay_multiplier = excluded.off_day_attendance_pay_multiplier,
                     off_day_attendance_pay_fixed_amount = excluded.off_day_attendance_pay_fixed_amount,
+                    {flag_updates},
                     updated_at = CURRENT_TIMESTAMP
             ''', (
                 org,
@@ -6398,6 +6461,7 @@ def update_payroll_settings(
                 off_mode,
                 off_mult,
                 off_fixed,
+                *flag_values,
             ))
             conn.commit()
         return True
@@ -6519,6 +6583,243 @@ def replace_payroll_bonuses(
         'unmatched': unmatched,
         'bonuses': list_payroll_bonuses(year, month, org, branch),
     }
+
+
+def list_payroll_component_types(organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT * FROM payroll_component_types
+               WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+               ORDER BY kind, name COLLATE NOCASE""",
+            (org, branch),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def save_payroll_component_type(
+    name: str,
+    code: str,
+    kind: str,
+    category: str = 'allowance',
+    calc_mode: str = 'fixed',
+    default_amount: float = 0.0,
+    active: bool = True,
+    component_id: Optional[int] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Optional[int]:
+    kind_n = str(kind or '').strip().lower()
+    cat = str(category or 'allowance').strip().lower()
+    mode = str(calc_mode or 'fixed').strip().lower()
+    if not str(name or '').strip() or not str(code or '').strip():
+        return None
+    if kind_n not in VALID_COMPONENT_KINDS or cat not in VALID_COMPONENT_CATEGORIES or mode not in VALID_CALC_MODES:
+        return None
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        if component_id:
+            conn.execute(
+                """UPDATE payroll_component_types
+                   SET name=?, code=?, kind=?, category=?, calc_mode=?, default_amount=?, active=?
+                   WHERE id=? AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+                (name.strip(), code.strip().lower(), kind_n, cat, mode, float(default_amount or 0), int(bool(active)), int(component_id), org, branch),
+            )
+            conn.commit()
+            return int(component_id)
+        cursor = conn.execute(
+            """INSERT INTO payroll_component_types (
+                   organization_id, branch_id, name, code, kind, category, calc_mode, default_amount, active
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (org, branch, name.strip(), code.strip().lower(), kind_n, cat, mode, float(default_amount or 0), int(bool(active))),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def delete_payroll_component_type(component_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> bool:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.execute(
+            """DELETE FROM payroll_component_types WHERE id=?
+               AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+            (int(component_id), org, branch),
+        )
+        conn.execute("DELETE FROM payroll_employee_components WHERE component_type_id=?", (int(component_id),))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def list_employee_components(user_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT c.*, t.name, t.code, t.kind, t.category, t.calc_mode
+               FROM payroll_employee_components c
+               JOIN payroll_component_types t ON t.id = c.component_type_id
+               WHERE c.user_id=?
+                 AND COALESCE(c.organization_id,'DEFAULT_ORG')=?
+                 AND COALESCE(c.branch_id,'DEFAULT_BRANCH')=?
+               ORDER BY t.kind, t.name""",
+            (int(user_id), org, branch),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def save_employee_component(
+    user_id: int,
+    component_type_id: int,
+    amount: float = 0.0,
+    percent: float = 0.0,
+    effective_from: Optional[str] = None,
+    effective_to: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    start = str(effective_from or date.today().isoformat())[:10]
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """INSERT INTO payroll_employee_components (
+                   organization_id, branch_id, user_id, component_type_id, amount, percent, effective_from, effective_to
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (org, branch, int(user_id), int(component_type_id), float(amount or 0), float(percent or 0), start, effective_to),
+        )
+        conn.commit()
+    return True
+
+
+def delete_employee_component(assignment_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> bool:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.execute(
+            """DELETE FROM payroll_employee_components WHERE id=?
+               AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+            (int(assignment_id), org, branch),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def list_payroll_adjustments(payroll_month: str, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT a.*, u.name AS employee_name
+               FROM payroll_adjustments a
+               LEFT JOIN users u ON u.id = a.user_id
+               WHERE a.payroll_month=?
+                 AND COALESCE(a.organization_id,'DEFAULT_ORG')=?
+                 AND COALESCE(a.branch_id,'DEFAULT_BRANCH')=?
+               ORDER BY a.id""",
+            (payroll_month, org, branch),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def save_payroll_adjustment(
+    user_id: int,
+    payroll_month: str,
+    adj_type: str,
+    pay_mode: str = 'fixed',
+    amount: float = 0.0,
+    multiplier: float = 0.0,
+    work_date: Optional[str] = None,
+    note: str = '',
+    source_month: Optional[str] = None,
+    created_by: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Optional[int]:
+    kind = str(adj_type or '').strip().lower()
+    mode = str(pay_mode or 'fixed').strip().lower()
+    if kind not in VALID_ADJ_TYPES or mode not in VALID_ADJ_MODES:
+        return None
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.execute(
+            """INSERT INTO payroll_adjustments (
+                   organization_id, branch_id, user_id, payroll_month, work_date, adj_type, pay_mode,
+                   amount, multiplier, note, source_month, created_by
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (org, branch, int(user_id), payroll_month, work_date, kind, mode, float(amount or 0),
+             float(multiplier or 0), note or '', source_month, created_by),
+        )
+        _write_payroll_audit(conn.cursor(), 'adjustment_added', org, branch, payroll_month, created_by, {
+            'user_id': int(user_id), 'adj_type': kind, 'amount': amount, 'multiplier': multiplier, 'work_date': work_date,
+        })
+        conn.commit()
+        return cursor.lastrowid
+
+
+def delete_payroll_adjustment(adjustment_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> bool:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.execute(
+            """DELETE FROM payroll_adjustments WHERE id=?
+               AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+            (int(adjustment_id), org, branch),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def list_payroll_audit(payroll_month: Optional[str] = None, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        if payroll_month:
+            rows = conn.execute(
+                """SELECT * FROM payroll_audit_log
+                   WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+                     AND payroll_month=?
+                   ORDER BY id DESC LIMIT 200""",
+                (org, branch, payroll_month),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT * FROM payroll_audit_log
+                   WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+                   ORDER BY id DESC LIMIT 200""",
+                (org, branch),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def _load_payroll_extension_maps(cursor, organization_id: str, branch_id: Optional[str], payroll_month: str) -> Dict[str, Any]:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    types = {int(row['id']): dict(row) for row in cursor.execute(
+        """SELECT * FROM payroll_component_types
+           WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+        (org, branch),
+    ).fetchall()}
+    assignments: Dict[int, List[Dict[str, Any]]] = {}
+    for row in cursor.execute(
+        """SELECT * FROM payroll_employee_components
+           WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+        (org, branch),
+    ).fetchall():
+        assignments.setdefault(int(row['user_id']), []).append(dict(row))
+    revisions: Dict[int, List[Dict[str, Any]]] = {}
+    for row in cursor.execute(
+        """SELECT * FROM salary_revisions
+           WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+           ORDER BY effective_from""",
+        (org, branch),
+    ).fetchall():
+        revisions.setdefault(int(row['user_id']), []).append(dict(row))
+    adjustments: Dict[int, List[Dict[str, Any]]] = {}
+    for row in cursor.execute(
+        """SELECT * FROM payroll_adjustments
+           WHERE payroll_month=? AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+        (payroll_month, org, branch),
+    ).fetchall():
+        adjustments.setdefault(int(row['user_id']), []).append(dict(row))
+    return {'types': types, 'assignments': assignments, 'revisions': revisions, 'adjustments': adjustments}
 
 
 def get_overtime_premium_rules(
@@ -7107,6 +7408,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 'premium_percent': _get_overtime_premium_percent(cursor, overtime_date, day_type, payroll_settings, holiday),
             })
 
+        extra_maps = _load_payroll_extension_maps(
+            cursor, organization_id, branch_id, month_start.strftime('%Y-%m')
+        )
         cursor.execute('''
             SELECT id, rule_basis, min_absent_days, max_absent_days, deduction_type, deduction_percent, fixed_amount
             FROM payroll_rules
@@ -7198,7 +7502,24 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             full_month_workdays,
         )
         
-        basic_salary = _m(max(0.0, float(employee['basic_salary'] or 0)) * proration_factor)
+        fallback_pkg = {
+            'basic_salary': float(employee['basic_salary'] or 0),
+            'allowances': float(employee.get('allowances') or 0),
+            'deductions': float(employee.get('custom_deductions') or 0),
+            'ot_rate': float(employee.get('ot_rate') or 0),
+        }
+        user_revisions = extra_maps['revisions'].get(int(employee_id), [])
+        if _payroll_flag_on(payroll_settings, 'enable_salary_revisions') and user_revisions:
+            basic_salary, lump_allowances, lump_deductions, revision_ot = _prorate_packages(
+                user_revisions, fallback_pkg, eligible_start, schedule_end,
+                month_start, month_end, decimal_places, True,
+            )
+            if revision_ot > 0:
+                employee['ot_rate'] = revision_ot
+        else:
+            basic_salary = _m(max(0.0, float(employee['basic_salary'] or 0)) * proration_factor)
+            lump_allowances = round(max(0.0, float(employee.get('allowances') or 0.0)) * proration_factor, 2)
+            lump_deductions = round(max(0.0, float(employee.get('custom_deductions') or 0.0)) * proration_factor, 2)
 
         # Apply calendar-based premiums to approved overtime hours.
         overtime_entries = approved_ot_by_user.get(employee_id, [])
@@ -7242,7 +7563,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
 
         ot_dates = {str(entry.get('ot_date') or '') for entry in overtime_entries}
         present_statuses = {'present', 'checked_out', 'late'}
-        off_days_worked = 0
+        off_day_dates: List[str] = []
         for day in eligible_records:
             if day.get('scheduled_workday'):
                 continue
@@ -7250,16 +7571,46 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 continue
             if str(day.get('date') or '') in ot_dates:
                 continue
-            off_days_worked += 1
+            off_day_dates.append(str(day.get('date') or ''))
         daily_rate = _m(basic_salary / scheduled_workdays) if scheduled_workdays else 0.0
+        adj_pack = {
+            'extra_earn': 0.0, 'extra_deduct': 0.0, 'arrears': 0.0,
+            'remaining_off_days': off_day_dates, 'lines': [],
+        }
+        if _payroll_flag_on(payroll_settings, 'enable_individual_adjustments'):
+            adj_pack = _apply_payroll_adjustments(
+                extra_maps['adjustments'].get(int(employee_id), []),
+                daily_rate, off_day_dates, decimal_places,
+            )
+        off_days_worked = len(adj_pack.get('remaining_off_days') or [])
         off_day_extra_pay = _off_day_attendance_extra(
             daily_rate, off_days_worked, payroll_settings, decimal_places
         )
-        bonus_amount = _m(bonus_amounts.get(int(employee_id), 0.0))
+        bonus_amount = _m(bonus_amounts.get(int(employee_id), 0.0)) if _payroll_flag_on(payroll_settings, 'enable_bonuses') else 0.0
 
-        # Allowances and Custom Fixed Deductions from salary_configs
-        allowances = round(max(0.0, float(employee.get('allowances') or 0.0)) * proration_factor, 2)
-        custom_deductions = round(max(0.0, float(employee.get('custom_deductions') or 0.0)) * proration_factor, 2)
+        allowances = lump_allowances
+        custom_deductions = lump_deductions
+        pay_lines: List[Dict[str, Any]] = []
+        if _payroll_flag_on(payroll_settings, 'enable_named_components'):
+            named_earn, named_deduct, named_lines = _named_component_totals(
+                extra_maps['assignments'].get(int(employee_id), []),
+                extra_maps['types'],
+                basic_salary,
+                eligible_end,
+                payroll_settings,
+                decimal_places,
+            )
+            pay_lines.extend(named_lines)
+            if any(item.get('kind') == 'earning' and item.get('category') != 'bonus' for item in named_lines):
+                allowances = _m(sum(item['amount'] for item in named_lines if item.get('kind') == 'earning' and item.get('category') != 'bonus'))
+            if any(item.get('kind') == 'deduction' for item in named_lines):
+                custom_deductions = named_deduct
+            if _payroll_flag_on(payroll_settings, 'enable_bonuses'):
+                bonus_amount = _m(bonus_amount + sum(item['amount'] for item in named_lines if item.get('category') == 'bonus'))
+        pay_lines.extend(adj_pack.get('lines') or [])
+        adjustment_amount = _m(adj_pack.get('extra_earn') or 0)
+        arrears_amount = _m(adj_pack.get('arrears') or 0)
+        custom_deductions = _m(custom_deductions + (adj_pack.get('extra_deduct') or 0))
 
         # Absence rule deduction
         matching_rules = [rule for rule in active_rules
@@ -7298,8 +7649,10 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         unpaid_leave_deduction = round(basic_salary * unpaid_leave_days / scheduled_workdays, 2) if deduct_unpaid_leave and scheduled_workdays else 0.0
         deduction_amount = round(absence_rule_deduction + unpaid_leave_deduction + half_leave_deduction, 2)
 
-        # Gross = Basic + Allowances + Approved Overtime + Excel bonus + optional rest-day extra
-        gross_salary = _m(basic_salary + allowances + overtime_amount + bonus_amount + off_day_extra_pay)
+        # Gross = Basic + Allowances + Approved Overtime + Excel bonus + rest-day extra + adjustments/arrears
+        gross_salary = _m(
+            basic_salary + allowances + overtime_amount + bonus_amount + off_day_extra_pay + adjustment_amount
+        )
         total_emp_deductions = round(deduction_amount + custom_deductions, 2)
         net_salary = round(max(0.0, gross_salary - total_emp_deductions), 2)
 
@@ -7330,6 +7683,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'bonus_amount': bonus_amount,
             'off_day_extra_pay': off_day_extra_pay,
             'off_days_worked': off_days_worked,
+            'adjustment_amount': adjustment_amount,
+            'arrears_amount': arrears_amount,
+            'pay_lines': pay_lines,
             'gross_salary': gross_salary,
             'scheduled_workdays': scheduled_workdays,
             'shift_details': shift_details,
@@ -7380,6 +7736,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         'total_overtime': round(sum(row['overtime_amount'] for row in rows), 2),
         'total_bonus': round(sum(row.get('bonus_amount', 0) for row in rows), 2),
         'total_off_day_extra': round(sum(row.get('off_day_extra_pay', 0) for row in rows), 2),
+        'total_adjustments': round(sum(row.get('adjustment_amount', 0) for row in rows), 2),
+        'total_arrears': round(sum(row.get('arrears_amount', 0) for row in rows), 2),
         'total_deduction': round(sum(row['deduction_amount'] + row['custom_deductions'] for row in rows), 2),
         'total_net_salary': round(sum(row['net_salary'] for row in rows), 2),
         'records': rows,
@@ -7403,20 +7761,23 @@ def _insert_payroll_records(cursor: sqlite3.Cursor, run_id: int, rows: List[Dict
         INSERT INTO payroll_records (
             payroll_run_id, employee_id, employee_name, department, designation,
             basic_salary, allowances, custom_deductions, overtime_hours, overtime_rate,
-            overtime_amount, overtime_breakdown, bonus_amount, off_day_extra_pay, gross_salary,
+            overtime_amount, overtime_breakdown, bonus_amount, off_day_extra_pay,
+            pay_lines, arrears_amount, adjustment_amount, gross_salary,
             scheduled_workdays, present_days, absent_days,
             late_days, approved_leave_days, paid_leave_days, unpaid_leave_days, total_leave_days,
             unpaid_leave_deduction,
             payable_days, applied_rule_id, matched_rule,
             shift_details, calendar_details, deduction_type, deduction_percent,
             fixed_amount, deduction_amount, net_salary, status, organization_id, branch_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', [(
         run_id, row['employee_id'], row['employee_name'], row['department'], row['designation'],
         row.get('basic_salary', 0.0), row.get('allowances', 0.0), row.get('custom_deductions', 0.0),
         row.get('overtime_hours', 0.0), row.get('overtime_rate', 0.0), row.get('overtime_amount', 0.0),
         json.dumps(row.get('overtime_breakdown', [])),
         row.get('bonus_amount', 0.0), row.get('off_day_extra_pay', 0.0),
+        json.dumps(row.get('pay_lines') or []),
+        row.get('arrears_amount', 0.0), row.get('adjustment_amount', 0.0),
         row.get('gross_salary', row.get('basic_salary', 0.0)),
         row['scheduled_workdays'], row['present_days'], row['absent_days'],
         row['late_days'], row['approved_leave_days'], row.get('paid_leave_days', row['approved_leave_days']),
@@ -7561,6 +7922,10 @@ def get_monthly_payroll(
                 record['overtime_breakdown'] = json.loads(record.get('overtime_breakdown') or '[]')
             except (TypeError, ValueError):
                 record['overtime_breakdown'] = []
+            try:
+                record['pay_lines'] = json.loads(record.get('pay_lines') or '[]')
+            except (TypeError, ValueError):
+                record['pay_lines'] = []
             record['paid_leave_days'] = int(record.get('paid_leave_days') or record.get('approved_leave_days') or 0)
             record['unpaid_leave_days'] = int(record.get('unpaid_leave_days') or 0)
             record['total_leave_days'] = int(record.get('total_leave_days') or (record['paid_leave_days'] + record['unpaid_leave_days']))
@@ -7615,6 +7980,34 @@ def get_employee_payslip(
         },
         'net_salary': record.get('net_salary'),
     }
+
+
+def export_monthly_payroll_excel(
+    payroll_month: str,
+    organization_id: str = 'DEFAULT_ORG',
+    branch_id: Optional[str] = None,
+) -> bytes:
+    payroll = get_monthly_payroll(
+        payroll_month, organization_id=organization_id, branch_id=branch_id
+    ) or calculate_monthly_payroll(
+        payroll_month, organization_id=organization_id, branch_id=branch_id
+    )
+    if isinstance(payroll, list):
+        payroll = {'payroll_month': payroll_month, 'records': payroll, 'status': 'Draft'}
+    settings = get_payroll_settings(organization_id=organization_id, branch_id=branch_id)
+    return payroll_excel_bytes(payroll, settings.get('currency_code') or DEFAULT_CURRENCY)
+
+
+def export_employee_payslip_pdf(
+    payroll_month: str,
+    employee_id: int,
+    organization_id: str = 'DEFAULT_ORG',
+    branch_id: Optional[str] = None,
+) -> Optional[bytes]:
+    payslip = get_employee_payslip(payroll_month, employee_id, organization_id, branch_id)
+    if not payslip:
+        return None
+    return payslip_pdf_bytes(payslip)
 
 
 def finalize_monthly_payroll(
@@ -7684,6 +8077,11 @@ def finalize_monthly_payroll(
                 UPDATE payroll_runs SET status = 'Finalized', finalized_at = CURRENT_TIMESTAMP, finalized_by = ?
                 WHERE id = ?
             ''', (finalized_by, run_id,))
+            _write_payroll_audit(cursor, 'payroll_finalized', organization_id, branch_id, preview.get('payroll_month'), finalized_by, {
+                'run_id': run_id,
+                'employee_count': preview.get('employee_count'),
+                'total_net_salary': preview.get('total_net_salary'),
+            })
             conn.commit()
         return get_monthly_payroll(
             preview['payroll_month'],

@@ -249,6 +249,18 @@ class PayrollMultiOrgIsolationTests(unittest.TestCase):
         bilal = next(row for row in payroll_b["records"] if row["employee_name"] == "Bilal B")
         self.assertEqual(float(bilal.get("bonus_amount") or 0), 0)
 
+    def test_named_pay_lines_are_organization_specific(self):
+        saved = db.save_payroll_component_type(
+            "HRA A", "hra_a", "earning", "allowance", "fixed", 1000, True, None, ORG_A, BR_A
+        )
+        self.assertIsNotNone(saved)
+        self._login(ORG_A, BR_A)
+        types_a = self.client.get("/api/payroll/component-types").get_json()["types"]
+        self.assertTrue(any(item.get("code") == "hra_a" for item in types_a))
+        self._login(ORG_B, BR_B)
+        types_b = self.client.get("/api/payroll/component-types").get_json()["types"]
+        self.assertFalse(any(item.get("code") == "hra_a" for item in types_b))
+
     def test_purge_removes_only_that_org_payroll(self):
         db.update_payroll_settings(True, "category", 2, 1, 1, organization_id="ORG-PURGE", branch_id="BR-PURGE")
         db.save_payroll_rule(1, None, 9, True, None, "percentage", 0, "absence", organization_id="ORG-PURGE", branch_id="BR-PURGE")

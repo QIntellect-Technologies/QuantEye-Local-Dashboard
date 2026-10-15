@@ -5429,7 +5429,8 @@ def api_set_salary(user_id=None):
             basic_salary=basic_salary,
             allowances=allowances,
             deductions=deductions,
-            ot_rate=ot_rate
+            ot_rate=ot_rate,
+            effective_from=data.get('effective_from'),
         )
         if ok:
             updated_cfg = db.get_salary_config(uid)
@@ -5650,6 +5651,181 @@ def api_upload_payroll_bonuses():
         'bonuses': result['bonuses'],
         'message': f"Imported {result['imported']} bonus row(s) for {payroll_month}.",
     })
+
+
+@app.route('/api/payroll/export.xlsx', methods=['GET'])
+def api_export_payroll_excel():
+    try:
+        payroll_month, _year, _month = _parse_payroll_month_arg()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    try:
+        payload = db.export_monthly_payroll_excel(payroll_month, **payroll_tenant())
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.exception('Failed to export payroll Excel')
+        return jsonify({'error': f'Failed to export payroll: {e}'}), 500
+    buffer = io.BytesIO(payload)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f'payroll-{payroll_month}.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
+@app.route('/api/payroll/payslip/<int:employee_id>/pdf', methods=['GET'])
+def api_download_payslip_pdf(employee_id):
+    payroll_month = request.args.get('month', '').strip()
+    if not payroll_month:
+        return jsonify({'error': 'Payroll month is required in YYYY-MM format'}), 400
+    if not verify_user_access(employee_id):
+        return jsonify({'error': 'Employee not found or access denied'}), 404
+    try:
+        payload = db.export_employee_payslip_pdf(payroll_month, employee_id, **payroll_tenant())
+        if not payload:
+            return jsonify({'error': 'No payroll record found for this employee'}), 404
+        buffer = io.BytesIO(payload)
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f'payslip-{payroll_month}-{employee_id}.pdf',
+            mimetype='application/pdf',
+        )
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.exception('Failed to export payslip PDF')
+        return jsonify({'error': f'Failed to export payslip: {e}'}), 500
+
+
+@app.route('/api/payroll/component-types', methods=['GET'])
+def api_list_payroll_component_types():
+    return jsonify({'types': db.list_payroll_component_types(**payroll_tenant())})
+
+
+@app.route('/api/payroll/component-types', methods=['POST'])
+def api_save_payroll_component_type():
+    data = request.get_json(silent=True) or {}
+    saved_id = db.save_payroll_component_type(
+        name=str(data.get('name') or '').strip(),
+        code=str(data.get('code') or '').strip(),
+        kind=str(data.get('kind') or 'earning'),
+        category=str(data.get('category') or 'allowance'),
+        calc_mode=str(data.get('calc_mode') or 'fixed'),
+        default_amount=float(data.get('default_amount') or 0),
+        active=bool(data.get('active', True)),
+        component_id=data.get('id'),
+        **payroll_tenant(),
+    )
+    if not saved_id:
+        return jsonify({'error': 'Enter a valid pay-line name, code, earning/deduction kind, and category.'}), 400
+    return jsonify({'success': True, 'id': saved_id, 'types': db.list_payroll_component_types(**payroll_tenant())})
+
+
+@app.route('/api/payroll/component-types/<int:component_id>', methods=['DELETE'])
+def api_delete_payroll_component_type(component_id):
+    if not db.delete_payroll_component_type(component_id, **payroll_tenant()):
+        return jsonify({'error': 'Pay line not found'}), 404
+    return jsonify({'success': True, 'types': db.list_payroll_component_types(**payroll_tenant())})
+
+
+@app.route('/api/payroll/employee-components/<int:user_id>', methods=['GET'])
+def api_list_employee_components(user_id):
+    if not verify_user_access(user_id):
+        return jsonify({'error': 'Employee not found or access denied'}), 404
+    return jsonify({'components': db.list_employee_components(user_id, **payroll_tenant())})
+
+
+@app.route('/api/payroll/employee-components', methods=['POST'])
+def api_save_employee_component():
+    data = request.get_json(silent=True) or {}
+    try:
+        user_id = int(data.get('user_id'))
+        component_type_id = int(data.get('component_type_id'))
+    except (TypeError, ValueError, OverflowError):
+        return jsonify({'error': 'Employee and pay line are required'}), 400
+    if not verify_user_access(user_id):
+        return jsonify({'error': 'Employee not found or access denied'}), 404
+    ok = db.save_employee_component(
+        user_id=user_id,
+        component_type_id=component_type_id,
+        amount=float(data.get('amount') or 0),
+        percent=float(data.get('percent') or 0),
+        effective_from=data.get('effective_from'),
+        effective_to=data.get('effective_to'),
+        **payroll_tenant(),
+    )
+    if not ok:
+        return jsonify({'error': 'Failed to assign pay line'}), 400
+    return jsonify({'success': True, 'components': db.list_employee_components(user_id, **payroll_tenant())})
+
+
+@app.route('/api/payroll/employee-components/<int:assignment_id>', methods=['DELETE'])
+def api_delete_employee_component(assignment_id):
+    if not db.delete_employee_component(assignment_id, **payroll_tenant()):
+        return jsonify({'error': 'Assignment not found'}), 404
+    return jsonify({'success': True})
+
+
+@app.route('/api/payroll/adjustments', methods=['GET'])
+def api_list_payroll_adjustments():
+    try:
+        payroll_month, _year, _month = _parse_payroll_month_arg()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    return jsonify({'month': payroll_month, 'adjustments': db.list_payroll_adjustments(payroll_month, **payroll_tenant())})
+
+
+@app.route('/api/payroll/adjustments', methods=['POST'])
+def api_save_payroll_adjustment():
+    try:
+        payroll_month, _year, _month = _parse_payroll_month_arg()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    data = request.get_json(silent=True) or {}
+    try:
+        user_id = int(data.get('user_id'))
+    except (TypeError, ValueError, OverflowError):
+        return jsonify({'error': 'Employee is required'}), 400
+    if not verify_user_access(user_id):
+        return jsonify({'error': 'Employee not found or access denied'}), 404
+    saved_id = db.save_payroll_adjustment(
+        user_id=user_id,
+        payroll_month=payroll_month,
+        adj_type=str(data.get('adj_type') or ''),
+        pay_mode=str(data.get('pay_mode') or 'fixed'),
+        amount=float(data.get('amount') or 0),
+        multiplier=float(data.get('multiplier') or 0),
+        work_date=data.get('work_date'),
+        note=str(data.get('note') or ''),
+        source_month=data.get('source_month'),
+        created_by=session.get('admin_name') or session.get('username') or 'Admin',
+        **payroll_tenant(),
+    )
+    if not saved_id:
+        return jsonify({'error': 'Choose a valid exception type and amount or multiplier.'}), 400
+    return jsonify({
+        'success': True,
+        'id': saved_id,
+        'adjustments': db.list_payroll_adjustments(payroll_month, **payroll_tenant()),
+    })
+
+
+@app.route('/api/payroll/adjustments/<int:adjustment_id>', methods=['DELETE'])
+def api_delete_payroll_adjustment(adjustment_id):
+    if not db.delete_payroll_adjustment(adjustment_id, **payroll_tenant()):
+        return jsonify({'error': 'Exception not found'}), 404
+    return jsonify({'success': True})
+
+
+@app.route('/api/payroll/audit', methods=['GET'])
+def api_list_payroll_audit():
+    month = (request.args.get('month') or '').strip() or None
+    return jsonify({'audit': db.list_payroll_audit(month, **payroll_tenant())})
 
 
 @app.route('/api/payroll/payslip/<int:employee_id>', methods=['GET'])
@@ -6055,6 +6231,7 @@ def api_update_payroll_settings():
             'off_day_attendance_pay_fixed_amount',
             current_settings.get('off_day_attendance_pay_fixed_amount'),
         ),
+        feature_flags={key: data.get(key, current_settings.get(key)) for key in db.FEATURE_FLAGS},
     ):
         return jsonify({'error': 'Failed to save payroll settings'}), 500
     return jsonify({
