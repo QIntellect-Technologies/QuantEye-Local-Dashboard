@@ -2537,6 +2537,14 @@ def bulk_assign_shifts(user_ids: Union[str, List[int]], shift_id: int, effective
         return False, 0
 
 
+def _overtime_date_is_future(ot_date: str) -> bool:
+    try:
+        parsed = datetime.strptime(str(ot_date)[:10], '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return False
+    return parsed > date.today()
+
+
 def _record_automatic_checkout_overtime(
     cursor: sqlite3.Cursor,
     user_id: int,
@@ -2544,6 +2552,8 @@ def _record_automatic_checkout_overtime(
     checkout_time: datetime,
 ) -> float:
     actual_date = checkout_time.strftime('%Y-%m-%d')
+    if _overtime_date_is_future(actual_date):
+        return 0.0
     actual_time = checkout_time.strftime('%H:%M')
     cursor.execute('''
         SELECT start_time, end_time, checkout_grace_period_minutes
@@ -4115,7 +4125,7 @@ def mark_user_present_today(
                 )
 
                 # Calculate OT
-                ot_hours = calculate_eligible_overtime(shift_start, shift_end, co_clean, checkout_grace)
+                ot_hours = 0.0 if _overtime_date_is_future(actual_date) else calculate_eligible_overtime(shift_start, shift_end, co_clean, checkout_grace)
                 cursor.execute("SELECT id, status FROM overtime WHERE user_id = ? AND ot_date = ?", (user_id, actual_date))
                 ot_existing = cursor.fetchone()
 
@@ -5537,6 +5547,8 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
             branch_id = user_branch
             organization_id = organization_id or 'DEFAULT_ORG'
             branch_id = branch_id or 'DEFAULT_BRANCH'
+            if _overtime_date_is_future(ot_date):
+                raise ValueError('Overtime cannot be applied for a future date.')
             raise_if_payroll_month_locked(ot_date, organization_id, branch_id)
             cursor.execute(
                 '''INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, organization_id, branch_id)

@@ -5093,6 +5093,11 @@ def api_add_leave_type():
     if not 1 <= allowance_months <= 12:
         return jsonify({'success': False, 'message': 'Policy duration must be from 1 to 12 months.'}), 400
     
+    quota_raw = data.get('half_leave_quota_type_id')
+    try:
+        quota_id = int(quota_raw) if quota_raw not in (None, '', 'null') else None
+    except (TypeError, ValueError):
+        quota_id = None
     tid = db.add_leave_type(
         name=name,
         code=code,
@@ -5101,6 +5106,12 @@ def api_add_leave_type():
         description=data.get('description', ''),
         allowance_period=allowance_period,
         allowance_months=allowance_months,
+        half_leave_enabled=bool(data.get('half_leave_enabled')),
+        half_leave_mode=str(data.get('half_leave_mode') or 'separate'),
+        half_leave_allowance_count=int(data.get('half_leave_allowance_count') or 0),
+        half_leave_allowance_months=int(data.get('half_leave_allowance_months') or 12),
+        half_leaves_per_quota_day=int(data.get('half_leaves_per_quota_day') or 2),
+        half_leave_quota_type_id=quota_id,
         organization_id=get_current_tenant_id(),
         branch_id=get_current_branch_id(),
     )
@@ -5120,6 +5131,11 @@ def api_update_leave_type(type_id):
         return jsonify({'success': False, 'message': 'Policy duration must be a whole number from 1 to 12 months.'}), 400
     if not 1 <= allowance_months <= 12:
         return jsonify({'success': False, 'message': 'Policy duration must be from 1 to 12 months.'}), 400
+    quota_raw = data.get('half_leave_quota_type_id')
+    try:
+        quota_id = int(quota_raw) if quota_raw not in (None, '', 'null') else None
+    except (TypeError, ValueError):
+        quota_id = None
     ok = db.update_leave_type(
         type_id=type_id,
         name=data.get('name', ''),
@@ -5129,6 +5145,12 @@ def api_update_leave_type(type_id):
         active=int(data.get('active', 1)),
         allowance_period=allowance_period,
         allowance_months=allowance_months,
+        half_leave_enabled=bool(data.get('half_leave_enabled')),
+        half_leave_mode=str(data.get('half_leave_mode') or 'separate'),
+        half_leave_allowance_count=int(data.get('half_leave_allowance_count') or 0),
+        half_leave_allowance_months=int(data.get('half_leave_allowance_months') or 12),
+        half_leaves_per_quota_day=int(data.get('half_leaves_per_quota_day') or 2),
+        half_leave_quota_type_id=quota_id,
         organization_id=get_current_tenant_id(),
     )
     return jsonify({'success': ok})
@@ -5276,9 +5298,11 @@ def api_add_overtime():
     if not ot_date:
         return jsonify({'success': False, 'error': 'ot_date is required in YYYY-MM-DD format'}), 400
     try:
-        datetime.strptime(ot_date, '%Y-%m-%d')
+        parsed_ot = datetime.strptime(ot_date, '%Y-%m-%d').date()
     except ValueError:
         return jsonify({'success': False, 'error': 'ot_date must use YYYY-MM-DD format'}), 400
+    if parsed_ot > date.today():
+        return jsonify({'success': False, 'error': 'Overtime cannot be applied for a future date.'}), 400
 
     limit_status = db.get_overtime_limit_status(user_id, ot_date, hours)
     if limit_status.get('exceeded'):
