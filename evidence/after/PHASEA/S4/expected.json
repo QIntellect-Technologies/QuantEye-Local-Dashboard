@@ -1,0 +1,49 @@
+{
+  "id": "S4",
+  "title": "Paid, unpaid, partial leave; month boundary; holiday leave",
+  "assumptions": {
+    "paid_leave": [
+      "2026-09-08",
+      "2026-09-09"
+    ],
+    "unpaid_leave": [
+      "2026-09-10"
+    ],
+    "boundary_leave": [
+      "2026-08-31",
+      "2026-09-01"
+    ],
+    "holiday_leave_attempt": "2026-09-05 if holiday configured else documented skip"
+  },
+  "expected": [
+    {
+      "code": "E5",
+      "employee_name": "E5 Leave Mix",
+      "basic": 60000.0,
+      "basic_prorated": 60000.0,
+      "attendance_pay_mode": "payable_days",
+      "month_scheduled_workdays": 26,
+      "eligible_scheduled_workdays": 26,
+      "proration_factor": 1.0,
+      "present_days": 23,
+      "late_days": 0,
+      "paid_leave_days": 2,
+      "unpaid_leave_days": 1,
+      "unexcused_absent_days": 0,
+      "half_leave_days": 0,
+      "payable_days": 25,
+      "absence_deduction_percent": 0.0,
+      "absence_deduction_fixed_pkr": 0.0,
+      "absence_deduction": 0.0,
+      "unpaid_leave_deduction": 2307.69,
+      "hra": 0,
+      "tax": 0,
+      "overtime_hours_approved": 0,
+      "overtime_amount": 0.0,
+      "bonus": 0,
+      "rest_day_extra": 0,
+      "expected_net": 55384.62,
+      "notes": "2 paid + 1 unpaid. payable_days already excludes unpaid; do not subtract a second unpaid-day deduction on top of 25/26 (that would double-count). Extra unpaid deduction only if deduct_unpaid_leave is on AND still counting unpaid as payable."
+    }
+  ]
+}
