@@ -916,6 +916,7 @@ def seed_leave_types_if_empty(cursor, organization_id: str, branch_id: str = DEF
 
 def ensure_payroll_settings_row(cursor, organization_id: Optional[str], branch_id: Optional[str]) -> None:
     org, branch = tenant_ids(organization_id, branch_id)
+    _migrate_payroll_settings(cursor)
     cursor.execute(
         """
         INSERT OR IGNORE INTO payroll_settings (

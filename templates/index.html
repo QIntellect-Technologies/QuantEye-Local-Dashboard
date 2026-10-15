@@ -989,8 +989,9 @@
         font-weight: 700;
       }
       .payroll-hub-step span { display: block; font-weight: 500; color: #475569; margin-top: 4px; }
-      .payroll-hub-pane { display: none; }
-      .payroll-hub-pane.is-active { display: block; }
+      .payroll-hub-pane { display: none !important; }
+      .payroll-hub-pane.is-active { display: block !important; }
+      .payroll-hub-tab { position: relative; z-index: 3; pointer-events: auto; }
       .payroll-guide-overlay {
         display: none;
         position: fixed;
@@ -6047,16 +6048,16 @@ async function fetchMultiLiveDetections() {
     {% if not is_client_session or client_module_entitlements.payroll %}
     <template id="payrollHubTabsTemplate">
       <nav class="payroll-hub-tabs" aria-label="Payroll setup steps">
-        <button type="button" class="payroll-hub-tab" data-payroll-hub="general" onclick="switchPayrollHubTab('general')">1. General</button>
-        <button type="button" class="payroll-hub-tab" data-payroll-hub="attendance" onclick="switchPayrollHubTab('attendance')">2. Attendance</button>
-        <button type="button" class="payroll-hub-tab" data-payroll-hub="extras" onclick="switchPayrollHubTab('extras')">3. Extra pay</button>
-        <button type="button" class="payroll-hub-tab" data-payroll-hub="leave" onclick="switchPayrollHubTab('leave')">4. Leave</button>
+        <button type="button" class="payroll-hub-tab" data-payroll-hub="general">1. General</button>
+        <button type="button" class="payroll-hub-tab" data-payroll-hub="attendance">2. Attendance</button>
+        <button type="button" class="payroll-hub-tab" data-payroll-hub="extras">3. Extra pay</button>
+        <button type="button" class="payroll-hub-tab" data-payroll-hub="leave">4. Leave</button>
         {% if not is_client_session or client_module_entitlements.overtime %}
-        <button type="button" class="payroll-hub-tab" data-payroll-hub="overtime" onclick="switchPayrollHubTab('overtime')">5. Overtime</button>
+        <button type="button" class="payroll-hub-tab" data-payroll-hub="overtime">5. Overtime</button>
         {% endif %}
-        <button type="button" class="payroll-hub-tab" data-payroll-hub="packages" onclick="switchPayrollHubTab('packages')">6. Salary packages</button>
-        <button type="button" class="payroll-hub-tab" data-payroll-hub="calendar" onclick="switchPayrollHubTab('calendar')">7. Special dates</button>
-        <button type="button" class="payroll-hub-tab" data-payroll-hub="payslip" onclick="switchPayrollHubTab('payslip')">8. Payslip</button>
+        <button type="button" class="payroll-hub-tab" data-payroll-hub="packages">6. Salary packages</button>
+        <button type="button" class="payroll-hub-tab" data-payroll-hub="calendar">7. Special dates</button>
+        <button type="button" class="payroll-hub-tab" data-payroll-hub="payslip">8. Payslip</button>
       </nav>
     </template>
     <!-- TAB 5: PAYROLL RULES -->
@@ -6680,7 +6681,7 @@ async function fetchMultiLiveDetections() {
             <h4>Payslip letterhead</h4>
             <p class="payroll-panel-help">These details print on every payslip, in the same layout as a QuantEye invoice. Type on the left — the preview on the right updates immediately. Click Save letterhead to keep the change.</p>
             <div class="payslip-letterhead-grid">
-              <form id="payslipLetterheadForm" oninput="refreshPayslipLetterheadPreview()" onsubmit="event.preventDefault(); savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false);">
+              <form id="payslipLetterheadForm" oninput="_payslipLetterheadDirty = true; refreshPayslipLetterheadPreview()" onsubmit="event.preventDefault(); savePayslipLetterhead();">
                 <label class="payroll-rule-field" style="margin-bottom:10px;">Company name
                   <input id="payslip_company_name" class="form-control" type="text" maxlength="120" autocomplete="organization">
                 </label>
@@ -13668,6 +13669,7 @@ async function fetchMultiLiveDetections() {
       let cachedPayrollCalendarUsers = [];
 
       let lastPayrollHubTab = 'general';
+      let _payslipLetterheadDirty = false;
       const PAYROLL_HUB_STEPS = {
         general: { title: 'Step 1 of 8 — General', text: 'Set currency and how pay is split when someone joins or leaves mid-month. Open Payroll Guide for a full example.' },
         attendance: { title: 'Step 2 of 8 — Attendance', text: 'Choose whether you pay for days present, or pay full salary then cut missed days. You can also add rest-day extra pay here.' },
@@ -13681,13 +13683,12 @@ async function fetchMultiLiveDetections() {
 
       function paintPayrollHubTabs(activeKey) {
         const template = document.getElementById('payrollHubTabsTemplate');
-        if (!template) return;
         document.querySelectorAll('.payroll-hub-tabs-mount').forEach((mount) => {
-          mount.innerHTML = '';
-          mount.appendChild(template.content.cloneNode(true));
+          if (!mount.querySelector('.payroll-hub-tabs') && template) {
+            mount.appendChild(template.content.cloneNode(true));
+          }
           mount.querySelectorAll('.payroll-hub-tab').forEach((button) => {
             button.classList.toggle('is-active', button.getAttribute('data-payroll-hub') === activeKey);
-            button.onclick = () => switchPayrollHubTab(button.getAttribute('data-payroll-hub'));
           });
         });
         const step = PAYROLL_HUB_STEPS[activeKey];
@@ -13698,50 +13699,63 @@ async function fetchMultiLiveDetections() {
         }
       }
 
-      function switchPayrollHubTab(key) {
-        const previous = lastPayrollHubTab;
-        lastPayrollHubTab = key;
-        const tabMap = {
-          packages: { id: 'salary-config-tab', btn: 'salaryConfigNavBtn' },
-          calendar: { id: 'payroll-calendar-tab', btn: 'payrollCalendarNavBtn' }
-        };
-        const mapped = tabMap[key] || { id: 'payroll-rules-tab', btn: 'payrollRulesNavBtn' };
-        currentSettingsTab = mapped.id;
+      function showPayrollSettingsSubTab(tabId, navBtnId) {
+        currentSettingsTab = tabId;
         document.querySelectorAll('.settings-sub-tab').forEach((pane) => {
-          pane.style.display = 'none';
+          pane.style.display = pane.id === tabId ? 'block' : 'none';
         });
-        const activePane = document.getElementById(mapped.id);
-        if (activePane) activePane.style.display = 'block';
         document.querySelectorAll('.settings-nav-btn').forEach((nav) => {
-          const on = nav.id === mapped.btn;
+          const on = nav.id === navBtnId;
           nav.classList.toggle('active', on);
           nav.style.background = on ? '#3d9fd4' : '#f1f5f9';
           nav.style.color = on ? '#ffffff' : '#475569';
         });
+      }
+
+      function switchPayrollHubTab(key) {
+        if (!key) return false;
+        const previous = lastPayrollHubTab;
+        lastPayrollHubTab = key;
         const topbarTitle = document.getElementById('headerCurrentPageTitle');
         const settingsSubEl = document.getElementById('settingsPageSubtitle');
         if (key === 'packages') {
+          showPayrollSettingsSubTab('salary-config-tab', 'salaryConfigNavBtn');
           if (topbarTitle) topbarTitle.textContent = 'Salary packages';
           if (settingsSubEl) settingsSubEl.textContent = 'Set each person’s basic pay, extras, and overtime rate.';
-          loadSalaryConfigs();
+          if (typeof loadSalaryConfigs === 'function') loadSalaryConfigs();
         } else if (key === 'calendar') {
+          showPayrollSettingsSubTab('payroll-calendar-tab', 'payrollCalendarNavBtn');
           if (topbarTitle) topbarTitle.textContent = 'Special Dates';
           if (settingsSubEl) settingsSubEl.textContent = 'Mark holidays, extra work days, or off days that override the weekly shift.';
-          loadPayrollCalendar();
+          if (typeof loadPayrollCalendar === 'function') loadPayrollCalendar();
         } else {
+          showPayrollSettingsSubTab('payroll-rules-tab', 'payrollRulesNavBtn');
           if (topbarTitle) topbarTitle.textContent = 'Payroll Settings';
           if (settingsSubEl) settingsSubEl.textContent = 'Use the tabs to set salary rules one step at a time. Open Payroll Guide for formulas and examples.';
+          document.querySelectorAll('#payroll-rules-tab .payroll-hub-pane').forEach((pane) => {
+            pane.classList.toggle('is-active', pane.getAttribute('data-payroll-hub-pane') === key);
+          });
           if ((previous === 'packages' || previous === 'calendar') && typeof loadPayrollSettings === 'function') {
             loadPayrollSettings();
           }
-          document.querySelectorAll('.payroll-hub-pane').forEach((pane) => {
-            pane.classList.toggle('is-active', pane.getAttribute('data-payroll-hub-pane') === key);
-          });
           if (key === 'payslip' && typeof refreshPayslipLetterheadPreview === 'function') {
             refreshPayslipLetterheadPreview();
           }
         }
         paintPayrollHubTabs(key);
+        return false;
+      }
+      window.switchPayrollHubTab = switchPayrollHubTab;
+      if (!window._payrollHubTabClicksBound) {
+        window._payrollHubTabClicksBound = true;
+        document.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-payroll-hub]');
+          if (!button || button.closest('.payroll-guide-nav')) return;
+          const key = button.getAttribute('data-payroll-hub');
+          if (!key) return;
+          event.preventDefault();
+          switchPayrollHubTab(key);
+        });
       }
 
       function switchSettingsTab(tabId, btn) {
@@ -13794,7 +13808,7 @@ async function fetchMultiLiveDetections() {
           const inner = ['general', 'attendance', 'extras', 'leave', 'overtime', 'payslip'].includes(lastPayrollHubTab)
             ? lastPayrollHubTab
             : 'general';
-          document.querySelectorAll('.payroll-hub-pane').forEach((pane) => {
+          document.querySelectorAll('#payroll-rules-tab .payroll-hub-pane').forEach((pane) => {
             pane.classList.toggle('is-active', pane.getAttribute('data-payroll-hub-pane') === inner);
           });
           paintPayrollHubTabs(inner);
@@ -14062,7 +14076,7 @@ async function fetchMultiLiveDetections() {
             const el = document.getElementById(`flag_${flag}`);
             if (el) el.checked = Boolean(Number(settings[flag] ?? (flag === 'enable_bonuses' ? 1 : 0)));
           });
-          applyPayslipLetterhead(settings);
+          if (!_payslipLetterheadDirty) applyPayslipLetterhead(settings);
           await loadPayrollComponentTypes();
           await loadPayLineDuplicates();
           await fillPayLineScopeOptions();
@@ -14577,8 +14591,10 @@ async function fetchMultiLiveDetections() {
         const out = {};
         PAYSLIP_LETTERHEAD_FIELDS.forEach((key) => {
           const el = document.getElementById(key);
-          const fallback = PAYSLIP_LETTERHEAD_DEFAULTS[key] || '';
-          out[key] = String(el?.value || fallback).trim() || fallback;
+          let value = el ? String(el.value ?? '') : String(PAYSLIP_LETTERHEAD_DEFAULTS[key] || '');
+          value = value.trim();
+          if (value.length > 240) value = value.slice(0, 240);
+          out[key] = value;
         });
         window._payslipLetterhead = out;
         return out;
@@ -14587,10 +14603,24 @@ async function fetchMultiLiveDetections() {
       function applyPayslipLetterhead(settings) {
         PAYSLIP_LETTERHEAD_FIELDS.forEach((key) => {
           const el = document.getElementById(key);
-          if (el) el.value = settings?.[key] || PAYSLIP_LETTERHEAD_DEFAULTS[key] || '';
+          if (!el) return;
+          if (settings && Object.prototype.hasOwnProperty.call(settings, key) && settings[key] != null && String(settings[key]) !== '') {
+            el.value = String(settings[key]);
+          } else if (settings && Object.prototype.hasOwnProperty.call(settings, key) && settings[key] != null) {
+            el.value = String(settings[key]);
+          } else if (!el.value) {
+            el.value = PAYSLIP_LETTERHEAD_DEFAULTS[key] || '';
+          }
         });
-        collectPayslipLetterhead();
+        _payslipLetterheadDirty = false;
+        window._payslipLetterhead = collectPayslipLetterhead();
         refreshPayslipLetterheadPreview();
+      }
+
+      async function savePayslipLetterhead() {
+        _payslipLetterheadDirty = true;
+        const deduct = document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false;
+        await savePayrollSettings(Boolean(deduct));
       }
 
       function samplePayslipPayload() {
@@ -15318,7 +15348,8 @@ async function fetchMultiLiveDetections() {
           }
           window._payrollCurrencyCode = result.settings?.currency_code || 'PKR';
           window._payrollDecimalPlaces = result.settings?.decimal_places ?? 2;
-          applyPayslipLetterhead(result.settings || {});
+          _payslipLetterheadDirty = false;
+          applyPayslipLetterhead(result.settings || collectPayslipLetterhead());
           if (quotaMode) quotaMode.value = result.settings?.half_leave_quota_mode || 'category';
           if (conversionCount) {
             conversionCount.value = result.settings?.half_leaves_per_quota_day || 2;

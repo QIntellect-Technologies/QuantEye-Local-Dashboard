@@ -6207,8 +6207,10 @@ def get_payroll_settings(
         }
         settings = dict(row) if row else defaults
         for key in PAYSLIP_LETTERHEAD_FIELDS:
-            if not str(settings.get(key) or '').strip():
+            if key not in settings or settings.get(key) is None:
                 settings[key] = DEFAULT_PAYROLL_SETTINGS.get(key) or ''
+            else:
+                settings[key] = str(settings.get(key) or '')
         try:
             absence_count = cursor.execute(
                 """SELECT COUNT(*) FROM payroll_rules
@@ -6914,10 +6916,14 @@ def update_payroll_settings(
     letterhead = letterhead or {}
     letterhead_values = []
     for key in PAYSLIP_LETTERHEAD_FIELDS:
-        incoming = letterhead.get(key) if key in letterhead else current.get(key)
-        text = str(incoming if incoming is not None else DEFAULT_PAYROLL_SETTINGS.get(key) or '').strip()
-        if not text:
+        if key in letterhead:
+            incoming = letterhead.get(key)
+        else:
+            incoming = current.get(key)
+        if incoming is None:
             text = str(DEFAULT_PAYROLL_SETTINGS.get(key) or '')
+        else:
+            text = str(incoming).strip()
         if len(text) > 240:
             text = text[:240]
         letterhead_values.append(text)
