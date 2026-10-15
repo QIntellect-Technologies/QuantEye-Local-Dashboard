@@ -556,7 +556,7 @@ def simple_pdf_bytes(title: str, lines: Sequence[str]) -> bytes:
 
 
 def _pdf_escape(text: str) -> str:
-    return str(text or "").replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")[:120]
+    return str(text or "").replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")[:180]
 
 
 def payroll_excel_bytes(payroll: Dict[str, Any], currency: str = DEFAULT_CURRENCY) -> bytes:
@@ -599,29 +599,18 @@ def payroll_excel_bytes(payroll: Dict[str, Any], currency: str = DEFAULT_CURRENC
     return buf.read()
 
 
-def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
+def _pdf_money(value: Any, currency: str, places: int) -> str:
+    amount = float(value or 0)
+    return "{} {:,.{}f}".format(currency, amount, places)
+
+
+def _pdf_rows_from_payslip(payslip: Dict[str, Any]) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
     emp = payslip.get("employee") or {}
     currency = payslip.get("currency_code") or DEFAULT_CURRENCY
-    lines = [
-        "Month: {}".format(payslip.get("payroll_month")),
-        "Period: {} to {}".format(payslip.get("period_start"), payslip.get("period_end")),
-        "Status: {}".format(payslip.get("status")),
-        "Employee: {}  #{}".format(emp.get("employee_name"), emp.get("employee_id")),
-        "Department: {}".format(emp.get("department") or ""),
-        "",
-        "Basic: {} {}".format(currency, emp.get("basic_salary")),
-        "Allowances: {} {}".format(currency, emp.get("allowances")),
-        "Overtime: {} {}".format(currency, emp.get("overtime_amount")),
-        "Bonus: {} {}".format(currency, emp.get("bonus_amount")),
-        "Rest-day extra: {} {}".format(currency, emp.get("off_day_extra_pay")),
-        "Adjustments: {} {}".format(currency, emp.get("adjustment_amount")),
-        "Arrears: {} {}".format(currency, emp.get("arrears_amount")),
-        "Gross: {} {}".format(currency, payslip.get("gross_salary")),
-        "Named deductions: {} {}".format(currency, (payslip.get("deductions") or {}).get("other")),
-        "Total deductions: {} {}".format(currency, (payslip.get("deductions") or {}).get("total") or (payslip.get("deductions") or {}).get("other")),
-        "Absence: {} {}".format(currency, (payslip.get("deductions") or {}).get("absence")),
-        "Unpaid leave: {} {}".format(currency, (payslip.get("deductions") or {}).get("unpaid_leave")),
-        "Net payable: {} {}".format(currency, payslip.get("net_salary")),
+    places = int(payslip.get("decimal_places") or DEFAULT_DECIMAL_PLACES)
+    deductions = payslip.get("deductions") or {}
+    earnings: List[Tuple[str, str]] = [
+        ("Basic pay", _pdf_money(emp.get("basic_salary"), currency, places)),
     ]
     pay_lines = emp.get("pay_lines") or []
     if isinstance(pay_lines, str):
@@ -629,6 +618,177 @@ def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
             pay_lines = json.loads(pay_lines)
         except (TypeError, ValueError):
             pay_lines = []
+    has_named_earn = any(
+        str(item.get("kind") or "") == "earning" and float(item.get("amount") or 0)
+        for item in (pay_lines or [])
+    )
+    if float(emp.get("allowances") or 0) and not has_named_earn:
+        earnings.append(("Allowances", _pdf_money(emp.get("allowances"), currency, places)))
+    if float(emp.get("overtime_amount") or 0):
+        hours = emp.get("overtime_hours")
+        label = "Overtime"
+        if hours:
+            label = "Overtime ({} hrs)".format(hours)
+        earnings.append((label, _pdf_money(emp.get("overtime_amount"), currency, places)))
+    if float(emp.get("bonus_amount") or 0) and not any(
+        str(item.get("category") or "") == "bonus" for item in (pay_lines or [])
+    ):
+        earnings.append(("Bonus", _pdf_money(emp.get("bonus_amount"), currency, places)))
+    if float(emp.get("off_day_extra_pay") or 0):
+        earnings.append(("Rest-day extra", _pdf_money(emp.get("off_day_extra_pay"), currency, places)))
+    if float(emp.get("adjustment_amount") or 0):
+        earnings.append(("Adjustments", _pdf_money(emp.get("adjustment_amount"), currency, places)))
+    if float(emp.get("arrears_amount") or 0):
+        earnings.append(("Arrears", _pdf_money(emp.get("arrears_amount"), currency, places)))
+    cuts: List[Tuple[str, str]] = []
     for item in pay_lines:
-        lines.append("- {} ({}): {} {}".format(item.get("name") or item.get("type"), item.get("kind") or item.get("category"), currency, item.get("amount")))
-    return simple_pdf_bytes("Payslip", lines)
+        amount = float(item.get("amount") or 0)
+        if amount == 0:
+            continue
+        name = str(item.get("name") or item.get("type") or "Pay item")
+        kind = str(item.get("kind") or item.get("category") or "")
+        money_text = _pdf_money(amount, currency, places)
+        if kind in ("deduction", "tax", "loan", "advance", "provident", "insurance"):
+            cuts.append((name, money_text))
+        elif kind in ("earning", "allowance", "bonus"):
+            if name.lower() not in ("basic", "basic pay"):
+                earnings.append((name, money_text))
+    if float(deductions.get("absence") or 0):
+        cuts.append(("Missed-day cut", _pdf_money(deductions.get("absence"), currency, places)))
+    if float(deductions.get("unpaid_leave") or 0):
+        cuts.append(("Unpaid leave", _pdf_money(deductions.get("unpaid_leave"), currency, places)))
+    if float(deductions.get("half_leave") or 0):
+        cuts.append(("Half-day leave cut", _pdf_money(deductions.get("half_leave"), currency, places)))
+    if float(deductions.get("attendance_shortfall") or 0):
+        cuts.append(("Days not present", _pdf_money(deductions.get("attendance_shortfall"), currency, places)))
+    if float(deductions.get("other") or 0) and not any(row[0] for row in cuts if row[0] not in ("Missed-day cut", "Unpaid leave", "Half-day leave cut", "Days not present")):
+        cuts.append(("Other cuts", _pdf_money(deductions.get("other"), currency, places)))
+    if not cuts:
+        cuts.append(("No cuts", _pdf_money(0, currency, places)))
+    return earnings, cuts
+
+
+def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
+    """A4 payslip PDF in the same layout as the Main Dashboard invoice paper."""
+    emp = payslip.get("employee") or {}
+    company = payslip.get("company") or {}
+    currency = payslip.get("currency_code") or DEFAULT_CURRENCY
+    places = int(payslip.get("decimal_places") or DEFAULT_DECIMAL_PLACES)
+    status = "Locked" if payslip.get("is_finalized") else (payslip.get("status") or "Draft")
+    earnings, cuts = _pdf_rows_from_payslip(payslip)
+    ops: List[str] = []
+
+    def rgb_fill(r: float, g: float, b: float, x: float, y: float, w: float, h: float) -> None:
+        ops.append("{:.3f} {:.3f} {:.3f} rg {:.1f} {:.1f} {:.1f} {:.1f} re f".format(r, g, b, x, y, w, h))
+
+    def rgb_stroke(r: float, g: float, b: float, x: float, y: float, w: float, h: float) -> None:
+        ops.append("{:.3f} {:.3f} {:.3f} RG {:.1f} {:.1f} {:.1f} {:.1f} re S".format(r, g, b, x, y, w, h))
+
+    def text_at(x: float, y: float, text: str, size: int = 10, bold: bool = False, color: Tuple[float, float, float] = (0.09, 0.19, 0.26)) -> None:
+        font = "F2" if bold else "F1"
+        ops.append("{:.3f} {:.3f} {:.3f} rg".format(*color))
+        ops.append("BT /{} {} Tf {:.1f} {:.1f} Td ({}) Tj ET".format(font, size, x, y, _pdf_escape(text)))
+
+    # Page: A4
+    rgb_fill(1, 1, 1, 0, 0, 595, 842)
+    rgb_fill(0.09, 0.19, 0.26, 36, 788, 523, 18)
+    rgb_fill(0.239, 0.624, 0.831, 36, 786, 523, 3)
+    text_at(48, 810, "QIntellect Technologies", 16, True, (0.09, 0.19, 0.26))
+    text_at(48, 794, "DRIVING THE FUTURE TECHNOLOGY POWERED BY QUANTUM & AI", 8, True, (0.14, 0.49, 0.68))
+    text_at(360, 812, "PAYSLIP", 22, True, (0.09, 0.19, 0.26))
+    text_at(360, 794, str(payslip.get("payroll_month") or ""), 11, False, (0.38, 0.50, 0.58))
+    text_at(48, 770, "+92 302 9633999  ·  info@qintellecttechnologies.com", 9, False, (0.38, 0.50, 0.58))
+    text_at(48, 756, "NTN: J756903", 9, True, (0.38, 0.50, 0.58))
+    text_at(430, 770, status, 10, True, (0.239, 0.624, 0.831))
+
+    company_line = " · ".join(
+        part for part in [company.get("name"), company.get("branch"), company.get("city")] if part
+    )
+    rgb_stroke(0.863, 0.925, 0.957, 36, 678, 523, 68)
+    text_at(48, 730, "PAY TO", 8, True, (0.38, 0.50, 0.58))
+    text_at(48, 714, str(emp.get("employee_name") or "Staff"), 12, True)
+    text_at(48, 698, "#{}  ·  {}  ·  {}".format(
+        emp.get("employee_id") or "",
+        emp.get("department") or "General",
+        emp.get("designation") or "Staff",
+    ), 9, False, (0.38, 0.50, 0.58))
+    text_at(48, 684, company_line or "Company", 9, False, (0.38, 0.50, 0.58))
+    text_at(330, 730, "PAY PERIOD", 8, True, (0.38, 0.50, 0.58))
+    text_at(330, 714, "{} to {}".format(payslip.get("period_start") or "", payslip.get("period_end") or ""), 11, True)
+    text_at(330, 698, "Work days: {}   Days paid: {}".format(
+        emp.get("month_scheduled_workdays") or emp.get("scheduled_workdays") or 0,
+        emp.get("payable_days") or 0,
+    ), 9, False, (0.38, 0.50, 0.58))
+
+    y = 650
+    rgb_fill(0.949, 0.980, 0.992, 36, y - 4, 523, 22)
+    text_at(48, y, "Description", 9, True, (0.09, 0.19, 0.26))
+    text_at(430, y, "Amount", 9, True, (0.09, 0.19, 0.26))
+    y -= 22
+    text_at(48, y, "Money added", 10, True, (0.14, 0.49, 0.68))
+    y -= 16
+    for name, amount in earnings:
+        text_at(48, y, name, 10)
+        text_at(400, y, amount, 10, True)
+        y -= 15
+        if y < 220:
+            break
+    y -= 6
+    text_at(48, y, "Money taken away", 10, True, (0.14, 0.49, 0.68))
+    y -= 16
+    for name, amount in cuts:
+        text_at(48, y, name, 10)
+        text_at(400, y, amount, 10, True, (0.71, 0.28, 0.28))
+        y -= 15
+        if y < 180:
+            break
+
+    y = min(y - 8, 250)
+    rgb_fill(0.961, 0.984, 1.0, 300, y - 58, 259, 78)
+    rgb_stroke(0.812, 0.910, 0.969, 300, y - 58, 259, 78)
+    text_at(314, y, "Gross pay", 9, False, (0.38, 0.50, 0.58))
+    text_at(400, y, _pdf_money(payslip.get("gross_salary"), currency, places), 10, True)
+    text_at(314, y - 16, "Total cuts", 9, False, (0.38, 0.50, 0.58))
+    text_at(400, y - 16, _pdf_money((payslip.get("deductions") or {}).get("total"), currency, places), 10, True, (0.71, 0.28, 0.28))
+    text_at(314, y - 38, "Take-home pay", 11, True)
+    text_at(390, y - 38, _pdf_money(payslip.get("net_salary"), currency, places), 13, True, (0.05, 0.56, 0.47))
+
+    rgb_stroke(0.812, 0.910, 0.969, 36, 86, 250, 92)
+    rgb_fill(0.961, 0.984, 1.0, 36, 86, 250, 92)
+    text_at(48, 160, "Attendance this month", 8, True, (0.38, 0.50, 0.58))
+    text_at(48, 144, "Present: {}".format(emp.get("present_days") or 0), 9)
+    text_at(48, 130, "Absent: {}".format(emp.get("absent_days") or 0), 9)
+    text_at(48, 116, "Late: {}".format(emp.get("late_days") or 0), 9)
+    text_at(48, 102, "Paid leave: {}   Unpaid leave: {}".format(
+        emp.get("paid_leave_days") if emp.get("paid_leave_days") is not None else emp.get("approved_leave_days") or 0,
+        emp.get("unpaid_leave_days") or 0,
+    ), 9)
+
+    rgb_fill(0.09, 0.19, 0.26, 36, 36, 523, 40)
+    text_at(48, 58, "© 2026 QIntellect Technologies. All rights reserved.", 8, False, (1, 1, 1))
+    text_at(48, 44, "Powered by QIntellect Technologies", 9, True, (1, 1, 1))
+
+    stream = "\n".join(ops).encode("latin-1", "replace")
+    objs = [
+        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
+        (
+            b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >> endobj\n"
+        ),
+        b"4 0 obj << /Length %d >> stream\n" % len(stream) + stream + b"\nendstream endobj\n",
+        b"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
+        b"6 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj\n",
+    ]
+    parts = [b"%PDF-1.4\n"]
+    offsets = [0]
+    for obj in objs:
+        offsets.append(sum(len(p) for p in parts))
+        parts.append(obj)
+    xref_pos = sum(len(p) for p in parts)
+    xref = [b"xref\n0 7\n0000000000 65535 f \n"]
+    for off in offsets[1:]:
+        xref.append("{:010d} 00000 n \n".format(off).encode("ascii"))
+    parts.extend(xref)
+    parts.append(b"trailer << /Size 7 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % xref_pos)
+    return b"".join(parts)

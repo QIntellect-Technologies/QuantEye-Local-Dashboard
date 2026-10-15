@@ -8819,6 +8819,7 @@ def get_employee_payslip(
     )
     if not record:
         return None
+    branch = get_branch_settings()
     return {
         'payroll_month': payroll.get('payroll_month'),
         'period_start': payroll.get('period_start'),
@@ -8826,14 +8827,24 @@ def get_employee_payslip(
         'status': payroll.get('status'),
         'is_finalized': payroll.get('is_finalized'),
         'currency_code': settings.get('currency_code') or DEFAULT_CURRENCY,
+        'decimal_places': settings.get('decimal_places') if settings.get('decimal_places') is not None else DEFAULT_DECIMAL_PLACES,
         'finalized_at': payroll.get('finalized_at'),
         'finalized_by': payroll.get('finalized_by'),
+        'company': {
+            'name': (branch.get('company_name') or '').strip() or 'QIntellect Technologies',
+            'branch': (branch.get('branch_name') or '').strip(),
+            'city': (branch.get('city') or '').strip(),
+            'phone': (branch.get('phone') or '').strip(),
+            'email': (branch.get('email') or '').strip(),
+            'address': (branch.get('address') or '').strip(),
+        },
         'employee': record,
         'gross_salary': record.get('gross_salary'),
         'deductions': {
             'absence': record.get('absence_deduction') or 0,
             'unpaid_leave': record.get('unpaid_leave_deduction') or 0,
             'half_leave': record.get('half_leave_deduction') or 0,
+            'attendance_shortfall': record.get('attendance_shortfall') or 0,
             'other': record.get('custom_deductions') or 0,
             'total': record.get('deduction_amount') or 0,
         },
