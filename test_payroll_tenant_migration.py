@@ -301,6 +301,92 @@ class LeaveTypesTenantMigrationTests(unittest.TestCase):
             ).fetchone()
             self.assertIsNone(leftover)
 
+    def test_recovers_orphaned_leave_types_rebuild_old_and_copies_to_org(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executescript("""
+                CREATE TABLE _leave_types_rebuild_old (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    code TEXT NOT NULL,
+                    yearly_allowance REAL DEFAULT 12.0,
+                    is_paid INTEGER DEFAULT 1,
+                    description TEXT
+                );
+                INSERT INTO _leave_types_rebuild_old (id, name, code)
+                VALUES (4, 'Casual Leave', 'casual');
+                CREATE TABLE employee_leave_balances (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    leave_type_id INTEGER NOT NULL,
+                    FOREIGN KEY(leave_type_id) REFERENCES _leave_types_rebuild_old(id)
+                );
+                INSERT INTO employee_leave_balances (id, user_id, leave_type_id) VALUES (1, 9, 4);
+            """)
+        self.assertTrue(db.init_db())
+        with sqlite3.connect(self.db_path) as conn:
+            leftover = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='_leave_types_rebuild_old'"
+            ).fetchone()
+            self.assertIsNone(leftover)
+            names = {
+                row[0]
+                for row in conn.execute("SELECT name FROM leave_types").fetchall()
+            }
+            self.assertIn("Casual Leave", names)
+            fk_sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='employee_leave_balances'"
+            ).fetchone()[0]
+            self.assertNotIn("_leave_types_rebuild_old", fk_sql)
+
+    def test_copy_survives_stale_fk_to_dropped_rebuild_table(self):
+        from payroll_policy_schema import migrate_payroll_policy_tenant_scope
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.executescript("""
+                CREATE TABLE leave_types (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    code TEXT NOT NULL,
+                    yearly_allowance REAL DEFAULT 12.0,
+                    is_paid INTEGER DEFAULT 1,
+                    description TEXT,
+                    organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
+                    UNIQUE(organization_id, name),
+                    UNIQUE(organization_id, code)
+                );
+                INSERT INTO leave_types (id, name, code, organization_id, branch_id)
+                VALUES (4, 'Casual Leave', 'casual', 'DEFAULT_ORG', 'DEFAULT_BRANCH');
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    organization_id TEXT,
+                    branch_id TEXT
+                );
+                INSERT INTO users (id, name, organization_id, branch_id)
+                VALUES (1, 'Org A Staff', 'ORG-A', 'BR-A');
+                CREATE TABLE employee_leave_balances (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    leave_type_id INTEGER NOT NULL,
+                    FOREIGN KEY(leave_type_id) REFERENCES _leave_types_rebuild_old(id)
+                );
+                INSERT INTO employee_leave_balances (id, user_id, leave_type_id) VALUES (1, 1, 4);
+            """)
+            migrate_payroll_policy_tenant_scope(conn.cursor())
+            conn.commit()
+            names = {
+                (row[0], row[1])
+                for row in conn.execute("SELECT name, organization_id FROM leave_types").fetchall()
+            }
+            self.assertIn(("Casual Leave", "DEFAULT_ORG"), names)
+            self.assertIn(("Casual Leave", "ORG-A"), names)
+            fk_sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='employee_leave_balances'"
+            ).fetchone()[0]
+            self.assertNotIn("_leave_types_rebuild_old", fk_sql)
+
 
 if __name__ == "__main__":
     unittest.main()

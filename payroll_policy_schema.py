@@ -5,6 +5,7 @@ calendar-day proration, 2 decimal places, PKR.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import date
 from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
@@ -52,6 +53,15 @@ DEFAULT_PAYROLL_SETTINGS = {
     "off_day_attendance_pay_mode": "multiplier",
     "off_day_attendance_pay_multiplier": DEFAULT_EXAMPLE_MULTIPLIER,
     "off_day_attendance_pay_fixed_amount": 0.0,
+    "enable_named_components": 0,
+    "enable_tax": 0,
+    "enable_loans": 0,
+    "enable_advances": 0,
+    "enable_provident": 0,
+    "enable_insurance": 0,
+    "enable_bonuses": 1,
+    "enable_individual_adjustments": 0,
+    "enable_salary_revisions": 0,
 }
 
 
@@ -246,11 +256,19 @@ def _recover_legacy_rename(cursor, live: str, leftover: str) -> None:
             cursor.execute(f'DROP TABLE "{leftover}"')
 
 
+LEAVE_TYPES_LEFTOVER_NAMES = (
+    "leave_types_legacy_tenant",
+    "_leave_types_rebuild_old",
+    "leave_types_rebuild_old",
+    "leave_types_rebuild_new",
+)
+
+
 def migrate_payroll_policy_tenant_scope(cursor) -> None:
     """Rebuild policy tables so each organization owns its own payroll rules."""
+    for leftover in LEAVE_TYPES_LEFTOVER_NAMES:
+        _recover_legacy_rename(cursor, "leave_types", leftover)
     for live, leftover in (
-        ("leave_types", "leave_types_legacy_tenant"),
-        ("leave_types", "_leave_types_rebuild_old"),
         ("company_holidays", "company_holidays_legacy_tenant"),
         ("special_date_overrides", "special_date_overrides_legacy_tenant"),
         ("payroll_scoped_rules", "payroll_scoped_rules_legacy_tenant"),
@@ -261,6 +279,7 @@ def migrate_payroll_policy_tenant_scope(cursor) -> None:
     _migrate_payroll_rules(cursor)
     _migrate_payroll_scoped_rules(cursor)
     _migrate_leave_types(cursor)
+    _repair_leave_types_foreign_key_references(cursor)
     _migrate_company_holidays(cursor)
     _migrate_special_date_overrides(cursor)
     _copy_leave_types_to_existing_orgs(cursor)
@@ -371,6 +390,15 @@ def _migrate_payroll_settings(cursor) -> None:
         ("off_day_attendance_pay_mode", "TEXT NOT NULL DEFAULT 'multiplier'"),
         ("off_day_attendance_pay_multiplier", "REAL NOT NULL DEFAULT 1.5"),
         ("off_day_attendance_pay_fixed_amount", "REAL NOT NULL DEFAULT 0"),
+        ("enable_named_components", "INTEGER NOT NULL DEFAULT 0"),
+        ("enable_tax", "INTEGER NOT NULL DEFAULT 0"),
+        ("enable_loans", "INTEGER NOT NULL DEFAULT 0"),
+        ("enable_advances", "INTEGER NOT NULL DEFAULT 0"),
+        ("enable_provident", "INTEGER NOT NULL DEFAULT 0"),
+        ("enable_insurance", "INTEGER NOT NULL DEFAULT 0"),
+        ("enable_bonuses", "INTEGER NOT NULL DEFAULT 1"),
+        ("enable_individual_adjustments", "INTEGER NOT NULL DEFAULT 0"),
+        ("enable_salary_revisions", "INTEGER NOT NULL DEFAULT 0"),
     ):
         if column not in cols:
             cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -454,23 +482,9 @@ def _migrate_payroll_scoped_rules(cursor) -> None:
     cursor.execute("DROP TABLE payroll_scoped_rules_legacy_tenant")
 
 
-def _migrate_leave_types(cursor) -> None:
-    if not _table_exists(cursor, "leave_types"):
-        return
-    sql = _create_sql(cursor, "leave_types")
-    cols = _columns(cursor, "leave_types")
-    global_name_unique = "name TEXT NOT NULL UNIQUE" in sql or any(
-        columns == ("name",) for columns in _unique_index_columns(cursor, "leave_types")
-    )
-    if "organization_id" in cols and not global_name_unique:
-        return
-    old_table = "_leave_types_rebuild_old"
-    cursor.execute("PRAGMA legacy_alter_table = ON")
-    cursor.execute(f'DROP TABLE IF EXISTS "{old_table}"')
-    cursor.execute(f'ALTER TABLE leave_types RENAME TO "{old_table}"')
-    cursor.execute(
-        """
-        CREATE TABLE leave_types (
+def _leave_types_create_sql(table_name: str) -> str:
+    return f"""
+        CREATE TABLE "{table_name}" (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             code TEXT NOT NULL,
@@ -493,41 +507,102 @@ def _migrate_leave_types(cursor) -> None:
             UNIQUE(organization_id, code)
         )
         """
+
+
+def _repair_leave_types_foreign_key_references(cursor) -> None:
+    """Rewrite child tables still pointing at a dropped leave_types rebuild name."""
+    leftover_pattern = "|".join(re.escape(name) for name in LEAVE_TYPES_LEFTOVER_NAMES)
+    dependents = cursor.execute(
+        """SELECT name, sql FROM sqlite_master
+           WHERE type = 'table' AND sql IS NOT NULL AND name != 'leave_types'"""
+    ).fetchall()
+    matcher = re.compile(
+        r'(?i)(REFERENCES\s+)(?:"(?P<q>[^"]+)"|`(?P<b>[^`]+)`|\[(?P<br>[^\]]+)\]|(?P<plain>\w+))'
     )
-    legacy = _columns(cursor, old_table)
+    for table_name, create_sql in dependents:
+        if not create_sql or not re.search(leftover_pattern, create_sql, flags=re.I):
+            continue
+        def _replace(match):
+            referenced = match.group("q") or match.group("b") or match.group("br") or match.group("plain")
+            if referenced in LEAVE_TYPES_LEFTOVER_NAMES:
+                return match.group(1) + "leave_types"
+            return match.group(0)
+        repaired_sql = matcher.sub(_replace, create_sql)
+        if repaired_sql == create_sql:
+            continue
+        staging = "leave_types_fk_repair_new"
+        cursor.execute(f'DROP TABLE IF EXISTS "{staging}"')
+        repaired_sql = re.sub(
+            r'(?is)^(\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?)(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|\S+)',
+            rf'\1"{staging}"',
+            repaired_sql,
+            count=1,
+        )
+        columns = [row[1] for row in cursor.execute(f'PRAGMA table_info("{table_name}")').fetchall()]
+        if not columns:
+            continue
+        quoted = ", ".join(f'"{name}"' for name in columns)
+        cursor.execute(repaired_sql)
+        cursor.execute(f'INSERT INTO "{staging}" ({quoted}) SELECT {quoted} FROM "{table_name}"')
+        cursor.execute(f'DROP TABLE "{table_name}"')
+        cursor.execute(f'ALTER TABLE "{staging}" RENAME TO "{table_name}"')
+
+
+def _migrate_leave_types(cursor) -> None:
+    for leftover in LEAVE_TYPES_LEFTOVER_NAMES:
+        _recover_legacy_rename(cursor, "leave_types", leftover)
+    if not _table_exists(cursor, "leave_types"):
+        cursor.execute(_leave_types_create_sql("leave_types"))
+        return
+    sql = _create_sql(cursor, "leave_types")
+    cols = _columns(cursor, "leave_types")
+    global_name_unique = "name TEXT NOT NULL UNIQUE" in sql or any(
+        columns == ("name",) for columns in _unique_index_columns(cursor, "leave_types")
+    )
+    if "organization_id" in cols and not global_name_unique:
+        return
+    staging = "leave_types_rebuild_new"
+    leftover = "_leave_types_rebuild_old"
+    cursor.execute("PRAGMA foreign_keys = OFF")
+    cursor.execute("PRAGMA legacy_alter_table = ON")
+    cursor.execute(f'DROP TABLE IF EXISTS "{staging}"')
+    cursor.execute(f'DROP TABLE IF EXISTS "{leftover}"')
+    cursor.execute(_leave_types_create_sql(staging))
+    legacy = _columns(cursor, "leave_types")
     org_sql = (
-        f'COALESCE(NULLIF("{old_table}".organization_id, \'\'), \'DEFAULT_ORG\')'
+        "COALESCE(NULLIF(organization_id, ''), 'DEFAULT_ORG')"
         if "organization_id" in legacy
         else "'DEFAULT_ORG'"
     )
     branch_sql = (
-        f'COALESCE(NULLIF("{old_table}".branch_id, \'\'), \'DEFAULT_BRANCH\')'
+        "COALESCE(NULLIF(branch_id, ''), 'DEFAULT_BRANCH')"
         if "branch_id" in legacy
         else "'DEFAULT_BRANCH'"
     )
     def col(name, default):
-        return f'"{old_table}"."{name}"' if name in legacy else default
+        return name if name in legacy else default
     cursor.execute(
         f"""
-        INSERT INTO leave_types (
+        INSERT INTO "{staging}" (
             id, name, code, yearly_allowance, is_paid, description, active,
             allowance_period, allowance_months, half_leave_enabled, half_leave_mode,
             half_leave_allowance_count, half_leave_allowance_months, half_leaves_per_quota_day,
             half_leave_quota_type_id, organization_id, branch_id, created_at
         )
-        SELECT "{old_table}".id, "{old_table}".name, "{old_table}".code,
-               "{old_table}".yearly_allowance, "{old_table}".is_paid, "{old_table}".description,
+        SELECT id, name, code, yearly_allowance, is_paid, description,
                {col('active', '1')},
                {col('allowance_period', "'yearly'")}, {col('allowance_months', '12')},
                {col('half_leave_enabled', '0')}, {col('half_leave_mode', "'separate'")},
                {col('half_leave_allowance_count', '0')}, {col('half_leave_allowance_months', '12')},
                {col('half_leaves_per_quota_day', '2')}, {col('half_leave_quota_type_id', 'NULL')},
                {org_sql}, {branch_sql}, {col('created_at', 'CURRENT_TIMESTAMP')}
-        FROM "{old_table}"
+        FROM leave_types
         """
     )
+    cursor.execute(f'ALTER TABLE leave_types RENAME TO "{leftover}"')
+    cursor.execute(f'ALTER TABLE "{staging}" RENAME TO leave_types')
     try:
-        cursor.execute(f'DROP TABLE "{old_table}"')
+        cursor.execute(f'DROP TABLE IF EXISTS "{leftover}"')
     except sqlite3.Error:
         pass
     cursor.execute("PRAGMA legacy_alter_table = OFF")
@@ -535,6 +610,11 @@ def _migrate_leave_types(cursor) -> None:
 
 def _copy_leave_types_to_existing_orgs(cursor) -> None:
     """Duplicate DEFAULT_ORG leave types for orgs that already have users but no catalog."""
+    for leftover in LEAVE_TYPES_LEFTOVER_NAMES:
+        _recover_legacy_rename(cursor, "leave_types", leftover)
+    if not _table_exists(cursor, "leave_types"):
+        cursor.execute(_leave_types_create_sql("leave_types"))
+        return
     try:
         orgs = [
             row[0]
@@ -565,51 +645,34 @@ def _copy_leave_types_to_existing_orgs(cursor) -> None:
         source_ids = []
         new_ids = []
         col_names = [item[0] for item in cursor.description]
+        insert_cols = [name for name in col_names if name != "id"]
+        quoted = ", ".join(f'"{name}"' for name in insert_cols)
+        placeholders = ", ".join("?" for _ in insert_cols)
         for row in source:
             mapping = dict(zip(col_names, row)) if not hasattr(row, "keys") else dict(row)
             old_id = mapping["id"]
+            mapping["organization_id"] = org
+            mapping["branch_id"] = mapping.get("branch_id") or DEFAULT_BRANCH
             cursor.execute(
-                """
-                INSERT INTO leave_types (
-                    name, code, yearly_allowance, is_paid, description, active,
-                    allowance_period, allowance_months, half_leave_enabled, half_leave_mode,
-                    half_leave_allowance_count, half_leave_allowance_months,
-                    half_leaves_per_quota_day, half_leave_quota_type_id,
-                    organization_id, branch_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    mapping.get("name"),
-                    mapping.get("code"),
-                    mapping.get("yearly_allowance", 12),
-                    mapping.get("is_paid", 1),
-                    mapping.get("description"),
-                    mapping.get("active", 1),
-                    mapping.get("allowance_period", "yearly"),
-                    mapping.get("allowance_months", 12),
-                    mapping.get("half_leave_enabled", 0),
-                    mapping.get("half_leave_mode", "separate"),
-                    mapping.get("half_leave_allowance_count", 0),
-                    mapping.get("half_leave_allowance_months", 12),
-                    mapping.get("half_leaves_per_quota_day", 2),
-                    mapping.get("half_leave_quota_type_id"),
-                    org,
-                    mapping.get("branch_id") or DEFAULT_BRANCH,
-                ),
+                f'INSERT INTO leave_types ({quoted}) VALUES ({placeholders})',
+                [mapping.get(name) for name in insert_cols],
             )
             source_ids.append(old_id)
             new_ids.append(cursor.lastrowid)
         remap = dict(zip(source_ids, new_ids))
         for old_id, new_id in remap.items():
-            cursor.execute(
-                """
-                UPDATE employee_leave_balances
-                SET leave_type_id = ?
-                WHERE leave_type_id = ?
-                  AND user_id IN (SELECT id FROM users WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?)
-                """,
-                (new_id, old_id, org),
-            )
+            try:
+                cursor.execute(
+                    """
+                    UPDATE employee_leave_balances
+                    SET leave_type_id = ?
+                    WHERE leave_type_id = ?
+                      AND user_id IN (SELECT id FROM users WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?)
+                    """,
+                    (new_id, old_id, org),
+                )
+            except sqlite3.OperationalError:
+                break
 
 
 def _migrate_company_holidays(cursor) -> None:
