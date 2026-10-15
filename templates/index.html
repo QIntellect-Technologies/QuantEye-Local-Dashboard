@@ -5706,7 +5706,7 @@ async function fetchMultiLiveDetections() {
 
         <section class="payroll-panel">
           <h4>Named pay lines — default amount</h4>
-          <p class="payroll-panel-help">Example: HRA as 5000 PKR, or tax as 5% of basic. That default applies until you override it on Salary packages for one employee. Adding a line turns Named pay lines on.</p>
+          <p class="payroll-panel-help">Define HRA, tax, and other lines here. Assign them by org, branch, shift, department, designation, or employee. An employee assignment replaces a broader line. Percent of gross uses basic plus other named earnings (not percent-of-gross lines). Effective date is required and never defaults to today.</p>
           <form class="payroll-rule-form" onsubmit="event.preventDefault(); savePayrollComponentType();">
             <label class="payroll-rule-field">Name <input id="payrollComponentName" class="form-control" type="text" required placeholder="HRA"></label>
             <label class="payroll-rule-field">Code <input id="payrollComponentCode" class="form-control" type="text" required placeholder="HRA"></label>
@@ -5726,7 +5726,13 @@ async function fetchMultiLiveDetections() {
               </select>
             </label>
             <label class="payroll-rule-field">How to calculate
-              <select id="payrollComponentMode" class="form-select"><option value="fixed">Fixed PKR each month</option><option value="percent_basic">Percent of basic</option></select>
+              <select id="payrollComponentMode" class="form-select">
+                <option value="fixed">Fixed PKR each month</option>
+                <option value="percent_basic">Percent of basic</option>
+                <option value="percent_gross">Percent of gross (basic + other named earnings)</option>
+                <option value="per_working_day">PKR per working day</option>
+                <option value="per_hour">PKR per hour (present+late × 8)</option>
+              </select>
             </label>
             <label class="payroll-rule-field">Default amount
               <input id="payrollComponentDefault" class="form-control" type="number" min="0" step="0.01" value="0" placeholder="5000 or 5">
@@ -5740,6 +5746,42 @@ async function fetchMultiLiveDetections() {
               <thead style="background:#f2faff;"><tr><th>Name</th><th>Code</th><th>Kind</th><th>Category</th><th>Calc</th><th>Default amount</th><th></th></tr></thead>
               <tbody id="payrollComponentTypesBody"><tr><td colspan="7" class="text-muted text-center p-3">No named pay lines yet. Add one with a default PKR or %.</td></tr></tbody>
             </table>
+          </div>
+          <div style="margin-top:16px; padding-top:12px; border-top:1px solid #dbe5ec;">
+            <div style="font-weight:700; color:#173042;">Assign by scope</div>
+            <p class="payroll-panel-help">Precedence: employee, then designation, department, shift, branch, org. Tick Exclude to drop a broader line for one person.</p>
+            <form class="payroll-rule-form" onsubmit="event.preventDefault(); assignScopedPayLine();">
+              <label class="payroll-rule-field">Scope
+                <select id="payLineScopeType" class="form-select">
+                  <option value="org">All employees (org)</option>
+                  <option value="branch">Branch</option>
+                  <option value="shift">Shift</option>
+                  <option value="department">Department</option>
+                  <option value="designation">Designation</option>
+                  <option value="employee">Employee</option>
+                </select>
+              </label>
+              <label class="payroll-rule-field">Scope id / name
+                <input id="payLineScopeId" class="form-control" type="text" placeholder="Finance or employee id">
+              </label>
+              <label class="payroll-rule-field">Pay line
+                <select id="payLineAssignType" class="form-select"></select>
+              </label>
+              <label class="payroll-rule-field">Effective from
+                <input id="payLineEffectiveFrom" class="form-control" type="date" required>
+              </label>
+              <label class="payroll-rule-field" style="display:flex; align-items:center; gap:6px;">
+                <input id="payLineExcluded" type="checkbox"> Exclude
+              </label>
+              <button type="submit" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">Assign</button>
+            </form>
+            <div id="payLineAssignMessage" class="small mt-2"></div>
+            <div class="log-table-wrapper" style="margin-top:8px;">
+              <table class="log-table" style="width:100%;">
+                <thead><tr><th>Existing duplicate assignments (not auto-deleted)</th></tr></thead>
+                <tbody id="payLineDuplicateBody"><tr><td class="text-muted">None reported.</td></tr></tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -6951,6 +6993,9 @@ async function fetchMultiLiveDetections() {
               </label>
               <label class="payroll-rule-field">Percent of basic
                 <input id="modalSalaryComponentPercent" class="form-control" type="number" min="0" step="0.01" value="0">
+              </label>
+              <label class="payroll-rule-field">Effective from
+                <input id="modalSalaryComponentFrom" class="form-control" type="date" required>
               </label>
               <button type="button" class="btn btn-outline-primary btn-sm" onclick="assignEmployeePayLine()">Assign</button>
             </div>
@@ -12707,6 +12752,7 @@ async function fetchMultiLiveDetections() {
             if (el) el.checked = Boolean(Number(settings[flag] ?? (flag === 'enable_bonuses' ? 1 : 0)));
           });
           await loadPayrollComponentTypes();
+          await loadPayLineDuplicates();
           if (overtimeLimitMessage) {
             const maxHours = Number(settings.overtime_max_hours) || 0;
             overtimeLimitMessage.textContent = maxHours > 0
@@ -13236,8 +13282,68 @@ async function fetchMultiLiveDetections() {
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save pay line');
           const namedFlag = document.getElementById('flag_enable_named_components');
           if (namedFlag) namedFlag.checked = true;
-          showAppToast('Pay line saved. Default amount applies until you override it on Salary packages.', 'success');
+          showAppToast('Pay line saved. Assign it by scope below or on Salary packages. The catalog default is used only when the assignment amount/% is blank.', 'success');
           await loadPayrollComponentTypes();
+        } catch (error) {
+          showAppToast(error.message, 'error');
+          const fieldEl = error.field ? document.getElementById({
+            name: 'payrollComponentName', code: 'payrollComponentCode'
+          }[error.field] || 'payrollComponentName') : null;
+          if (fieldEl) fieldEl.focus();
+        }
+      }
+
+      async function loadPayLineDuplicates() {
+        const tbody = document.getElementById('payLineDuplicateBody');
+        const typeSelect = document.getElementById('payLineAssignType');
+        if (typeSelect && window._payrollComponentTypes) {
+          typeSelect.innerHTML = (window._payrollComponentTypes || []).map((row) =>
+            `<option value="${row.id}">${payrollEscape(row.name)}</option>`).join('');
+        }
+        if (!tbody) return;
+        try {
+          const response = await fetch(`${API_BASE}/payroll/component-duplicates`, { cache: 'no-store' });
+          const result = await response.json();
+          const rows = result.duplicates || [];
+          tbody.innerHTML = rows.length
+            ? rows.map((row) => `<tr><td>Type ${payrollEscape(row.component_type_id)} assignments ${payrollEscape(row.assignment_ids)} user ${payrollEscape(row.user_id)}</td></tr>`).join('')
+            : '<tr><td class="text-muted">None reported.</td></tr>';
+        } catch (error) {
+          tbody.innerHTML = `<tr><td class="text-danger">${payrollEscape(error.message)}</td></tr>`;
+        }
+      }
+
+      async function assignScopedPayLine() {
+        const scope = document.getElementById('payLineScopeType')?.value || 'employee';
+        const scopeId = document.getElementById('payLineScopeId')?.value || '';
+        const payload = {
+          scope,
+          scope_id: scopeId,
+          department: scope === 'department' ? scopeId : undefined,
+          designation: scope === 'designation' ? scopeId : undefined,
+          user_id: scope === 'employee' ? Number(scopeId) : undefined,
+          component_type_id: Number(document.getElementById('payLineAssignType')?.value),
+          percent: Number(document.getElementById('payrollComponentDefault')?.value || 0),
+          amount: Number(document.getElementById('payrollComponentDefault')?.value || 0),
+          effective_from: document.getElementById('payLineEffectiveFrom')?.value,
+          excluded: Boolean(document.getElementById('payLineExcluded')?.checked)
+        };
+        const message = document.getElementById('payLineAssignMessage');
+        try {
+          const response = await fetch(`${API_BASE}/payroll/employee-components`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const result = await response.json();
+          if (!response.ok || !result.success) {
+            if (message) message.textContent = `${result.field || 'form'}: ${result.error || 'Could not assign'}`;
+            showAppToast(result.error || 'Could not assign pay line', 'error');
+            return;
+          }
+          if (message) message.textContent = 'Assignment saved.';
+          showAppToast('Pay line assignment saved.', 'success');
+          await loadPayLineDuplicates();
         } catch (error) {
           showAppToast(error.message, 'error');
         }
@@ -13361,9 +13467,11 @@ async function fetchMultiLiveDetections() {
         if (!uid) return;
         const payload = {
           user_id: Number(uid),
+          scope: 'employee',
           component_type_id: Number(document.getElementById('modalSalaryComponentType')?.value),
           amount: Number(document.getElementById('modalSalaryComponentAmount')?.value || 0),
-          percent: Number(document.getElementById('modalSalaryComponentPercent')?.value || 0)
+          percent: Number(document.getElementById('modalSalaryComponentPercent')?.value || 0),
+          effective_from: document.getElementById('modalSalaryComponentFrom')?.value || undefined
         };
         const response = await fetch(`${API_BASE}/payroll/employee-components`, {
           method: 'POST',

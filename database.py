@@ -6791,6 +6791,23 @@ def delete_payroll_component_type(component_id: int, organization_id: Optional[s
         return cursor.rowcount > 0
 
 
+def list_payroll_component_duplicates(organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        ensure_payroll_extension_tables(cursor)
+        conn.commit()
+        rows = cursor.execute(
+            """SELECT * FROM payroll_duplicate_component_report
+               WHERE COALESCE(organization_id,'DEFAULT_ORG')=?
+                 AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+               ORDER BY id""",
+            (org, branch),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
 def list_employee_components(user_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:
     org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
@@ -6809,26 +6826,116 @@ def list_employee_components(user_id: int, organization_id: Optional[str] = None
 
 
 def save_employee_component(
-    user_id: int,
-    component_type_id: int,
+    user_id: Optional[int] = None,
+    component_type_id: int = 0,
     amount: float = 0.0,
     percent: float = 0.0,
     effective_from: Optional[str] = None,
     effective_to: Optional[str] = None,
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
-) -> bool:
+    scope_type: str = 'employee',
+    scope_id: Optional[str] = None,
+    excluded: bool = False,
+    min_amount: Optional[float] = None,
+    max_amount: Optional[float] = None,
+    rounding: str = 'cent',
+    calc_mode: Optional[str] = None,
+    confirm_affected_months: bool = False,
+    join_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    from payroll_extensions import VALID_SCOPES, _dates_overlap, _refresh_duplicate_component_report
     org, branch = _tenant_ids(organization_id, branch_id)
-    start = str(effective_from or date.today().isoformat())[:10]
+    scope = str(scope_type or 'employee').strip().lower()
+    if scope not in VALID_SCOPES:
+        raise ValueError('scope_type must be one of: org, branch, shift, department, designation, employee')
+    try:
+        type_id = int(component_type_id)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError('Pay line is required') from exc
+    if type_id <= 0:
+        raise ValueError('Pay line is required')
+    uid = 0
+    if scope == 'employee':
+        try:
+            uid = int(user_id)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError('Employee is required for employee-scope assignments') from exc
+        if uid <= 0:
+            raise ValueError('Employee is required for employee-scope assignments')
+    else:
+        if not str(scope_id or '').strip() and scope not in ('org',):
+            raise ValueError(f'{scope} is required')
+        uid = int(user_id or 0)
+    start = str(effective_from or '').strip()[:10]
+    if not start:
+        start = str(join_date or '').strip()[:10]
+    if not start:
+        raise ValueError('effective_from is required; it does not default to today. Use the employee start date or pick a date.')
+    try:
+        datetime.strptime(start, '%Y-%m-%d')
+    except ValueError as exc:
+        raise ValueError('effective_from must use YYYY-MM-DD') from exc
+    end = str(effective_to).strip()[:10] if effective_to else None
     with sqlite3.connect(DB_PATH) as conn:
-        conn.execute(
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        ensure_payroll_extension_tables(cursor)
+        existing = [dict(r) for r in cursor.execute(
+            """SELECT * FROM payroll_employee_components
+               WHERE COALESCE(organization_id,'DEFAULT_ORG')=?
+                 AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+                 AND component_type_id=?
+                 AND COALESCE(scope_type,'employee')=?
+                 AND COALESCE(user_id,0)=?
+                 AND COALESCE(scope_id,'')=?
+                 AND excluded=0
+                 AND active=1""",
+            (org, branch, type_id, scope, uid, str(scope_id or '')),
+        ).fetchall()]
+        for row in existing:
+            if _dates_overlap(start, end, row.get('effective_from'), row.get('effective_to')):
+                raise ValueError(
+                    f'This pay line is already assigned to the same {scope} for overlapping dates '
+                    f'({row.get("effective_from")} to {row.get("effective_to") or "open"}).'
+                )
+        affected = [
+            r['payroll_month'] for r in cursor.execute(
+                """SELECT DISTINCT payroll_month FROM payroll_runs
+                   WHERE COALESCE(organization_id,'DEFAULT_ORG')=?
+                     AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+                     AND payroll_month >= ?
+                   ORDER BY payroll_month""",
+                (org, branch, start[:7]),
+            ).fetchall()
+        ]
+        if affected and not confirm_affected_months:
+            return {
+                'ok': False,
+                'needs_confirmation': True,
+                'field': 'effective_from',
+                'error': 'This pay line starts after months already calculated. Confirm to save.',
+                'affected_months': affected,
+            }
+        cursor.execute(
             """INSERT INTO payroll_employee_components (
-                   organization_id, branch_id, user_id, component_type_id, amount, percent, effective_from, effective_to
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (org, branch, int(user_id), int(component_type_id), float(amount or 0), float(percent or 0), start, effective_to),
+                   organization_id, branch_id, user_id, component_type_id, amount, percent,
+                   effective_from, effective_to, scope_type, scope_id, excluded,
+                   min_amount, max_amount, rounding, calc_mode
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                org, branch, uid, type_id, float(amount or 0), float(percent or 0),
+                start, end, scope, str(scope_id or ''), int(bool(excluded)),
+                min_amount, max_amount, rounding or 'cent', calc_mode,
+            ),
         )
+        _refresh_duplicate_component_report(cursor)
+        _write_payroll_audit(cursor, 'pay_line_assigned', org, branch, start[:7], 'Admin', {
+            'user_id': uid, 'component_type_id': type_id, 'scope_type': scope, 'scope_id': scope_id,
+            'effective_from': start, 'excluded': bool(excluded),
+        })
         conn.commit()
-    return True
+        return {'ok': True, 'id': cursor.lastrowid}
 
 
 def delete_employee_component(assignment_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> bool:
@@ -6936,13 +7043,13 @@ def _load_payroll_extension_maps(cursor, organization_id: str, branch_id: Option
            WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
         (org, branch),
     ).fetchall()}
-    assignments: Dict[int, List[Dict[str, Any]]] = {}
-    for row in cursor.execute(
-        """SELECT * FROM payroll_employee_components
-           WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
-        (org, branch),
-    ).fetchall():
-        assignments.setdefault(int(row['user_id']), []).append(dict(row))
+    assignments: List[Dict[str, Any]] = [
+        dict(row) for row in cursor.execute(
+            """SELECT * FROM payroll_employee_components
+               WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+            (org, branch),
+        ).fetchall()
+    ]
     revisions: Dict[int, List[Dict[str, Any]]] = {}
     for row in cursor.execute(
         """SELECT * FROM salary_revisions
@@ -7503,7 +7610,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                    COALESCE(sc.ot_rate, 0.0) AS ot_rate,
                    COALESCE(NULLIF(TRIM(u.join_date), ''), date(u.enrollment_date), date(u.created_at)) AS employed_from,
                    u.exit_date,
-                   u.active
+                   u.active,
+                   COALESCE(u.shift_id, 0) AS shift_id
             FROM users u
             LEFT JOIN salary_configs sc ON sc.user_id = u.id
             WHERE (u.active = 1 OR (u.exit_date IS NOT NULL AND u.exit_date >= ?))
@@ -7748,12 +7856,17 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         pay_lines: List[Dict[str, Any]] = []
         if _payroll_flag_on(payroll_settings, 'enable_named_components'):
             named_earn, named_deduct, named_lines = _named_component_totals(
-                extra_maps['assignments'].get(int(employee_id), []),
+                extra_maps['assignments'],
                 extra_maps['types'],
                 basic_salary,
                 eligible_end,
                 payroll_settings,
                 decimal_places,
+                employee=employee,
+                organization_id=organization_id or 'DEFAULT_ORG',
+                branch_id=branch_id or 'DEFAULT_BRANCH',
+                working_days=float(month_scheduled_workdays or 0),
+                overtime_hours=float(present_days + late_days) * 8.0,
             )
             pay_lines.extend(named_lines)
             if any(item.get('kind') == 'earning' and item.get('category') != 'bonus' for item in named_lines):
@@ -7809,13 +7922,14 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             attendance_shortfall = _m((basic_salary + allowances) * (1.0 - earn_factor))
             absence_rule_deduction = 0.0
             rule_missing = False
-        deduction_amount = round(absence_rule_deduction + unpaid_leave_deduction + half_leave_deduction + attendance_shortfall, 2)
+        attendance_deduction = round(absence_rule_deduction + unpaid_leave_deduction + half_leave_deduction + attendance_shortfall, 2)
+        deduction_amount = round(attendance_deduction + custom_deductions, 2)
 
         # Gross = Basic + Allowances + Approved Overtime + Excel bonus + rest-day extra + adjustments/arrears
         gross_salary = _m(
             basic_salary + allowances + overtime_amount + bonus_amount + off_day_extra_pay + adjustment_amount
         )
-        total_emp_deductions = round(deduction_amount + custom_deductions, 2)
+        total_emp_deductions = deduction_amount
         net_salary = round(max(0.0, gross_salary - total_emp_deductions), 2)
 
         if attendance_mode == 'payable_days':
@@ -7908,7 +8022,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         'total_off_day_extra': round(sum(row.get('off_day_extra_pay', 0) for row in rows), 2),
         'total_adjustments': round(sum(row.get('adjustment_amount', 0) for row in rows), 2),
         'total_arrears': round(sum(row.get('arrears_amount', 0) for row in rows), 2),
-        'total_deduction': round(sum(row['deduction_amount'] + row['custom_deductions'] for row in rows), 2),
+        'total_deduction': round(sum(row['deduction_amount'] for row in rows), 2),
         'total_net_salary': round(sum(row['net_salary'] for row in rows), 2),
         'absence_rules_configured': absence_rules_configured,
         'notices': payroll_notices,
@@ -8126,7 +8240,7 @@ def get_monthly_payroll(
     result['total_overtime'] = round(sum(float(row.get('overtime_amount') or 0) for row in result['records']), 2)
     result['total_bonus'] = round(sum(float(row.get('bonus_amount') or 0) for row in result['records']), 2)
     result['total_off_day_extra'] = round(sum(float(row.get('off_day_extra_pay') or 0) for row in result['records']), 2)
-    result['total_deduction'] = round(sum(float(row.get('deduction_amount') or 0) + float(row.get('custom_deductions') or 0) for row in result['records']), 2)
+    result['total_deduction'] = round(sum(float(row.get('deduction_amount') or 0) for row in result['records']), 2)
     result['total_net_salary'] = round(sum(float(row.get('net_salary') or 0) for row in result['records']), 2)
     return result
 
@@ -8168,6 +8282,7 @@ def get_employee_payslip(
             'unpaid_leave': record.get('unpaid_leave_deduction') or 0,
             'half_leave': record.get('half_leave_deduction') or 0,
             'other': record.get('custom_deductions') or 0,
+            'total': record.get('deduction_amount') or 0,
         },
         'net_salary': record.get('net_salary'),
     }

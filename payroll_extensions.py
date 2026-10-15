@@ -40,7 +40,17 @@ VALID_COMPONENT_KINDS = ("earning", "deduction")
 VALID_COMPONENT_CATEGORIES = (
     "allowance", "bonus", "tax", "provident", "insurance", "loan", "advance", "other",
 )
-VALID_CALC_MODES = ("fixed", "percent_basic")
+VALID_CALC_MODES = ("fixed", "percent_basic", "percent_gross", "per_working_day", "per_hour")
+VALID_SCOPES = ("org", "branch", "shift", "department", "designation", "employee")
+SCOPE_RANK = {
+    "employee": 0,
+    "designation": 1,
+    "department": 2,
+    "shift": 3,
+    "branch": 4,
+    "org": 5,
+}
+# percent_gross uses basic + non-percent-gross named earnings (no circular reference).
 VALID_ADJ_TYPES = ("rest_day", "bonus", "earning", "deduction", "overtime", "arrears")
 VALID_ADJ_MODES = ("multiplier", "fixed")
 
@@ -137,6 +147,23 @@ def ensure_payroll_extension_tables(cursor) -> None:
     )
     cursor.execute(
         """
+        CREATE TABLE IF NOT EXISTS payroll_duplicate_component_report (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+            branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
+            user_id INTEGER,
+            component_type_id INTEGER NOT NULL,
+            assignment_ids TEXT NOT NULL DEFAULT '',
+            overlap_from TEXT,
+            overlap_to TEXT,
+            detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    _migrate_component_assignment_columns(cursor)
+    _refresh_duplicate_component_report(cursor)
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS payroll_audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
@@ -149,6 +176,146 @@ def ensure_payroll_extension_tables(cursor) -> None:
         )
         """
     )
+
+
+def _columns(cursor, table: str) -> set:
+    return {row[1] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _migrate_component_assignment_columns(cursor) -> None:
+    """Idempotent. Rollback: DROP the added columns is not possible in SQLite; restore a backup."""
+    type_cols = _columns(cursor, "payroll_component_types")
+    for column, spec in (
+        ("min_amount", "REAL"),
+        ("max_amount", "REAL"),
+        ("rounding", "TEXT NOT NULL DEFAULT 'cent'"),
+    ):
+        if column not in type_cols:
+            cursor.execute(f"ALTER TABLE payroll_component_types ADD COLUMN {column} {spec}")
+    asg_cols = _columns(cursor, "payroll_employee_components")
+    for column, spec in (
+        ("scope_type", "TEXT NOT NULL DEFAULT 'employee'"),
+        ("scope_id", "TEXT"),
+        ("excluded", "INTEGER NOT NULL DEFAULT 0"),
+        ("min_amount", "REAL"),
+        ("max_amount", "REAL"),
+        ("rounding", "TEXT NOT NULL DEFAULT 'cent'"),
+        ("calc_mode", "TEXT"),
+    ):
+        if column not in asg_cols:
+            cursor.execute(f"ALTER TABLE payroll_employee_components ADD COLUMN {column} {spec}")
+    cursor.execute(
+        "UPDATE payroll_employee_components SET scope_type = 'employee' WHERE scope_type IS NULL OR scope_type = ''"
+    )
+
+
+def _dates_overlap(a_from: Optional[str], a_to: Optional[str], b_from: Optional[str], b_to: Optional[str]) -> bool:
+    start_a = a_from or "0000-01-01"
+    start_b = b_from or "0000-01-01"
+    end_a = a_to or "9999-12-31"
+    end_b = b_to or "9999-12-31"
+    return start_a <= end_b and start_b <= end_a
+
+
+def _refresh_duplicate_component_report(cursor) -> None:
+    if not cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='payroll_employee_components'"
+    ).fetchone():
+        return
+    cursor.execute("DELETE FROM payroll_duplicate_component_report")
+    rows = [dict(r) for r in cursor.execute("SELECT * FROM payroll_employee_components WHERE active = 1").fetchall()]
+    seen = set()
+    for i, left in enumerate(rows):
+        for right in rows[i + 1 :]:
+            if int(left.get("component_type_id") or 0) != int(right.get("component_type_id") or 0):
+                continue
+            if str(left.get("organization_id")) != str(right.get("organization_id")):
+                continue
+            if str(left.get("branch_id")) != str(right.get("branch_id")):
+                continue
+            if str(left.get("scope_type") or "employee") != str(right.get("scope_type") or "employee"):
+                continue
+            if int(left.get("user_id") or 0) != int(right.get("user_id") or 0):
+                continue
+            if str(left.get("scope_id") or "") != str(right.get("scope_id") or ""):
+                continue
+            if int(left.get("excluded") or 0) or int(right.get("excluded") or 0):
+                continue
+            if not _dates_overlap(left.get("effective_from"), left.get("effective_to"), right.get("effective_from"), right.get("effective_to")):
+                continue
+            key = tuple(sorted((left["id"], right["id"])))
+            if key in seen:
+                continue
+            seen.add(key)
+            cursor.execute(
+                """INSERT INTO payroll_duplicate_component_report (
+                       organization_id, branch_id, user_id, component_type_id, assignment_ids, overlap_from, overlap_to
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    left.get("organization_id"),
+                    left.get("branch_id"),
+                    left.get("user_id"),
+                    left.get("component_type_id"),
+                    f"{left['id']},{right['id']}",
+                    max(left.get("effective_from") or "", right.get("effective_from") or ""),
+                    min(left.get("effective_to") or "9999-12-31", right.get("effective_to") or "9999-12-31"),
+                ),
+            )
+
+
+def assignment_matches_employee(row: Dict[str, Any], employee: Dict[str, Any], org: str, branch: str) -> bool:
+    scope = str(row.get("scope_type") or "employee").strip().lower()
+    sid = str(row.get("scope_id") or "").strip().lower()
+    if scope == "employee":
+        return int(row.get("user_id") or 0) == int(employee.get("employee_id") or employee.get("user_id") or 0)
+    if scope == "designation":
+        return sid == str(employee.get("designation") or "").strip().lower()
+    if scope == "department":
+        return sid == str(employee.get("department") or "").strip().lower()
+    if scope == "shift":
+        return str(row.get("scope_id") or "") == str(employee.get("shift_id") or "")
+    if scope == "branch":
+        return sid == str(branch).strip().lower() or str(row.get("scope_id") or "") == str(branch)
+    if scope == "org":
+        return True
+    return False
+
+
+def resolve_named_assignments(
+    all_assignments: Sequence[Dict[str, Any]],
+    employee: Dict[str, Any],
+    org: str,
+    branch: str,
+    as_of: date,
+) -> List[Dict[str, Any]]:
+    as_of_s = as_of.isoformat()
+    excluded_types = set()
+    candidates: List[Dict[str, Any]] = []
+    for row in all_assignments:
+        if not row.get("active", 1):
+            continue
+        start = str(row.get("effective_from") or "0000-01-01")[:10]
+        end = str(row.get("effective_to") or "9999-12-31")[:10]
+        if as_of_s < start or as_of_s > end:
+            continue
+        if not assignment_matches_employee(row, employee, org, branch):
+            continue
+        if int(row.get("excluded") or 0):
+            excluded_types.add(int(row.get("component_type_id") or 0))
+            continue
+        candidates.append(dict(row))
+    by_type: Dict[int, Dict[str, Any]] = {}
+    for row in candidates:
+        type_id = int(row.get("component_type_id") or 0)
+        if type_id in excluded_types and str(row.get("scope_type") or "employee") != "employee":
+            continue
+        if type_id in excluded_types and str(row.get("scope_type") or "employee") == "employee":
+            continue
+        rank = SCOPE_RANK.get(str(row.get("scope_type") or "employee"), 9)
+        current = by_type.get(type_id)
+        if current is None or rank < SCOPE_RANK.get(str(current.get("scope_type") or "employee"), 9):
+            by_type[type_id] = row
+    return list(by_type.values())
 
 
 def write_audit(cursor, action: str, organization_id: Optional[str], branch_id: Optional[str],
@@ -243,29 +410,54 @@ def named_component_totals(
     as_of: date,
     settings: Any,
     decimal_places: int,
+    employee: Optional[Dict[str, Any]] = None,
+    organization_id: str = "DEFAULT_ORG",
+    branch_id: str = "DEFAULT_BRANCH",
+    working_days: float = 0.0,
+    overtime_hours: float = 0.0,
 ) -> Tuple[float, float, List[Dict[str, Any]]]:
-    earnings = 0.0
-    deductions = 0.0
-    lines: List[Dict[str, Any]] = []
-    for row in assignments:
-        if not row.get("active", 1):
-            continue
-        start = _as_date(row.get("effective_from"))
-        end = _as_date(row.get("effective_to"))
-        if start and as_of < start:
-            continue
-        if end and as_of > end:
-            continue
+    resolved = list(assignments)
+    if employee is not None:
+        resolved = resolve_named_assignments(assignments, employee, organization_id, branch_id, as_of)
+    prepared: List[Tuple[Dict[str, Any], Dict[str, Any], str]] = []
+    for row in resolved:
         spec = types_by_id.get(int(row.get("component_type_id") or 0))
         if not spec or not spec.get("active", 1):
             continue
         if not category_allowed(spec.get("category") or "", settings):
             continue
-        if spec.get("calc_mode") == "percent_basic":
+        mode = str(row.get("calc_mode") or spec.get("calc_mode") or "fixed").strip().lower()
+        prepared.append((row, spec, mode))
+
+    def _amount_for(row: Dict[str, Any], spec: Dict[str, Any], mode: str, gross_base: float) -> float:
+        if mode == "percent_basic":
             amount = basic_salary * float(row.get("percent") or spec.get("default_amount") or 0) / 100.0
+        elif mode == "percent_gross":
+            amount = gross_base * float(row.get("percent") or spec.get("default_amount") or 0) / 100.0
+        elif mode == "per_working_day":
+            amount = float(row.get("amount") or spec.get("default_amount") or 0) * float(working_days or 0)
+        elif mode == "per_hour":
+            amount = float(row.get("amount") or spec.get("default_amount") or 0) * float(overtime_hours or 0)
         else:
             amount = float(row.get("amount") if row.get("amount") not in (None, "") else spec.get("default_amount") or 0)
-        amount = money(max(0.0, amount), decimal_places)
+        lo = row.get("min_amount") if row.get("min_amount") not in (None, "") else spec.get("min_amount")
+        hi = row.get("max_amount") if row.get("max_amount") not in (None, "") else spec.get("max_amount")
+        if lo not in (None, ""):
+            amount = max(amount, float(lo))
+        if hi not in (None, "") and float(hi) > 0:
+            amount = min(amount, float(hi))
+        return money(max(0.0, amount), decimal_places)
+
+    first_pass_earn = 0.0
+    for row, spec, mode in prepared:
+        if spec.get("kind") == "earning" and mode != "percent_gross":
+            first_pass_earn += _amount_for(row, spec, mode, basic_salary)
+    gross_base = basic_salary + first_pass_earn
+    earnings = 0.0
+    deductions = 0.0
+    lines: List[Dict[str, Any]] = []
+    for row, spec, mode in prepared:
+        amount = _amount_for(row, spec, mode, gross_base)
         kind = spec.get("kind") or "earning"
         lines.append({
             "name": spec.get("name"),
@@ -273,6 +465,7 @@ def named_component_totals(
             "kind": kind,
             "category": spec.get("category"),
             "amount": amount,
+            "scope_type": row.get("scope_type") or "employee",
         })
         if kind == "deduction":
             deductions += amount
@@ -396,7 +589,7 @@ def payroll_excel_bytes(payroll: Dict[str, Any], currency: str = DEFAULT_CURRENC
             float(row.get("adjustment_amount") or 0),
             float(row.get("arrears_amount") or 0),
             float(row.get("gross_salary") or 0),
-            float(row.get("deduction_amount") or 0) + float(row.get("custom_deductions") or 0),
+            float(row.get("deduction_amount") or 0),
             float(row.get("net_salary") or 0),
             row.get("status"),
         ])
@@ -424,7 +617,8 @@ def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
         "Adjustments: {} {}".format(currency, emp.get("adjustment_amount")),
         "Arrears: {} {}".format(currency, emp.get("arrears_amount")),
         "Gross: {} {}".format(currency, payslip.get("gross_salary")),
-        "Deductions: {} {}".format(currency, (payslip.get("deductions") or {}).get("other")),
+        "Named deductions: {} {}".format(currency, (payslip.get("deductions") or {}).get("other")),
+        "Total deductions: {} {}".format(currency, (payslip.get("deductions") or {}).get("total") or (payslip.get("deductions") or {}).get("other")),
         "Absence: {} {}".format(currency, (payslip.get("deductions") or {}).get("absence")),
         "Unpaid leave: {} {}".format(currency, (payslip.get("deductions") or {}).get("unpaid_leave")),
         "Net payable: {} {}".format(currency, payslip.get("net_salary")),

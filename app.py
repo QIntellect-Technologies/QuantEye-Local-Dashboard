@@ -5839,28 +5839,63 @@ def api_list_employee_components(user_id):
     return jsonify({'components': db.list_employee_components(user_id, **payroll_tenant())})
 
 
+@app.route('/api/payroll/component-duplicates', methods=['GET'])
+def api_list_payroll_component_duplicates():
+    return jsonify({'duplicates': db.list_payroll_component_duplicates(**payroll_tenant())})
+
+
 @app.route('/api/payroll/employee-components', methods=['POST'])
 def api_save_employee_component():
     data = request.get_json(silent=True) or {}
+    scope = str(data.get('scope') or data.get('scope_type') or 'employee').strip().lower()
+    user_id = data.get('user_id')
+    join_date = None
+    if user_id not in (None, ''):
+        try:
+            user_id = int(user_id)
+        except (TypeError, ValueError, OverflowError):
+            return jsonify({'error': 'Employee must be a number', 'field': 'user_id'}), 400
+        user = verify_user_access(user_id)
+        if not user:
+            return jsonify({'error': 'Employee not found or access denied', 'field': 'user_id'}), 404
+        join_date = (user.get('join_date') or user.get('enrollment_date') or '')[:10] if isinstance(user, dict) else None
     try:
-        user_id = int(data.get('user_id'))
-        component_type_id = int(data.get('component_type_id'))
-    except (TypeError, ValueError, OverflowError):
-        return jsonify({'error': 'Employee and pay line are required'}), 400
-    if not verify_user_access(user_id):
-        return jsonify({'error': 'Employee not found or access denied'}), 404
-    ok = db.save_employee_component(
-        user_id=user_id,
-        component_type_id=component_type_id,
-        amount=float(data.get('amount') or 0),
-        percent=float(data.get('percent') or 0),
-        effective_from=data.get('effective_from'),
-        effective_to=data.get('effective_to'),
-        **payroll_tenant(),
-    )
-    if not ok:
-        return jsonify({'error': 'Failed to assign pay line'}), 400
-    return jsonify({'success': True, 'components': db.list_employee_components(user_id, **payroll_tenant())})
+        result = db.save_employee_component(
+            user_id=user_id,
+            component_type_id=data.get('component_type_id'),
+            amount=float(data.get('amount') or 0),
+            percent=float(data.get('percent') or 0),
+            effective_from=data.get('effective_from'),
+            effective_to=data.get('effective_to'),
+            scope_type=scope,
+            scope_id=data.get('scope_id') or data.get('department') or data.get('designation') or data.get('shift_id'),
+            excluded=bool(data.get('excluded')),
+            min_amount=data.get('min_amount'),
+            max_amount=data.get('max_amount'),
+            rounding=data.get('rounding') or 'cent',
+            calc_mode=data.get('calc_mode'),
+            confirm_affected_months=bool(data.get('confirm_affected_months')),
+            join_date=join_date,
+            **payroll_tenant(),
+        )
+    except ValueError as exc:
+        message = str(exc)
+        field = 'effective_from' if 'effective_from' in message else (
+            'user_id' if 'Employee' in message else (
+                'component_type_id' if 'Pay line' in message else 'scope_type'
+            )
+        )
+        return jsonify({'error': message, 'field': field}), 400
+    if not result.get('ok'):
+        return jsonify({
+            'error': result.get('error'),
+            'field': result.get('field'),
+            'affected_months': result.get('affected_months') or [],
+            'needs_confirmation': True,
+        }), 409
+    listing_user = int(user_id or 0)
+    components = db.list_employee_components(listing_user, **payroll_tenant()) if listing_user else []
+    return jsonify({'success': True, 'id': result.get('id'), 'components': components})
 
 
 @app.route('/api/payroll/employee-components/<int:assignment_id>', methods=['DELETE'])

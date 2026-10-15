@@ -942,14 +942,25 @@ def seed_scenario(api: LiveAPI, scenario_id: str) -> Dict[str, Any]:
             "scope": "department", "department": "Finance", "component_type_id": hra_id,
             "percent": 10, "effective_from": "2026-09-01",
         })
+        dup_dept = api.request("POST", "/api/payroll/employee-components", json_body={
+            "scope": "department", "department": "Finance", "component_type_id": hra_id,
+            "percent": 10, "effective_from": "2026-09-01",
+        })
         e1_assign = api.request("POST", "/api/payroll/employee-components", json_body={
-            "user_id": core["ids"]["E1"], "component_type_id": hra_id, "percent": 10, "effective_from": "2026-09-01",
+            "user_id": core["ids"]["E1"], "scope": "employee", "component_type_id": hra_id,
+            "percent": 20, "effective_from": "2026-09-01",
+        })
+        exclude_e9 = api.request("POST", "/api/payroll/employee-components", json_body={
+            "user_id": core["ids"]["E9"], "scope": "employee", "component_type_id": hra_id,
+            "excluded": True, "effective_from": "2026-09-01",
         })
         payroll = slim_records(get_payroll(api, SEP_MONTH))
         return {
             "unlock": core["unlock"],
             "department_scope_post": {"status": dept_assign[0], "body": dept_assign[1]},
+            "duplicate_department": {"status": dup_dept[0], "body": dup_dept[1]},
             "employee_scope_post": {"status": e1_assign[0], "body": e1_assign[1]},
+            "exclude_e9": {"status": exclude_e9[0], "body": exclude_e9[1]},
             "e1": next((r for r in payroll if r.get("employee_name") == "E1 Full Attend"), None),
             "e2_ops": next((r for r in payroll if r.get("employee_name") == "E2 Two Absent"), None),
             "e9_finance": next((r for r in payroll if r.get("employee_name") == "E9 Flex Pay"), None),
