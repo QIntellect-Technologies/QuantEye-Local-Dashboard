@@ -4838,6 +4838,46 @@ def _worked_label(first_seen: Any, last_seen: Any) -> str:
     return f'{hours}h {mins}m'
 
 
+def _current_shift_for_mobile(user_id: int, organization_id: str) -> Dict[str, str]:
+    """This company's live shift for the employee. Never another company's leftover shift."""
+    org = str(organization_id or '').strip()
+    empty = {'shift_name': '', 'shift_start': '', 'shift_end': ''}
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT s.name, s.start_time, s.end_time
+                  FROM users u
+                  JOIN shifts s ON s.id = u.shift_id
+                 WHERE u.id = ? AND u.active = 1
+                   AND (? = '' OR s.organization_id = ? OR s.organization_id = u.organization_id)
+                """,
+                (int(user_id), org, org),
+            ).fetchone()
+            if not row and org:
+                row = conn.execute(
+                    """
+                    SELECT name, start_time, end_time
+                      FROM shifts
+                     WHERE organization_id = ? AND COALESCE(active, 1) = 1
+                     ORDER BY COALESCE(is_default, 0) DESC, id DESC
+                     LIMIT 1
+                    """,
+                    (org,),
+                ).fetchone()
+    except Exception as error:
+        logger.error(f"Mobile shift lookup error: {error}")
+        return empty
+    if not row:
+        return empty
+    return {
+        'shift_name': str(row['name'] or '').strip(),
+        'shift_start': str(row['start_time'] or '').strip(),
+        'shift_end': str(row['end_time'] or '').strip(),
+    }
+
+
 def employee_mobile_attendance(user_id: int, organization_id: str, branch_id: str) -> Dict[str, Any]:
     """Today's attendance for one employee, using the report the portal already builds."""
     user = get_user_by_id(int(user_id), organization_id=organization_id) or {}
@@ -4857,17 +4897,18 @@ def employee_mobile_attendance(user_id: int, organization_id: str, branch_id: st
         status = 'On Leave'
     else:
         status = 'Absent'
-    shift_start = row.get('shift_start') or ''
-    shift_end = row.get('shift_end') or ''
-    if not shift_start or not shift_end:
-        shift_start = shift_start or '09:00'
-        shift_end = shift_end or '17:00'
+    shift = _current_shift_for_mobile(int(user_id), organization_id)
+    shift_start = shift.get('shift_start') or ''
+    shift_end = shift.get('shift_end') or ''
+    start_label = _clock_label(shift_start) or shift_start
+    end_label = _clock_label(shift_end) or shift_end
+    timing = f'{start_label} - {end_label}' if start_label and end_label else ''
     return {
         'name': row.get('name') or user.get('name') or '',
         'designation': row.get('position') or user.get('position') or '',
         'department': row.get('department') or user.get('department') or '',
-        'shift_name': row.get('shift_name') or '',
-        'shift_timing': f'{shift_start} - {shift_end}',
+        'shift_name': shift.get('shift_name') or '',
+        'shift_timing': timing,
         'check_in': _clock_label(row.get('first_seen')),
         'check_out': _clock_label(row.get('last_seen')),
         'status': status,
