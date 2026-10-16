@@ -3741,11 +3741,11 @@ def api_client_login():
     return jsonify({'success': False, 'message': 'Invalid credentials. Please verify your email and password.'}), 401
 
 
-def _organization_has_mobile_module(organization_id: str) -> bool:
-    """Ask Main whether this company selected the Mobile App module."""
+def _mobile_company(organization_id: str):
+    """Ask Main whether this company selected Mobile App, and return its name."""
     org_id = str(organization_id or '').strip()
     if not org_id:
-        return False
+        return False, ''
     main_url = os.environ.get(
         "MAIN_DASHBOARD_URL",
         "https://quanteye-main-dashboard-production.up.railway.app",
@@ -3758,10 +3758,16 @@ def _organization_has_mobile_module(organization_id: str) -> bool:
             timeout=4.0,
         ) as resp:
             payload = json.loads(resp.read().decode('utf-8'))
-        return bool(payload.get('mobile'))
+        return bool(payload.get('mobile')), str(payload.get('name') or '').strip()
     except Exception:
         logger.exception("Could not confirm the Mobile App module for %s", org_id)
-        return False
+        return False, ''
+
+
+def _organization_has_mobile_module(organization_id: str) -> bool:
+    """Ask Main whether this company selected the Mobile App module."""
+    allowed, _company_name = _mobile_company(organization_id)
+    return allowed
 
 
 @app.route('/m')
@@ -3839,7 +3845,8 @@ def api_mobile_login():
     if not user:
         return jsonify({'success': False, 'message': 'Email or password is incorrect.'}), 401
     organization_id = str(user.get('organization_id') or '').strip()
-    if not _organization_has_mobile_module(organization_id):
+    allowed, company_name = _mobile_company(organization_id)
+    if not allowed:
         return jsonify({
             'success': False,
             'message': 'Mobile App is not enabled for this company.',
@@ -3848,7 +3855,8 @@ def api_mobile_login():
     session['mobile_organization_id'] = organization_id
     session['mobile_branch_id'] = str(user.get('branch_id') or 'DEFAULT_BRANCH')
     session['mobile_employee_name'] = user.get('name') or ''
-    return jsonify({'success': True, 'name': user.get('name') or ''})
+    session['mobile_company_name'] = company_name
+    return jsonify({'success': True, 'name': user.get('name') or '', 'company': company_name})
 
 
 @app.route('/api/mobile/logout', methods=['POST'])
@@ -3858,6 +3866,7 @@ def api_mobile_logout():
         'mobile_organization_id',
         'mobile_branch_id',
         'mobile_employee_name',
+        'mobile_company_name',
     ):
         session.pop(key, None)
     return jsonify({'success': True})
@@ -3869,13 +3878,17 @@ def api_mobile_today():
     organization_id = session.get('mobile_organization_id')
     if not user_id or not organization_id:
         return jsonify({'success': False, 'message': 'Please log in.'}), 401
-    if not _organization_has_mobile_module(str(organization_id)):
+    allowed, company_name = _mobile_company(str(organization_id))
+    if not allowed:
         return jsonify({'success': False, 'message': 'Mobile App is not enabled for this company.'}), 403
     card = db.employee_mobile_attendance(
         int(user_id),
         str(organization_id),
         str(session.get('mobile_branch_id') or 'DEFAULT_BRANCH'),
     )
+    card['company'] = company_name or str(session.get('mobile_company_name') or '')
+    if card['company']:
+        session['mobile_company_name'] = card['company']
     return jsonify({'success': True, 'attendance': card})
 
 

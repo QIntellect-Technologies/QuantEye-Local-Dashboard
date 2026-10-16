@@ -4800,7 +4800,9 @@ def employee_mobile_attendance(user_id: int, organization_id: str, branch_id: st
     )
     row = (report.get('records') or [{}])[0] if isinstance(report, dict) else {}
     raw_status = str(row.get('status') or 'absent').strip().lower()
-    if raw_status in {'present', 'late', 'checked_out'}:
+    if raw_status == 'checked_out':
+        status = 'Checked Out'
+    elif raw_status in {'present', 'late'}:
         status = 'Present'
     elif raw_status in {'on_leave', 'on_leave_unpaid'}:
         status = 'On Leave'

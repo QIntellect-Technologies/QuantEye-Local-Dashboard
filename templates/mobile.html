@@ -2,52 +2,135 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <link rel="manifest" href="/m/manifest.webmanifest">
-  <meta name="theme-color" content="#0d9488">
+  <meta name="theme-color" content="#0f3d4c">
   <title>My Attendance</title>
   <style>
-    body { margin: 0; font-family: Segoe UI, sans-serif; background: #eef8ff; color: #173042; }
-    main { max-width: 420px; margin: 0 auto; padding: 24px 16px 40px; }
-    h1 { font-size: 1.4rem; margin: 0 0 6px; }
-    p { color: #628095; margin: 0 0 16px; }
-    form, .card { background: #fff; border: 1px solid #cfe8f7; border-radius: 14px; padding: 16px; }
-    label { display: block; font-size: 0.82rem; font-weight: 700; margin: 10px 0 4px; }
-    input { width: 100%; box-sizing: border-box; border: 1px solid #cfe8f7; border-radius: 8px; padding: 10px; font-size: 1rem; }
-    button { width: 100%; margin-top: 14px; background: #0d9488; color: #fff; border: 0; border-radius: 8px; padding: 12px; font-weight: 700; font-size: 1rem; }
-    .error { color: #b91c1c; font-weight: 700; min-height: 1.2em; }
-    .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #e2e8f0; }
-    .row span { color: #628095; }
-    .status { font-weight: 800; }
-    .present { color: #15803d; }
-    .absent { color: #b91c1c; }
+    :root {
+      --ink: #143044;
+      --muted: #5d7384;
+      --line: #e4edf3;
+      --card: #ffffff;
+      --teal: #0f766e;
+      --teal-dark: #115e59;
+      --page: #eef3f6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background: var(--page);
+      color: var(--ink);
+    }
+    .shell { max-width: 440px; margin: 0 auto; min-height: 100vh; }
+    .top {
+      background: linear-gradient(165deg, #0f3d4c 0%, #0f766e 100%);
+      color: #fff;
+      padding: 28px 20px 36px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .mark {
+      width: 42px; height: 42px; border-radius: 12px;
+      background: rgba(255,255,255,0.16);
+      display: grid; place-items: center;
+      font-weight: 800; letter-spacing: 0.02em;
+    }
+    .eyebrow { margin: 0; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.78; }
+    h1 { margin: 2px 0 0; font-size: 1.35rem; line-height: 1.25; font-weight: 700; }
+    .intro { margin: 14px 0 0; color: rgba(255,255,255,0.86); font-size: 0.95rem; }
+    main { margin-top: -18px; padding: 0 16px 32px; }
+    form, .card {
+      background: var(--card);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(15, 61, 76, 0.08);
+    }
+    label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--muted); margin: 12px 0 6px; }
+    input {
+      width: 100%; border: 1px solid var(--line); background: #f8fbfc;
+      border-radius: 12px; padding: 12px 14px; font-size: 1rem; color: var(--ink);
+    }
+    input:focus { outline: 2px solid rgba(15, 118, 110, 0.25); border-color: var(--teal); }
+    button {
+      width: 100%; margin-top: 16px; border: 0; border-radius: 12px;
+      padding: 13px; font-weight: 700; font-size: 1rem; cursor: pointer;
+    }
+    .primary { background: var(--teal); color: #fff; }
+    .primary:active { background: var(--teal-dark); }
+    .ghost { background: #f3f7f8; color: var(--ink); margin-top: 8px; }
+    .error { color: #b42318; font-weight: 700; min-height: 1.2em; margin-top: 8px; }
+    .person { display: flex; align-items: center; gap: 12px; }
+    .avatar {
+      width: 52px; height: 52px; border-radius: 16px; flex: 0 0 auto;
+      background: #e6f4f2; color: var(--teal-dark);
+      display: grid; place-items: center; font-size: 1.2rem; font-weight: 800;
+    }
+    .person h2 { margin: 0; font-size: 1.15rem; }
+    .person p { margin: 3px 0 0; color: var(--muted); font-size: 0.88rem; }
+    .pill {
+      margin-left: auto; border-radius: 999px; padding: 6px 10px;
+      font-size: 0.75rem; font-weight: 800; white-space: nowrap;
+    }
+    .present { background: #e8f7ee; color: #157a3b; }
+    .absent { background: #fdecec; color: #b42318; }
+    .out { background: #e7f1fb; color: #175cd3; }
+    .leave { background: #fff6e5; color: #b54708; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 16px; }
+    .stat { background: #f6fafb; border-radius: 14px; padding: 12px 10px; }
+    .stat span { display: block; color: var(--muted); font-size: 0.72rem; font-weight: 700; }
+    .stat strong { display: block; margin-top: 4px; font-size: 0.95rem; }
+    .rows { margin-top: 8px; }
+    .row { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .row span { color: var(--muted); }
+    .row strong { text-align: right; }
   </style>
 </head>
 <body>
-  <main>
-    <h1>My Attendance</h1>
-    <p id="intro">Loading your attendance...</p>
-    <form id="loginForm" hidden>
-      <label for="email">Email</label>
-      <input id="email" type="email" autocomplete="username" required>
-      <label for="password">Password</label>
-      <input id="password" type="password" autocomplete="current-password" required>
-      <div class="error" id="loginError"></div>
-      <button type="submit">Log in</button>
-    </form>
-    <section id="attendanceCard" class="card" hidden>
-      <div class="row"><span>Name</span><strong id="empName"></strong></div>
-      <div class="row"><span>Designation</span><strong id="empDesignation"></strong></div>
-      <div class="row"><span>Department</span><strong id="empDepartment"></strong></div>
-      <div class="row"><span>Shift</span><strong id="empShift"></strong></div>
-      <div class="row"><span>Check-in</span><strong id="empIn"></strong></div>
-      <div class="row"><span>Check-out</span><strong id="empOut"></strong></div>
-      <div class="row"><span>Status</span><strong id="empStatus" class="status"></strong></div>
-      <div class="row"><span>Working time</span><strong id="empWorked"></strong></div>
-      <button type="button" id="refreshButton" style="background:#0284c7; margin-top:10px;">Refresh</button>
-      <button type="button" id="logoutButton">Log out</button>
-    </section>
-  </main>
+  <div class="shell">
+    <header class="top">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">Q</div>
+        <div>
+          <p class="eyebrow">QuantEye</p>
+          <h1 id="companyName">Attendance</h1>
+        </div>
+      </div>
+      <p class="intro" id="intro">Opening your attendance…</p>
+    </header>
+    <main>
+      <form id="loginForm" hidden>
+        <label for="email">Work email</label>
+        <input id="email" type="email" autocomplete="username" placeholder="name@company.com" required>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Your password" required>
+        <div class="error" id="loginError"></div>
+        <button class="primary" type="submit">Sign in</button>
+      </form>
+      <section id="attendanceCard" class="card" hidden>
+        <div class="person">
+          <div class="avatar" id="empInitial">Q</div>
+          <div>
+            <h2 id="empName"></h2>
+            <p id="empRole"></p>
+          </div>
+          <strong id="empStatus" class="pill"></strong>
+        </div>
+        <div class="stats">
+          <div class="stat"><span>Check-in</span><strong id="empIn"></strong></div>
+          <div class="stat"><span>Check-out</span><strong id="empOut"></strong></div>
+          <div class="stat"><span>Worked</span><strong id="empWorked"></strong></div>
+        </div>
+        <div class="rows">
+          <div class="row"><span>Designation</span><strong id="empDesignation"></strong></div>
+          <div class="row"><span>Department</span><strong id="empDepartment"></strong></div>
+          <div class="row"><span>Shift</span><strong id="empShift"></strong></div>
+        </div>
+        <button class="primary" type="button" id="refreshButton">Refresh</button>
+        <button class="ghost" type="button" id="logoutButton">Log out</button>
+      </section>
+    </main>
+  </div>
   <script>
     const loginForm = document.getElementById('loginForm');
     const attendanceCard = document.getElementById('attendanceCard');
@@ -57,10 +140,48 @@
       document.getElementById(id).textContent = value || '—';
     }
 
+    function prettyDate(value) {
+      if (!value) return 'Today';
+      const parsed = new Date(String(value).slice(0, 10) + 'T00:00:00');
+      if (Number.isNaN(parsed.getTime())) return 'Today';
+      return parsed.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+
+    function statusClass(status) {
+      if (status === 'Present') return 'pill present';
+      if (status === 'Checked Out') return 'pill out';
+      if (status === 'On Leave') return 'pill leave';
+      return 'pill absent';
+    }
+
     function showLogin() {
       loginForm.hidden = false;
       attendanceCard.hidden = true;
-      document.getElementById('intro').textContent = 'Log in with your email.';
+      document.getElementById('companyName').textContent = 'Attendance';
+      document.getElementById('intro').textContent = 'Sign in with your work email.';
+    }
+
+    function showCard(card) {
+      const status = card.status || 'Absent';
+      const role = [card.designation, card.department].filter(Boolean).join(' · ');
+      const shift = [card.shift_name, card.shift_timing].filter(Boolean).join(' · ');
+      const initial = (card.name || 'Q').trim().charAt(0).toUpperCase();
+      loginForm.hidden = true;
+      attendanceCard.hidden = false;
+      document.getElementById('companyName').textContent = card.company || 'My Attendance';
+      document.getElementById('intro').textContent = prettyDate(card.date);
+      document.getElementById('empInitial').textContent = initial;
+      showText('empName', card.name);
+      showText('empRole', role);
+      showText('empDesignation', card.designation);
+      showText('empDepartment', card.department);
+      showText('empShift', shift);
+      showText('empIn', card.check_in);
+      showText('empOut', card.check_out);
+      showText('empWorked', card.working_time);
+      const statusEl = document.getElementById('empStatus');
+      statusEl.textContent = status;
+      statusEl.className = statusClass(status);
     }
 
     async function showAttendance() {
@@ -70,20 +191,7 @@
         showLogin();
         return;
       }
-      const card = data.attendance || {};
-      loginForm.hidden = true;
-      attendanceCard.hidden = false;
-      document.getElementById('intro').textContent = card.date ? `Today, ${card.date}` : 'Today';
-      showText('empName', card.name);
-      showText('empDesignation', card.designation);
-      showText('empDepartment', card.department);
-      showText('empShift', card.shift_timing);
-      showText('empIn', card.check_in);
-      showText('empOut', card.check_out);
-      showText('empWorked', card.working_time);
-      const status = document.getElementById('empStatus');
-      status.textContent = card.status || 'Absent';
-      status.className = 'status ' + (card.status === 'Present' ? 'present' : 'absent');
+      showCard(data.attendance || {});
     }
 
     loginForm.addEventListener('submit', async (event) => {
@@ -98,7 +206,7 @@
           password: document.getElementById('password').value
         })
       });
-      const data = await response.json();
+      const data = await response.json().catch(function() { return {}; });
       if (!response.ok) {
         loginError.textContent = data.message || 'Login failed.';
         return;
