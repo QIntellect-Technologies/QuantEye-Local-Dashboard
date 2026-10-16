@@ -3845,12 +3845,9 @@ def api_mobile_login():
     if not user:
         return jsonify({'success': False, 'message': 'Email or password is incorrect.'}), 401
     organization_id = str(user.get('organization_id') or '').strip()
-    allowed, company_name = _mobile_company(organization_id)
-    if not allowed:
-        return jsonify({
-            'success': False,
-            'message': 'Mobile App is not enabled for this company.',
-        }), 403
+    _allowed, company_name = _mobile_company(organization_id)
+    if not company_name:
+        company_name = str(user.get('organization_name') or '').strip()
     session['mobile_employee_id'] = int(user['id'])
     session['mobile_organization_id'] = organization_id
     session['mobile_branch_id'] = str(user.get('branch_id') or 'DEFAULT_BRANCH')
@@ -3878,9 +3875,9 @@ def api_mobile_today():
     organization_id = session.get('mobile_organization_id')
     if not user_id or not organization_id:
         return jsonify({'success': False, 'message': 'Please log in.'}), 401
-    allowed, company_name = _mobile_company(str(organization_id))
-    if not allowed:
-        return jsonify({'success': False, 'message': 'Mobile App is not enabled for this company.'}), 403
+    _allowed, company_name = _mobile_company(str(organization_id))
+    if not company_name:
+        company_name = str(session.get('mobile_company_name') or session.get('mobile_employee_name') or '')
     card = db.employee_mobile_attendance(
         int(user_id),
         str(organization_id),
