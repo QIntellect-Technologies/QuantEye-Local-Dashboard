@@ -254,6 +254,7 @@ def check_module_entitlement_for_request():
                 '/api/admin/status', '/api/admin/verify-password', '/api/admin/lock',
                 '/api/login', '/api/client/login', '/api/logout', '/api/change-password',
                 '/m', '/mobile', '/m/manifest.webmanifest', '/m/sw.js',
+                '/m/icon-192.png', '/m/icon-512.png',
                 '/api/mobile/login', '/api/mobile/logout', '/api/mobile/today',
                 '/api/enrollment/unlock', '/api/enrollment/lock'}:
         return None
@@ -371,6 +372,8 @@ def require_admin_session_for_app_data():
         '/mobile',
         '/m/manifest.webmanifest',
         '/m/sw.js',
+        '/m/icon-192.png',
+        '/m/icon-512.png',
         '/api/mobile/login',
         '/api/mobile/logout',
         '/api/mobile/today',
