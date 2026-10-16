@@ -254,7 +254,8 @@ def check_module_entitlement_for_request():
                 '/api/admin/status', '/api/admin/verify-password', '/api/admin/lock',
                 '/api/login', '/api/client/login', '/api/logout', '/api/change-password',
                 '/m', '/mobile', '/m/manifest.webmanifest', '/m/sw.js',
-                '/m/icon-192.png', '/m/icon-512.png',
+                '/m/icon-192.png', '/m/icon-512.png', '/m/QuantEye.apk',
+                '/.well-known/assetlinks.json',
                 '/api/mobile/login', '/api/mobile/logout', '/api/mobile/today',
                 '/api/enrollment/unlock', '/api/enrollment/lock'}:
         return None
@@ -374,6 +375,8 @@ def require_admin_session_for_app_data():
         '/m/sw.js',
         '/m/icon-192.png',
         '/m/icon-512.png',
+        '/m/QuantEye.apk',
+        '/.well-known/assetlinks.json',
         '/api/mobile/login',
         '/api/mobile/logout',
         '/api/mobile/today',
@@ -3783,6 +3786,27 @@ def mobile_manifest():
             {'src': '/m/icon-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'any'},
         ],
     })
+
+
+@app.route('/.well-known/assetlinks.json')
+def mobile_assetlinks():
+    """Lets Android open the phone page from the app icon."""
+    return send_from_directory(
+        os.path.join(app.root_path, 'static', 'mobile'),
+        'assetlinks.json',
+        mimetype='application/json',
+    )
+
+
+@app.route('/m/QuantEye.apk')
+def mobile_apk_download():
+    """The same install file for every compatible Android phone."""
+    return send_file(
+        os.path.join(app.root_path, 'static', 'mobile', 'QuantEye.apk'),
+        mimetype='application/vnd.android.package-archive',
+        as_attachment=True,
+        download_name='QuantEye.apk',
+    )
 
 
 @app.route('/m/icon-<int:size>.png')
