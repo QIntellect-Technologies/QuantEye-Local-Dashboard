@@ -3892,6 +3892,19 @@ def api_mobile_today():
     return jsonify({'success': True, 'attendance': card})
 
 
+@app.route('/api/mobile/credentials', methods=['GET'])
+def api_mobile_list_credentials():
+    if not (session.get('client_user') or session.get('admin_unlocked')):
+        return jsonify({'success': False, 'message': 'Authentication required.'}), 401
+    if not licensed_module_flags(browser_licensed_modules() or []).get('mobile'):
+        return _forbidden_module_response('mobile')
+    result = db.list_mobile_credentials(
+        get_current_tenant_id(),
+        get_current_branch_id(),
+    )
+    return jsonify({'success': True, 'credentials': result['credentials']})
+
+
 @app.route('/api/mobile/credentials', methods=['POST'])
 def api_mobile_generate_credentials():
     if not (session.get('client_user') or session.get('admin_unlocked')):

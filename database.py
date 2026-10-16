@@ -4721,8 +4721,47 @@ def generate_mobile_credentials(
     return {'credentials': credentials, 'skipped': skipped}
 
 
+def list_mobile_credentials(
+    organization_id: str,
+    branch_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return phone logins already saved for this company. The password is the same name@123."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            query = """
+                SELECT name, email
+                  FROM users
+                 WHERE active = 1
+                   AND COALESCE(mobile_login, 0) = 1
+                   AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+            """
+            params: List[Any] = [organization_id or 'DEFAULT_ORG']
+            if branch_id and branch_id not in ('all', 'DEFAULT_BRANCH'):
+                query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+                params.append(branch_id)
+            query += " ORDER BY name COLLATE NOCASE, id"
+            rows = conn.execute(query, params).fetchall()
+    except Exception as error:
+        logger.error(f"List mobile credentials error: {error}")
+        return {'credentials': []}
+    credentials = []
+    for row in rows:
+        name = str(row['name'] or '').strip()
+        email = str(row['email'] or '').strip().lower()
+        password = mobile_password_for_name(name)
+        if not email or not password:
+            continue
+        credentials.append({'name': name, 'username': email, 'password': password})
+    return {'credentials': credentials}
+
+
 def authenticate_employee_email(email: str, password: str) -> Optional[Dict]:
-    """Log in one employee by email. A shared email matches nobody."""
+    """Log in the employee whose email and phone password match.
+
+    The same email can exist in another company. Only the saved password decides
+    which person signs in. Two matching passwords match nobody.
+    """
     email_key = str(email or '').strip().lower()
     if not email_key or not password:
         return None
@@ -4733,14 +4772,16 @@ def authenticate_employee_email(email: str, password: str) -> Optional[Dict]:
                 "SELECT * FROM users WHERE active = 1 AND LOWER(TRIM(COALESCE(email, ''))) = ?",
                 (email_key,),
             ).fetchall()
-        if len(rows) != 1:
-            return None
-        user = dict(rows[0])
-        password_hash = user.get('password_hash')
-        if password_hash and check_password_hash(password_hash, password):
-            user.pop('password', None)
-            user.pop('password_hash', None)
-            return user
+        matches = []
+        for row in rows:
+            user = dict(row)
+            password_hash = user.get('password_hash')
+            if password_hash and check_password_hash(password_hash, password):
+                user.pop('password', None)
+                user.pop('password_hash', None)
+                matches.append(user)
+        if len(matches) == 1:
+            return matches[0]
         return None
     except Exception as e:
         logger.error(f"Employee email login error: {e}")

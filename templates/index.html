@@ -9235,6 +9235,41 @@ async function fetchMultiLiveDetections() {
 
       window.entitledModules = window.entitledModules || { attendance: true, payroll: true, leave: true, overtime: true, shifts: true, mobile: true };
 
+      function renderMobileCredentialBox(box, data, emptyMessage) {
+        if (!box) return;
+        const safe = (value) => String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const credentials = data.credentials || [];
+        const rows = credentials.map(item =>
+          `<tr><td>${safe(item.name)}</td><td>${safe(item.username)}</td><td>${safe(item.password)}</td></tr>`
+        ).join('');
+        const skipped = (data.skipped || []).map(item => `<li>${safe(item.name)}: ${safe(item.reason)}</li>`).join('');
+        const readyCount = credentials.length;
+        const headline = readyCount
+          ? `${readyCount} employee login${readyCount === 1 ? '' : 's'} ready.`
+          : (emptyMessage || 'No phone logins yet.');
+        box.innerHTML = `
+          <p style="font-weight:700; color:#173042;">${headline}</p>
+          ${readyCount ? `<table style="width:100%; border-collapse:collapse;">
+            <thead><tr><th align="left">Name</th><th align="left">Username</th><th align="left">Password</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>` : ''}
+          ${skipped ? `<p style="margin-top:12px; font-weight:700;">Not generated</p><ul>${skipped}</ul>` : ''}
+        `;
+      }
+
+      async function loadMobileCredentials(boxId) {
+        const box = document.getElementById(boxId || 'mobileCredentialResult');
+        if (!box) return;
+        try {
+          const response = await fetch('/api/mobile/credentials', { credentials: 'same-origin' });
+          const data = await response.json();
+          if (!response.ok || !data.success) throw new Error(data.message || data.error || 'Could not load phone logins.');
+          renderMobileCredentialBox(box, data, 'No phone logins yet. Generate credentials for all employees.');
+        } catch (error) {
+          box.textContent = error.message || 'Could not load phone logins.';
+        }
+      }
+
       async function generateMobileCredentials(remainingOnly, boxId) {
         const box = document.getElementById(boxId || 'mobileCredentialResult');
         if (box) box.textContent = remainingOnly ? 'Generating remaining logins...' : 'Generating credentials...';
@@ -9247,28 +9282,16 @@ async function fetchMultiLiveDetections() {
           });
           const data = await response.json();
           if (!response.ok || !data.success) throw new Error(data.message || data.error || 'Could not generate credentials.');
-          const safe = (value) => String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          const rows = (data.credentials || []).map(item =>
-            `<tr><td>${safe(item.name)}</td><td>${safe(item.username)}</td><td>${safe(item.password)}</td></tr>`
-          ).join('');
-          const skipped = (data.skipped || []).map(item => `<li>${safe(item.name)}: ${safe(item.reason)}</li>`).join('');
-          const readyCount = (data.credentials || []).length;
-          const headline = readyCount
-            ? `${readyCount} employee login${readyCount === 1 ? '' : 's'} ready.`
-            : (remainingOnly ? 'No remaining employees. Existing phone logins were left as they are.' : 'No employees could be given a login.');
-          box.innerHTML = `
-            <p style="font-weight:700; color:#173042;">${headline}</p>
-            <table style="width:100%; border-collapse:collapse;">
-              <thead><tr><th align="left">Name</th><th align="left">Username</th><th align="left">Password</th></tr></thead>
-              <tbody>${rows || '<tr><td colspan="3">No employees could be given a login.</td></tr>'}</tbody>
-            </table>
-            ${skipped ? `<p style="margin-top:12px; font-weight:700;">Not generated</p><ul>${skipped}</ul>` : ''}
-          `;
+          const emptyMessage = remainingOnly
+            ? 'No remaining employees. Existing phone logins were left as they are.'
+            : 'No employees could be given a login.';
+          renderMobileCredentialBox(box, data, emptyMessage);
         } catch (error) {
           if (box) box.textContent = error.message || 'Could not generate credentials.';
         }
       }
       window.generateMobileCredentials = generateMobileCredentials;
+      window.loadMobileCredentials = loadMobileCredentials;
 
       const VIEW_MODULE_MAP = {
         'reports-view': 'attendance',
@@ -9431,6 +9454,7 @@ async function fetchMultiLiveDetections() {
         // Show target page view
         const targetView = document.getElementById(viewId);
         if (targetView) targetView.classList.add("active");
+        if (viewId === 'mobile-app-view') loadMobileCredentials('mobileCredentialResult');
 
         // Update Topbar Current Page indicator
         const PAGE_TITLES = {
@@ -13928,6 +13952,7 @@ async function fetchMultiLiveDetections() {
           if (settingsSubEl) settingsSubEl.textContent = SUBTAB_CONFIG[tabId].subtitle;
         }
 
+        if (tabId === 'mobile-app-tab') loadMobileCredentials('settingsMobileCredentialResult');
         if (tabId === 'branch-tab') loadBranchSettings();
         else if (tabId === 'depts-tab') loadDepartmentsTable();
         else if (tabId === 'desigs-tab') loadDesignationsTable();

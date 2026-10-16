@@ -54,6 +54,21 @@ class MobileEmployeeAccessTests(unittest.TestCase):
         self.assertEqual(remaining_names, ["Shahid"])
         self.assertEqual(remaining["credentials"][0]["password"], "shahid@123")
 
+        saved = db.list_mobile_credentials("ORG-MOBILE", "BR-MOBILE")
+        saved_names = [item["name"] for item in saved["credentials"]]
+        self.assertEqual(saved_names, ["Salman", "Shahid", "Sikandar"])
+
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.execute(
+                "INSERT INTO users (id, name, email, organization_id, branch_id, active) VALUES (901, 'Salman Other', 'salman@gmail.com', 'ORG-OTHER', 'BR-OTHER', 1)"
+            )
+            conn.commit()
+        signed_in = db.authenticate_employee_email("salman@gmail.com", "salman@123")
+        self.assertEqual(signed_in["id"], 801)
+        self.assertEqual(signed_in["organization_id"], "ORG-MOBILE")
+        self.assertTrue(db.assign_mobile_employee_password(901, "ORG-OTHER", "salman@123"))
+        self.assertIsNone(db.authenticate_employee_email("salman@gmail.com", "salman@123"))
+
 
 if __name__ == "__main__":
     unittest.main()
