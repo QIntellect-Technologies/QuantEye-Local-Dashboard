@@ -26,8 +26,8 @@
 <body>
   <main>
     <h1>My Attendance</h1>
-    <p id="intro">Log in with your email.</p>
-    <form id="loginForm">
+    <p id="intro">Loading your attendance...</p>
+    <form id="loginForm" hidden>
       <label for="email">Email</label>
       <input id="email" type="email" autocomplete="username" required>
       <label for="password">Password</label>
@@ -57,12 +57,17 @@
       document.getElementById(id).textContent = value || '—';
     }
 
+    function showLogin() {
+      loginForm.hidden = false;
+      attendanceCard.hidden = true;
+      document.getElementById('intro').textContent = 'Log in with your email.';
+    }
+
     async function showAttendance() {
       const response = await fetch('/api/mobile/today', { credentials: 'same-origin' });
-      const data = await response.json();
+      const data = await response.json().catch(function() { return {}; });
       if (!response.ok) {
-        loginForm.hidden = false;
-        attendanceCard.hidden = true;
+        showLogin();
         return;
       }
       const card = data.attendance || {};
@@ -104,9 +109,7 @@
     document.getElementById('refreshButton').addEventListener('click', showAttendance);
     document.getElementById('logoutButton').addEventListener('click', async () => {
       await fetch('/api/mobile/logout', { method: 'POST', credentials: 'same-origin' });
-      attendanceCard.hidden = true;
-      loginForm.hidden = false;
-      document.getElementById('intro').textContent = 'Log in with your email.';
+      showLogin();
     });
 
     if ('serviceWorker' in navigator) {
