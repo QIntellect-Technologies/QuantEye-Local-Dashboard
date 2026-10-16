@@ -17,13 +17,23 @@
       --page: #eef3f6;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
       font-family: "Segoe UI", sans-serif;
-      background: var(--page);
+      background: #fff;
       color: var(--ink);
     }
-    .shell { max-width: 440px; margin: 0 auto; min-height: 100vh; }
+    .shell {
+      width: 100%;
+      max-width: 480px;
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+    }
     .top {
       background: linear-gradient(165deg, #0f3d4c 0%, #0f766e 100%);
       color: #fff;
@@ -39,13 +49,20 @@
     .eyebrow { margin: 0; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.78; }
     h1 { margin: 2px 0 0; font-size: 1.35rem; line-height: 1.25; font-weight: 700; }
     .intro { margin: 14px 0 0; color: rgba(255,255,255,0.86); font-size: 0.95rem; }
-    main { margin-top: -18px; padding: 0 16px 32px; }
-    form, .card {
-      background: var(--card);
-      border-radius: 18px;
-      padding: 18px;
-      box-shadow: 0 10px 30px rgba(15, 61, 76, 0.08);
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 8px 18px 0;
     }
+    form, .card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--card);
+      padding: 8px 0 12px;
+    }
+    .fill { flex: 1; }
     label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--muted); margin: 12px 0 6px; }
     input {
       width: 100%; border: 1px solid var(--line); background: #f8fbfc;
@@ -84,6 +101,15 @@
     .row { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
     .row span { color: var(--muted); }
     .row strong { text-align: right; }
+    .footer {
+      padding: 14px 18px calc(18px + env(safe-area-inset-bottom));
+      text-align: center;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+    .footer strong { color: var(--teal-dark); font-weight: 700; }
   </style>
 </head>
 <body>
@@ -105,6 +131,7 @@
         <label for="password">Password</label>
         <input id="password" type="password" autocomplete="current-password" placeholder="Your password" required>
         <div class="error" id="loginError"></div>
+        <div class="fill"></div>
         <button class="primary" type="submit">Sign in</button>
       </form>
       <section id="attendanceCard" class="card" hidden>
@@ -126,10 +153,15 @@
           <div class="row"><span>Department</span><strong id="empDepartment"></strong></div>
           <div class="row"><span>Shift</span><strong id="empShift"></strong></div>
         </div>
+        <div class="fill"></div>
         <button class="primary" type="button" id="refreshButton">Refresh</button>
         <button class="ghost" type="button" id="logoutButton">Log out</button>
       </section>
     </main>
+    <footer class="footer">
+      <div>Powered by <strong>QIntellect Technologies</strong></div>
+      <div>© 2026 QIntellect Technologies. All rights reserved.</div>
+    </footer>
   </div>
   <script>
     const loginForm = document.getElementById('loginForm');
