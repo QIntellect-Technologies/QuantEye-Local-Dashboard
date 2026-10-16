@@ -2701,7 +2701,7 @@ def api_delete_shift(shift_id):
 def api_set_default_shift(shift_id):
     """Set a specific shift as the default shift for all unassigned staff."""
     try:
-        success = db.set_default_shift(shift_id)
+        success = db.set_default_shift(shift_id, organization_id=get_current_tenant_id())
         if success:
             return jsonify({'success': True, 'message': f'Shift #{shift_id} set as default shift successfully'}), 200
         else:
@@ -2744,7 +2744,12 @@ def api_bulk_assign_shifts():
         effective_from = data.get('effective_from')
         if not shift_id:
             return jsonify({'error': 'Shift ID is required'}), 400
-        success, count = db.bulk_assign_shifts(user_ids=user_ids, shift_id=int(shift_id), effective_from=effective_from)
+        success, count = db.bulk_assign_shifts(
+            user_ids=user_ids,
+            shift_id=int(shift_id),
+            effective_from=effective_from,
+            organization_id=get_current_tenant_id(),
+        )
         if success:
             return jsonify({'success': True, 'count': count, 'message': f'Shift successfully assigned to {count} staff member(s)'}), 200
         return jsonify({'error': 'Failed to bulk assign shifts'}), 500

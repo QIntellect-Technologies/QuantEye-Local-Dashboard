@@ -758,5 +758,35 @@ class Layer2ModuleFirstPaintTests(unittest.TestCase):
         self.assertEqual(staff.status_code, 200)
 
 
+class ShiftTenantIsolationTests(unittest.TestCase):
+    def test_other_org_does_not_see_evening_or_shared_morning(self):
+        evening_id = db.add_shift(
+            "Evening Shift",
+            "23:07",
+            "23:10",
+            2,
+            organization_id="ORG-ALPHA",
+            branch_id="BR-ALPHA-1",
+        )
+        self.assertIsNotNone(evening_id)
+        db.assign_user_shift(101, evening_id)
+
+        alpha = db.get_all_shifts(organization_id="ORG-ALPHA", branch_id="BR-ALPHA-1")
+        beta = db.get_all_shifts(organization_id="ORG-BETA", branch_id="BR-BETA-1")
+        gs = db.get_all_shifts(organization_id="ORG-984600", branch_id="BR-GS")
+
+        alpha_names = {row["name"] for row in alpha}
+        beta_names = {row["name"] for row in beta}
+        gs_names = {row["name"] for row in gs}
+        self.assertIn("Evening Shift", alpha_names)
+        self.assertNotIn("Evening Shift", beta_names)
+        self.assertNotIn("Evening Shift", gs_names)
+        self.assertTrue(any(row["start_time"] == "09:00" for row in gs))
+        self.assertFalse(any(row["id"] == 1 for row in beta))
+        self.assertFalse(any(row["id"] == 1 for row in gs))
+        self.assertFalse(any(row["id"] == evening_id for row in beta))
+        self.assertFalse(any(row["id"] == evening_id for row in gs))
+
+
 if __name__ == "__main__":
     unittest.main()

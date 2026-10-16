@@ -2242,6 +2242,178 @@ def _is_scheduled_workday(work_date, working_days: Any, override_type: Optional[
     return work_date.weekday() in weekdays
 
 
+def _clone_shift_row(cursor: sqlite3.Cursor, source_id: int, organization_id: str, branch_id: str) -> Optional[int]:
+    """Copy a shift into another tenant so companies do not share Evening/Morning rows."""
+    cursor.execute(
+        """
+        SELECT name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes,
+               working_days, is_default, active
+        FROM shifts WHERE id = ?
+        """,
+        (source_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    cursor.execute(
+        """
+        INSERT INTO shifts (
+            name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes,
+            working_days, is_default, active, organization_id, branch_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            row[0], row[1], row[2], row[3] or 15, row[4] or 0,
+            row[5] or json.dumps([0, 1, 2, 3, 4, 5]),
+            row[6] or 0, 1 if row[7] is None else row[7],
+            organization_id, branch_id or 'DEFAULT_BRANCH',
+        ),
+    )
+    return cursor.lastrowid
+
+
+def _repair_shared_shift_tenants(cursor: sqlite3.Cursor) -> None:
+    """Split shift rows that several organizations are using, then stamp the owner."""
+    cursor.execute("SELECT id, COALESCE(NULLIF(organization_id, ''), 'DEFAULT_ORG') FROM shifts")
+    for shift_id, shift_org in cursor.fetchall():
+        cursor.execute(
+            """
+            SELECT DISTINCT COALESCE(NULLIF(organization_id, ''), 'DEFAULT_ORG'),
+                   COALESCE(NULLIF(branch_id, ''), 'DEFAULT_BRANCH')
+            FROM users
+            WHERE active = 1 AND COALESCE(shift_id, 1) = ?
+            """,
+            (shift_id,),
+        )
+        tenants = [
+            (org_id, branch_id)
+            for org_id, branch_id in cursor.fetchall()
+            if org_id and org_id != 'DEFAULT_ORG'
+        ]
+        if not tenants:
+            continue
+        if shift_id == 1:
+            for org_id, branch_id in tenants:
+                cursor.execute(
+                    """
+                    SELECT id FROM shifts
+                    WHERE organization_id = ? AND name = (SELECT name FROM shifts WHERE id = 1)
+                    LIMIT 1
+                    """,
+                    (org_id,),
+                )
+                owned = cursor.fetchone()
+                owned_id = owned[0] if owned else _clone_shift_row(cursor, 1, org_id, branch_id)
+                if owned_id:
+                    cursor.execute(
+                        """
+                        UPDATE users SET shift_id = ?
+                        WHERE organization_id = ? AND COALESCE(shift_id, 1) = 1
+                        """,
+                        (owned_id, org_id),
+                    )
+            continue
+        keep_org = shift_org if shift_org not in ('DEFAULT_ORG', '') else tenants[0][0]
+        extra_tenants = [item for item in tenants if item[0] != keep_org]
+        if shift_org in ('DEFAULT_ORG', ''):
+            keep = tenants[0]
+            extra_tenants = tenants[1:]
+            cursor.execute(
+                "UPDATE shifts SET organization_id = ?, branch_id = ? WHERE id = ?",
+                (keep[0], keep[1], shift_id),
+            )
+        for org_id, branch_id in extra_tenants:
+            new_id = _clone_shift_row(cursor, shift_id, org_id, branch_id)
+            if not new_id:
+                continue
+            cursor.execute(
+                """
+                UPDATE users SET shift_id = ?
+                WHERE organization_id = ? AND COALESCE(shift_id, 1) = ?
+                """,
+                (new_id, org_id, shift_id),
+            )
+
+
+def _ensure_organization_default_shift(cursor: sqlite3.Cursor, organization_id: str, branch_id: Optional[str] = None) -> None:
+    """Empty companies get their own 09:00 Morning. They never inherit another org's Evening."""
+    if not organization_id or organization_id in ('all', 'DEFAULT_ORG'):
+        return
+    cursor.execute(
+        "SELECT COUNT(*) FROM shifts WHERE organization_id = ? AND COALESCE(active, 1) = 1",
+        (organization_id,),
+    )
+    if cursor.fetchone()[0] > 0:
+        return
+    cursor.execute(
+        """
+        INSERT INTO shifts (
+            name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes,
+            working_days, is_default, active, organization_id, branch_id
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+        """,
+        (
+            'Morning Shift', '09:00', '17:00', 15, 0,
+            json.dumps([0, 1, 2, 3, 4, 5]),
+            organization_id, branch_id or 'DEFAULT_BRANCH',
+        ),
+    )
+    new_id = cursor.lastrowid
+    cursor.execute(
+        """
+        UPDATE users SET shift_id = ?
+        WHERE organization_id = ? AND active = 1
+          AND (
+            COALESCE(shift_id, 1) = 1
+            OR shift_id NOT IN (SELECT id FROM shifts WHERE organization_id = ?)
+          )
+        """,
+        (new_id, organization_id, organization_id),
+    )
+
+
+def _rehome_users_on_foreign_shifts(cursor: sqlite3.Cursor, organization_id: str, branch_id: Optional[str] = None) -> None:
+    """If a staff member still points at another company's shift, give this company its own copy."""
+    if not organization_id or organization_id in ('all', 'DEFAULT_ORG'):
+        return
+    cursor.execute(
+        """
+        SELECT u.id, COALESCE(u.shift_id, 1)
+        FROM users u
+        LEFT JOIN shifts s ON s.id = COALESCE(u.shift_id, 1)
+        WHERE u.active = 1 AND u.organization_id = ?
+          AND (s.id IS NULL OR COALESCE(s.organization_id, '') != ?)
+        """,
+        (organization_id, organization_id),
+    )
+    stuck_users = cursor.fetchall()
+    for user_id, source_shift_id in stuck_users:
+        cursor.execute(
+            "SELECT name FROM shifts WHERE id = ?",
+            (source_shift_id,),
+        )
+        named = cursor.fetchone()
+        owned_id = None
+        if named:
+            cursor.execute(
+                "SELECT id FROM shifts WHERE organization_id = ? AND name = ? LIMIT 1",
+                (organization_id, named[0]),
+            )
+            owned = cursor.fetchone()
+            owned_id = owned[0] if owned else _clone_shift_row(
+                cursor, source_shift_id, organization_id, branch_id or 'DEFAULT_BRANCH'
+            )
+        if not owned_id:
+            cursor.execute(
+                "SELECT id FROM shifts WHERE organization_id = ? AND COALESCE(active, 1) = 1 ORDER BY id ASC LIMIT 1",
+                (organization_id,),
+            )
+            fallback = cursor.fetchone()
+            owned_id = fallback[0] if fallback else None
+        if owned_id:
+            cursor.execute("UPDATE users SET shift_id = ? WHERE id = ?", (owned_id, user_id))
+
+
 def get_all_shifts(
     active_only: bool = True,
     organization_id: Optional[str] = None,
@@ -2251,6 +2423,11 @@ def get_all_shifts(
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            _repair_shared_shift_tenants(cursor)
+            if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+                _ensure_organization_default_shift(cursor, organization_id, branch_id)
+                _rehome_users_on_foreign_shifts(cursor, organization_id, branch_id)
+            conn.commit()
             where_clauses = []
             params = []
             join_conditions = [
@@ -2260,23 +2437,17 @@ def get_all_shifts(
             join_params = []
             if active_only:
                 where_clauses.append("s.active = 1")
-            if organization_id and organization_id != 'all':
-                if organization_id == 'DEFAULT_ORG':
-                    where_clauses.append("(s.organization_id = 'DEFAULT_ORG' OR s.organization_id IS NULL OR s.id = 1)")
-                    join_conditions.append("COALESCE(NULLIF(u.organization_id, ''), 'DEFAULT_ORG') = 'DEFAULT_ORG'")
-                else:
-                    where_clauses.append("(s.organization_id = ? OR s.id = 1)")
-                    params.append(organization_id)
-                    join_conditions.append("u.organization_id = ?")
-                    join_params.append(organization_id)
+            if not organization_id or organization_id == 'all':
+                return []
+            if organization_id == 'DEFAULT_ORG':
+                where_clauses.append("(s.organization_id = 'DEFAULT_ORG' OR s.organization_id IS NULL OR s.organization_id = '')")
+                join_conditions.append("COALESCE(NULLIF(u.organization_id, ''), 'DEFAULT_ORG') = 'DEFAULT_ORG'")
             else:
-                join_conditions.extend([
-                    "COALESCE(NULLIF(u.organization_id, ''), 'DEFAULT_ORG') = COALESCE(NULLIF(s.organization_id, ''), 'DEFAULT_ORG')",
-                    "COALESCE(NULLIF(u.branch_id, ''), 'DEFAULT_BRANCH') = COALESCE(NULLIF(s.branch_id, ''), 'DEFAULT_BRANCH')",
-                ])
+                where_clauses.append("s.organization_id = ?")
+                params.append(organization_id)
+                join_conditions.append("u.organization_id = ?")
+                join_params.append(organization_id)
             if branch_id and branch_id != 'all':
-                where_clauses.append("(s.branch_id = ? OR s.id = 1)")
-                params.append(branch_id)
                 join_conditions.append("u.branch_id = ?")
                 join_params.append(branch_id)
             where_clause = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
@@ -2314,15 +2485,28 @@ def get_all_shifts(
         return []
 
 
-def set_default_shift(shift_id: int) -> bool:
-    """Set a specific shift as the organization-wide default shift."""
+def set_default_shift(shift_id: int, organization_id: Optional[str] = None) -> bool:
+    """Set a specific shift as the default for one organization only."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE shifts SET is_default = 0")
-            cursor.execute("UPDATE shifts SET is_default = 1 WHERE id = ?", (shift_id,))
+            if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+                cursor.execute(
+                    "SELECT id FROM shifts WHERE id = ? AND organization_id = ?",
+                    (shift_id, organization_id),
+                )
+                if not cursor.fetchone():
+                    return False
+                cursor.execute("UPDATE shifts SET is_default = 0 WHERE organization_id = ?", (organization_id,))
+                cursor.execute(
+                    "UPDATE shifts SET is_default = 1 WHERE id = ? AND organization_id = ?",
+                    (shift_id, organization_id),
+                )
+            else:
+                cursor.execute("UPDATE shifts SET is_default = 0 WHERE organization_id = 'DEFAULT_ORG' OR organization_id IS NULL OR id = 1")
+                cursor.execute("UPDATE shifts SET is_default = 1 WHERE id = ?", (shift_id,))
             conn.commit()
-            logger.info(f"✓ Shift ID #{shift_id} set as system default shift")
+            logger.info(f"✓ Shift ID #{shift_id} set as default shift")
             return True
     except Exception as e:
         logger.error(f"Failed to set default shift {shift_id}: {e}")
@@ -2371,9 +2555,9 @@ def get_shift_by_id(shift_id: int, organization_id: Optional[str] = None) -> Opt
                     'active': row[5],
                     'organization_id': row[6] or 'DEFAULT_ORG'
                 }
-                if organization_id and organization_id != 'all' and shift_dict['id'] != 1:
+                if organization_id and organization_id != 'all':
                     if organization_id == 'DEFAULT_ORG':
-                        if shift_dict['organization_id'] not in ('DEFAULT_ORG', None):
+                        if shift_dict['organization_id'] not in ('DEFAULT_ORG', None, ''):
                             return None
                     elif shift_dict['organization_id'] != organization_id:
                         return None
@@ -2424,10 +2608,10 @@ def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            if organization_id and organization_id != 'all' and shift_id != 1:
+            if organization_id and organization_id != 'all':
                 cursor.execute("SELECT organization_id FROM shifts WHERE id = ?", (shift_id,))
                 s_row = cursor.fetchone()
-                if not s_row or (s_row[0] and s_row[0] not in (organization_id, 'DEFAULT_ORG')):
+                if not s_row or (s_row[0] or 'DEFAULT_ORG') != organization_id:
                     return False
             if working_days is None:
                 cursor.execute(
@@ -2459,7 +2643,7 @@ def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace
 def delete_shift(shift_id: int, organization_id: Optional[str] = None) -> bool:
     """Delete shift (reassigns users of this shift back to shift ID 1), ensuring tenant authorization."""
     if shift_id == 1:
-        logger.warning("Cannot delete default Morning Shift")
+        logger.warning("Cannot delete the shared template Morning Shift")
         return False
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -2467,13 +2651,29 @@ def delete_shift(shift_id: int, organization_id: Optional[str] = None) -> bool:
             if organization_id and organization_id != 'all':
                 cursor.execute("SELECT organization_id FROM shifts WHERE id = ?", (shift_id,))
                 s_row = cursor.fetchone()
-                if not s_row or (s_row[0] and s_row[0] not in (organization_id, 'DEFAULT_ORG')):
+                if not s_row or (s_row[0] or '') != organization_id:
+                    return False
+                cursor.execute(
+                    "SELECT COUNT(*) FROM shifts WHERE organization_id = ? AND COALESCE(active, 1) = 1",
+                    (organization_id,),
+                )
+                if cursor.fetchone()[0] <= 1:
+                    logger.warning("Cannot delete the only shift for organization %s", organization_id)
                     return False
             cursor.execute("SELECT id FROM users WHERE shift_id = ?", (shift_id,))
             reassigned_users = [row[0] for row in cursor.fetchall()]
-            cursor.execute('UPDATE users SET shift_id = 1 WHERE shift_id = ?', (shift_id,))
+            fallback_id = 1
+            if organization_id and organization_id != 'all':
+                cursor.execute(
+                    "SELECT id FROM shifts WHERE organization_id = ? AND id != ? ORDER BY id ASC LIMIT 1",
+                    (organization_id, shift_id),
+                )
+                fallback = cursor.fetchone()
+                if fallback:
+                    fallback_id = fallback[0]
+            cursor.execute('UPDATE users SET shift_id = ? WHERE shift_id = ?', (fallback_id, shift_id))
             for user_id in reassigned_users:
-                _record_employee_shift_history(cursor, user_id, 1)
+                _record_employee_shift_history(cursor, user_id, fallback_id)
             cursor.execute('DELETE FROM shifts WHERE id = ?', (shift_id,))
             deleted = cursor.rowcount > 0
             conn.commit()
@@ -2491,9 +2691,20 @@ def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str]
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             effective_date = _normalize_shift_effective_date(effective_from)
-            cursor.execute("SELECT COALESCE(shift_id, 1) FROM users WHERE id = ? AND active = 1", (user_id,))
+            cursor.execute(
+                "SELECT COALESCE(shift_id, 1), organization_id FROM users WHERE id = ? AND active = 1",
+                (user_id,),
+            )
             current_shift = cursor.fetchone()
             if not current_shift:
+                return False
+            cursor.execute("SELECT organization_id FROM shifts WHERE id = ?", (shift_id,))
+            shift_row = cursor.fetchone()
+            if not shift_row or (shift_row[0] or '') != (current_shift[1] or ''):
+                logger.warning(
+                    "Blocked assigning shift %s to user %s (shift is not owned by their organization)",
+                    shift_id, user_id,
+                )
                 return False
             is_current = effective_date <= datetime.now().date().isoformat()
             if is_current:
@@ -2510,26 +2721,52 @@ def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str]
         return False
 
 
-def bulk_assign_shifts(user_ids: Union[str, List[int]], shift_id: int, effective_from: Optional[str] = None) -> Tuple[bool, int]:
-    """Bulk assign shift to multiple or all employees."""
+def bulk_assign_shifts(
+    user_ids: Union[str, List[int]],
+    shift_id: int,
+    effective_from: Optional[str] = None,
+    organization_id: Optional[str] = None,
+) -> Tuple[bool, int]:
+    """Bulk assign shift to employees in one organization only."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            effective_date = _normalize_shift_effective_date(effective_from)
-            if user_ids == 'all' or not user_ids or (isinstance(user_ids, list) and len(user_ids) == 0):
-                cursor.execute("SELECT id, COALESCE(shift_id, 1) FROM users WHERE active = 1")
-                selected_users = cursor.fetchall()
-                if effective_date <= datetime.now().date().isoformat():
-                    cursor.execute("UPDATE users SET shift_id = ? WHERE active = 1", (shift_id,))
-            else:
-                placeholders = ','.join('?' for _ in user_ids)
+            if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
                 cursor.execute(
-                    f"SELECT id, COALESCE(shift_id, 1) FROM users WHERE id IN ({placeholders}) AND active = 1",
-                    (*user_ids,),
+                    "SELECT id FROM shifts WHERE id = ? AND organization_id = ?",
+                    (shift_id, organization_id),
+                )
+                if not cursor.fetchone():
+                    return False, 0
+            effective_date = _normalize_shift_effective_date(effective_from)
+            org_filter = ""
+            org_params: List[Any] = []
+            if organization_id and organization_id not in ('all',):
+                org_filter = " AND organization_id = ?"
+                org_params = [organization_id]
+            if user_ids == 'all' or not user_ids or (isinstance(user_ids, list) and len(user_ids) == 0):
+                cursor.execute(
+                    f"SELECT id, COALESCE(shift_id, 1) FROM users WHERE active = 1{org_filter}",
+                    org_params,
                 )
                 selected_users = cursor.fetchall()
                 if effective_date <= datetime.now().date().isoformat():
-                    cursor.execute(f"UPDATE users SET shift_id = ? WHERE id IN ({placeholders}) AND active = 1", (shift_id, *user_ids))
+                    cursor.execute(
+                        f"UPDATE users SET shift_id = ? WHERE active = 1{org_filter}",
+                        (shift_id, *org_params),
+                    )
+            else:
+                placeholders = ','.join('?' for _ in user_ids)
+                cursor.execute(
+                    f"SELECT id, COALESCE(shift_id, 1) FROM users WHERE id IN ({placeholders}) AND active = 1{org_filter}",
+                    (*user_ids, *org_params),
+                )
+                selected_users = cursor.fetchall()
+                if effective_date <= datetime.now().date().isoformat():
+                    cursor.execute(
+                        f"UPDATE users SET shift_id = ? WHERE id IN ({placeholders}) AND active = 1{org_filter}",
+                        (shift_id, *user_ids, *org_params),
+                    )
             count = len(selected_users)
             for user_id, current_shift_id in selected_users:
                 if effective_date > datetime.now().date().isoformat() or current_shift_id != shift_id or effective_from is not None:
