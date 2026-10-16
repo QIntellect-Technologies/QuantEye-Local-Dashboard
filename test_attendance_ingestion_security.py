@@ -787,6 +787,47 @@ class ShiftTenantIsolationTests(unittest.TestCase):
         self.assertFalse(any(row["id"] == evening_id for row in beta))
         self.assertFalse(any(row["id"] == evening_id for row in gs))
 
+    def test_deleted_camera_id_is_removed_from_staff_assignments(self):
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO users (
+                    id, name, organization_id, branch_id, active, checkin_cameras, checkout_cameras
+                ) VALUES (901, 'Salman FnK', 'ORG-FORK', 'BR-FORK', 1, 'cam_1669', 'cam_1669')
+                """
+            )
+            conn.commit()
+        db.add_camera(
+            "cam_1669", "Old NVR", "AI Room", "nvr", "rtsp://old",
+            organization_id="ORG-FORK", branch_id="BR-FORK",
+        )
+        db.add_camera(
+            "cam_6858", "Local WebCam", "QI-Room", "webcam", "0",
+            organization_id="ORG-FORK", branch_id="BR-FORK",
+        )
+        with sqlite3.connect(db.DB_PATH) as conn:
+            old_row = conn.execute(
+                "SELECT id FROM cameras WHERE camera_id = 'cam_1669' AND organization_id = 'ORG-FORK'"
+            ).fetchone()
+        self.assertTrue(db.delete_camera(old_row[0], organization_id="ORG-FORK"))
+        users = db.get_all_users(organization_id="ORG-FORK", branch_id="BR-FORK")
+        salman = next(user for user in users if user["id"] == 901)
+        self.assertEqual(salman["checkin_cameras"], "all")
+        self.assertEqual(salman["checkout_cameras"], "all")
+        db.add_camera(
+            "cam_5052", "NVR", "AI Room", "nvr", "rtsp://new",
+            organization_id="ORG-FORK", branch_id="BR-FORK",
+        )
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.execute(
+                "UPDATE users SET checkin_cameras = 'cam_6858', checkout_cameras = 'cam_5052' WHERE id = 901"
+            )
+            conn.commit()
+        users = db.get_all_users(organization_id="ORG-FORK", branch_id="BR-FORK")
+        salman = next(user for user in users if user["id"] == 901)
+        self.assertEqual(salman["checkin_cameras"], "cam_6858")
+        self.assertEqual(salman["checkout_cameras"], "cam_5052")
+
 
 if __name__ == "__main__":
     unittest.main()

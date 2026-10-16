@@ -1572,6 +1572,83 @@ def get_user_by_name(name: str) -> Optional[Dict]:
     return None
 
 
+def _live_camera_tokens(cursor: sqlite3.Cursor, organization_id: str, branch_id: Optional[str] = None) -> set:
+    clauses = ["COALESCE(active, 1) = 1"]
+    params: List[Any] = []
+    if organization_id and organization_id != 'all':
+        if organization_id == 'DEFAULT_ORG':
+            clauses.append("(organization_id = 'DEFAULT_ORG' OR organization_id IS NULL OR organization_id = '')")
+        else:
+            clauses.append("organization_id = ?")
+            params.append(organization_id)
+    if branch_id and branch_id not in ('all', 'DEFAULT_BRANCH'):
+        clauses.append("branch_id = ?")
+        params.append(branch_id)
+    cursor.execute(
+        f"SELECT camera_id, name, room_name FROM cameras WHERE {' AND '.join(clauses)}",
+        params,
+    )
+    tokens = set()
+    for camera_id, name, room_name in cursor.fetchall():
+        for value in (camera_id, name, room_name):
+            text = str(value or '').strip().lower()
+            if text:
+                tokens.add(text)
+    return tokens
+
+
+def _camera_assignment_without_deleted(raw: str, live_tokens: set) -> str:
+    text = str(raw or 'all').strip()
+    if not text or text.lower() in ('all', '*'):
+        return 'all'
+    kept = [piece.strip() for piece in text.split(',') if piece.strip() and piece.strip().lower() in live_tokens]
+    return ','.join(kept) if kept else 'all'
+
+
+def heal_deleted_camera_assignments(organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> int:
+    """Drop staff camera IDs that no longer exist so a replaced camera does not block attendance."""
+    if not organization_id or organization_id == 'all':
+        return 0
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            live_tokens = _live_camera_tokens(cursor, organization_id, branch_id)
+            user_sql = "SELECT id, COALESCE(checkin_cameras, 'all'), COALESCE(checkout_cameras, 'all') FROM users WHERE active = 1"
+            params: List[Any] = []
+            if organization_id == 'DEFAULT_ORG':
+                user_sql += " AND (organization_id = 'DEFAULT_ORG' OR organization_id IS NULL OR organization_id = '')"
+            else:
+                user_sql += " AND organization_id = ?"
+                params.append(organization_id)
+            if branch_id and branch_id not in ('all',):
+                if branch_id == 'DEFAULT_BRANCH':
+                    user_sql += " AND (branch_id = 'DEFAULT_BRANCH' OR branch_id IS NULL OR branch_id = '')"
+                else:
+                    user_sql += " AND branch_id = ?"
+                    params.append(branch_id)
+            changed = 0
+            for user_id, checkin_raw, checkout_raw in cursor.execute(user_sql, params).fetchall():
+                checkin = _camera_assignment_without_deleted(checkin_raw, live_tokens)
+                checkout = _camera_assignment_without_deleted(checkout_raw, live_tokens)
+                if checkin == str(checkin_raw or 'all') and checkout == str(checkout_raw or 'all'):
+                    continue
+                cursor.execute(
+                    "UPDATE users SET checkin_cameras = ?, checkout_cameras = ? WHERE id = ?",
+                    (checkin, checkout, user_id),
+                )
+                changed += 1
+            if changed:
+                conn.commit()
+                logger.info(
+                    "Cleared %s stale camera assignment(s) for %s/%s",
+                    changed, organization_id, branch_id or '*',
+                )
+            return changed
+    except Exception as error:
+        logger.error("Failed to clear stale camera assignments: %s", error)
+        return 0
+
+
 def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict]:
     """Get all active users with today's attendance status, shift details, and camera assignments via optimized join, strictly scoped by organization and branch."""
     if organization_id and organization_id not in ('all', 'DEFAULT_ORG') and branch_id and branch_id not in ('all', 'DEFAULT_BRANCH'):
@@ -1585,6 +1662,8 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
                 _cloud_mirror("hydrate_branch_employees", organization_id, branch_id)
         except Exception as error:
             logger.warning("Could not hydrate staff cache from Postgres: %s", error)
+    if organization_id and organization_id != 'all':
+        heal_deleted_camera_assignments(organization_id, branch_id)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -9750,6 +9829,7 @@ def delete_camera(cam_db_id: int, organization_id: Optional[str] = None) -> bool
             conn.commit()
             logger.info(f"✓ Camera DB ID {cam_db_id} deleted.")
             if cam_row:
+                heal_deleted_camera_assignments(cam_row[1] or organization_id)
                 _cloud_mirror("delete_camera", cam_row[0], cam_row[1])
             return True
     except Exception as e:
