@@ -4787,10 +4787,19 @@ def authenticate_employee_email(email: str, password: str) -> Optional[Dict]:
                 matches.append(user)
         if not matches:
             return None
-        if len(matches) == 1:
-            return matches[0]
-        mobile = [user for user in matches if int(user.get('mobile_login') or 0) == 1]
-        return (mobile or matches)[0]
+
+        def _login_rank(user: Dict) -> tuple:
+            org = str(user.get('organization_id') or '').strip()
+            real_org = 1 if org.startswith('ORG-') else 0
+            mobile_flag = 1 if int(user.get('mobile_login') or 0) == 1 else 0
+            try:
+                user_no = int(user.get('id') or 0)
+            except (TypeError, ValueError):
+                user_no = 0
+            return (real_org, mobile_flag, user_no)
+
+        matches.sort(key=_login_rank, reverse=True)
+        return matches[0]
     except Exception as e:
         logger.error(f"Employee email login error: {e}")
         return None
@@ -4849,9 +4858,11 @@ def _current_shift_for_mobile(user_id: int, organization_id: str) -> Dict[str, s
                 """
                 SELECT s.name, s.start_time, s.end_time
                   FROM users u
-                  JOIN shifts s ON s.id = u.shift_id
+                  JOIN shifts s
+                    ON s.id = u.shift_id
+                   AND s.organization_id = u.organization_id
                  WHERE u.id = ? AND u.active = 1
-                   AND (? = '' OR s.organization_id = ? OR s.organization_id = u.organization_id)
+                   AND (? = '' OR u.organization_id = ?)
                 """,
                 (int(user_id), org, org),
             ).fetchone()
