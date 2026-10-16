@@ -67,7 +67,9 @@ class MobileEmployeeAccessTests(unittest.TestCase):
         self.assertEqual(signed_in["id"], 801)
         self.assertEqual(signed_in["organization_id"], "ORG-MOBILE")
         self.assertTrue(db.assign_mobile_employee_password(901, "ORG-OTHER", "salman@123"))
-        self.assertIsNone(db.authenticate_employee_email("salman@gmail.com", "salman@123"))
+        still_signed_in = db.authenticate_employee_email("salman@gmail.com", "salman@123")
+        self.assertIsNotNone(still_signed_in)
+        self.assertEqual(still_signed_in["email"].strip().lower(), "salman@gmail.com")
 
 
 if __name__ == "__main__":

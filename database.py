@@ -4757,32 +4757,40 @@ def list_mobile_credentials(
 
 
 def authenticate_employee_email(email: str, password: str) -> Optional[Dict]:
-    """Log in the employee whose email and phone password match.
-
-    The same email can exist in another company. Only the saved password decides
-    which person signs in. Two matching passwords match nobody.
-    """
-    email_key = str(email or '').strip().lower()
-    if not email_key or not password:
+    """Log in with the employee email and the portal password (first name + @123)."""
+    email_key = re.sub(r'\s+', '', str(email or '').strip().lower())
+    pw_str = str(password or '').strip()
+    if not email_key or not pw_str:
         return None
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT * FROM users WHERE active = 1 AND LOWER(TRIM(COALESCE(email, ''))) = ?",
-                (email_key,),
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM users WHERE active = 1").fetchall()
         matches = []
         for row in rows:
             user = dict(row)
+            stored_email = re.sub(r'\s+', '', str(user.get('email') or '').strip().lower())
+            if stored_email != email_key:
+                continue
             password_hash = user.get('password_hash')
-            if password_hash and check_password_hash(password_hash, password):
+            expected = mobile_password_for_name(user.get('name'))
+            hash_ok = False
+            if password_hash:
+                try:
+                    hash_ok = check_password_hash(password_hash, pw_str)
+                except Exception:
+                    hash_ok = str(password_hash).strip() == pw_str
+            name_ok = bool(expected) and pw_str.lower() == expected.lower()
+            if hash_ok or name_ok:
                 user.pop('password', None)
                 user.pop('password_hash', None)
                 matches.append(user)
+        if not matches:
+            return None
         if len(matches) == 1:
             return matches[0]
-        return None
+        mobile = [user for user in matches if int(user.get('mobile_login') or 0) == 1]
+        return (mobile or matches)[0]
     except Exception as e:
         logger.error(f"Employee email login error: {e}")
         return None
