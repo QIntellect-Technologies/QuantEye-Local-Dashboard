@@ -224,7 +224,16 @@ def _refresh_duplicate_component_report(cursor) -> None:
     ).fetchone():
         return
     cursor.execute("DELETE FROM payroll_duplicate_component_report")
-    rows = [dict(r) for r in cursor.execute("SELECT * FROM payroll_employee_components WHERE active = 1").fetchall()]
+    fetched = cursor.execute(
+        "SELECT * FROM payroll_employee_components WHERE active = 1"
+    ).fetchall()
+    columns = [item[0] for item in (cursor.description or [])]
+    rows = []
+    for record in fetched:
+        if hasattr(record, "keys"):
+            rows.append(dict(record))
+        else:
+            rows.append(dict(zip(columns, record)))
     seen = set()
     for i, left in enumerate(rows):
         for right in rows[i + 1 :]:
