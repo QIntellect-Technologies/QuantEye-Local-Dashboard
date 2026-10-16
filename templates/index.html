@@ -5046,6 +5046,7 @@ async function fetchMultiLiveDetections() {
           <button class="btn btn-primary" onclick="openFileLeaveModal()"><i class="fa-solid fa-plus"></i> File Leave Request</button>
           <button class="btn btn-outline-secondary" onclick="exportLeaveRequests()"><i class="fa-solid fa-file-export"></i> Export</button>
           <button class="btn btn-outline-secondary" onclick="openAddHolidayModal()"><i class="fa-solid fa-calendar-day"></i> Add Holiday</button>
+          <button class="btn btn-outline-primary" onclick="openAddOvertimeModal()" style="border-color:#6366f1; color:#6366f1; font-weight:600;"><i class="fa-solid fa-plus-circle"></i> + Log Overtime</button>
         </div>
       </div>
 
@@ -5078,6 +5079,7 @@ async function fetchMultiLiveDetections() {
             <option value="all">All Statuses</option>
             <option value="pending">Pending</option>
             <option value="approved">Approved</option>
+            <option value="partially_approved">Partially Approved</option>
             <option value="rejected">Rejected</option>
           </select>
           <select id="leavePageSize" class="form-select" onchange="changeLeavePageSize(this.value)" style="width:auto; min-width:110px;">

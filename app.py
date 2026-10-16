@@ -3775,12 +3775,31 @@ def mobile_manifest():
         'display': 'standalone',
         'background_color': '#eef8ff',
         'theme_color': '#0d9488',
+        'icons': [
+            {'src': '/m/icon-192.png', 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},
+            {'src': '/m/icon-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'any'},
+        ],
     })
+
+
+@app.route('/m/icon-<int:size>.png')
+def mobile_icon(size):
+    """Home-screen icon for the phone app. It contains no attendance logic."""
+    if size not in (192, 512):
+        return ('', 404)
+    return send_from_directory(
+        os.path.join(app.root_path, 'static', 'mobile'),
+        f'icon-{size}.png',
+    )
 
 
 @app.route('/m/sw.js')
 def mobile_service_worker():
-    body = "self.addEventListener('install', function(event){ self.skipWaiting(); });\n"
+    body = (
+        "self.addEventListener('install', function(event){ self.skipWaiting(); });\n"
+        "self.addEventListener('activate', function(event){ event.waitUntil(self.clients.claim()); });\n"
+        "self.addEventListener('fetch', function(event){ event.respondWith(fetch(event.request)); });\n"
+    )
     return app.response_class(body, mimetype='application/javascript')
 
 
@@ -5383,46 +5402,6 @@ def api_add_holiday():
     return jsonify({'success': False, 'message': 'Failed to add holiday'}), 400
 
 
-@app.route('/api/holidays/<int:holiday_id>', methods=['PUT'])
-def api_update_holiday(holiday_id):
-    data = request.get_json() or {}
-    name = data.get('name', '').strip()
-    hdate = data.get('holiday_date', '').strip()
-    edate = data.get('end_date', '').strip() or hdate
-    if not name or not hdate:
-        return jsonify({'success': False, 'message': 'name and holiday_date are required'}), 400
-    try:
-        holiday_start = datetime.strptime(hdate, '%Y-%m-%d')
-        holiday_end = datetime.strptime(edate, '%Y-%m-%d')
-    except ValueError:
-        return jsonify({'success': False, 'message': 'Holiday dates must use YYYY-MM-DD format.'}), 400
-    if holiday_end < holiday_start:
-        return jsonify({'success': False, 'message': 'Holiday end date cannot be earlier than its start date.'}), 400
-    current_tenant = get_current_tenant_id()
-    current_branch = get_current_branch_id()
-    if any(
-        holiday.get('holiday_date') == hdate and int(holiday.get('id') or 0) != int(holiday_id)
-        for holiday in db.get_company_holidays(
-            organization_id=current_tenant,
-            branch_id=current_branch,
-        )
-    ):
-        return jsonify({'success': False, 'message': 'A holiday already starts on this date.'}), 409
-    ok = db.update_company_holiday(
-        holiday_id,
-        name=name,
-        holiday_date=hdate,
-        end_date=edate,
-        description=data.get('description', ''),
-        is_recurring=int(data.get('is_recurring', 0)),
-        organization_id=current_tenant,
-        branch_id=current_branch,
-    )
-    if ok:
-        return jsonify({'success': True, 'id': holiday_id})
-    return jsonify({'success': False, 'message': 'Holiday not found'}), 404
-
-
 @app.route('/api/holidays/<int:holiday_id>', methods=['DELETE'])
 def api_delete_holiday(holiday_id):
     ok = db.delete_company_holiday(
@@ -6797,7 +6776,6 @@ def api_update_payroll_settings():
             ),
             feature_flags={key: data.get(key, current_settings.get(key)) for key in db.FEATURE_FLAGS},
             letterhead={key: data.get(key, current_settings.get(key)) for key in db.PAYSLIP_LETTERHEAD_FIELDS},
-            fixed_ot_hourly_rate=data.get('fixed_ot_hourly_rate', current_settings.get('fixed_ot_hourly_rate')),
         )
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400

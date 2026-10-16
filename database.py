@@ -603,8 +603,6 @@ def init_db():
                 ('quota_days', 'INTEGER'),
                 ('paid_through_date', 'TEXT'),
                 ('quota_through_date', 'TEXT'),
-                ('half_start_time', 'TEXT'),
-                ('half_end_time', 'TEXT'),
             ]:
                 if column not in leave_request_columns:
                     cursor.execute(f"ALTER TABLE leave_requests ADD COLUMN {column} {column_type}")
@@ -908,7 +906,6 @@ def init_db():
                 ("enable_salary_revisions", "INTEGER NOT NULL DEFAULT 0"),
                 ("attendance_pay_mode", "TEXT NOT NULL DEFAULT 'payable_days'"),
                 ("ot_rounding", "TEXT NOT NULL DEFAULT 'round_rate_first'"),
-                ("fixed_ot_hourly_rate", "REAL NOT NULL DEFAULT 0"),
                 ("payslip_company_name", "TEXT NOT NULL DEFAULT 'QIntellect Technologies'"),
                 ("payslip_tagline", "TEXT NOT NULL DEFAULT 'DRIVING THE FUTURE TECHNOLOGY POWERED BY QUANTUM & AI'"),
                 ("payslip_phone", "TEXT NOT NULL DEFAULT '+92 302 9633999'"),
@@ -3796,17 +3793,15 @@ def get_detailed_attendance_report(
                             status = 'present'
 
                         emp_present_days += 1
-                        # A real punch belongs in the same day total as absences.
-                        # The attendance row's shift can omit that weekday even when
-                        # the employee is scheduled, which previously showed 1/3 present
-                        # and 3/3 absent for the same period.
-                        emp_working_days += 1
+                        if is_scheduled_workday:
+                            emp_working_days += 1
                     elif is_scheduled_workday and leave_info:
                         if leave_info['is_paid']:
                             status = 'on_leave'
                             emp_leave_days += 1
                         else:
                             status = 'on_leave_unpaid'
+                            emp_absent_days += 1
                         first_seen = None
                         last_seen = None
                         loc = '-'
@@ -3894,14 +3889,6 @@ def get_detailed_attendance_report(
                         'shift_working_days': sorted(shift_working_days) if schedule_known else []
                     })
 
-                unpaid_leave_day_count = sum(
-                    1 for day in emp_daily_records if day.get('status') == 'on_leave_unpaid'
-                )
-                emp_absent_days = max(
-                    0,
-                    emp_working_days - emp_present_days - emp_leave_days - unpaid_leave_day_count,
-                )
-
                 if emp_present_days > 0:
                     attended_users_count += 1
                     dept_stats[dept]['attended_staff'] += 1
@@ -3979,7 +3966,7 @@ def get_detailed_attendance_report(
                         'paid_leave_days': emp_leave_days,
                         'unpaid_leave_days': unpaid_leave_days,
                         'total_leave_days': total_leave_days,
-                        'payable_days': min(emp_working_days, emp_present_days + emp_leave_days),
+                        'payable_days': min(emp_working_days, emp_present_days + emp_late_days + emp_leave_days),
                         'attendance_rate': emp_rate,
                         'present_display': f"{emp_present_days} / {emp_working_days}",
                         'absent_display': f"{emp_absent_days} / {emp_working_days}",
@@ -4959,8 +4946,6 @@ def add_leave_request(
     leave_duration: str = 'full',
     half_leave_quota_type_id: Optional[int] = None,
     half_leave_quota_charge: bool = False,
-    half_start_time: Optional[str] = None,
-    half_end_time: Optional[str] = None,
 ) -> Optional[int]:
     """Insert a new leave request with strict date ordering validation."""
     try:
@@ -4991,13 +4976,11 @@ def add_leave_request(
                      '''INSERT INTO leave_requests (
                                 user_id, user_name, leave_type, leave_duration, start_date, end_date, reason,
                                 paid_days, unpaid_days, quota_days, paid_through_date, quota_through_date,
-                                half_leave_quota_type_id, half_leave_quota_charge, organization_id, branch_id,
-                                half_start_time, half_end_time
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                half_leave_quota_type_id, half_leave_quota_charge, organization_id, branch_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                          (user_id, user_name, leave_type, leave_duration, s_str, e_str, reason,
                       paid_days, unpaid_days, quota_days, paid_through_date, quota_through_date,
-                      half_leave_quota_type_id, int(bool(half_leave_quota_charge)), u_org, u_branch,
-                      half_start_time, half_end_time)
+                      half_leave_quota_type_id, int(bool(half_leave_quota_charge)), u_org, u_branch)
             )
             conn.commit()
             leave_id = cursor.lastrowid
@@ -5155,12 +5138,7 @@ def update_leave_status(leave_id: int, status: str = 'approved', approved_by: st
                 leave['organization_id'],
                 leave['branch_id'] if 'branch_id' in leave.keys() else None,
             )
-            normalized_status = str(status or '').strip().lower()
-            if normalized_status == 'partially_approved':
-                raise ValueError(
-                    'Partial approval is not used. Approve or reject the whole request.'
-                )
-            if normalized_status in ('pending', 'approved'):
+            if str(status or '').strip().lower() in ('pending', 'approved', 'partially_approved'):
                 conflict = _find_active_leave_overlap(
                     cursor, leave['user_id'], leave['start_date'], leave['end_date'], exclude_id=leave_id
                 )
@@ -5415,42 +5393,6 @@ def add_company_holiday(name: str, holiday_date: str, end_date: str = None, desc
     except Exception as e:
         logger.error(f"Add company holiday error: {e}")
         return None
-
-
-def update_company_holiday(
-    holiday_id: int,
-    name: str,
-    holiday_date: str,
-    end_date: str = None,
-    description: str = '',
-    is_recurring: int = 0,
-    organization_id: Optional[str] = None,
-    branch_id: Optional[str] = None,
-) -> bool:
-    """Update one public holiday inside its organization and branch."""
-    try:
-        if not end_date:
-            end_date = holiday_date
-        with sqlite3.connect(DB_PATH) as conn:
-            cursor = conn.cursor()
-            query = """
-                UPDATE company_holidays
-                   SET name = ?, holiday_date = ?, end_date = ?, description = ?, is_recurring = ?
-                 WHERE id = ?
-            """
-            params: List[Any] = [name, holiday_date, end_date, description, int(bool(is_recurring)), holiday_id]
-            if organization_id is not None:
-                query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
-                params.append(organization_id)
-            if branch_id is not None:
-                query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
-                params.append(branch_id)
-            cursor.execute(query, params)
-            conn.commit()
-            return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Update company holiday error: {e}")
-        return False
 
 
 def delete_company_holiday(
@@ -6173,18 +6115,13 @@ def get_overtime_rate_preview(
                 SELECT holiday_ot_premium_percent, non_working_day_ot_premium_percent,
                        holiday_ot_premium_active, non_working_day_ot_premium_active,
                        COALESCE(ot_hour_divisor, 208) AS ot_hour_divisor,
-                       COALESCE(fixed_ot_hourly_rate, 0) AS fixed_ot_hourly_rate,
                        COALESCE(ot_rounding, 'round_rate_first') AS ot_rounding
                 FROM payroll_settings
                 WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
                   AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
             ''', (emp_org, emp_branch)).fetchone()
             divisor = float(settings['ot_hour_divisor'] if settings else DEFAULT_OT_DIVISOR) or DEFAULT_OT_DIVISOR
-            company_rate = float(settings['fixed_ot_hourly_rate'] or 0.0) if settings else 0.0
-            if company_rate > 0:
-                raw_rate = company_rate
-            else:
-                raw_rate = configured_rate if configured_rate > 0 else (salary / divisor if salary > 0 else 0.0)
+            raw_rate = configured_rate if configured_rate > 0 else (salary / divisor if salary > 0 else 0.0)
             rounding = _normalize_ot_rounding(settings['ot_rounding'] if settings else None)
             base_rate = round(raw_rate, 2) if rounding == 'round_rate_first' else float(raw_rate)
             day_type = _get_overtime_day_type(cursor, user_id, overtime_date)
@@ -6225,10 +6162,7 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                 SELECT o.*,
                        COALESCE(u.department, '') as department,
                        COALESCE(u.position, '') as designation,
-                       CASE
-                         WHEN COALESCE(ps.fixed_ot_hourly_rate, 0) > 0 THEN ps.fixed_ot_hourly_rate
-                         ELSE COALESCE(sc.ot_rate, CASE WHEN COALESCE(u.salary, sc.basic_salary, 0) > 0 THEN ROUND(COALESCE(u.salary, sc.basic_salary) / COALESCE(ps.ot_hour_divisor, 208.0), 2) ELSE 0.0 END)
-                       END as ot_rate
+                       COALESCE(sc.ot_rate, CASE WHEN COALESCE(u.salary, sc.basic_salary, 0) > 0 THEN ROUND(COALESCE(u.salary, sc.basic_salary) / COALESCE(ps.ot_hour_divisor, 208.0), 2) ELSE 0.0 END) as ot_rate
                 FROM overtime o
                 LEFT JOIN users u ON o.user_id = u.id
                 LEFT JOIN salary_configs sc ON o.user_id = sc.user_id
@@ -7386,7 +7320,6 @@ def update_payroll_settings(
     off_day_attendance_pay_fixed_amount: Optional[float] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
     letterhead: Optional[Dict[str, Any]] = None,
-    fixed_ot_hourly_rate: Optional[float] = None,
 ) -> bool:
     """Save organization-owned payroll and half-leave quota policies."""
     mode = str(half_leave_quota_mode or 'category').strip().lower()
@@ -7523,15 +7456,6 @@ def update_payroll_settings(
             text = text[:240]
         letterhead_values.append(text)
         assignments.append(f"{key} = ?")
-    try:
-        fixed_rate = float(
-            fixed_ot_hourly_rate if fixed_ot_hourly_rate is not None else current.get('fixed_ot_hourly_rate') or 0
-        )
-    except (TypeError, ValueError, OverflowError):
-        raise ValueError('Overtime hourly rate must be a number that is zero or greater.')
-    if fixed_rate < 0 or fixed_rate != fixed_rate:
-        raise ValueError('Overtime hourly rate must be a number that is zero or greater.')
-    assignments.append("fixed_ot_hourly_rate = ?")
     params = (
         int(bool(deduct_unpaid_leave)),
         mode,
@@ -7558,7 +7482,6 @@ def update_payroll_settings(
         off_fixed,
         *flag_values,
         *letterhead_values,
-        fixed_rate,
     )
     insert_columns = [
         "organization_id",
@@ -7588,7 +7511,6 @@ def update_payroll_settings(
         "off_day_attendance_pay_fixed_amount",
         *FEATURE_FLAGS,
         *PAYSLIP_LETTERHEAD_FIELDS,
-        "fixed_ot_hourly_rate",
     ]
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -8921,10 +8843,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         overtime_entries = approved_ot_by_user.get(employee_id, [])
         ot_hours = round(sum(entry['hours'] for entry in overtime_entries), 2)
         configured_ot_rate = float(employee.get('ot_rate') or 0.0)
-        company_ot_rate = float(payroll_settings.get('fixed_ot_hourly_rate') or 0.0)
-        if company_ot_rate > 0.0:
-            ot_rate = _m(company_ot_rate) if ot_rounding == 'round_rate_first' else float(company_ot_rate)
-        elif configured_ot_rate > 0.0:
+        if configured_ot_rate > 0.0:
             ot_rate = _m(configured_ot_rate) if ot_rounding == 'round_rate_first' else float(configured_ot_rate)
         elif basic_salary > 0.0:
             raw_ot_rate = basic_salary / ot_hour_divisor
