@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="manifest" href="/m/manifest.webmanifest">
+  <meta name="theme-color" content="#0d9488">
+  <title>My Attendance</title>
+  <style>
+    body { margin: 0; font-family: Segoe UI, sans-serif; background: #eef8ff; color: #173042; }
+    main { max-width: 420px; margin: 0 auto; padding: 24px 16px 40px; }
+    h1 { font-size: 1.4rem; margin: 0 0 6px; }
+    p { color: #628095; margin: 0 0 16px; }
+    form, .card { background: #fff; border: 1px solid #cfe8f7; border-radius: 14px; padding: 16px; }
+    label { display: block; font-size: 0.82rem; font-weight: 700; margin: 10px 0 4px; }
+    input { width: 100%; box-sizing: border-box; border: 1px solid #cfe8f7; border-radius: 8px; padding: 10px; font-size: 1rem; }
+    button { width: 100%; margin-top: 14px; background: #0d9488; color: #fff; border: 0; border-radius: 8px; padding: 12px; font-weight: 700; font-size: 1rem; }
+    .error { color: #b91c1c; font-weight: 700; min-height: 1.2em; }
+    .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #e2e8f0; }
+    .row span { color: #628095; }
+    .status { font-weight: 800; }
+    .present { color: #15803d; }
+    .absent { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>My Attendance</h1>
+    <p id="intro">Log in with your email.</p>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <div class="error" id="loginError"></div>
+      <button type="submit">Log in</button>
+    </form>
+    <section id="attendanceCard" class="card" hidden>
+      <div class="row"><span>Name</span><strong id="empName"></strong></div>
+      <div class="row"><span>Designation</span><strong id="empDesignation"></strong></div>
+      <div class="row"><span>Department</span><strong id="empDepartment"></strong></div>
+      <div class="row"><span>Shift</span><strong id="empShift"></strong></div>
+      <div class="row"><span>Check-in</span><strong id="empIn"></strong></div>
+      <div class="row"><span>Check-out</span><strong id="empOut"></strong></div>
+      <div class="row"><span>Status</span><strong id="empStatus" class="status"></strong></div>
+      <div class="row"><span>Working time</span><strong id="empWorked"></strong></div>
+      <button type="button" id="refreshButton" style="background:#0284c7; margin-top:10px;">Refresh</button>
+      <button type="button" id="logoutButton">Log out</button>
+    </section>
+  </main>
+  <script>
+    const loginForm = document.getElementById('loginForm');
+    const attendanceCard = document.getElementById('attendanceCard');
+    const loginError = document.getElementById('loginError');
+
+    function showText(id, value) {
+      document.getElementById(id).textContent = value || '—';
+    }
+
+    async function showAttendance() {
+      const response = await fetch('/api/mobile/today', { credentials: 'same-origin' });
+      const data = await response.json();
+      if (!response.ok) {
+        loginForm.hidden = false;
+        attendanceCard.hidden = true;
+        return;
+      }
+      const card = data.attendance || {};
+      loginForm.hidden = true;
+      attendanceCard.hidden = false;
+      document.getElementById('intro').textContent = card.date ? `Today, ${card.date}` : 'Today';
+      showText('empName', card.name);
+      showText('empDesignation', card.designation);
+      showText('empDepartment', card.department);
+      showText('empShift', card.shift_timing);
+      showText('empIn', card.check_in);
+      showText('empOut', card.check_out);
+      showText('empWorked', card.working_time);
+      const status = document.getElementById('empStatus');
+      status.textContent = card.status || 'Absent';
+      status.className = 'status ' + (card.status === 'Present' ? 'present' : 'absent');
+    }
+
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      loginError.textContent = '';
+      const response = await fetch('/api/mobile/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        loginError.textContent = data.message || 'Login failed.';
+        return;
+      }
+      showAttendance();
+    });
+
+    document.getElementById('refreshButton').addEventListener('click', showAttendance);
+    document.getElementById('logoutButton').addEventListener('click', async () => {
+      await fetch('/api/mobile/logout', { method: 'POST', credentials: 'same-origin' });
+      attendanceCard.hidden = true;
+      loginForm.hidden = false;
+      document.getElementById('intro').textContent = 'Log in with your email.';
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/m/sw.js').catch(function() {});
+    }
+    showAttendance();
+  </script>
+</body>
+</html>

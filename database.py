@@ -379,7 +379,8 @@ def init_db():
                 ("exit_date", "TEXT"),
                 ("organization_id", "TEXT DEFAULT 'DEFAULT_ORG'"),
                 ("branch_id", "TEXT DEFAULT 'DEFAULT_BRANCH'"),
-                ("face_trained", "INTEGER DEFAULT 0")
+                ("face_trained", "INTEGER DEFAULT 0"),
+                ("mobile_login", "INTEGER DEFAULT 0")
             ]:
                 try:
                     cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
@@ -602,6 +603,8 @@ def init_db():
                 ('quota_days', 'INTEGER'),
                 ('paid_through_date', 'TEXT'),
                 ('quota_through_date', 'TEXT'),
+                ('half_start_time', 'TEXT'),
+                ('half_end_time', 'TEXT'),
             ]:
                 if column not in leave_request_columns:
                     cursor.execute(f"ALTER TABLE leave_requests ADD COLUMN {column} {column_type}")
@@ -905,6 +908,7 @@ def init_db():
                 ("enable_salary_revisions", "INTEGER NOT NULL DEFAULT 0"),
                 ("attendance_pay_mode", "TEXT NOT NULL DEFAULT 'payable_days'"),
                 ("ot_rounding", "TEXT NOT NULL DEFAULT 'round_rate_first'"),
+                ("fixed_ot_hourly_rate", "REAL NOT NULL DEFAULT 0"),
                 ("payslip_company_name", "TEXT NOT NULL DEFAULT 'QIntellect Technologies'"),
                 ("payslip_tagline", "TEXT NOT NULL DEFAULT 'DRIVING THE FUTURE TECHNOLOGY POWERED BY QUANTUM & AI'"),
                 ("payslip_phone", "TEXT NOT NULL DEFAULT '+92 302 9633999'"),
@@ -3792,15 +3796,17 @@ def get_detailed_attendance_report(
                             status = 'present'
 
                         emp_present_days += 1
-                        if is_scheduled_workday:
-                            emp_working_days += 1
+                        # A real punch belongs in the same day total as absences.
+                        # The attendance row's shift can omit that weekday even when
+                        # the employee is scheduled, which previously showed 1/3 present
+                        # and 3/3 absent for the same period.
+                        emp_working_days += 1
                     elif is_scheduled_workday and leave_info:
                         if leave_info['is_paid']:
                             status = 'on_leave'
                             emp_leave_days += 1
                         else:
                             status = 'on_leave_unpaid'
-                            emp_absent_days += 1
                         first_seen = None
                         last_seen = None
                         loc = '-'
@@ -3888,6 +3894,14 @@ def get_detailed_attendance_report(
                         'shift_working_days': sorted(shift_working_days) if schedule_known else []
                     })
 
+                unpaid_leave_day_count = sum(
+                    1 for day in emp_daily_records if day.get('status') == 'on_leave_unpaid'
+                )
+                emp_absent_days = max(
+                    0,
+                    emp_working_days - emp_present_days - emp_leave_days - unpaid_leave_day_count,
+                )
+
                 if emp_present_days > 0:
                     attended_users_count += 1
                     dept_stats[dept]['attended_staff'] += 1
@@ -3965,7 +3979,7 @@ def get_detailed_attendance_report(
                         'paid_leave_days': emp_leave_days,
                         'unpaid_leave_days': unpaid_leave_days,
                         'total_leave_days': total_leave_days,
-                        'payable_days': min(emp_working_days, emp_present_days + emp_late_days + emp_leave_days),
+                        'payable_days': min(emp_working_days, emp_present_days + emp_leave_days),
                         'attendance_rate': emp_rate,
                         'present_display': f"{emp_present_days} / {emp_working_days}",
                         'absent_display': f"{emp_absent_days} / {emp_working_days}",
@@ -4636,6 +4650,194 @@ def authenticate_user(email: str, password: str) -> Optional[Dict]:
         return None
 
 
+def mobile_password_for_name(name: str) -> str:
+    """Employee phone password: first name, lowercase, then @123. Salman -> salman@123."""
+    for part in re.split(r'\s+', str(name or '').strip()):
+        letters = re.sub(r'[^A-Za-z]', '', part).lower()
+        if len(letters) >= 2:
+            return f'{letters}@123'
+    return ''
+
+
+def assign_mobile_employee_password(user_id: int, organization_id: str, password: str) -> bool:
+    """Store the generated phone password for one employee in this organization."""
+    if not re.fullmatch(r'[a-z]+@123', str(password or '')):
+        return False
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """UPDATE users
+                      SET password = NULL, password_hash = ?, mobile_login = 1
+                    WHERE id = ? AND active = 1
+                      AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
+                (generate_password_hash(password), int(user_id), organization_id or 'DEFAULT_ORG'),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Assign mobile password error: {e}")
+        return False
+
+
+def generate_mobile_credentials(
+    organization_id: str,
+    branch_id: Optional[str] = None,
+    remaining_only: bool = False,
+) -> Dict[str, Any]:
+    """Give employees a phone login. Username is their email. Password is name@123.
+
+    remaining_only keeps people who already have a mobile login and creates
+    logins only for employees added after the last generate.
+    """
+    already_ids = set()
+    if remaining_only:
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute(
+                """SELECT id FROM users
+                   WHERE COALESCE(mobile_login, 0) = 1
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
+                (organization_id or 'DEFAULT_ORG',),
+            ).fetchall()
+            already_ids = {row[0] for row in rows}
+    users = get_all_users(organization_id=organization_id, branch_id=branch_id)
+    credentials = []
+    skipped = []
+    seen_emails = {}
+    for user in users:
+        email = str(user.get('email') or '').strip().lower()
+        if email:
+            seen_emails[email] = seen_emails.get(email, 0) + 1
+    for user in users:
+        name = str(user.get('name') or '').strip()
+        email = str(user.get('email') or '').strip().lower()
+        password = mobile_password_for_name(name)
+        if not email:
+            skipped.append({'name': name or 'Employee', 'reason': 'No email address'})
+            continue
+        if seen_emails.get(email, 0) > 1:
+            skipped.append({'name': name or email, 'reason': 'Email is used by more than one employee'})
+            continue
+        if not password:
+            skipped.append({'name': name or email, 'reason': 'Name cannot be turned into a password'})
+            continue
+        if remaining_only and int(user['id']) in already_ids:
+            continue
+        if not assign_mobile_employee_password(int(user['id']), organization_id, password):
+            skipped.append({'name': name or email, 'reason': 'Password could not be saved'})
+            continue
+        credentials.append({
+            'name': name,
+            'username': email,
+            'password': password,
+        })
+    return {'credentials': credentials, 'skipped': skipped}
+
+
+def authenticate_employee_email(email: str, password: str) -> Optional[Dict]:
+    """Log in one employee by email. A shared email matches nobody."""
+    email_key = str(email or '').strip().lower()
+    if not email_key or not password:
+        return None
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM users WHERE active = 1 AND LOWER(TRIM(COALESCE(email, ''))) = ?",
+                (email_key,),
+            ).fetchall()
+        if len(rows) != 1:
+            return None
+        user = dict(rows[0])
+        password_hash = user.get('password_hash')
+        if password_hash and check_password_hash(password_hash, password):
+            user.pop('password', None)
+            user.pop('password_hash', None)
+            return user
+        return None
+    except Exception as e:
+        logger.error(f"Employee email login error: {e}")
+        return None
+
+
+def _clock_label(value: Any) -> str:
+    text = str(value or '').strip()
+    if not text or text.lower() in {'none', 'null', '-', '--', '--:--', 'n/a'}:
+        return ''
+    if ' ' in text:
+        text = text.split(' ')[-1]
+    if 'T' in text:
+        text = text.split('T')[-1]
+    text = text.split('.')[0]
+    parts = text.split(':')
+    if len(parts) < 2:
+        return ''
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+    except ValueError:
+        return ''
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return ''
+    suffix = 'AM' if hour < 12 else 'PM'
+    hour12 = hour % 12 or 12
+    return f'{hour12}:{minute:02d} {suffix}'
+
+
+def _worked_label(first_seen: Any, last_seen: Any) -> str:
+    def _parsed(value: Any):
+        text = str(value or '').strip().split('.')[0].replace('T', ' ')
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                continue
+        return None
+    start = _parsed(first_seen)
+    end = _parsed(last_seen)
+    if not start or not end or end <= start:
+        return ''
+    minutes = int((end - start).total_seconds() // 60)
+    hours, mins = divmod(minutes, 60)
+    return f'{hours}h {mins}m'
+
+
+def employee_mobile_attendance(user_id: int, organization_id: str, branch_id: str) -> Dict[str, Any]:
+    """Today's attendance for one employee, using the report the portal already builds."""
+    user = get_user_by_id(int(user_id), organization_id=organization_id) or {}
+    report = get_detailed_attendance_report(
+        target_date='today',
+        user_id=int(user_id),
+        organization_id=organization_id,
+        branch_id=branch_id,
+    )
+    row = (report.get('records') or [{}])[0] if isinstance(report, dict) else {}
+    raw_status = str(row.get('status') or 'absent').strip().lower()
+    if raw_status in {'present', 'late', 'checked_out'}:
+        status = 'Present'
+    elif raw_status in {'on_leave', 'on_leave_unpaid'}:
+        status = 'On Leave'
+    else:
+        status = 'Absent'
+    shift_start = row.get('shift_start') or ''
+    shift_end = row.get('shift_end') or ''
+    if not shift_start or not shift_end:
+        shift_start = shift_start or '09:00'
+        shift_end = shift_end or '17:00'
+    return {
+        'name': row.get('name') or user.get('name') or '',
+        'designation': row.get('position') or user.get('position') or '',
+        'department': row.get('department') or user.get('department') or '',
+        'shift_name': row.get('shift_name') or '',
+        'shift_timing': f'{shift_start} - {shift_end}',
+        'check_in': _clock_label(row.get('first_seen')),
+        'check_out': _clock_label(row.get('last_seen')),
+        'status': status,
+        'working_time': _worked_label(row.get('first_seen'), row.get('last_seen')),
+        'date': row.get('date') or report.get('start_date') or '',
+    }
+
+
 def change_password(user_id: int, new_password: str) -> bool:
     """Store a new password hash and clear any legacy plaintext value."""
     if len(new_password) < 14:
@@ -4757,6 +4959,8 @@ def add_leave_request(
     leave_duration: str = 'full',
     half_leave_quota_type_id: Optional[int] = None,
     half_leave_quota_charge: bool = False,
+    half_start_time: Optional[str] = None,
+    half_end_time: Optional[str] = None,
 ) -> Optional[int]:
     """Insert a new leave request with strict date ordering validation."""
     try:
@@ -4787,11 +4991,13 @@ def add_leave_request(
                      '''INSERT INTO leave_requests (
                                 user_id, user_name, leave_type, leave_duration, start_date, end_date, reason,
                                 paid_days, unpaid_days, quota_days, paid_through_date, quota_through_date,
-                                half_leave_quota_type_id, half_leave_quota_charge, organization_id, branch_id
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                half_leave_quota_type_id, half_leave_quota_charge, organization_id, branch_id,
+                                half_start_time, half_end_time
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                          (user_id, user_name, leave_type, leave_duration, s_str, e_str, reason,
                       paid_days, unpaid_days, quota_days, paid_through_date, quota_through_date,
-                      half_leave_quota_type_id, int(bool(half_leave_quota_charge)), u_org, u_branch)
+                      half_leave_quota_type_id, int(bool(half_leave_quota_charge)), u_org, u_branch,
+                      half_start_time, half_end_time)
             )
             conn.commit()
             leave_id = cursor.lastrowid
@@ -4949,7 +5155,12 @@ def update_leave_status(leave_id: int, status: str = 'approved', approved_by: st
                 leave['organization_id'],
                 leave['branch_id'] if 'branch_id' in leave.keys() else None,
             )
-            if str(status or '').strip().lower() in ('pending', 'approved', 'partially_approved'):
+            normalized_status = str(status or '').strip().lower()
+            if normalized_status == 'partially_approved':
+                raise ValueError(
+                    'Partial approval is not used. Approve or reject the whole request.'
+                )
+            if normalized_status in ('pending', 'approved'):
                 conflict = _find_active_leave_overlap(
                     cursor, leave['user_id'], leave['start_date'], leave['end_date'], exclude_id=leave_id
                 )
@@ -5204,6 +5415,42 @@ def add_company_holiday(name: str, holiday_date: str, end_date: str = None, desc
     except Exception as e:
         logger.error(f"Add company holiday error: {e}")
         return None
+
+
+def update_company_holiday(
+    holiday_id: int,
+    name: str,
+    holiday_date: str,
+    end_date: str = None,
+    description: str = '',
+    is_recurring: int = 0,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
+    """Update one public holiday inside its organization and branch."""
+    try:
+        if not end_date:
+            end_date = holiday_date
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            query = """
+                UPDATE company_holidays
+                   SET name = ?, holiday_date = ?, end_date = ?, description = ?, is_recurring = ?
+                 WHERE id = ?
+            """
+            params: List[Any] = [name, holiday_date, end_date, description, int(bool(is_recurring)), holiday_id]
+            if organization_id is not None:
+                query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
+                params.append(organization_id)
+            if branch_id is not None:
+                query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+                params.append(branch_id)
+            cursor.execute(query, params)
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Update company holiday error: {e}")
+        return False
 
 
 def delete_company_holiday(
@@ -5926,13 +6173,18 @@ def get_overtime_rate_preview(
                 SELECT holiday_ot_premium_percent, non_working_day_ot_premium_percent,
                        holiday_ot_premium_active, non_working_day_ot_premium_active,
                        COALESCE(ot_hour_divisor, 208) AS ot_hour_divisor,
+                       COALESCE(fixed_ot_hourly_rate, 0) AS fixed_ot_hourly_rate,
                        COALESCE(ot_rounding, 'round_rate_first') AS ot_rounding
                 FROM payroll_settings
                 WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
                   AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
             ''', (emp_org, emp_branch)).fetchone()
             divisor = float(settings['ot_hour_divisor'] if settings else DEFAULT_OT_DIVISOR) or DEFAULT_OT_DIVISOR
-            raw_rate = configured_rate if configured_rate > 0 else (salary / divisor if salary > 0 else 0.0)
+            company_rate = float(settings['fixed_ot_hourly_rate'] or 0.0) if settings else 0.0
+            if company_rate > 0:
+                raw_rate = company_rate
+            else:
+                raw_rate = configured_rate if configured_rate > 0 else (salary / divisor if salary > 0 else 0.0)
             rounding = _normalize_ot_rounding(settings['ot_rounding'] if settings else None)
             base_rate = round(raw_rate, 2) if rounding == 'round_rate_first' else float(raw_rate)
             day_type = _get_overtime_day_type(cursor, user_id, overtime_date)
@@ -5973,7 +6225,10 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                 SELECT o.*,
                        COALESCE(u.department, '') as department,
                        COALESCE(u.position, '') as designation,
-                       COALESCE(sc.ot_rate, CASE WHEN COALESCE(u.salary, sc.basic_salary, 0) > 0 THEN ROUND(COALESCE(u.salary, sc.basic_salary) / COALESCE(ps.ot_hour_divisor, 208.0), 2) ELSE 0.0 END) as ot_rate
+                       CASE
+                         WHEN COALESCE(ps.fixed_ot_hourly_rate, 0) > 0 THEN ps.fixed_ot_hourly_rate
+                         ELSE COALESCE(sc.ot_rate, CASE WHEN COALESCE(u.salary, sc.basic_salary, 0) > 0 THEN ROUND(COALESCE(u.salary, sc.basic_salary) / COALESCE(ps.ot_hour_divisor, 208.0), 2) ELSE 0.0 END)
+                       END as ot_rate
                 FROM overtime o
                 LEFT JOIN users u ON o.user_id = u.id
                 LEFT JOIN salary_configs sc ON o.user_id = sc.user_id
@@ -7131,6 +7386,7 @@ def update_payroll_settings(
     off_day_attendance_pay_fixed_amount: Optional[float] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
     letterhead: Optional[Dict[str, Any]] = None,
+    fixed_ot_hourly_rate: Optional[float] = None,
 ) -> bool:
     """Save organization-owned payroll and half-leave quota policies."""
     mode = str(half_leave_quota_mode or 'category').strip().lower()
@@ -7267,6 +7523,15 @@ def update_payroll_settings(
             text = text[:240]
         letterhead_values.append(text)
         assignments.append(f"{key} = ?")
+    try:
+        fixed_rate = float(
+            fixed_ot_hourly_rate if fixed_ot_hourly_rate is not None else current.get('fixed_ot_hourly_rate') or 0
+        )
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError('Overtime hourly rate must be a number that is zero or greater.')
+    if fixed_rate < 0 or fixed_rate != fixed_rate:
+        raise ValueError('Overtime hourly rate must be a number that is zero or greater.')
+    assignments.append("fixed_ot_hourly_rate = ?")
     params = (
         int(bool(deduct_unpaid_leave)),
         mode,
@@ -7293,6 +7558,7 @@ def update_payroll_settings(
         off_fixed,
         *flag_values,
         *letterhead_values,
+        fixed_rate,
     )
     insert_columns = [
         "organization_id",
@@ -7322,6 +7588,7 @@ def update_payroll_settings(
         "off_day_attendance_pay_fixed_amount",
         *FEATURE_FLAGS,
         *PAYSLIP_LETTERHEAD_FIELDS,
+        "fixed_ot_hourly_rate",
     ]
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -8654,7 +8921,10 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         overtime_entries = approved_ot_by_user.get(employee_id, [])
         ot_hours = round(sum(entry['hours'] for entry in overtime_entries), 2)
         configured_ot_rate = float(employee.get('ot_rate') or 0.0)
-        if configured_ot_rate > 0.0:
+        company_ot_rate = float(payroll_settings.get('fixed_ot_hourly_rate') or 0.0)
+        if company_ot_rate > 0.0:
+            ot_rate = _m(company_ot_rate) if ot_rounding == 'round_rate_first' else float(company_ot_rate)
+        elif configured_ot_rate > 0.0:
             ot_rate = _m(configured_ot_rate) if ot_rounding == 'round_rate_first' else float(configured_ot_rate)
         elif basic_salary > 0.0:
             raw_ot_rate = basic_salary / ot_hour_divisor

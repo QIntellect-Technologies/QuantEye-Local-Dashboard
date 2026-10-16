@@ -48,6 +48,7 @@
       {% if not client_module_entitlements.leave %}.sidebar-menu .menu-item[data-module="leave"] { display: none !important; } #leaves-view { display: none !important; } .settings-leave-only, .payroll-leave-only { display: none !important; }{% endif %}
       {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; } #overtime-view { display: none !important; } .settings-overtime-only, .payroll-overtime-only { display: none !important; }{% endif %}
       {% if not client_module_entitlements.shifts %}.sidebar-menu .menu-item[data-module="shifts"] { display: none !important; } #shifts-view { display: none !important; } .settings-shifts-only { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.mobile %}.sidebar-menu .menu-item[data-module="mobile"] { display: none !important; } #mobile-app-view { display: none !important; }{% endif %}
     </style>
     <script>
       window.clientSessionModules = {{ client_licensed_modules|tojson }};
@@ -56,7 +57,8 @@
         payroll: {{ 'true' if client_module_entitlements.payroll else 'false' }},
         leave: {{ 'true' if client_module_entitlements.leave else 'false' }},
         overtime: {{ 'true' if client_module_entitlements.overtime else 'false' }},
-        shifts: {{ 'true' if client_module_entitlements.shifts else 'false' }}
+        shifts: {{ 'true' if client_module_entitlements.shifts else 'false' }},
+        mobile: {{ 'true' if client_module_entitlements.mobile else 'false' }}
       };
     </script>
     {% else %}
@@ -3439,6 +3441,18 @@
           <span>Shift Management</span>
         </li>
         {% endif %}
+        {% if not is_client_session or client_module_entitlements.mobile %}
+        <li
+          id="menuItemMobile"
+          class="menu-item"
+          data-module="mobile"
+          onclick="switchTab('mobile-app-view', this)"
+          title="Mobile App"
+        >
+          <i class="fa-solid fa-mobile-screen"></i>
+          <span>Mobile App</span>
+        </li>
+        {% endif %}
         <li
           id="menuItemLive"
           class="menu-item"
@@ -5032,7 +5046,6 @@ async function fetchMultiLiveDetections() {
           <button class="btn btn-primary" onclick="openFileLeaveModal()"><i class="fa-solid fa-plus"></i> File Leave Request</button>
           <button class="btn btn-outline-secondary" onclick="exportLeaveRequests()"><i class="fa-solid fa-file-export"></i> Export</button>
           <button class="btn btn-outline-secondary" onclick="openAddHolidayModal()"><i class="fa-solid fa-calendar-day"></i> Add Holiday</button>
-          <button class="btn btn-outline-primary" onclick="openAddOvertimeModal()" style="border-color:#6366f1; color:#6366f1; font-weight:600;"><i class="fa-solid fa-plus-circle"></i> + Log Overtime</button>
         </div>
       </div>
 
@@ -5065,7 +5078,6 @@ async function fetchMultiLiveDetections() {
             <option value="all">All Statuses</option>
             <option value="pending">Pending</option>
             <option value="approved">Approved</option>
-            <option value="partially_approved">Partially Approved</option>
             <option value="rejected">Rejected</option>
           </select>
           <select id="leavePageSize" class="form-select" onchange="changeLeavePageSize(this.value)" style="width:auto; min-width:110px;">
@@ -5201,6 +5213,25 @@ async function fetchMultiLiveDetections() {
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- ================= PAGE: MOBILE APP ================= -->
+    <div id="mobile-app-view" class="page-view">
+      <div class="page-header">
+        <div class="page-header-text">
+          <h1><i class="fa-solid fa-mobile-screen" aria-hidden="true" style="color:#0d9488;"></i> Mobile App</h1>
+          <p class="page-subtitle">Employees open one page on their phone, log in, and see only their own attendance.</p>
+        </div>
+      </div>
+      <div style="background:#ffffff; border:1px solid #dbe5ec; border-radius:12px; padding:18px; max-width:860px;">
+        <p style="margin:0 0 8px; color:#173042; font-weight:700;">Phone page</p>
+        <p style="margin:0 0 14px; color:#475569;">The phone app is installed once. Username is the employee email. Password is the first name plus @123. Salman becomes salman@123.</p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary" onclick="generateMobileCredentials(false, 'mobileCredentialResult')" style="background:#0d9488; border:none; font-weight:700;">Generate credentials for all employees</button>
+          <button type="button" class="btn btn-outline-primary" onclick="generateMobileCredentials(true, 'mobileCredentialResult')" style="font-weight:700;">Generate remaining employees</button>
+        </div>
+        <div id="mobileCredentialResult" style="margin-top:16px;"></div>
       </div>
     </div>
 
@@ -5924,6 +5955,23 @@ async function fetchMultiLiveDetections() {
         <i class="fa-solid fa-file-invoice-dollar"></i> Employee Salary Structure
       </button>
       {% endif %}
+      {% if not is_client_session or client_module_entitlements.mobile %}
+      <button class="btn btn-sm settings-nav-btn" data-settings-module="mobile" onclick="switchSettingsTab('mobile-app-tab', this)" style="border-radius: 8px; font-weight: 700;">
+        <i class="fa-solid fa-mobile-screen"></i> Mobile App
+      </button>
+      {% endif %}
+    </div>
+
+    <div id="mobile-app-tab" class="settings-sub-tab" style="display: none;">
+      <div class="card p-4 shadow-sm" style="max-width: 860px; background: #ffffff; border: 1px solid #cfe8f7; border-radius: 16px;">
+        <h3 style="font-size: 1.15em; font-weight: 800; color: #173042; margin-bottom: 6px;">Mobile App</h3>
+        <p style="font-size: 0.9em; color: #64748b; margin-bottom: 16px;">Username is the employee email. Password is the first name plus @123. Salman becomes salman@123. The phone app is installed once. These buttons only create logins.</p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary" onclick="generateMobileCredentials(false, 'settingsMobileCredentialResult')" style="background:#0d9488; border:none; font-weight:700;">Generate credentials for all employees</button>
+          <button type="button" class="btn btn-outline-primary" onclick="generateMobileCredentials(true, 'settingsMobileCredentialResult')" style="font-weight:700;">Generate remaining employees</button>
+        </div>
+        <div id="settingsMobileCredentialResult" style="margin-top:16px;"></div>
+      </div>
     </div>
 
     <!-- TAB 1: BRANCH & ORGANIZATION SETTINGS -->
@@ -9183,7 +9231,42 @@ async function fetchMultiLiveDetections() {
         document.getElementById('payroll-view').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
-      window.entitledModules = window.entitledModules || { attendance: true, payroll: true, leave: true, overtime: true, shifts: true };
+      window.entitledModules = window.entitledModules || { attendance: true, payroll: true, leave: true, overtime: true, shifts: true, mobile: true };
+
+      async function generateMobileCredentials(remainingOnly, boxId) {
+        const box = document.getElementById(boxId || 'mobileCredentialResult');
+        if (box) box.textContent = remainingOnly ? 'Generating remaining logins...' : 'Generating credentials...';
+        try {
+          const response = await fetch('/api/mobile/credentials', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ remaining_only: Boolean(remainingOnly) })
+          });
+          const data = await response.json();
+          if (!response.ok || !data.success) throw new Error(data.message || data.error || 'Could not generate credentials.');
+          const safe = (value) => String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const rows = (data.credentials || []).map(item =>
+            `<tr><td>${safe(item.name)}</td><td>${safe(item.username)}</td><td>${safe(item.password)}</td></tr>`
+          ).join('');
+          const skipped = (data.skipped || []).map(item => `<li>${safe(item.name)}: ${safe(item.reason)}</li>`).join('');
+          const readyCount = (data.credentials || []).length;
+          const headline = readyCount
+            ? `${readyCount} employee login${readyCount === 1 ? '' : 's'} ready.`
+            : (remainingOnly ? 'No remaining employees. Existing phone logins were left as they are.' : 'No employees could be given a login.');
+          box.innerHTML = `
+            <p style="font-weight:700; color:#173042;">${headline}</p>
+            <table style="width:100%; border-collapse:collapse;">
+              <thead><tr><th align="left">Name</th><th align="left">Username</th><th align="left">Password</th></tr></thead>
+              <tbody>${rows || '<tr><td colspan="3">No employees could be given a login.</td></tr>'}</tbody>
+            </table>
+            ${skipped ? `<p style="margin-top:12px; font-weight:700;">Not generated</p><ul>${skipped}</ul>` : ''}
+          `;
+        } catch (error) {
+          if (box) box.textContent = error.message || 'Could not generate credentials.';
+        }
+      }
+      window.generateMobileCredentials = generateMobileCredentials;
 
       const VIEW_MODULE_MAP = {
         'reports-view': 'attendance',
@@ -9197,7 +9280,8 @@ async function fetchMultiLiveDetections() {
         'payroll-view': 'payroll',
         'leaves-view': 'leave',
         'overtime-view': 'overtime',
-        'shifts-view': 'shifts'
+        'shifts-view': 'shifts',
+        'mobile-app-view': 'mobile'
       };
 
       function isViewEntitled(viewId) {
@@ -9215,7 +9299,8 @@ async function fetchMultiLiveDetections() {
         'cameras-tab': 'attendance',
         'payroll-rules-tab': 'payroll',
         'payroll-calendar-tab': 'payroll',
-        'salary-config-tab': 'payroll'
+        'salary-config-tab': 'payroll',
+        'mobile-app-tab': 'mobile'
       };
 
       function isSettingsTabEntitled(tabId) {
@@ -9244,7 +9329,7 @@ async function fetchMultiLiveDetections() {
             modulesList = sessionModules;
           }
           if (!modulesList && window.clientSessionModules === null) {
-            window.entitledModules = { attendance: true, payroll: true, leave: true, overtime: true, shifts: true };
+            window.entitledModules = { attendance: true, payroll: true, leave: true, overtime: true, shifts: true, mobile: true };
           } else if (modulesList && Array.isArray(modulesList)) {
             const lic = new Set(modulesList);
             window.entitledModules = {
@@ -9252,10 +9337,11 @@ async function fetchMultiLiveDetections() {
               payroll: lic.has('payroll'),
               leave: lic.has('leave') || lic.has('leaves') || lic.has('leave-management') || lic.has('leave_management'),
               overtime: lic.has('overtime') || lic.has('overtime-management') || lic.has('overtime_management'),
-              shifts: lic.has('shifts') || lic.has('shift') || lic.has('shift-management') || lic.has('shift_management')
+              shifts: lic.has('shifts') || lic.has('shift') || lic.has('shift-management') || lic.has('shift_management'),
+              mobile: lic.has('mobile') || lic.has('mobile-app') || lic.has('mobile_app')
             };
           } else {
-            window.entitledModules = { attendance: false, payroll: false, leave: false, overtime: false, shifts: false };
+            window.entitledModules = { attendance: false, payroll: false, leave: false, overtime: false, shifts: false, mobile: false };
           }
 
           // Update sidebar items visibility
@@ -11553,7 +11639,7 @@ async function fetchMultiLiveDetections() {
           if (elLate) elLate.textContent = summary.total_late_days || 0;
 
           if (elPresLabel) elPresLabel.textContent = `Attended (${summary.attendance_rate || 0}%)`;
-          if (elAbsLabel) elAbsLabel.textContent = `Zero Attendance (${summary.total_absent_days || 0} Total Abs)`;
+          if (elAbsLabel) elAbsLabel.textContent = `Staff with no check-in (${summary.total_absent_days || 0} absent days)`;
         } else {
           const tot = summary.total_enrolled || summary.total_matching || summary.total_registered || (data.records ? data.records.length : 0);
           const pres = summary.total_present_days !== undefined ? summary.total_present_days : (summary.present !== undefined ? summary.present : 0);
@@ -11772,12 +11858,16 @@ async function fetchMultiLiveDetections() {
             // SINGLE DAY VIEW
             let statusBadge = '';
             const st = String(r.status || 'absent').trim().toLowerCase();
-            const hasAttendance = Boolean(r.first_seen) || ['present', 'late', 'checked_out'].includes(st);
+            const realPunch = function(value) {
+              const text = String(value || '').trim().toLowerCase();
+              return Boolean(text) && !['-', '--', '--:--', '—', 'n/a', 'na', 'none', 'null'].includes(text);
+            };
+            const hasAttendance = realPunch(r.first_seen) || ['present', 'late', 'checked_out'].includes(st);
             const isLeaveToday = ['on_leave', 'on_leave_unpaid'].includes(st) && !hasAttendance;
             if (isLeaveToday) {
               const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
               statusBadge = `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
-            } else if (st === 'checked_out' || (r.last_seen && r.last_seen !== '--:--' && r.last_seen !== '-')) {
+            } else if (st === 'checked_out' || realPunch(r.last_seen)) {
               statusBadge = '<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-right-from-bracket"></i> Checked Out</span>';
             } else if (st === 'present' || hasAttendance) {
               statusBadge = '<span class="badge" style="background:#e6f4ea; color:#1e8e3e; border:1px solid #a8dab5; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-check"></i> Present</span>';
@@ -11838,7 +11928,7 @@ async function fetchMultiLiveDetections() {
             if (isLeaveToday) {
               const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
               actionCell.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px; color:#1d4ed8; font-size:0.76em; font-weight:700; white-space:nowrap;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
-            } else if (st === 'absent' || (!hasAttendance && !['not_employed', 'schedule_unknown', 'holiday', 'off_day'].includes(st))) {
+            } else if (!hasAttendance && !['not_employed', 'schedule_unknown', 'holiday', 'off_day', 'weekend', 'on_leave', 'on_leave_unpaid'].includes(st)) {
               const btn = document.createElement('button');
               btn.style.cssText = 'padding:4px 10px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #16a34a; color:#15803d; background:#f0fdf4; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
               btn.innerHTML = '<i class="fa-solid fa-check"></i> Mark Present';
@@ -13826,7 +13916,8 @@ async function fetchMultiLiveDetections() {
           'cameras-tab': { title: 'Camera Management', subtitle: 'Configure and manage attendance cameras.' },
           'payroll-rules-tab': { title: 'Payroll Settings', subtitle: 'Use the tabs to set salary rules one step at a time. Open Payroll Guide for formulas and examples.' },
           'payroll-calendar-tab': { title: 'Special Dates', subtitle: 'Mark holidays, extra work days, or off days that override the weekly shift.' },
-          'salary-config-tab': { title: 'Salary packages', subtitle: 'Set each person’s basic pay, extras, and overtime rate.' }
+          'salary-config-tab': { title: 'Salary packages', subtitle: 'Set each person’s basic pay, extras, and overtime rate.' },
+          'mobile-app-tab': { title: 'Mobile App', subtitle: 'Create the phone login for each employee. The phone app itself is installed once.' }
         };
         const topbarTitle = document.getElementById("headerCurrentPageTitle");
         const settingsSubEl = document.getElementById("settingsPageSubtitle");

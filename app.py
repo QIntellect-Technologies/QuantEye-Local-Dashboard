@@ -130,7 +130,8 @@ CANONICAL_MODULES = [
     'shifts',
     'reports',
     'face-recognition',
-    'payroll'
+    'payroll',
+    'mobile',
 ]
 
 def load_integration_config():
@@ -214,6 +215,7 @@ def licensed_module_flags(modules: Optional[List[str]] = None) -> Dict[str, bool
         'leave': bool({'leave', 'leaves', 'leave-management', 'leave_management'} & licensed),
         'overtime': bool({'overtime', 'overtime-management', 'overtime_management'} & licensed),
         'shifts': bool({'shifts', 'shift', 'shift-management', 'shift_management'} & licensed),
+        'mobile': bool({'mobile', 'mobile-app', 'mobile_app'} & licensed),
     }
 
 
@@ -251,6 +253,8 @@ def check_module_entitlement_for_request():
                 '/api/integration/employees',
                 '/api/admin/status', '/api/admin/verify-password', '/api/admin/lock',
                 '/api/login', '/api/client/login', '/api/logout', '/api/change-password',
+                '/m', '/mobile', '/m/manifest.webmanifest', '/m/sw.js',
+                '/api/mobile/login', '/api/mobile/logout', '/api/mobile/today',
                 '/api/enrollment/unlock', '/api/enrollment/lock'}:
         return None
     # Branch profile, departments, and designations stay available for licensed ops.
@@ -276,6 +280,7 @@ def check_module_entitlement_for_request():
     has_leave = flags['leave']
     has_overtime = flags['overtime']
     has_shifts = flags['shifts']
+    has_mobile = flags['mobile']
 
     # 1. Attendance module routes
     attendance_pages = {
@@ -328,6 +333,9 @@ def check_module_entitlement_for_request():
         if path in {'/shifts', '/shift-management'} or path.startswith('/api/shifts') or path.endswith('/assign-shift') or path.endswith('/bulk-assign-shifts'):
             return _forbidden_module_response('shifts')
 
+    if not has_mobile and path.startswith('/api/mobile/credentials'):
+        return _forbidden_module_response('mobile')
+
     return None
 
 
@@ -359,6 +367,13 @@ def require_admin_session_for_app_data():
         '/api/integration/shifts',
         '/api/attendance/edge-mark',
         '/api/sync/attendance-event',
+        '/m',
+        '/mobile',
+        '/m/manifest.webmanifest',
+        '/m/sw.js',
+        '/api/mobile/login',
+        '/api/mobile/logout',
+        '/api/mobile/today',
     }
 
     if request.method == 'OPTIONS' or request.path.startswith('/static/'):
@@ -3720,6 +3735,124 @@ def api_client_login():
     return jsonify({'success': False, 'message': 'Invalid credentials. Please verify your email and password.'}), 401
 
 
+def _organization_has_mobile_module(organization_id: str) -> bool:
+    """Ask Main whether this company selected the Mobile App module."""
+    org_id = str(organization_id or '').strip()
+    if not org_id:
+        return False
+    main_url = os.environ.get(
+        "MAIN_DASHBOARD_URL",
+        "https://quanteye-main-dashboard-production.up.railway.app",
+    ).rstrip('/')
+    try:
+        import urllib.parse
+        import urllib.request
+        with urllib.request.urlopen(
+            f"{main_url}/api/public/mobile-module/{urllib.parse.quote(org_id)}",
+            timeout=4.0,
+        ) as resp:
+            payload = json.loads(resp.read().decode('utf-8'))
+        return bool(payload.get('mobile'))
+    except Exception:
+        logger.exception("Could not confirm the Mobile App module for %s", org_id)
+        return False
+
+
+@app.route('/m')
+@app.route('/mobile')
+def mobile_attendance_page():
+    """One phone page: login, then that employee's attendance."""
+    return render_template('mobile.html')
+
+
+@app.route('/m/manifest.webmanifest')
+def mobile_manifest():
+    return jsonify({
+        'name': 'QuantEye Attendance',
+        'short_name': 'QuantEye',
+        'start_url': '/m',
+        'scope': '/m',
+        'display': 'standalone',
+        'background_color': '#eef8ff',
+        'theme_color': '#0d9488',
+    })
+
+
+@app.route('/m/sw.js')
+def mobile_service_worker():
+    body = "self.addEventListener('install', function(event){ self.skipWaiting(); });\n"
+    return app.response_class(body, mimetype='application/javascript')
+
+
+@app.route('/api/mobile/login', methods=['POST'])
+def api_mobile_login():
+    data = request.get_json(silent=True) or {}
+    email = str(data.get('email') or data.get('username') or '').strip()
+    password = str(data.get('password') or '')
+    user = db.authenticate_employee_email(email, password)
+    if not user:
+        return jsonify({'success': False, 'message': 'Email or password is incorrect.'}), 401
+    organization_id = str(user.get('organization_id') or '').strip()
+    if not _organization_has_mobile_module(organization_id):
+        return jsonify({
+            'success': False,
+            'message': 'Mobile App is not enabled for this company.',
+        }), 403
+    session['mobile_employee_id'] = int(user['id'])
+    session['mobile_organization_id'] = organization_id
+    session['mobile_branch_id'] = str(user.get('branch_id') or 'DEFAULT_BRANCH')
+    session['mobile_employee_name'] = user.get('name') or ''
+    return jsonify({'success': True, 'name': user.get('name') or ''})
+
+
+@app.route('/api/mobile/logout', methods=['POST'])
+def api_mobile_logout():
+    for key in (
+        'mobile_employee_id',
+        'mobile_organization_id',
+        'mobile_branch_id',
+        'mobile_employee_name',
+    ):
+        session.pop(key, None)
+    return jsonify({'success': True})
+
+
+@app.route('/api/mobile/today', methods=['GET'])
+def api_mobile_today():
+    user_id = session.get('mobile_employee_id')
+    organization_id = session.get('mobile_organization_id')
+    if not user_id or not organization_id:
+        return jsonify({'success': False, 'message': 'Please log in.'}), 401
+    if not _organization_has_mobile_module(str(organization_id)):
+        return jsonify({'success': False, 'message': 'Mobile App is not enabled for this company.'}), 403
+    card = db.employee_mobile_attendance(
+        int(user_id),
+        str(organization_id),
+        str(session.get('mobile_branch_id') or 'DEFAULT_BRANCH'),
+    )
+    return jsonify({'success': True, 'attendance': card})
+
+
+@app.route('/api/mobile/credentials', methods=['POST'])
+def api_mobile_generate_credentials():
+    if not (session.get('client_user') or session.get('admin_unlocked')):
+        return jsonify({'success': False, 'message': 'Authentication required.'}), 401
+    if not licensed_module_flags(browser_licensed_modules() or []).get('mobile'):
+        return _forbidden_module_response('mobile')
+    data = request.get_json(silent=True) or {}
+    result = db.generate_mobile_credentials(
+        get_current_tenant_id(),
+        get_current_branch_id(),
+        remaining_only=bool(data.get('remaining_only')),
+    )
+    return jsonify({
+        'success': True,
+        'phone_page': '/m',
+        'credentials': result['credentials'],
+        'skipped': result['skipped'],
+    })
+
+
 @app.route('/api/logout', methods=['POST'])
 def api_logout():
     """Sign out active user session and re-lock dashboard."""
@@ -5250,6 +5383,46 @@ def api_add_holiday():
     return jsonify({'success': False, 'message': 'Failed to add holiday'}), 400
 
 
+@app.route('/api/holidays/<int:holiday_id>', methods=['PUT'])
+def api_update_holiday(holiday_id):
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    hdate = data.get('holiday_date', '').strip()
+    edate = data.get('end_date', '').strip() or hdate
+    if not name or not hdate:
+        return jsonify({'success': False, 'message': 'name and holiday_date are required'}), 400
+    try:
+        holiday_start = datetime.strptime(hdate, '%Y-%m-%d')
+        holiday_end = datetime.strptime(edate, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Holiday dates must use YYYY-MM-DD format.'}), 400
+    if holiday_end < holiday_start:
+        return jsonify({'success': False, 'message': 'Holiday end date cannot be earlier than its start date.'}), 400
+    current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
+    if any(
+        holiday.get('holiday_date') == hdate and int(holiday.get('id') or 0) != int(holiday_id)
+        for holiday in db.get_company_holidays(
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
+    ):
+        return jsonify({'success': False, 'message': 'A holiday already starts on this date.'}), 409
+    ok = db.update_company_holiday(
+        holiday_id,
+        name=name,
+        holiday_date=hdate,
+        end_date=edate,
+        description=data.get('description', ''),
+        is_recurring=int(data.get('is_recurring', 0)),
+        organization_id=current_tenant,
+        branch_id=current_branch,
+    )
+    if ok:
+        return jsonify({'success': True, 'id': holiday_id})
+    return jsonify({'success': False, 'message': 'Holiday not found'}), 404
+
+
 @app.route('/api/holidays/<int:holiday_id>', methods=['DELETE'])
 def api_delete_holiday(holiday_id):
     ok = db.delete_company_holiday(
@@ -6624,6 +6797,7 @@ def api_update_payroll_settings():
             ),
             feature_flags={key: data.get(key, current_settings.get(key)) for key in db.FEATURE_FLAGS},
             letterhead={key: data.get(key, current_settings.get(key)) for key in db.PAYSLIP_LETTERHEAD_FIELDS},
+            fixed_ot_hourly_rate=data.get('fixed_ot_hourly_rate', current_settings.get('fixed_ot_hourly_rate')),
         )
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
