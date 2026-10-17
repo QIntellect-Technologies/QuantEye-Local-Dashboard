@@ -16773,8 +16773,7 @@ async function fetchMultiLiveDetections() {
         try {
           const resp = await fetch(`${API_BASE}/departments?active_only=false`, { cache: 'no-store' });
           const depts = await resp.json();
-          if (!resp.ok) throw new Error(depts.error || 'Failed to load departments');
-          cachedDepartments = depts || [];
+          cachedDepartments = Array.isArray(depts) ? depts : (depts?.departments || []);
           renderDepartmentsTable(cachedDepartments);
           populateDesigFilterDeptDropdown(cachedDepartments);
           loadDepartmentDropdowns();
@@ -16914,7 +16913,7 @@ async function fetchMultiLiveDetections() {
           if (deptId) url += `&department_id=${deptId}`;
           const resp = await fetch(url, { cache: 'no-store' });
           const desigs = await resp.json();
-          cachedDesignations = desigs || [];
+          cachedDesignations = Array.isArray(desigs) ? desigs : (desigs?.designations || []);
           renderDesignationsTable(cachedDesignations);
         } catch (e) {
           console.error("Failed to load designations:", e);
@@ -17051,13 +17050,14 @@ async function fetchMultiLiveDetections() {
         try {
           const resp = await fetch(`${API_BASE}/departments?active_only=true`, { cache: 'no-store' });
           const depts = await resp.json();
-          if (!depts) return;
+          const deptList = Array.isArray(depts) ? depts : (depts?.departments || []);
+          if (!deptList || deptList.length === 0) return;
 
           const enrollDept = document.getElementById('enrollDepartment');
           if (enrollDept) {
             const cur = enrollDept.value;
             enrollDept.innerHTML = '<option value="">Select Department...</option>' + 
-              depts.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
+              deptList.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
             if (cur) enrollDept.value = cur;
           }
 
@@ -17065,7 +17065,7 @@ async function fetchMultiLiveDetections() {
           if (editDept) {
             const cur = editDept.value;
             editDept.innerHTML = '<option value="">Select Department...</option>' + 
-              depts.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
+              deptList.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
             if (cur) editDept.value = cur;
           }
         } catch (e) {

@@ -54,6 +54,23 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 logger = get_logger(__name__)
 
+# Universal safe SQLite connection wrapper ensuring generous timeouts and WAL mode
+_orig_sqlite3_connect = sqlite3.connect
+
+def _safe_sqlite3_connect(*args, **kwargs):
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = 60.0
+    conn = _orig_sqlite3_connect(*args, **kwargs)
+    try:
+        conn.execute("PRAGMA busy_timeout = 60000")
+        conn.execute("PRAGMA journal_mode = WAL")
+    except Exception:
+        pass
+    return conn
+
+sqlite3.connect = _safe_sqlite3_connect
+
+
 
 SALARY_MIN = 0.0
 SALARY_MAX = 100_000_000.0
@@ -3588,22 +3605,44 @@ def get_attendance_today(organization_id: Optional[str] = None, branch_id: Optio
 
 
 def get_all_departments(organization_id: Optional[str] = None) -> List[str]:
-    """Get list of distinct departments from registered active users."""
+    """Get list of distinct active departments from authoritative departments table, falling back to assigned users."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             if organization_id:
                 if organization_id == 'DEFAULT_ORG':
-                    cursor.execute("SELECT DISTINCT department FROM users WHERE active = 1 AND department IS NOT NULL AND department != '' AND (organization_id = ? OR organization_id IS NULL OR organization_id = '') ORDER BY department ASC", (organization_id,))
+                    cursor.execute("""
+                        SELECT DISTINCT name FROM departments 
+                        WHERE active = 1 AND (organization_id = ? OR organization_id IS NULL OR organization_id = '')
+                        UNION
+                        SELECT DISTINCT department FROM users 
+                        WHERE active = 1 AND department IS NOT NULL AND department != '' 
+                          AND (organization_id = ? OR organization_id IS NULL OR organization_id = '')
+                        ORDER BY 1 ASC
+                    """, (organization_id, organization_id))
                 else:
-                    cursor.execute("SELECT DISTINCT department FROM users WHERE active = 1 AND department IS NOT NULL AND department != '' AND organization_id = ? ORDER BY department ASC", (organization_id,))
+                    cursor.execute("""
+                        SELECT DISTINCT name FROM departments 
+                        WHERE active = 1 AND organization_id = ?
+                        UNION
+                        SELECT DISTINCT department FROM users 
+                        WHERE active = 1 AND department IS NOT NULL AND department != '' 
+                          AND organization_id = ?
+                        ORDER BY 1 ASC
+                    """, (organization_id, organization_id))
             else:
-                cursor.execute("SELECT DISTINCT department FROM users WHERE active = 1 AND department IS NOT NULL AND department != '' ORDER BY department ASC")
+                cursor.execute("""
+                    SELECT DISTINCT name FROM departments WHERE active = 1
+                    UNION
+                    SELECT DISTINCT department FROM users WHERE active = 1 AND department IS NOT NULL AND department != ''
+                    ORDER BY 1 ASC
+                """)
             rows = cursor.fetchall()
-            return [r[0] for r in rows]
+            return [r[0] for r in rows if r[0]]
     except Exception as e:
         logger.error(f"Failed to fetch departments: {e}")
         return []
+
 
 
 def get_detailed_attendance_report(
@@ -10817,12 +10856,60 @@ def update_branch_settings(branch_name: str, city: str, company_name: str = '', 
 # DEPARTMENT MANAGEMENT
 # ============================================
 
+def _sync_tenant_departments_and_designations(cursor: sqlite3.Cursor, organization_id: Optional[str] = None):
+    """Ensure any active user's department and designation are properly seeded into the authoritative tables."""
+    try:
+        org_filter = "AND organization_id = ?" if organization_id and organization_id != 'DEFAULT_ORG' else ""
+        params = (organization_id,) if organization_id and organization_id != 'DEFAULT_ORG' else ()
+
+        cursor.execute(f"""
+            SELECT DISTINCT COALESCE(organization_id, 'DEFAULT_ORG'), COALESCE(branch_id, 'DEFAULT_BRANCH'), department
+            FROM users
+            WHERE active = 1 AND department IS NOT NULL AND TRIM(department) != ''
+            {org_filter}
+        """, params)
+        for org, br, dept_name in cursor.fetchall():
+            dept_name = dept_name.strip()
+            cursor.execute("SELECT id FROM departments WHERE name = ? AND organization_id = ?", (dept_name, org))
+            if not cursor.fetchone():
+                code = ''.join([w[0].upper() for w in dept_name.split() if w])[:6] or 'GEN'
+                cursor.execute("""
+                    INSERT INTO departments (name, code, description, active, organization_id, branch_id)
+                    VALUES (?, ?, ?, 1, ?, ?)
+                """, (dept_name, code, f'{dept_name} Department', org, br))
+
+        cursor.execute(f"""
+            SELECT DISTINCT COALESCE(u.organization_id, 'DEFAULT_ORG'), COALESCE(u.branch_id, 'DEFAULT_BRANCH'), u.department, u.position
+            FROM users u
+            WHERE u.active = 1 AND u.department IS NOT NULL AND TRIM(u.department) != ''
+              AND u.position IS NOT NULL AND TRIM(u.position) != ''
+              {org_filter.replace('organization_id', 'u.organization_id')}
+        """, params)
+        for org, br, dept_name, pos_title in cursor.fetchall():
+            dept_name = dept_name.strip()
+            pos_title = pos_title.strip()
+            cursor.execute("SELECT id FROM departments WHERE name = ? AND organization_id = ?", (dept_name, org))
+            dept_row = cursor.fetchone()
+            if dept_row:
+                dept_id = dept_row[0]
+                cursor.execute("SELECT id FROM designations WHERE department_id = ? AND title = ? AND organization_id = ?", (dept_id, pos_title, org))
+                if not cursor.fetchone():
+                    cursor.execute("""
+                        INSERT INTO designations (department_id, title, description, active, organization_id, branch_id)
+                        VALUES (?, ?, ?, 1, ?, ?)
+                    """, (dept_id, pos_title, f'{pos_title} in {dept_name}', org, br))
+    except Exception as e:
+        logger.warning(f"Self-healing departments/designations sync warning: {e}")
+
 def get_all_departments_list(active_only: bool = False, organization_id: Optional[str] = None) -> List[Dict]:
     """Retrieve all departments with registered employee counts and designation counts, scoped by organization."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+            _sync_tenant_departments_and_designations(cursor, organization_id)
+            conn.commit()
+
             conditions = []
             params = []
             if active_only:
@@ -10971,6 +11058,8 @@ def get_designations(department_id: Optional[int] = None, department_name: Optio
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+            _sync_tenant_departments_and_designations(cursor, organization_id)
+            conn.commit()
             query = '''
                 SELECT des.id, des.department_id, des.title, des.description, des.active, des.created_at,
                        des.organization_id, des.branch_id,
