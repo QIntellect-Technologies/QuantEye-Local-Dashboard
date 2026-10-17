@@ -894,6 +894,9 @@
                 <p id="reportDateSubtitle" aria-live="polite" style="margin:4px 0 0; color:#64748b; font-size:0.82rem;"></p>
             </div>
             <div class="header-actions">
+                <button class="btn-action btn-primary" onclick="exportPDF()" title="Export filtered records to PDF" style="background: linear-gradient(135deg, #e11d48, #be123c); font-weight: 600;">
+                    <i class="fa-solid fa-file-pdf"></i> Export PDF
+                </button>
                 <button class="btn-action btn-primary" onclick="exportCSV()" title="Export filtered records to CSV" style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600;">
                     <i class="fa-solid fa-file-csv"></i> Export CSV
                 </button>
@@ -1076,6 +1079,55 @@
             </div>
         </div>
 
+    </div>
+
+    <!-- Edit Attendance Modal (ATT-02) -->
+    <div id="editAttendanceModal" class="modal-overlay" onclick="if(event.target===this) closeEditAttendanceModal()">
+        <div class="modal-container" style="max-width: 520px;" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div>
+                    <h2 style="color: #ffffff; font-size: 1.25rem; margin-bottom: 4px;">
+                        <i class="fa-solid fa-pen-to-square" style="color: var(--primary-cyan); margin-right: 6px;"></i> Edit Attendance
+                    </h2>
+                    <p id="editAttEmpSub" style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">Update record for employee</p>
+                </div>
+                <button onclick="closeEditAttendanceModal()" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 20px 24px;">
+                <input type="hidden" id="editAttUserId" />
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">Date</label>
+                    <input type="date" id="editAttDate" style="width: 100%; padding: 8px 12px; background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 0.9rem;" />
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">Status</label>
+                    <select id="editAttStatus" onchange="toggleEditAttFields()" style="width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 0.9rem;">
+                        <option value="present">Present</option>
+                        <option value="absent">Absent</option>
+                    </select>
+                </div>
+                <div id="editAttTimeFields" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                    <div>
+                        <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">Check-In Time</label>
+                        <input type="time" id="editAttCheckIn" style="width: 100%; padding: 8px 12px; background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 0.9rem;" />
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">Check-Out Time</label>
+                        <input type="time" id="editAttCheckOut" style="width: 100%; padding: 8px 12px; background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 0.9rem;" />
+                    </div>
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">Notes / Reason</label>
+                    <input type="text" id="editAttNotes" placeholder="Reason for edit..." style="width: 100%; padding: 8px 12px; background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 0.9rem;" />
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                    <button type="button" onclick="closeEditAttendanceModal()" style="padding: 8px 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #cbd5e1; cursor: pointer;">Cancel</button>
+                    <button type="button" id="saveEditAttBtn" onclick="submitEditAttendance()" style="padding: 8px 20px; background: linear-gradient(135deg, #0284c7, #0369a1); border: none; border-radius: 6px; color: #fff; font-weight: 600; cursor: pointer;"><i class="fa-solid fa-floppy-disk"></i> Save Attendance</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Complete View Modal (Dedicated Employee Attendance Detail View) -->
@@ -1484,6 +1536,11 @@
             window.location.href = `/api/reports/export/csv?${query}`;
         }
 
+        function exportPDF() {
+            const query = buildFilterQuery();
+            window.location.href = `/api/reports/export/pdf?${query}`;
+        }
+
         function renderReportUI(data) {
             const isMultiDay = Boolean(data.is_multi_day);
             const summary = data.summary || {};
@@ -1715,11 +1772,14 @@
                     const checkinCam = r.checkin_camera_name || r.checkin_camera || r.location || '-';
                     const checkoutCam = r.checkout_camera_name || r.checkout_camera || r.checkout_location || '-';
 
-                    let actionBtn = '';
+                    const safeName = (r.name || '').replace(/'/g, "\\'");
+                    const safeNotes = (r.notes || '').replace(/'/g, "\\'");
+                    const editBtn = `<button class="btn-toggle-status" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); margin-right:4px;" onclick="openEditAttendanceModal(${r.user_id}, '${safeName}', '${r.date || 'today'}', '${r.first_seen || ''}', '${r.last_seen || ''}', ${r.shift_id || 'null'}, '${safeNotes}', '${st}')"><i class="fa-solid fa-pen-to-square"></i> Edit</button>`;
+                    let actionBtn = editBtn;
                     if (st === 'absent') {
-                        actionBtn = `<button class="btn-toggle-status btn-toggle-present" onclick="markUserPresent(${r.user_id})"><i class="fa-solid fa-check"></i> Mark Present</button>`;
+                        actionBtn += `<button class="btn-toggle-status btn-toggle-present" onclick="markUserPresent(${r.user_id})"><i class="fa-solid fa-check"></i> Mark Present</button>`;
                     } else {
-                        actionBtn = `<button class="btn-toggle-status btn-toggle-absent" onclick="markUserAbsent(${r.user_id})"><i class="fa-solid fa-xmark"></i> Mark Absent</button>`;
+                        actionBtn += `<button class="btn-toggle-status btn-toggle-absent" onclick="markUserAbsent(${r.user_id})"><i class="fa-solid fa-xmark"></i> Mark Absent</button>`;
                     }
 
                     tr.innerHTML = `
@@ -1994,6 +2054,9 @@
         }
 
         async function markUserAbsent(userId) {
+            if (!confirm("Are you sure you want to mark this employee absent for the selected date?\n\nAny existing attendance punch records will be cleared and the employee will be recorded as absent.")) {
+                return;
+            }
             try {
                 const targetDate = reportData?.start_date || null;
                 const res = await fetch(`/api/users/${userId}/mark-absent`, {
@@ -2009,6 +2072,87 @@
                 }
             } catch (err) {
                 alert("Error marking absent: " + err);
+            }
+        }
+
+        function openEditAttendanceModal(userId, userName, dateVal, firstSeen, lastSeen, shiftId, notesVal, currentStatus) {
+            document.getElementById('editAttUserId').value = userId;
+            document.getElementById('editAttEmpSub').textContent = `${userName} (ID #${userId})`;
+            const curDate = (dateVal && dateVal !== 'today' && dateVal !== 'Today') ? dateVal : (new Date().toISOString().slice(0, 10));
+            document.getElementById('editAttDate').value = curDate;
+            const isAbs = currentStatus === 'absent';
+            document.getElementById('editAttStatus').value = isAbs ? 'absent' : 'present';
+
+            const extractTime = (val) => {
+                if (!val || val === '-' || val === '--') return '';
+                const parts = val.split(' ');
+                const t = parts[parts.length - 1];
+                return t.slice(0, 5);
+            };
+            document.getElementById('editAttCheckIn').value = extractTime(firstSeen) || '09:00';
+            document.getElementById('editAttCheckOut').value = extractTime(lastSeen) || '';
+            document.getElementById('editAttNotes').value = notesVal || '';
+            toggleEditAttFields();
+            const modal = document.getElementById('editAttendanceModal');
+            if (modal) modal.classList.add('active');
+        }
+
+        function closeEditAttendanceModal() {
+            const modal = document.getElementById('editAttendanceModal');
+            if (modal) modal.classList.remove('active');
+        }
+
+        function toggleEditAttFields() {
+            const st = document.getElementById('editAttStatus').value;
+            const timeFields = document.getElementById('editAttTimeFields');
+            if (timeFields) {
+                timeFields.style.display = st === 'absent' ? 'none' : 'grid';
+            }
+        }
+
+        async function submitEditAttendance() {
+            const userId = document.getElementById('editAttUserId').value;
+            const targetDate = document.getElementById('editAttDate').value;
+            const status = document.getElementById('editAttStatus').value;
+            const checkIn = document.getElementById('editAttCheckIn').value;
+            const checkOut = document.getElementById('editAttCheckOut').value;
+            const notes = document.getElementById('editAttNotes').value;
+
+            if (status === 'present' && !checkIn) {
+                alert("Check-in time is required when status is Present.");
+                return;
+            }
+
+            const btn = document.getElementById('saveEditAttBtn');
+            const origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+
+            try {
+                const res = await fetch('/api/attendance/edit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: parseInt(userId),
+                        date: targetDate,
+                        status: status,
+                        check_in_time: status === 'present' ? checkIn : null,
+                        check_out_time: (status === 'present' && checkOut) ? checkOut : null,
+                        notes: notes
+                    })
+                });
+                const json = await res.json();
+                if (res.ok && json.success) {
+                    closeEditAttendanceModal();
+                    fetchReport();
+                } else {
+                    alert("Failed to update attendance: " + (json.error || json.message));
+                }
+            } catch (err) {
+                alert("Error updating attendance: " + err);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origText;
             }
         }
 

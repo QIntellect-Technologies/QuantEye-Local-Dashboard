@@ -3002,12 +3002,23 @@ def _record_automatic_checkout_overtime(
     cursor: sqlite3.Cursor,
     user_id: int,
     user_name: str,
-    checkout_time: datetime,
+    checkout_time: Union[datetime, str],
 ) -> float:
-    actual_date = checkout_time.strftime('%Y-%m-%d')
+    if isinstance(checkout_time, str):
+        try:
+            checkout_dt = datetime.strptime(checkout_time.split('.')[0], '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            checkout_dt = datetime.strptime(checkout_time.split('T')[0], '%Y-%m-%d')
+    else:
+        checkout_dt = checkout_time
+    actual_date = checkout_dt.strftime('%Y-%m-%d')
     if _overtime_date_is_future(actual_date):
         return 0.0
-    actual_time = checkout_time.strftime('%H:%M')
+    actual_time = checkout_dt.strftime('%H:%M')
+    if not user_name or not str(user_name).strip():
+        cursor.execute("SELECT name FROM users WHERE id = ?", (user_id,))
+        u_name_row = cursor.fetchone()
+        user_name = u_name_row[0] if u_name_row else f"User {user_id}"
     cursor.execute('''
         SELECT start_time, end_time, checkout_grace_period_minutes
         FROM employee_shift_history
@@ -3043,10 +3054,11 @@ def _record_automatic_checkout_overtime(
     if limit_status.get('exceeded'):
         reason += limit_status.get('review_note', '')
     if existing:
-        if str(existing[1] or 'pending').lower() == 'pending' and str(existing[2] or '').startswith('Automatic camera checkout'):
+        ex_id, ex_status = existing[0], (existing[1] or 'pending').lower()
+        if ex_status == 'pending':
             cursor.execute(
                 "UPDATE overtime SET hours = ?, reason = ? WHERE id = ?",
-                (overtime_hours, reason, existing[0]),
+                (overtime_hours, reason, ex_id),
             )
         return overtime_hours
 
@@ -3114,11 +3126,13 @@ def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> 
                     UPDATE leave_requests
                     SET restored_dates = ?,
                         status = ?,
+                        paid_status = CASE WHEN ? = 'cancelled_worked' THEN 'cancelled_worked' ELSE paid_status END,
+                        unpaid_status = CASE WHEN ? = 'cancelled_worked' THEN 'cancelled_worked' ELSE unpaid_status END,
                         reason = CASE WHEN reason IS NULL OR reason = ''
                                       THEN '[Leave entitlement restored: employee worked on ' || ? || ']'
                                       ELSE reason || ' [Entitlement restored for ' || ? || ']' END
                     WHERE id = ?
-                """, (restored_str, new_status, log_date, log_date, leave_id))
+                """, (restored_str, new_status, new_status, new_status, log_date, log_date, leave_id))
                 logger.info(f"LV-05: Restored leave entitlement for user #{user_id} on {log_date} (leave request #{leave_id})")
         return True
     except Exception as e:
@@ -3205,10 +3219,21 @@ def log_attendance(user_id: int, detected_name: str, confidence: float, source: 
                  u_org, u_branch)
             )
             att_id = cursor.lastrowid
+            overtime_hours = 0.0
             if checkout_camera_id:
                 overtime_hours = _record_automatic_checkout_overtime(
                     cursor, user_id, detected_name, attendance_time
                 )
+            else:
+                cursor.execute(
+                    "SELECT MIN(timestamp) FROM attendance WHERE user_id = ? AND date(timestamp) = ?",
+                    (user_id, log_date_str)
+                )
+                first_att = cursor.fetchone()
+                if first_att and first_att[0] and str(first_att[0]) < attendance_time.strftime('%Y-%m-%d %H:%M:%S'):
+                    overtime_hours = _record_automatic_checkout_overtime(
+                        cursor, user_id, detected_name, attendance_time
+                    )
 
             # PHASE 2.3: Transactional Outbox Enqueue
             ev_id = f"ATT-{u_org}-{u_branch}-{att_id}-{int(attendance_time.timestamp())}"
@@ -3897,6 +3922,10 @@ def get_detailed_attendance_report(
                 paid_days = int(lr['paid_days'] or 0) if explicit_allocation else None
                 unpaid_days = int(lr['unpaid_days'] or 0) if explicit_allocation else None
                 paid_through_date = lr['paid_through_date']
+                if explicit_allocation and (paid_days or 0) > 0 and not paid_through_date:
+                    p_rng, _ = split_leave_request_dates(l_uid, l_start, l_end, paid_days)
+                    if p_rng:
+                        paid_through_date = p_rng[1]
                 leave_is_paid_default = bool(lr['is_paid'])
 
                 restored_dates_raw = lr['restored_dates'] if 'restored_dates' in lr.keys() else ''
@@ -5673,8 +5702,12 @@ def get_leave_requests(user_id: Optional[int] = None, status: Optional[str] = No
                 query += " AND user_id = ?"
                 params.append(user_id)
             if status:
-                query += " AND status = ?"
-                params.append(status)
+                st_lower = status.strip().lower()
+                if st_lower == 'active':
+                    query += " AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'approved', 'partially_approved') AND status != 'cancelled_worked'"
+                else:
+                    query += " AND status = ?"
+                    params.append(status)
             if organization_id and organization_id != 'all':
                 if organization_id == 'DEFAULT_ORG':
                     query += " AND (organization_id = 'DEFAULT_ORG' OR organization_id IS NULL)"
@@ -5709,6 +5742,26 @@ def get_leave_requests(user_id: Optional[int] = None, status: Optional[str] = No
                         leave_request['paid_days'] = requested_days
                         leave_request['unpaid_days'] = 0
                         leave_request['quota_days'] = requested_days
+
+                # LV-06: Derive approved, pending, rejected, paid approved, unpaid approved breakdowns
+                p_days = int(leave_request.get('paid_days') or 0)
+                u_days = int(leave_request.get('unpaid_days') or 0)
+                st = str(leave_request.get('status') or 'pending').lower()
+                p_st = str(leave_request.get('paid_status') or ('approved' if st == 'approved' else 'pending')).lower()
+                u_st = str(leave_request.get('unpaid_status') or ('approved' if st == 'approved' else 'pending')).lower()
+
+                paid_appr = p_days if p_st == 'approved' else 0
+                unpaid_appr = u_days if u_st == 'approved' else 0
+                paid_pend = p_days if p_st == 'pending' else 0
+                unpaid_pend = u_days if u_st == 'pending' else 0
+                paid_rej = p_days if p_st == 'rejected' else 0
+                unpaid_rej = u_days if u_st == 'rejected' else 0
+
+                leave_request['paid_approved_days'] = paid_appr
+                leave_request['unpaid_approved_days'] = unpaid_appr
+                leave_request['approved_days'] = paid_appr + unpaid_appr
+                leave_request['pending_days'] = paid_pend + unpaid_pend
+                leave_request['rejected_days'] = paid_rej + unpaid_rej
             return requests
     except Exception as e:
         logger.error(f"Get leave requests error: {e}")

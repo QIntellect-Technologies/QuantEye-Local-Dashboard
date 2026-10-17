@@ -4511,6 +4511,9 @@ async function fetchMultiLiveDetections() {
             <button id="mainReportRefreshBtn" type="button" onclick="fetchMainReport(true)" class="btn btn-outline" style="width:auto; padding:9px 18px; font-size:0.88em; border-color:#3d9fd4; color:#247eae;">
               <i class="fa-solid fa-rotate"></i> Refresh Data
             </button>
+            <button onclick="exportMainPDF()" class="btn btn-primary shadow" style="width:auto; padding:9px 20px; font-size:0.88em; background:#e11d48; border:none; color:white; font-weight:600;">
+              <i class="fa-solid fa-file-pdf"></i> Export PDF
+            </button>
             <button onclick="exportMainCSV()" class="btn btn-primary shadow" style="width:auto; padding:9px 20px; font-size:0.88em; background:#0284c7; border:none; color:white; font-weight:600;">
               <i class="fa-solid fa-file-csv"></i> Export CSV
             </button>
@@ -5077,6 +5080,7 @@ async function fetchMultiLiveDetections() {
           <input type="search" id="leaveSearch" class="form-control" placeholder="Search employee name or ID..." oninput="onLeaveSearchInput()" style="max-width:260px;" />
           <select id="leaveStatusFilter" class="form-select" onchange="onLeaveFilterChange()" style="width:auto; min-width:140px;">
             <option value="all">All Statuses</option>
+            <option value="active">Active Requests</option>
             <option value="pending">Pending</option>
             <option value="approved">Approved</option>
             <option value="partially_approved">Partially Approved</option>
@@ -11944,15 +11948,18 @@ async function fetchMultiLiveDetections() {
             };
             const hasAttendance = realPunch(r.first_seen) || ['present', 'late', 'checked_out'].includes(st);
             const isLeaveToday = ['on_leave', 'on_leave_unpaid'].includes(st) && !hasAttendance;
+            const dayType = r.day_type;
+            const isPresentType = ['present', 'late', 'checked_out'].includes(st) || hasAttendance;
+            const dayTypeSuffix = (isPresentType && dayType && ['Public Holiday', 'Leave Day', 'Rest Day'].includes(dayType)) ? ` — ${dayType}` : '';
             if (isLeaveToday) {
               const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
               statusBadge = `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
-            } else if (st === 'checked_out' || realPunch(r.last_seen)) {
-              statusBadge = '<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-right-from-bracket"></i> Checked Out</span>';
-            } else if (st === 'present' || hasAttendance) {
-              statusBadge = '<span class="badge" style="background:#e6f4ea; color:#1e8e3e; border:1px solid #a8dab5; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-check"></i> Present</span>';
             } else if (st === 'late') {
-              statusBadge = '<span class="badge" style="background:#fef7e0; color:#b06000; border:1px solid #f9e29c; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-clock"></i> Late</span>';
+              statusBadge = `<span class="badge" style="background:#fef7e0; color:#b06000; border:1px solid #f9e29c; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-clock"></i> Late${dayTypeSuffix}</span>`;
+            } else if (st === 'checked_out' || (realPunch(r.last_seen) && st !== 'present')) {
+              statusBadge = `<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-right-from-bracket"></i> Checked Out${dayTypeSuffix}</span>`;
+            } else if (st === 'present' || hasAttendance) {
+              statusBadge = `<span class="badge" style="background:#e6f4ea; color:#1e8e3e; border:1px solid #a8dab5; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-check"></i> Present${dayTypeSuffix}</span>`;
             } else {
               statusBadge = '<span class="badge" style="background:#fce8e6; color:#d93025; border:1px solid #f5b4b0; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-xmark"></i> Absent</span>';
             }
@@ -12017,6 +12024,16 @@ async function fetchMultiLiveDetections() {
               btn.addEventListener('click', function() { markMainUserPresent(r.user_id, targetDate, r.name, this); });
               actionCell.appendChild(btn);
             } else if (hasAttendance) {
+              const editBtn = document.createElement('button');
+              editBtn.style.cssText = 'padding:4px 8px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #2563eb; color:#1d4ed8; background:#eff6ff; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; margin-right:4px; white-space:nowrap;';
+              editBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Edit';
+              editBtn.addEventListener('mouseenter', function() { this.style.background = '#dbeafe'; });
+              editBtn.addEventListener('mouseleave', function() { this.style.background = '#eff6ff'; });
+              editBtn.addEventListener('click', function() {
+                openManualAttendanceForCorrection(r.user_id, targetDate, r.name, r.first_seen, r.last_seen, r.shift_id);
+              });
+              actionCell.appendChild(editBtn);
+
               const btn = document.createElement('button');
               btn.style.cssText = 'padding:4px 8px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #dc2626; color:#b91c1c; background:#fef2f2; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
               btn.innerHTML = '<i class="fa-solid fa-xmark"></i> Mark Absent';
@@ -12273,6 +12290,10 @@ async function fetchMultiLiveDetections() {
       }
 
       async function markMainUserAbsent(userId, targetDate, userName, btnElement) {
+        const confirmMsg = `Are you sure you want to mark ${userName || 'this employee'} absent for ${targetDate || 'today'}?\n\nAny existing attendance punch records for this day will be cleared and the employee will be recorded as absent.`;
+        if (!confirm(confirmMsg)) {
+          return;
+        }
         let originalContent = '';
         if (btnElement) {
           originalContent = btnElement.innerHTML;
@@ -12491,6 +12512,11 @@ async function fetchMultiLiveDetections() {
       function exportMainCSV() {
         const query = buildMainExportQuery();
         window.location.href = `${API_BASE}/reports/export/csv?${query}`;
+      }
+
+      function exportMainPDF() {
+        const query = buildMainExportQuery();
+        window.location.href = `${API_BASE}/reports/export/pdf?${query}`;
       }
 
       // ================= STAFF DIRECTORY TAB LOGIC =================
@@ -17924,7 +17950,11 @@ async function fetchMultiLiveDetections() {
             searchMatch = nameStr.includes(search) || (req.department || '').toLowerCase().includes(search) || (req.leave_type || '').toLowerCase().includes(search);
           }
         }
-        const statusMatch = statusFilter === 'all' || String(req.status || '').toLowerCase() === statusFilter;
+        const statusMatch = statusFilter === 'all'
+          ? String(req.status || '').toLowerCase() !== 'cancelled_worked'
+          : (statusFilter === 'active'
+              ? ['pending', 'approved', 'partially_approved'].includes(String(req.status || '').toLowerCase()) && String(req.status || '').toLowerCase() !== 'cancelled_worked'
+              : String(req.status || '').toLowerCase() === statusFilter);
         const dateFilter = document.getElementById('leaveDateFilter')?.value || '';
         
         let monthMatch = true;
@@ -18022,8 +18052,25 @@ async function fetchMultiLiveDetections() {
         } catch (e) {}
 
         let statusBadge = '<span class="badge bg-warning-subtle text-warning-emphasis">Pending</span>';
-        if (req.status === 'approved' || req.status === 'partially_approved') statusBadge = '<span class="badge bg-success-subtle text-success">Approved</span>';
-        else if (req.status === 'rejected') statusBadge = '<span class="badge bg-danger-subtle text-danger">Rejected</span>';
+        if (req.status === 'approved') statusBadge = '<span class="badge bg-success-subtle text-success">Approved</span>';
+        else if (req.status === 'partially_approved') {
+          const apprDays = Number(req.approved_days != null ? req.approved_days : (req.paid_status === 'approved' ? (req.paid_days || 0) : 0));
+          const pendDays = Number(req.pending_days != null ? req.pending_days : (req.unpaid_status === 'pending' ? (req.unpaid_days || 0) : 0));
+          const rejDays = Number(req.rejected_days != null ? req.rejected_days : 0);
+          const paidAppr = Number(req.paid_approved_days != null ? req.paid_approved_days : (req.paid_status === 'approved' ? (req.paid_days || 0) : 0));
+          const unpaidAppr = Number(req.unpaid_approved_days != null ? req.unpaid_approved_days : (req.unpaid_status === 'approved' ? (req.unpaid_days || 0) : 0));
+          statusBadge = `<div style="display:flex; flex-direction:column; gap:2px;">
+            <span class="badge bg-info-subtle text-info">Partially Approved</span>
+            <div style="display:flex; flex-wrap:wrap; gap:2px; font-size:0.7em;">
+              <span class="badge bg-success-subtle text-success" title="Approved Days">${apprDays} Approved</span>
+              ${pendDays ? `<span class="badge bg-warning-subtle text-warning-emphasis" title="Pending Days">${pendDays} Pending</span>` : ''}
+              ${rejDays ? `<span class="badge bg-danger-subtle text-danger" title="Rejected Days">${rejDays} Rejected</span>` : ''}
+              <span class="badge" style="background:#e0f2fe; color:#0369a1;" title="Paid Approved Days">${paidAppr} Paid</span>
+              ${unpaidAppr ? `<span class="badge" style="background:#fef3c7; color:#92400e;" title="Unpaid Approved Days">${unpaidAppr} Unpaid</span>` : ''}
+            </div>
+          </div>`;
+        } else if (req.status === 'rejected') statusBadge = '<span class="badge bg-danger-subtle text-danger">Rejected</span>';
+        else if (req.status === 'cancelled_worked') statusBadge = '<span class="badge bg-secondary text-white">Restored (Worked)</span>';
 
         const leaveType = String(req.leave_type || 'annual').toLowerCase();
         const paidDays = Number(req.paid_days != null ? req.paid_days : (leaveType === 'unpaid' ? 0 : numDays));
@@ -18220,9 +18267,15 @@ async function fetchMultiLiveDetections() {
       const durationSummary = halfLeaveCount
         ? `${fullDayCount ? `${fullDayCount} full day(s) plus ` : ''}${halfLeaveCount} half-leave occurrence(s)`
         : `${requestedDays} scheduled day(s)`;
-      const requestStatusLabel = request.status === 'partially_approved'
-        ? 'Partially Approved'
-        : String(request.status || 'pending').replace(/\b\w/g, char => char.toUpperCase());
+      let requestStatusLabel = String(request.status || 'pending').replace(/\b\w/g, char => char.toUpperCase());
+      if (request.status === 'partially_approved') {
+        const apprDays = Number(request.approved_days != null ? request.approved_days : (request.paid_status === 'approved' ? (request.paid_days || 0) : 0));
+        const pendDays = Number(request.pending_days != null ? request.pending_days : (request.unpaid_status === 'pending' ? (request.unpaid_days || 0) : 0));
+        const rejDays = Number(request.rejected_days != null ? request.rejected_days : 0);
+        const paidAppr = Number(request.paid_approved_days != null ? request.paid_approved_days : (request.paid_status === 'approved' ? (request.paid_days || 0) : 0));
+        const unpaidAppr = Number(request.unpaid_approved_days != null ? request.unpaid_approved_days : (request.unpaid_status === 'approved' ? (request.unpaid_days || 0) : 0));
+        requestStatusLabel = `Partially Approved (${apprDays} Approved, ${pendDays} Pending, ${rejDays} Rejected | ${paidAppr} Paid, ${unpaidAppr} Unpaid)`;
+      }
       const allocationSummary = document.getElementById('leaveCompleteAllocationSummary');
       if (allocationSummary) {
         allocationSummary.textContent = statusFilter === 'all'

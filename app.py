@@ -2912,6 +2912,73 @@ def api_mark_user_present(user_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/attendance/edit', methods=['POST'])
+def api_edit_attendance():
+    """ATT-02: Edit attendance record for an employee with input validation and tenant scoping."""
+    try:
+        data = request.get_json(silent=True) or {}
+        user_id_raw = data.get('user_id')
+        if not user_id_raw:
+            return jsonify({'error': 'user_id is required'}), 400
+        try:
+            user_id = int(user_id_raw)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Invalid user_id'}), 400
+
+        user = verify_user_access(user_id)
+        if not user:
+            return jsonify({'error': 'User not found or unauthorized'}), 404
+
+        target_date = data.get('date') or data.get('target_date') or datetime.now().date().isoformat()
+        status = str(data.get('status') or '').strip().lower()
+        check_in_time = data.get('check_in_time') or data.get('check_in')
+        check_out_time = data.get('check_out_time') or data.get('check_out')
+        shift_id_raw = data.get('shift_id')
+        notes = data.get('notes') or ''
+
+        parsed_shift_id = None
+        if shift_id_raw is not None and str(shift_id_raw).strip():
+            try:
+                parsed_shift_id = int(shift_id_raw)
+            except (ValueError, TypeError):
+                return jsonify({'error': 'Invalid shift_id'}), 400
+
+        acting_admin = session.get('admin_name') or 'Admin'
+        current_tenant = get_current_tenant_id()
+
+        if status == 'absent':
+            success = db.mark_user_absent_today(user_id, target_date=target_date, organization_id=current_tenant)
+            if success:
+                remove_live_detection_for_user(user_id)
+                return jsonify({'success': True, 'message': f'Attendance for user {user_id} updated to absent'}), 200
+            else:
+                return jsonify({'error': 'Failed to update attendance to absent'}), 400
+
+        success = db.mark_user_present_today(
+            user_id=user_id,
+            target_date=target_date,
+            check_in_time=check_in_time,
+            check_out_time=check_out_time,
+            shift_id=parsed_shift_id,
+            notes=notes,
+            marked_by=acting_admin,
+            organization_id=current_tenant
+        )
+        if success:
+            restore_live_detection_for_user(user_id)
+            mark_logged_today_in_memory(user_id, 'manual')
+            return jsonify({'success': True, 'message': f'Attendance for user {user_id} saved successfully'}), 200
+        else:
+            return jsonify({'error': 'Failed to save attendance'}), 400
+    except ValueError as ve:
+        if str(ve) == db.PAYROLL_LOCK_MESSAGE:
+            return jsonify({'error': str(ve), 'reopen': '/api/payroll/reopen'}), 409
+        return jsonify({'error': str(ve)}), 400
+    except Exception as e:
+        logger.error(f"API edit attendance error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/attendance/bulk-mark', methods=['POST'])
 def api_bulk_mark_attendance():
     """Mark all or specific selected users present or absent for today or target date."""
@@ -4797,15 +4864,19 @@ def api_reports_export_excel():
 
 @app.route('/api/reports/export/pdf', methods=['GET'])
 def api_reports_export_pdf():
-    """Export the filtered attendance report as a downloadable PDF."""
-    from payroll_extensions import simple_pdf_bytes
+    """Export the filtered attendance report as a downloadable professional PDF."""
+    from payroll_extensions import attendance_report_pdf_bytes
 
     target_date = request.args.get('date', '').strip() or None
     start_date = request.args.get('start_date', '').strip() or None
     end_date = request.args.get('end_date', '').strip() or None
     department = request.args.get('department', '').strip() or None
+    shift_id = request.args.get('shift_id', '').strip() or request.args.get('shift', '').strip() or None
     status = request.args.get('status', '').strip() or None
     search = request.args.get('search', '').strip() or None
+    checkin_camera = request.args.get('checkin_camera', '').strip() or None
+    checkout_camera = request.args.get('checkout_camera', '').strip() or None
+    camera_id = request.args.get('camera_id', '').strip() or request.args.get('camera', '').strip() or None
     user_id = request.args.get('user_id', type=int)
 
     report = db.get_detailed_attendance_report(
@@ -4813,50 +4884,34 @@ def api_reports_export_pdf():
         start_date=start_date,
         end_date=end_date,
         department=department,
+        shift_id=shift_id,
         status_filter=status,
         search_query=search,
+        checkin_camera=checkin_camera,
+        checkout_camera=checkout_camera,
+        camera_id=camera_id,
         user_id=user_id,
         organization_id=get_current_tenant_id(),
     )
-    records = report.get('records', [])
     date_label = report.get('date_label', 'Today')
     branch_cfg = db.get_branch_settings()
     org_name = (branch_cfg.get('branch_name') or branch_cfg.get('company_name') or 'Organization').strip()
-    lines = [
-        org_name,
-        'Period: {}'.format(date_label),
-        'Department: {}'.format(department or 'All'),
-        'Status: {}'.format(status or 'All'),
-        'Generated: {}'.format(datetime.now().strftime('%d %b %Y %H:%M')),
-        '',
-    ]
-    is_multi_day = report.get('is_multi_day', False)
-    for rec in records[:80]:
-        if is_multi_day:
-            lines.append(
-                '#{} {} | P {} Abs {} Late {} | {}%'.format(
-                    rec.get('user_id'),
-                    rec.get('name'),
-                    rec.get('present_days'),
-                    rec.get('absent_days'),
-                    rec.get('late_days'),
-                    rec.get('attendance_rate'),
-                )
-            )
-        else:
-            lines.append(
-                '#{} {} | {} | {} | {} | {}'.format(
-                    rec.get('user_id'),
-                    rec.get('name'),
-                    rec.get('status'),
-                    rec.get('first_seen') or '-',
-                    rec.get('source_label') or rec.get('source') or '-',
-                    rec.get('checkin_camera') or '-',
-                )
-            )
-    if len(records) > 80:
-        lines.append('... and {} more employees'.format(len(records) - 80))
-    buffer = io.BytesIO(simple_pdf_bytes('Attendance Report', lines))
+
+    dept_disp = department if department and department.lower() != 'all' else 'All Departments'
+    status_disp = status.upper() if status and status.lower() != 'all' else 'All Statuses'
+    shift_disp = str(shift_id) if shift_id and str(shift_id).lower() != 'all' else 'All Shifts'
+
+    filter_info = {
+        'date_range': date_label,
+        'department': dept_disp,
+        'status': status_disp,
+        'shift': shift_disp,
+        'search': search or 'None',
+        'generated_at': datetime.now().strftime('%d %b %Y, %I:%M %p')
+    }
+
+    pdf_data = attendance_report_pdf_bytes(report, filter_info, org_name)
+    buffer = io.BytesIO(pdf_data)
     buffer.seek(0)
     filename = 'attendance-report-{}.pdf'.format((date_label or 'period').replace(' ', '_'))
     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
