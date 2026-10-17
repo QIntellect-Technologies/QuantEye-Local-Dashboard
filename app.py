@@ -3849,10 +3849,12 @@ def mobile_service_worker():
 def api_mobile_login():
     data = request.get_json(silent=True) or {}
     email = str(data.get('email') or data.get('username') or '').strip()
-    password = str(data.get('password') or '')
+    password = str(data.get('password') or data.get('pin') or '')
     user = db.authenticate_employee_email(email, password)
     if not user:
         return jsonify({'success': False, 'message': 'Email or password is incorrect.'}), 401
+    if not user.get('active', 1) or (user.get('exit_date') and str(user['exit_date'])[:10] < date.today().isoformat()):
+        return jsonify({'success': False, 'message': 'Account is inactive. Employee has left the organization.'}), 403
     organization_id = str(user.get('organization_id') or '').strip()
     _allowed, company_name = _mobile_company(organization_id)
     if not company_name:
@@ -5175,6 +5177,12 @@ def api_add_leave():
     except ValueError:
         return jsonify({'success': False, 'message': 'Invalid date format. Use YYYY-MM-DD.'}), 400
 
+    try:
+        with sqlite3.connect(db.DB_PATH) as conn:
+            db.validate_employment_dates(conn, int(user_id), start_date, end_date, activity_name='Leave')
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e), 'error': str(e)}), 400
+
     holiday = db.get_company_holiday_in_range(
         start_date,
         end_date,
@@ -5247,11 +5255,30 @@ def api_add_leave():
         if quota_range:
             quota_through_date = quota_range[1]
 
+    try:
+        with sqlite3.connect(db.DB_PATH) as conn:
+            db.validate_employment_dates(conn, int(user_id), start_date, end_date, activity_name='Leave')
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e), 'error': str(e)}), 400
+
     start_time = (data.get('start_time') or '').strip() or None
     end_time = (data.get('end_time') or '').strip() or None
-    if leave_duration == 'half' and start_time and end_time:
+    if leave_duration == 'half':
+        leave_types = db.get_leave_types(organization_id=get_current_tenant_id())
+        matched_type = next((lt for lt in leave_types if str(lt.get('code')) == str(leave_type) or str(lt.get('id')) == str(leave_type)), None)
+        quota_mode = db.get_payroll_settings(organization_id=get_current_tenant_id()).get('half_leave_quota_mode') or 'category'
+        company_half_allowed = quota_mode in ('monthly_cap', 'monthly_convert')
+        type_half_allowed = bool(matched_type and matched_type.get('half_leave_enabled'))
+        if matched_type and not (type_half_allowed or company_half_allowed):
+            msg = f'Half-day leave is not permitted for leave type {matched_type.get("name", leave_type)}.'
+            return jsonify({'success': False, 'message': msg, 'error': msg}), 400
+
+        if not start_time:
+            return jsonify({'success': False, 'message': 'Half-day start time is required.', 'error': 'Half-day start time is required.'}), 400
+        if not end_time:
+            return jsonify({'success': False, 'message': 'Half-day end time is required.', 'error': 'Half-day end time is required.'}), 400
         if end_time <= start_time:
-            return jsonify({'success': False, 'message': 'Leave end time must be later than start time.'}), 400
+            return jsonify({'success': False, 'message': 'Leave end time must be later than start time.', 'error': 'Leave end time must be later than start time.'}), 400
 
     user = db.get_user_by_id(int(user_id))
     try:

@@ -6319,16 +6319,16 @@ async function fetchMultiLiveDetections() {
               </select>
             </label>
             <label class="payroll-rule-field">How to calculate
-              <select id="payrollComponentMode" class="form-select">
-                <option value="fixed">Same amount every month</option>
-                <option value="percent_basic">Percent of basic salary</option>
-                <option value="percent_gross">Percent of total pay</option>
-                <option value="per_working_day">Amount per work day</option>
-                <option value="per_hour">Amount per hour</option>
+              <select id="payrollComponentMode" class="form-select" onchange="updatePayrollComponentFieldLabels()">
+                <option value="fixed">Same amount every month (PKR)</option>
+                <option value="percent_basic">Percent of basic salary (%)</option>
+                <option value="percent_gross">Percent of total pay (%)</option>
+                <option value="per_working_day">Amount per work day (PKR/day)</option>
+                <option value="per_hour">Amount per hour (PKR/hour)</option>
               </select>
             </label>
-            <label class="payroll-rule-field">Amount or percent
-              <input id="payrollComponentDefault" class="form-control" type="number" min="0" step="0.01" value="0" placeholder="5000 or 10">
+            <label class="payroll-rule-field" id="payrollComponentDefaultWrap"><span id="payrollComponentDefaultLabel">Amount (PKR)</span>
+              <input id="payrollComponentDefault" class="form-control" type="number" min="0" step="0.01" value="0" placeholder="5000">
             </label>
             <div class="payroll-rule-actions">
               <button type="submit" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">Add item</button>
@@ -6369,10 +6369,10 @@ async function fetchMultiLiveDetections() {
               <label class="payroll-rule-field">Stop date (optional)
                 <input id="payLineEffectiveTo" class="form-control" type="date">
               </label>
-              <label class="payroll-rule-field">Lowest amount (optional)
+              <label class="payroll-rule-field">Lowest amount (PKR floor, optional)
                 <input id="payLineMinAmount" class="form-control" type="number" min="0" step="0.01" placeholder="No minimum">
               </label>
-              <label class="payroll-rule-field">Highest amount (optional)
+              <label class="payroll-rule-field">Highest amount (PKR cap, optional)
                 <input id="payLineMaxAmount" class="form-control" type="number" min="0" step="0.01" placeholder="No maximum">
               </label>
               <label class="payroll-rule-field" style="display:flex; align-items:center; gap:6px;">
@@ -6921,7 +6921,7 @@ async function fetchMultiLiveDetections() {
               <i class="fa-solid fa-book-open" style="margin-right:6px;"></i>Payroll Guide
             </button>
             <button type="button" class="btn btn-sm btn-outline-primary" onclick="openAutoOtRateModal()" style="border-radius: 8px; font-weight: 700; border-color: #3d9fd4; color: #247eae;">
-              <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Auto-Set OT Rates (1/208th Base)
+              <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Auto-Set OT Rates (Shift Schedule Base)
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadSalaryConfigs()" style="border-radius: 8px; font-weight: 700;">
               <i class="fa-solid fa-rotate me-1"></i> Refresh List
@@ -8114,7 +8114,7 @@ async function fetchMultiLiveDetections() {
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">OT Hourly Rate (PKR/hr)</label>
                 <button type="button" id="modalSalaryCalcOtBtn" class="btn btn-link p-0 text-decoration-none" onclick="calcSuggestedOtRate()" style="font-size: 0.72em; font-weight: 700; color: #247eae;">
-                  <i class="fa-solid fa-calculator"></i> Set 1/208th
+                  <i class="fa-solid fa-calculator"></i> Calculate OT Rate
                 </button>
               </div>
               <div style="position: relative;">
@@ -8853,10 +8853,26 @@ async function fetchMultiLiveDetections() {
               ? payrollMoney(row.fixed_amount)
               : row.deduction_percent == null ? '—' : `${Number(row.deduction_percent).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
 
+            const exitBadgeHtml = row.exit_date
+              ? `<span class="badge" style="background:rgba(245,158,11,0.15); color:#d97706; border:1px solid rgba(245,158,11,0.3); font-size:0.72em; margin-left:6px;"><i class="fa-solid fa-door-open"></i> Leaving ${payrollEscape(row.exit_date)}</span>`
+              : '';
+
+            const deductParts = [];
+            if (Number(row.absence_deduction || 0) > 0) deductParts.push(`Absent (${Number(row.absent_days || 0)}d): -${payrollMoney(row.absence_deduction)}`);
+            if (Number(row.half_leave_deduction || 0) > 0) deductParts.push(`Half-leave (${Number(row.half_leave_count || 0)}): -${payrollMoney(row.half_leave_deduction)}`);
+            if (Number(row.unpaid_leave_deduction || 0) > 0) deductParts.push(`Unpaid leave: -${payrollMoney(row.unpaid_leave_deduction)}`);
+            const otherDeduct = Math.max(0, Number(row.deduction_amount || 0) - Number(row.absence_deduction || 0) - Number(row.half_leave_deduction || 0) - Number(row.unpaid_leave_deduction || 0));
+            if (otherDeduct > 0.01) deductParts.push(`Package/Deductions: -${payrollMoney(otherDeduct)}`);
+            const deductTip = deductParts.length ? deductParts.join('; ') : 'No deductions';
+            const deductSub = deductParts.length ? `<div style="font-size:0.7em; color:#94a3b8; font-weight:400; max-width:130px; margin-left:auto; line-height:1.2;">${payrollEscape(deductParts[0])}${deductParts.length > 1 ? ` (+${deductParts.length - 1} more)` : ''}</div>` : '';
+
             if (payrollActiveSubtab === 'salary') {
               return `<tr>
                 <td class="fw-semibold">
-                  <div style="color:#173042; font-weight:700;">${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small></div>
+                  <div style="color:#173042; font-weight:700;">
+                    ${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
+                    ${exitBadgeHtml}
+                  </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
                 </td>
                 <td class="text-end font-monospace">${payrollMoney(row.basic_salary)}</td>
@@ -8864,7 +8880,10 @@ async function fetchMultiLiveDetections() {
                 ${payrollHasOvertime() ? `<td class="text-end font-monospace text-info payroll-overtime-only">${Number(row.overtime_amount || 0) > 0 ? '+ ' + payrollMoney(row.overtime_amount) + `<div style="font-size:0.72em; color:#64748b;">(${Number(row.overtime_hours || 0).toFixed(1)} hrs)</div>` : '—'}</td>` : ''}
                 <td class="text-end font-monospace text-success">${Number(row.bonus_amount || 0) > 0 ? '+ ' + payrollMoney(row.bonus_amount) : '—'}</td>
                 <td class="text-end font-monospace text-success">${Number(row.off_day_extra_pay || 0) > 0 ? '+ ' + payrollMoney(row.off_day_extra_pay) + (Number(row.off_days_worked || 0) ? `<div style="font-size:0.72em; color:#64748b;">(${Number(row.off_days_worked)} rest day${Number(row.off_days_worked) === 1 ? '' : 's'})</div>` : '') : '—'}</td>
-                <td class="text-end font-monospace text-danger">${Number(row.deduction_amount || 0) > 0 ? '- ' + payrollMoney(row.deduction_amount) : 'PKR 0.00'}</td>
+                <td class="text-end font-monospace text-danger" title="${payrollEscape(deductTip)}">
+                  ${Number(row.deduction_amount || 0) > 0 ? '- ' + payrollMoney(row.deduction_amount) : 'PKR 0.00'}
+                  ${deductSub}
+                </td>
                 <td class="text-end font-monospace fw-bold" style="color:#0d9488; font-size:1.02em;">${payrollMoney(row.net_salary)}</td>
                 <td class="text-center"><span class="badge ${statusClass}">${payrollEscape(status)}</span></td>
                 <td>${rowIssues.length ? `<span class="text-danger small fw-semibold">${payrollEscape(rowIssues.join('; '))}</span>` : '<span class="text-muted small">—</span>'}</td>
@@ -8873,7 +8892,10 @@ async function fetchMultiLiveDetections() {
             } else if (payrollActiveSubtab === 'attendance') {
               return `<tr>
                 <td class="fw-semibold">
-                  <div style="color:#173042; font-weight:700;">${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small></div>
+                  <div style="color:#173042; font-weight:700;">
+                    ${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
+                    ${exitBadgeHtml}
+                  </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
                 </td>
                 <td class="text-center fw-semibold" style="color:#475569;">${Number(row.scheduled_workdays || 0)}</td>
@@ -8893,7 +8915,10 @@ async function fetchMultiLiveDetections() {
               ].filter(Boolean).join(' | ');
               return `<tr>
                 <td class="fw-semibold">
-                  <div style="color:#173042; font-weight:700;">${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small></div>
+                  <div style="color:#173042; font-weight:700;">
+                    ${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
+                    ${exitBadgeHtml}
+                  </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
                 </td>
                 <td class="text-end font-monospace">${payrollMoney(row.basic_salary)}</td>
@@ -10724,6 +10749,7 @@ async function fetchMultiLiveDetections() {
 
       async function loadStaffDirectory() {
         try {
+          window.invalidateStaffAndDepartmentCaches?.();
           const resp = await fetch(`${API_BASE}/users`);
           const data = await resp.json();
           allEnrolledUsers = data.users || [];
@@ -10782,12 +10808,19 @@ async function fetchMultiLiveDetections() {
             : `<button onclick="toggleUserAttendance(${user.id}, 'present', '__N__')" class="btn-outline" style="width:auto; padding:5px 10px; font-size:0.78em; border-color:#10b981; color:#10b981;"><i class="fa-solid fa-user-check"></i> Present</button>`;
           const safeName = (user.name || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;");
 
+          const exitBadge = user.exit_date
+            ? `<span class="badge" style="background:rgba(245,158,11,0.15); color:#d97706; border:1px solid rgba(245,158,11,0.3); font-size:0.75em; margin-left:6px;"><i class="fa-solid fa-door-open"></i> Leaving ${user.exit_date}</span>`
+            : '';
+
           html += `<tr>
             <td><strong>#${user.id}</strong></td>
             <td>
               <div style="display:flex; align-items:center; gap:10px;">
                 <div class="ticker-avatar" style="width:32px; height:32px; font-size:0.85em; font-weight:700; flex-shrink:0; background:linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);">${(user.name || "U").charAt(0).toUpperCase()}</div>
-                <strong>${user.name}</strong>
+                <div>
+                  <strong>${user.name}</strong>
+                  ${exitBadge}
+                </div>
               </div>
             </td>
             <td>
@@ -15299,14 +15332,50 @@ async function fetchMultiLiveDetections() {
         }
       }
 
+      window.updatePayrollComponentFieldLabels = function() {
+        const mode = document.getElementById('payrollComponentMode')?.value;
+        const labelEl = document.getElementById('payrollComponentDefaultLabel');
+        const inputEl = document.getElementById('payrollComponentDefault');
+        if (!labelEl || !inputEl) return;
+        if (mode === 'percent_basic') {
+          labelEl.textContent = 'Percent (% of basic)';
+          inputEl.placeholder = 'e.g. 10 (%)';
+          inputEl.max = '100';
+        } else if (mode === 'percent_gross') {
+          labelEl.textContent = 'Percent (% of gross)';
+          inputEl.placeholder = 'e.g. 5 (%)';
+          inputEl.max = '100';
+        } else if (mode === 'per_working_day') {
+          labelEl.textContent = 'Rate per work day (PKR/day)';
+          inputEl.placeholder = 'e.g. 500';
+          inputEl.removeAttribute('max');
+        } else if (mode === 'per_hour') {
+          labelEl.textContent = 'Rate per hour (PKR/hour)';
+          inputEl.placeholder = 'e.g. 200';
+          inputEl.removeAttribute('max');
+        } else {
+          labelEl.textContent = 'Amount (PKR)';
+          inputEl.placeholder = 'e.g. 5000';
+          inputEl.removeAttribute('max');
+        }
+      };
+
       async function savePayrollComponentType() {
+        const calcMode = document.getElementById('payrollComponentMode')?.value || 'fixed';
+        const defaultAmt = Number(document.getElementById('payrollComponentDefault')?.value || 0);
+
+        if ((calcMode === 'percent_basic' || calcMode === 'percent_gross') && (defaultAmt < 0 || defaultAmt > 100)) {
+          showAppToast('Percentage must be between 0 and 100%', 'error');
+          return;
+        }
+
         const payload = {
           name: document.getElementById('payrollComponentName')?.value,
           code: document.getElementById('payrollComponentCode')?.value,
           kind: document.getElementById('payrollComponentKind')?.value,
           category: document.getElementById('payrollComponentCategory')?.value,
-          calc_mode: document.getElementById('payrollComponentMode')?.value,
-          default_amount: Number(document.getElementById('payrollComponentDefault')?.value || 0)
+          calc_mode: calcMode,
+          default_amount: defaultAmt
         };
         try {
           const response = await fetch(`${API_BASE}/payroll/component-types`, {
@@ -15354,6 +15423,37 @@ async function fetchMultiLiveDetections() {
         const scopeId = document.getElementById('payLineScopeValue')?.value || '';
         const minCap = document.getElementById('payLineMinAmount')?.value;
         const maxCap = document.getElementById('payLineMaxAmount')?.value;
+        const minVal = minCap === '' || minCap === null || minCap === undefined ? null : Number(minCap);
+        const maxVal = maxCap === '' || maxCap === null || maxCap === undefined ? null : Number(maxCap);
+
+        if (minVal !== null && maxVal !== null && minVal > maxVal) {
+          showAppToast('Lowest amount cannot be greater than highest amount', 'error');
+          const message = document.getElementById('payLineAssignMessage');
+          if (message) message.textContent = 'Lowest amount cannot be greater than highest amount';
+          return;
+        }
+
+        const compTypeId = Number(document.getElementById('payLineAssignType')?.value);
+        const currentType = (window._payrollComponentTypes || []).find(t => Number(t.id) === compTypeId);
+        const calcMode = currentType?.calc_mode || document.getElementById('payrollComponentMode')?.value || 'fixed';
+        const rawVal = Number(document.getElementById('payrollComponentDefault')?.value || 0);
+
+        let sendPercent = null;
+        let sendAmount = null;
+        if (calcMode === 'percent_basic' || calcMode === 'percent_gross') {
+          if (rawVal < 0 || rawVal > 100) {
+            showAppToast('Percentage must be between 0 and 100%', 'error');
+            return;
+          }
+          sendPercent = rawVal;
+        } else {
+          if (rawVal < 0) {
+            showAppToast('Amount cannot be negative', 'error');
+            return;
+          }
+          sendAmount = rawVal;
+        }
+
         const payload = {
           scope,
           scope_id: scopeId,
@@ -15361,13 +15461,13 @@ async function fetchMultiLiveDetections() {
           designation: scope === 'designation' ? scopeId : undefined,
           shift_id: scope === 'shift' ? scopeId : undefined,
           user_id: scope === 'employee' ? Number(scopeId) : undefined,
-          component_type_id: Number(document.getElementById('payLineAssignType')?.value),
-          percent: Number(document.getElementById('payrollComponentDefault')?.value || 0),
-          amount: Number(document.getElementById('payrollComponentDefault')?.value || 0),
+          component_type_id: compTypeId,
+          percent: sendPercent,
+          amount: sendAmount,
           effective_from: document.getElementById('payLineEffectiveFrom')?.value,
           effective_to: document.getElementById('payLineEffectiveTo')?.value || null,
-          min_amount: minCap === '' ? null : Number(minCap),
-          max_amount: maxCap === '' ? null : Number(maxCap),
+          min_amount: minVal,
+          max_amount: maxVal,
           excluded: Boolean(document.getElementById('payLineExcluded')?.checked)
         };
         const message = document.getElementById('payLineAssignMessage');
@@ -19640,7 +19740,7 @@ async function fetchMultiLiveDetections() {
       modal.style.display = 'flex';
 
       try {
-        const res = await fetch('/api/salary');
+        const res = await fetch('/api/salary', { cache: 'no-store' });
         const configs = await res.json();
         window._allOtSalaryConfigs = Array.isArray(configs) ? configs : [];
         const departments = [...new Set(window._allOtSalaryConfigs.map(config => config.department).filter(Boolean))].sort();
@@ -20450,17 +20550,22 @@ async function fetchMultiLiveDetections() {
     });
 
     let _cachedRuleTargets = null;
-    async function fetchRuleTargets() {
-        if (!_cachedRuleTargets) {
+    window.invalidateStaffAndDepartmentCaches = function() {
+        _cachedRuleTargets = null;
+        window._allOtSalaryConfigs = null;
+        window._allLeaveUsers = null;
+    };
+    async function fetchRuleTargets(forceRefresh = false) {
+        if (!_cachedRuleTargets || forceRefresh) {
             _cachedRuleTargets = { departments: [], employees: [] };
             try {
                 const [depRes, empRes] = await Promise.all([
-                    fetch('/api/departments?active_only=false'),
-                    fetch('/api/users')
+                    fetch('/api/departments?active_only=false', { cache: 'no-store' }),
+                    fetch('/api/users', { cache: 'no-store' })
                 ]);
                 if (depRes.ok) {
                     const data = await depRes.json();
-                    _cachedRuleTargets.departments = data.departments || [];
+                    _cachedRuleTargets.departments = Array.isArray(data) ? data : (data.departments || []);
                 }
                 if (empRes.ok) {
                     const data = await empRes.json();

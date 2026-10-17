@@ -1814,6 +1814,20 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
             updated = cursor.rowcount > 0
             if updated and shift_id is not None and (shift_id != previous_shift_id or shift_effective_from is not None):
                 _record_employee_shift_history(cursor, user_id, shift_id, effective_date)
+            if updated and join_date:
+                norm_join = str(join_date)[:10]
+                earliest_history = cursor.execute(
+                    "SELECT id, effective_from, shift_id FROM employee_shift_history WHERE user_id = ? ORDER BY effective_from ASC, id ASC LIMIT 1",
+                    (user_id,)
+                ).fetchone()
+                current_active_shift = shift_id or previous_shift_id or 1
+                if not earliest_history:
+                    _record_employee_shift_history(cursor, user_id, current_active_shift, norm_join)
+                elif earliest_history[1] > norm_join:
+                    cursor.execute(
+                        "UPDATE employee_shift_history SET effective_from = ? WHERE id = ?",
+                        (norm_join, earliest_history[0])
+                    )
             conn.commit()
             
         if updated:
@@ -1825,6 +1839,30 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
     except Exception as e:
         logger.error(f"Failed to update user ID {user_id}: {e}")
         return False
+
+
+def validate_employment_dates(cursor_or_conn, user_id: int, start_date: str, end_date: Optional[str] = None, activity_name: str = 'Activity') -> None:
+    """Validate that an activity date does not fall before join_date or after exit_date (QA-20)."""
+    if not user_id or not start_date:
+        return
+    s_date = str(start_date)[:10]
+    e_date = str(end_date)[:10] if end_date else s_date
+
+    cursor = cursor_or_conn.cursor() if hasattr(cursor_or_conn, 'cursor') else cursor_or_conn
+    row = cursor.execute("SELECT join_date, exit_date, name, active FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not row:
+        return
+    join_d = str(row[0])[:10] if row[0] else None
+    exit_d = str(row[1])[:10] if row[1] else None
+    user_name = row[2] or f"Employee #{user_id}"
+
+    if join_d and s_date < join_d:
+        raise ValueError(f"{activity_name} date ({s_date}) cannot precede employee joining date ({join_d}) for {user_name}.")
+    if exit_d:
+        if s_date > exit_d:
+            raise ValueError(f"{activity_name} date ({s_date}) cannot be after employee exit date ({exit_d}) for {user_name}.")
+        if e_date and e_date > exit_d:
+            raise ValueError(f"{activity_name} date range ({s_date} to {e_date}) extends beyond employee exit date ({exit_d}) for {user_name}.")
 
 
 def deactivate_user(user_id: int, exit_date: Optional[str] = None, organization_id: Optional[str] = None) -> bool:
@@ -1948,14 +1986,40 @@ def check_user_camera_allowed(user_id: int, camera_id: str, action: str = 'check
 
 
 def delete_user(user_id: int) -> bool:
-    """Delete a user, associated embeddings and logs cascade automatically."""
+    """Delete a user. If the employee has attendance or payroll history, soft-delete via deactivation to preserve audit and payroll integrity (QA-14)."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute("PRAGMA foreign_keys = ON")
-            cursor.execute("SELECT organization_id FROM users WHERE id = ?", (user_id,))
+            cursor.execute("SELECT organization_id, join_date, exit_date FROM users WHERE id = ?", (user_id,))
             org_row = cursor.fetchone()
+            if not org_row:
+                return False
             org_id = org_row[0] if org_row else None
+
+            # Check if user has historical records
+            has_history = cursor.execute("""
+                SELECT 1 FROM attendance WHERE user_id = ?
+                UNION ALL
+                SELECT 1 FROM overtime WHERE user_id = ?
+                UNION ALL
+                SELECT 1 FROM leave_requests WHERE user_id = ?
+                UNION ALL
+                SELECT 1 FROM payroll_bonuses WHERE user_id = ?
+                LIMIT 1
+            """, (user_id, user_id, user_id, user_id)).fetchone()
+
+            if has_history:
+                exit_today = org_row[2] or datetime.now().date().isoformat()
+                cursor.execute(
+                    "UPDATE users SET active = 0, exit_date = ? WHERE id = ?",
+                    (exit_today, user_id)
+                )
+                conn.commit()
+                logger.info(f"✓ User ID {user_id} has employment history; soft-deleted with exit_date {exit_today}.")
+                _cloud_mirror("mirror_user_id", user_id)
+                return True
+
             cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
             deleted = cursor.rowcount > 0
             conn.commit()
@@ -3923,10 +3987,10 @@ def get_detailed_attendance_report(
                         shift_working_days = set(_normalize_shift_working_days(effective_shift['working_days']))
                         schedule_known = True
                     else:
-                        # Legacy employee support: if employee has no join_date, fallback to their assigned shift
+                        # Support pre-go-live and assigned shifts: if employee has an assigned shift, use it (QA-15)
                         legacy_shift_id = u.get('shift_id')
                         fallback_shift = all_shifts_lookup.get(legacy_shift_id) if legacy_shift_id else None
-                        if not u.get('join_date') and fallback_shift:
+                        if fallback_shift:
                             shift_id_for_day = legacy_shift_id
                             day_shift_name = fallback_shift.get('name')
                             shift_start = fallback_shift.get('start_time') or '09:00'
@@ -4507,6 +4571,8 @@ def mark_user_absent_today(user_id: int, target_date: Optional[str] = None, orga
                 return False
             user_org = u_row[0] or 'DEFAULT_ORG'
             user_branch = u_row[1] or 'DEFAULT_BRANCH'
+            actual_date = target_date[:10] if target_date else datetime.now().date().isoformat()
+            validate_employment_dates(cursor, user_id, actual_date, activity_name='Attendance')
             raise_if_payroll_month_locked(lock_day, organization_id or user_org, user_branch)
             user_branch = u_row[1] or 'DEFAULT_BRANCH'
             if organization_id and organization_id != 'all':
@@ -4697,6 +4763,7 @@ def mark_user_present_today(
             name, user_default_shift_id = user_row[0], user_row[1]
             user_org = user_row[2] or 'DEFAULT_ORG'
             user_branch = user_row[3] or 'DEFAULT_BRANCH'
+            validate_employment_dates(cursor, user_id, actual_date, activity_name='Attendance')
             raise_if_payroll_month_locked(actual_date, organization_id or user_org, user_branch)
             if organization_id and organization_id != 'all':
                 if organization_id != 'DEFAULT_ORG' and user_org != organization_id:
@@ -5099,7 +5166,7 @@ def authenticate_employee_email(email: str, password: str) -> Optional[Dict]:
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM users WHERE active = 1").fetchall()
+            rows = conn.execute("SELECT * FROM users").fetchall()
         matches = []
         for row in rows:
             user = dict(row)
@@ -6704,6 +6771,7 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
             branch_id = user_branch
             organization_id = organization_id or 'DEFAULT_ORG'
             branch_id = branch_id or 'DEFAULT_BRANCH'
+            validate_employment_dates(cursor, user_id, ot_date, activity_name='Overtime')
             next_day_att = _get_following_workday_attendance_status(cursor, user_id, ot_date)
             if next_day_att == 'absent':
                 raise ValueError('Overtime cannot be applied because the employee was absent on the following workday.')
@@ -6730,6 +6798,99 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
     except Exception as e:
         logger.error(f"Add overtime error: {e}")
         return None
+
+
+def calculate_employee_ot_rate(
+    conn_or_cursor,
+    user_id: int,
+    as_of_date: Optional[str] = None,
+    basic_salary: Optional[float] = None,
+    configured_rate: Optional[float] = None,
+) -> float:
+    """
+    Authoritative Overtime Rate Calculation (QA-04 / QA-27).
+    Formula:
+        Monthly Working Hours = (Shift Hours Per Day * Scheduled Working Days Per Week * 52) / 12
+        OT Rate = round(Basic Salary / Monthly Working Hours, 2)
+    If configured_rate > 0, returns configured_rate.
+    Otherwise calculates dynamically from employee shift on as_of_date.
+    """
+    if configured_rate is not None and float(configured_rate) > 0:
+        return round(float(configured_rate), 2)
+
+    cursor = conn_or_cursor.cursor() if hasattr(conn_or_cursor, 'cursor') else conn_or_cursor
+
+    # Get salary and configured rate if not passed
+    if basic_salary is None or (configured_rate is None and configured_rate != 0):
+        row = cursor.execute("""
+            SELECT COALESCE(sc.ot_rate, 0.0) as ot_rate,
+                   COALESCE(sc.basic_salary, u.salary, 0.0) as basic_salary
+            FROM users u
+            LEFT JOIN salary_configs sc ON sc.user_id = u.id
+            WHERE u.id = ?
+        """, (user_id,)).fetchone()
+        if row:
+            if configured_rate is None:
+                configured_rate = float(row[0] or 0.0)
+            if basic_salary is None:
+                basic_salary = float(row[1] or 0.0)
+        else:
+            if basic_salary is None:
+                basic_salary = 0.0
+            if configured_rate is None:
+                configured_rate = 0.0
+
+    if configured_rate and float(configured_rate) > 0:
+        return round(float(configured_rate), 2)
+
+    salary = float(basic_salary or 0.0)
+    if salary <= 0:
+        return 0.0
+
+    date_filter = str(as_of_date)[:10] if as_of_date else None
+    shift_row = None
+    if date_filter:
+        shift_row = cursor.execute("""
+            SELECT start_time, end_time, working_days FROM employee_shift_history
+            WHERE user_id = ? AND effective_from <= ?
+            ORDER BY effective_from DESC, id DESC LIMIT 1
+        """, (user_id, date_filter)).fetchone()
+
+    if not shift_row:
+        shift_row = cursor.execute("""
+            SELECT start_time, end_time, working_days FROM employee_shift_history
+            WHERE user_id = ?
+            ORDER BY effective_from DESC, id DESC LIMIT 1
+        """, (user_id,)).fetchone()
+
+    if not shift_row:
+        shift_row = cursor.execute("""
+            SELECT s.start_time, s.end_time, s.working_days
+            FROM users u
+            JOIN shifts s ON s.id = COALESCE(u.shift_id, 1)
+            WHERE u.id = ?
+        """, (user_id,)).fetchone()
+
+    monthly_hours = 208.0
+    if shift_row and shift_row[0] and shift_row[1]:
+        try:
+            s_str = str(shift_row[0])[:5]
+            e_str = str(shift_row[1])[:5]
+            s_dt = datetime.strptime(s_str, '%H:%M')
+            e_dt = datetime.strptime(e_str, '%H:%M')
+            diff_hours = (e_dt - s_dt).total_seconds() / 3600.0
+            if diff_hours <= 0:
+                diff_hours += 24.0
+            days_list = _normalize_shift_working_days(shift_row[2])
+            days_per_wk = len(days_list) if days_list else 6
+            monthly_hours = (diff_hours * days_per_wk * 52.0) / 12.0
+        except Exception:
+            monthly_hours = 208.0
+
+    if monthly_hours <= 0:
+        monthly_hours = 208.0
+
+    return round(salary / monthly_hours, 2)
 
 
 def get_overtime_rate_preview(
@@ -6770,8 +6931,7 @@ def get_overtime_rate_preview(
                 WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
                   AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
             ''', (emp_org, emp_branch)).fetchone()
-            divisor = float(settings['ot_hour_divisor'] if settings else DEFAULT_OT_DIVISOR) or DEFAULT_OT_DIVISOR
-            raw_rate = configured_rate if configured_rate > 0 else (salary / divisor if salary > 0 else 0.0)
+            raw_rate = calculate_employee_ot_rate(cursor, user_id, as_of_date=overtime_date, basic_salary=salary, configured_rate=configured_rate)
             rounding = _normalize_ot_rounding(settings['ot_rounding'] if settings else None)
             base_rate = round(raw_rate, 2) if rounding == 'round_rate_first' else float(raw_rate)
             day_type = _get_overtime_day_type(cursor, user_id, overtime_date)
@@ -6857,6 +7017,8 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                 d = dict(r)
                 hours = float(d.get('hours') or 0.0)
                 base_rate = float(d.get('ot_rate') or 0.0)
+                if base_rate <= 0:
+                    base_rate = calculate_employee_ot_rate(cursor, int(d['user_id']), as_of_date=str(d.get('ot_date')))
                 emp_org = str(d.get('organization_id') or 'DEFAULT_ORG')
                 emp_branch = str(d.get('branch_id') or 'DEFAULT_BRANCH')
                 cache_key = (emp_org, emp_branch)
@@ -7063,7 +7225,11 @@ def get_all_salary_configs(active_only: bool = True, department: Optional[str] =
                 ORDER BY u.department COLLATE NOCASE, u.name COLLATE NOCASE
             """
             cursor.execute(query, params)
-            return [dict(r) for r in cursor.fetchall()]
+            configs = [dict(r) for r in cursor.fetchall()]
+            for r in configs:
+                if float(r.get('ot_rate') or 0.0) <= 0:
+                    r['ot_rate'] = calculate_employee_ot_rate(cursor, r['user_id'], basic_salary=r.get('basic_salary'))
+            return configs
     except Exception as e:
         logger.error(f"Get all salary configs error: {e}")
         return []
@@ -7365,7 +7531,10 @@ def auto_calculate_ot_rates(
             updated_count = 0
             for emp in employees:
                 b_sal = float(emp['basic_salary'] or 0.0)
-                ot_rate = round(b_sal / rate_divisor, 2) if (b_sal > 0 and rate_divisor > 0) else 0.0
+                if rate_divisor and rate_divisor != DEFAULT_OT_DIVISOR:
+                    ot_rate = round(b_sal / rate_divisor, 2) if (b_sal > 0 and rate_divisor > 0) else 0.0
+                else:
+                    ot_rate = calculate_employee_ot_rate(conn, emp['id'], None, b_sal, None)
                 cursor.execute("""
                     INSERT INTO salary_configs (
                         user_id, basic_salary, allowances, deductions, ot_rate, updated_at,
@@ -8348,6 +8517,8 @@ def replace_payroll_bonuses(
             raw_amount = item.get('amount')
             note = str(item.get('note') or '').strip()
 
+            emp_label = raw_name or raw_email or (f"ID #{raw_id}" if raw_id else f"Row {index}")
+
             # Skip instruction/comment rows that might have slipped through
             identifier_str = f"{raw_id} {raw_name}".lower()
             if any(identifier_str.startswith(kw) for kw in ('instruction', 'match employees', 'amount is', 'off-days')):
@@ -8357,32 +8528,46 @@ def replace_payroll_bonuses(
 
             # Robust numeric string conversion
             amount = None
-            if raw_amount is not None:
-                if isinstance(raw_amount, (int, float)):
-                    amount = float(raw_amount)
-                elif isinstance(raw_amount, str):
-                    cleaned_amt = raw_amount.strip().replace(',', '')
-                    # Remove currency prefixes/suffixes
-                    cleaned_amt = re.sub(r'^[^\d.-]+|[^\d.]+$', '', cleaned_amt).strip()
+            is_blank = False
+            if raw_amount is None:
+                is_blank = True
+            elif isinstance(raw_amount, str) and raw_amount.strip() == '':
+                is_blank = True
+            elif isinstance(raw_amount, (int, float)):
+                amount = float(raw_amount)
+            elif isinstance(raw_amount, str):
+                cleaned_amt = raw_amount.strip().replace(',', '')
+                # Remove currency prefixes/suffixes
+                cleaned_amt = re.sub(r'^[^\d.-]+|[^\d.]+$', '', cleaned_amt).strip()
+                if cleaned_amt in ('', '-'):
+                    is_blank = True
+                else:
                     try:
                         amount = float(cleaned_amt)
                     except (TypeError, ValueError, OverflowError):
                         amount = None
 
+            if is_blank:
+                if source == 'excel':
+                    # Excel template allows unused employees to be left blank or 0. Skip them.
+                    continue
+                errors.append({'row': index, 'employee': emp_label, 'field': 'amount', 'error': f"Row {index} ({emp_label}): Amount is required"})
+                continue
+
             if amount is None:
-                errors.append({'row': index, 'field': 'amount', 'error': 'Amount must be numeric'})
+                errors.append({'row': index, 'employee': emp_label, 'field': 'amount', 'error': f"Row {index} ({emp_label}): Amount must be numeric"})
                 continue
             if amount < 0:
-                errors.append({'row': index, 'field': 'amount', 'error': 'Amount cannot be negative'})
+                errors.append({'row': index, 'employee': emp_label, 'field': 'amount', 'error': f"Row {index} ({emp_label}): Amount cannot be negative"})
                 continue
             if amount == 0:
                 if source == 'excel':
                     # Excel template instructions say "Leave 0 if none". Skip employees who receive no bonus.
                     continue
-                errors.append({'row': index, 'field': 'amount', 'error': 'Amount cannot be zero'})
+                errors.append({'row': index, 'employee': emp_label, 'field': 'amount', 'error': f"Row {index} ({emp_label}): Amount cannot be zero"})
                 continue
             if amount > limit:
-                errors.append({'row': index, 'field': 'amount', 'error': f'Amount exceeds the organization bonus limit of {limit:g}'})
+                errors.append({'row': index, 'employee': emp_label, 'field': 'amount', 'error': f"Row {index} ({emp_label}): Amount exceeds the organization bonus limit of {limit:g}"})
                 continue
             user = None
             if raw_id not in (None, ''):
@@ -8397,16 +8582,16 @@ def replace_payroll_bonuses(
                 if len(candidates) == 1:
                     user = candidates[0]
             if user is None:
-                errors.append({'row': index, 'field': 'employee_id', 'error': f'Unknown employee ({raw_name or raw_email or raw_id})'})
+                errors.append({'row': index, 'employee': emp_label, 'field': 'employee_id', 'error': f"Row {index}: Unknown or deleted employee ({emp_label})"})
                 continue
             uid = int(user['id'])
             if uid in seen:
-                errors.append({'row': index, 'field': 'employee_id', 'error': f'Duplicate employee #{uid}; duplicates are rejected, not summed'})
+                errors.append({'row': index, 'employee': emp_label, 'field': 'employee_id', 'error': f"Row {index}: Duplicate employee #{uid}; duplicates are rejected, not summed"})
                 continue
             seen[uid] = index
             preview.append({'user_id': uid, 'employee_name': user.get('name'), 'amount': amount, 'note': note})
 
-        if commit and not errors and preview:
+        if commit and not errors:
             cursor = conn.cursor()
             cursor.execute(
                 """DELETE FROM payroll_bonuses
@@ -8438,7 +8623,7 @@ def replace_payroll_bonuses(
         'preview': preview,
         'errors': errors,
         'unmatched': [e['error'] for e in errors],
-        'committed': bool(commit and not errors and preview),
+        'committed': bool(commit and not errors),
         'duplicate_policy': 'reject',
         'bonuses': list_payroll_bonuses(year, month, org, branch) if commit else preview,
     }
@@ -8601,7 +8786,33 @@ def save_employee_component(
     else:
         if not str(scope_id or '').strip() and scope not in ('org',):
             raise ValueError(f'{scope} is required')
-        uid = int(user_id or 0)
+    if min_amount is not None:
+        try:
+            min_val = float(min_amount)
+            if min_val < 0:
+                raise ValueError('Lowest amount limit cannot be negative')
+            min_amount = min_val
+        except (TypeError, ValueError) as exc:
+            if 'negative' in str(exc): raise
+            raise ValueError('Lowest amount limit must be numeric') from exc
+    if max_amount is not None:
+        try:
+            max_val = float(max_amount)
+            if max_val < 0:
+                raise ValueError('Highest amount limit cannot be negative')
+            max_amount = max_val
+        except (TypeError, ValueError) as exc:
+            if 'negative' in str(exc): raise
+            raise ValueError('Highest amount limit must be numeric') from exc
+    if min_amount is not None and max_amount is not None:
+        if min_amount > max_amount:
+            raise ValueError('Lowest amount limit cannot be greater than highest amount limit')
+
+    if calc_mode in ('percent_basic', 'percent_gross'):
+        pct = float(percent or 0)
+        if pct < 0 or pct > 100:
+            raise ValueError('Percentage must be between 0 and 100')
+
     start = str(effective_from or '').strip()[:10]
     if not start:
         start = str(join_date or '').strip()[:10]
@@ -8611,6 +8822,15 @@ def save_employee_component(
         datetime.strptime(start, '%Y-%m-%d')
     except ValueError as exc:
         raise ValueError('effective_from must use YYYY-MM-DD') from exc
+
+    if scope == 'employee' and uid > 0:
+        with sqlite3.connect(DB_PATH) as conn_user:
+            u_row = conn_user.execute("SELECT join_date FROM users WHERE id = ?", (uid,)).fetchone()
+            if u_row and u_row[0]:
+                emp_join = str(u_row[0])[:10]
+                if emp_join and start < emp_join:
+                    raise ValueError(f"Pay line start date ({start}) cannot precede employee joining date ({emp_join})")
+
     end = str(effective_to).strip()[:10] if effective_to else None
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
@@ -9353,6 +9573,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                    COALESCE(sc.deductions, 0.0) AS custom_deductions,
                    COALESCE(sc.ot_rate, 0.0) AS ot_rate,
                    COALESCE(NULLIF(TRIM(u.join_date), ''), date(u.enrollment_date), date(u.created_at)) AS employed_from,
+                   u.join_date,
                    u.exit_date,
                    u.active,
                    COALESCE(u.shift_id, 0) AS shift_id
@@ -9623,12 +9844,14 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
 
         # Apply calendar-based premiums to approved overtime hours.
         overtime_entries = approved_ot_by_user.get(employee_id, [])
+        if exited_on:
+            overtime_entries = [entry for entry in overtime_entries if str(entry.get('ot_date') or '')[:10] <= exited_on.isoformat()]
         ot_hours = round(sum(entry['hours'] for entry in overtime_entries), 2)
         configured_ot_rate = float(employee.get('ot_rate') or 0.0)
         if configured_ot_rate > 0.0:
             ot_rate = _m(configured_ot_rate) if ot_rounding == 'round_rate_first' else float(configured_ot_rate)
         elif basic_salary > 0.0:
-            raw_ot_rate = basic_salary / ot_hour_divisor
+            raw_ot_rate = calculate_employee_ot_rate(cursor, employee_id, as_of_date=eligible_end.isoformat(), basic_salary=basic_salary)
             ot_rate = _m(raw_ot_rate) if ot_rounding == 'round_rate_first' else raw_ot_rate
         else:
             ot_rate = 0.0
@@ -9755,7 +9978,15 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         unpaid_leave_deduction = round(basic_salary * unpaid_leave_days / month_scheduled_workdays, 2) if deduct_unpaid_leave and month_scheduled_workdays else 0.0
         attendance_shortfall = 0.0
         issues_remarks = ''
-        if attendance_mode == 'payable_days':
+        has_joining_date = bool(str(employee.get('join_date') or '').strip())
+        if not has_joining_date:
+            issues_remarks = 'Missing joining date; attendance deductions deferred'
+            rule_missing = False
+            absence_rule_deduction = 0.0
+            half_leave_deduction = 0.0
+            unpaid_leave_deduction = 0.0
+            attendance_shortfall = 0.0
+        elif attendance_mode == 'payable_days':
             earn_divisor = float(month_scheduled_workdays or 0)
             earn_factor = (float(payable_days) / earn_divisor) if earn_divisor else 0.0
             attendance_shortfall = _m((basic_salary + allowances) * (1.0 - earn_factor))
@@ -9803,6 +10034,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'employee_name': employee['employee_name'],
             'department': employee['department'],
             'designation': employee['designation'] or 'Staff Member',
+            'exit_date': employee.get('exit_date'),
+            'has_joining_date': has_joining_date,
             'basic_salary': basic_salary,
             'allowances': allowances,
             'custom_deductions': custom_deductions,
