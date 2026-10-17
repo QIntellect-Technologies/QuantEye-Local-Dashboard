@@ -2,7 +2,14 @@
 Self-contained cloud seeding module for organizations:
 - Mercury (ORG-708405 / BR-2174CB75459E453B)
 - Hello World (ORG-873824 / BR-891820B1BF4A4030)
-Seeds all leave types, 200 employees, 3 months attendance history, diverse leaves, and all 9 payroll features.
+
+Features End-to-End Workforce Management:
+1. Real isolated cameras (Entrance Turnstile & Lobby Exit Gate)
+2. Real departments and designations in settings and employees
+3. Real Check-In and Check-Out attendance punches for 3 months (July 1 to September 30, 2026)
+4. Connected leave requests, half-day leaves, absences, and overtime logs
+5. All 9 optional payroll features (HRA, Med, Util, Conv, Tax, Loans, Advances, PF, Ins, Bonuses, Adjustments)
+6. Autorun dynamic monthly payroll calculations directly derived from attendance, leaves & overtime
 """
 
 import os
@@ -30,7 +37,6 @@ TARGET_ORGS = [
 ]
 
 def ensure_cloud_mercury_seeded(db_path=None, force=False):
-    # Only run in production runtime (e.g. Railway) or when SEED_CLOUD is set or force=True
     is_prod = (
         force
         or bool(os.environ.get('RAILWAY_ENVIRONMENT'))
@@ -41,7 +47,6 @@ def ensure_cloud_mercury_seeded(db_path=None, force=False):
     if not is_prod:
         return
 
-    # Never run during unit tests unless forced
     if not force and ('unittest' in sys.modules or 'pytest' in sys.modules or os.environ.get('TESTING')):
         return
 
@@ -58,24 +63,26 @@ def ensure_cloud_mercury_seeded(db_path=None, force=False):
             with sqlite3.connect(db_path) as conn:
                 c = conn.cursor()
                 try:
-                    c.execute("SELECT COUNT(DISTINCT leave_type) FROM leave_requests WHERE organization_id = ?", (org_id,))
-                    row = c.fetchone()
-                    distinct_leaves = row[0] if row else 0
+                    c.execute("SELECT COUNT(*) FROM departments WHERE organization_id = ?", (org_id,))
+                    dept_count = c.fetchone()[0]
 
-                    c.execute("SELECT COUNT(*) FROM users WHERE organization_id = ?", (org_id,))
-                    row_u = c.fetchone()
-                    existing_users = row_u[0] if row_u else 0
+                    c.execute("SELECT COUNT(*) FROM designations WHERE organization_id = ?", (org_id,))
+                    desig_count = c.fetchone()[0]
+
+                    c.execute("SELECT COUNT(*) FROM attendance WHERE organization_id = ?", (org_id,))
+                    att_count = c.fetchone()[0]
                 except Exception:
                     continue
 
-                if not force and existing_users >= 200 and distinct_leaves >= 4:
-                    continue  # Already seeded for this org
+                # If departments, designations and proper check-in/out records (att_count >= 15000) exist, skip
+                if not force and dept_count >= 5 and desig_count >= 15 and att_count >= 15000:
+                    continue
 
-            print(f"[CloudSeed] Seeding comprehensive dataset for {org_name} ({org_id})...")
+            print(f"[CloudSeed] Running End-to-End Workforce Seeding for {org_name} ({org_id})...")
             _execute_seed_for_org(db_path, target)
-            print(f"[CloudSeed] Comprehensive seeding completed successfully for {org_id}!")
+            print(f"[CloudSeed] End-to-End Workforce Seeding completed successfully for {org_id}!")
         except Exception as e:
-            print(f"[CloudSeed] Warning: Cloud seeding failed for {org_id}: {e}")
+            print(f"[CloudSeed] Error during seeding for {org_id}: {e}")
 
 def _execute_seed_for_org(db_path, target):
     org_id = target['org_id']
@@ -93,7 +100,177 @@ def _execute_seed_for_org(db_path, target):
         payroll_extensions.ensure_payroll_extension_tables(c)
 
         # -------------------------------------------------------------
-        # 1. PAYROLL SETTINGS (Enable ALL 9 Optional Features)
+        # 1. ISOLATED CAMERAS
+        # -------------------------------------------------------------
+        c.execute("DELETE FROM cameras WHERE organization_id = ?", (org_id,))
+        ent_cam_id = f"CAM-{org_id}-ENT"
+        ext_cam_id = f"CAM-{org_id}-EXT"
+        c.execute('''
+            INSERT INTO cameras (camera_id, name, room_name, camera_type, rtsp_url, active, organization_id, branch_id)
+            VALUES (?, 'Main Entrance Turnstile', 'Reception Lobby', 'nvr', 'rtsp://192.168.10.10:554/ch1', 1, ?, ?)
+        ''', (ent_cam_id, org_id, branch_id))
+        c.execute('''
+            INSERT INTO cameras (camera_id, name, room_name, camera_type, rtsp_url, active, organization_id, branch_id)
+            VALUES (?, 'Lobby Exit Gate', 'Exit Corridor', 'nvr', 'rtsp://192.168.10.11:554/ch2', 1, ?, ?)
+        ''', (ext_cam_id, org_id, branch_id))
+
+        # -------------------------------------------------------------
+        # 2. DEPARTMENTS & DESIGNATIONS
+        # -------------------------------------------------------------
+        c.execute("DELETE FROM designations WHERE organization_id = ?", (org_id,))
+        c.execute("DELETE FROM departments WHERE organization_id = ?", (org_id,))
+
+        dept_desig_specs = [
+            ("Core Engineering" if org_id == 'ORG-873824' else "Mercury Engineering", "ENG", "Software and AI Engineering", [
+                ("Software Engineer", "Core Software Engineering"),
+                ("Senior Backend Dev", "Backend Architecture & Systems"),
+                ("DevOps Engineer", "Cloud Infrastructure & CI/CD"),
+                ("QA Engineer", "Quality Assurance & Automated Testing"),
+                ("Frontend Specialist", "User Interface & Experience")
+            ]),
+            ("Operations & Logistics" if org_id == 'ORG-873824' else "Mercury Operations", "OPS", "Fleet, Supply & Operations", [
+                ("Operations Lead", "Operations Supervision"),
+                ("Fleet Coordinator", "Fleet Dispatch & Route Planning"),
+                ("Dispatcher", "Daily Delivery Dispatch"),
+                ("Inventory Specialist", "Stock & Warehouse Tracking"),
+                ("Ops Assistant", "Operational Coordination")
+            ]),
+            ("Sales & Commercial" if org_id == 'ORG-873824' else "Mercury Commercial", "COM", "Commercial Sales & BD", [
+                ("Sales Manager", "Regional Sales Management"),
+                ("Account Executive", "Client Relationship & Retention"),
+                ("Marketing Specialist", "Campaigns & Growth"),
+                ("Business Development Lead", "Strategic Enterprise Partnerships")
+            ]),
+            ("Customer Experience" if org_id == 'ORG-873824' else "Mercury Support", "SUP", "Customer Support & Solutions", [
+                ("Customer Support Rep", "Customer Helpline & Assistance"),
+                ("Senior CS Specialist", "Escalations & Resolution"),
+                ("Support Team Lead", "Support Team Leadership"),
+                ("Technical Helpdesk", "IT Support & Helpdesk")
+            ]),
+            ("Finance & Accounts" if org_id == 'ORG-873824' else "Mercury Finance", "FIN", "Corporate Finance & Payroll", [
+                ("Senior Accountant", "General Ledger & Reporting"),
+                ("Payroll Analyst", "Payroll Operations & Audit"),
+                ("Billing Officer", "Invoicing & Receivables"),
+                ("Internal Auditor", "Compliance & Internal Controls")
+            ]),
+            ("Human Resources" if org_id == 'ORG-873824' else "Mercury HR", "HR", "People & Culture Operations", [
+                ("HR Manager", "People Operations & HR Strategy"),
+                ("Talent Acquisition Specialist", "Recruitment & Sourcing"),
+                ("HR Officer", "Employee Relations & Records"),
+                ("People Ops Lead", "Workplace Culture & Benefits")
+            ]),
+        ]
+        if org_id == 'ORG-873824':
+            dept_desig_specs.append(
+                ("Administration", "ADM", "Executive Administration", [
+                    ("General Manager", "General Administration"),
+                    ("Executive Officer", "Executive Affairs"),
+                    ("Administrative Lead", "Office Administration")
+                ])
+            )
+            dept_desig_specs.append(
+                ("Finanace", "FIN-LEGACY", "Finance Legacy", [
+                    ("Finance Manager", "Financial Planning")
+                ])
+            )
+
+        dept_id_map = {}
+        desig_by_dept = {}
+        for d_name, d_code, d_desc, desigs in dept_desig_specs:
+            c.execute("SELECT id FROM departments WHERE name = ?", (d_name,))
+            row_d = c.fetchone()
+            if row_d:
+                did = row_d[0]
+                c.execute('''
+                    UPDATE departments SET code = ?, description = ?, active = 1, organization_id = ?, branch_id = ?
+                    WHERE id = ?
+                ''', (d_code, d_desc, org_id, branch_id, did))
+            else:
+                c.execute('''
+                    INSERT INTO departments (name, code, description, active, organization_id, branch_id)
+                    VALUES (?, ?, ?, 1, ?, ?)
+                ''', (d_name, d_code, d_desc, org_id, branch_id))
+                did = c.lastrowid
+            dept_id_map[d_name] = did
+            desig_by_dept[d_name] = []
+            for des_name, des_desc in desigs:
+                c.execute('''
+                    INSERT INTO designations (department_id, title, description, active, organization_id, branch_id)
+                    VALUES (?, ?, ?, 1, ?, ?)
+                ''', (did, des_name, des_desc, org_id, branch_id))
+                desig_by_dept[d_name].append(des_name)
+
+        # -------------------------------------------------------------
+        # 3. SHIFTS
+        # -------------------------------------------------------------
+        shift_morning_name = f"{org_name} ({org_id}) Morning Shift"
+        c.execute("SELECT id FROM shifts WHERE name = ?", (shift_morning_name,))
+        row_sm = c.fetchone()
+        if row_sm:
+            shift_morning_id = row_sm[0]
+            c.execute('''
+                UPDATE shifts SET start_time = '09:00', end_time = '17:00', grace_period_minutes = 15, active = 1, is_default = 1, working_days = '[0, 1, 2, 3, 4, 5]', checkout_grace_period_minutes = 15, organization_id = ?, branch_id = ?
+                WHERE id = ?
+            ''', (org_id, branch_id, shift_morning_id))
+        else:
+            c.execute('''
+                INSERT INTO shifts (name, start_time, end_time, grace_period_minutes, active, is_default, working_days, checkout_grace_period_minutes, organization_id, branch_id)
+                VALUES (?, '09:00', '17:00', 15, 1, 1, '[0, 1, 2, 3, 4, 5]', 15, ?, ?)
+            ''', (shift_morning_name, org_id, branch_id))
+            shift_morning_id = c.lastrowid
+
+        shift_general_name = f"{org_name} ({org_id}) General Shift"
+        c.execute("SELECT id FROM shifts WHERE name = ?", (shift_general_name,))
+        row_sg = c.fetchone()
+        if row_sg:
+            shift_general_id = row_sg[0]
+            c.execute('''
+                UPDATE shifts SET start_time = '09:00', end_time = '18:00', grace_period_minutes = 15, active = 1, is_default = 0, working_days = '[0, 1, 2, 3, 4, 5]', checkout_grace_period_minutes = 15, organization_id = ?, branch_id = ?
+                WHERE id = ?
+            ''', (org_id, branch_id, shift_general_id))
+        else:
+            c.execute('''
+                INSERT INTO shifts (name, start_time, end_time, grace_period_minutes, active, is_default, working_days, checkout_grace_period_minutes, organization_id, branch_id)
+                VALUES (?, '09:00', '18:00', 15, 1, 0, '[0, 1, 2, 3, 4, 5]', 15, ?, ?)
+            ''', (shift_general_name, org_id, branch_id))
+            shift_general_id = c.lastrowid
+
+        # -------------------------------------------------------------
+        # 4. ALL 7 LEAVE TYPES
+        # -------------------------------------------------------------
+        leave_types_spec = [
+            ('Casual Leave', 'casual', 10.0, 1, 1, 'Short-term personal and casual leave'),
+            ('Sick Leave', 'sick', 8.0, 1, 1, 'Medical or health related illness'),
+            ('Annual / Paid Leave', 'annual', 14.0, 1, 1, 'Earned annual recreational paid leave'),
+            ('Unpaid Leave (LWP)', 'unpaid', 0.0, 0, 1, 'Leave without pay / salary deduction applies'),
+            ('Emergency Leave', 'emergency', 5.0, 1, 1, 'Immediate urgent household emergency'),
+            ('Bereavement Leave', 'bereavement', 3.0, 1, 1, 'Compassionate leave for family condolences'),
+            ('Maternity / Paternity Leave', 'maternity', 60.0, 1, 0, 'Parental childcare leave')
+        ]
+        for lt_name, lt_code, lt_allowance, lt_paid, lt_half, lt_desc in leave_types_spec:
+            c.execute("SELECT id FROM leave_types WHERE organization_id = ? AND (code = ? OR name = ?)", (org_id, lt_code, lt_name))
+            row_lt = c.fetchone()
+            if row_lt:
+                c.execute('''
+                    UPDATE leave_types SET name = ?, code = ?, yearly_allowance = ?, is_paid = ?, half_leave_enabled = 1, description = ?
+                    WHERE id = ?
+                ''', (lt_name, lt_code, lt_allowance, lt_paid, lt_desc, row_lt[0]))
+            else:
+                c.execute('''
+                    INSERT INTO leave_types (name, code, yearly_allowance, is_paid, description, active, allowance_period, half_leave_enabled, half_leaves_per_quota_day, organization_id, branch_id)
+                    VALUES (?, ?, ?, ?, ?, 1, 'yearly', 1, 2, ?, ?)
+                ''', (lt_name, lt_code, lt_allowance, lt_paid, lt_desc, org_id, branch_id))
+
+        # Holidays
+        c.execute("SELECT id FROM company_holidays WHERE organization_id = ? AND holiday_date = '2026-08-14'", (org_id,))
+        if not c.fetchone():
+            c.execute('''
+                INSERT INTO company_holidays (name, holiday_date, end_date, description, is_recurring, overtime_premium_percent, organization_id, branch_id)
+                VALUES ('Independence Day', '2026-08-14', '2026-08-14', 'National Independence Day', 1, 100.0, ?, ?)
+            ''', (org_id, branch_id))
+
+        # -------------------------------------------------------------
+        # 5. PAYROLL SETTINGS (All 9 Optional Features Enabled)
         # -------------------------------------------------------------
         c.execute("DELETE FROM payroll_settings WHERE organization_id = ?", (org_id,))
         c.execute('''
@@ -145,86 +322,8 @@ def _execute_seed_for_org(db_path, target):
             VALUES (6, 31, 30.0, 1, 'percentage', 'absence', ?, ?)
         ''', (org_id, branch_id))
 
-        # Shifts
-        c.execute("SELECT id FROM shifts WHERE organization_id = ? AND name LIKE '%Morning%'", (org_id,))
-        row_m = c.fetchone()
-        if row_m:
-            shift_morning_id = row_m[0]
-        else:
-            c.execute("SELECT id FROM shifts WHERE organization_id = ? LIMIT 1", (org_id,))
-            row_any = c.fetchone()
-            if row_any:
-                shift_morning_id = row_any[0]
-            else:
-                shift_morning_name = f"{org_name} Morning Shift"
-                c.execute('''
-                    INSERT INTO shifts (name, start_time, end_time, grace_period_minutes, active, is_default, working_days, checkout_grace_period_minutes, organization_id, branch_id)
-                    VALUES (?, '09:00', '17:00', 15, 1, 1, '[0, 1, 2, 3, 4, 5]', 15, ?, ?)
-                ''', (shift_morning_name, org_id, branch_id))
-                shift_morning_id = c.lastrowid
-
-        c.execute("SELECT id FROM shifts WHERE organization_id = ? AND name LIKE '%General%'", (org_id,))
-        row_g = c.fetchone()
-        if row_g:
-            shift_general_id = row_g[0]
-        else:
-            shift_general_name = f"{org_name} General Shift"
-            c.execute('''
-                INSERT INTO shifts (name, start_time, end_time, grace_period_minutes, active, is_default, working_days, checkout_grace_period_minutes, organization_id, branch_id)
-                VALUES (?, '09:00', '18:00', 15, 1, 0, '[0, 1, 2, 3, 4, 5]', 15, ?, ?)
-            ''', (shift_general_name, org_id, branch_id))
-            shift_general_id = c.lastrowid
-
         # -------------------------------------------------------------
-        # 2. ALL LEAVE TYPES (Full and Half-day enabled)
-        # -------------------------------------------------------------
-        leave_types_spec = [
-            ('Casual Leave', 'casual', 10.0, 1, 1, 'Short-term personal and casual leave'),
-            ('Sick Leave', 'sick', 8.0, 1, 1, 'Medical or health related illness'),
-            ('Annual / Paid Leave', 'annual', 14.0, 1, 1, 'Earned annual recreational paid leave'),
-            ('Unpaid Leave (LWP)', 'unpaid', 0.0, 0, 1, 'Leave without pay / salary deduction applies'),
-            ('Emergency Leave', 'emergency', 5.0, 1, 1, 'Immediate urgent household emergency'),
-            ('Bereavement Leave', 'bereavement', 3.0, 1, 1, 'Compassionate leave for family condolences'),
-            ('Maternity / Paternity Leave', 'maternity', 60.0, 1, 0, 'Parental childcare leave')
-        ]
-        for lt_name, lt_code, lt_allowance, lt_paid, lt_half, lt_desc in leave_types_spec:
-            c.execute("SELECT id FROM leave_types WHERE organization_id = ? AND (code = ? OR name = ?)", (org_id, lt_code, lt_name))
-            row_lt = c.fetchone()
-            if row_lt:
-                c.execute('''
-                    UPDATE leave_types SET name = ?, code = ?, yearly_allowance = ?, is_paid = ?, half_leave_enabled = 1, description = ?
-                    WHERE id = ?
-                ''', (lt_name, lt_code, lt_allowance, lt_paid, lt_desc, row_lt[0]))
-            else:
-                c.execute('''
-                    INSERT INTO leave_types (name, code, yearly_allowance, is_paid, description, active, allowance_period, half_leave_enabled, half_leaves_per_quota_day, organization_id, branch_id)
-                    VALUES (?, ?, ?, ?, ?, 1, 'yearly', 1, 2, ?, ?)
-                ''', (lt_name, lt_code, lt_allowance, lt_paid, lt_desc, org_id, branch_id))
-
-        # Holidays
-        c.execute("SELECT id FROM company_holidays WHERE organization_id = ? AND holiday_date = '2026-08-14'", (org_id,))
-        if not c.fetchone():
-            c.execute('''
-                INSERT INTO company_holidays (name, holiday_date, end_date, description, is_recurring, overtime_premium_percent, organization_id, branch_id)
-                VALUES ('Independence Day', '2026-08-14', '2026-08-14', 'National Independence Day', 1, 100.0, ?, ?)
-            ''', (org_id, branch_id))
-
-        # Cameras
-        c.execute("SELECT id FROM cameras WHERE organization_id = ? AND camera_id = ?", (org_id, f"CAM-{org_id}-01"))
-        if not c.fetchone():
-            c.execute('''
-                INSERT INTO cameras (camera_id, name, room_name, camera_type, rtsp_url, active, organization_id, branch_id)
-                VALUES (?, 'Entrance Turnstile', 'Reception', 'nvr', 'rtsp://192.168.10.10:554/ch1', 1, ?, ?)
-            ''', (f"CAM-{org_id}-01", org_id, branch_id))
-        c.execute("SELECT id FROM cameras WHERE organization_id = ? AND camera_id = ?", (org_id, f"CAM-{org_id}-02"))
-        if not c.fetchone():
-            c.execute('''
-                INSERT INTO cameras (camera_id, name, room_name, camera_type, rtsp_url, active, organization_id, branch_id)
-                VALUES (?, 'Lobby Exit Gate', 'Exit Corridor', 'nvr', 'rtsp://192.168.10.11:554/ch2', 1, ?, ?)
-            ''', (f"CAM-{org_id}-02", org_id, branch_id))
-
-        # -------------------------------------------------------------
-        # 3. PAYROLL EXTENSION CATALOG (All 9 Optional Component Types)
+        # 6. PAYROLL EXTENSION CATALOG
         # -------------------------------------------------------------
         component_types_spec = [
             ("House Rent Allowance", "HRA", "earning", "allowance", "percent_basic", 40.0),
@@ -255,13 +354,14 @@ def _execute_seed_for_org(db_path, target):
         conn.commit()
 
     # -------------------------------------------------------------
-    # 4. BUILD 200 REALISTIC EMPLOYEES IF NOT ALREADY AT 200
+    # 7. EMPLOYEES: BUILD OR MAP TO DEPARTMENTS & DESIGNATIONS
     # -------------------------------------------------------------
     with sqlite3.connect(db_path) as conn:
         c = conn.cursor()
         c.execute("SELECT COUNT(*) FROM users WHERE organization_id = ?", (org_id,))
         current_emp_count = c.fetchone()[0]
 
+    # Pre-populate 200 realistic employees if under 200
     if current_emp_count < 200:
         first_names = [
             "Muhammad", "Ahmed", "Ali", "Usman", "Bilal", "Hamza", "Zubair", "Omer", "Hassan", "Hussein",
@@ -273,13 +373,14 @@ def _execute_seed_for_org(db_path, target):
             "Khan", "Malik", "Chaudhry", "Bhatti", "Sheikh", "Qureshi", "Butt", "Raza", "Ansari", "Mirza",
             "Siddiqui", "Abbasi", "Dar", "Hashmi", "Gill", "Mughal", "Shah", "Gondal", "Javed", "Akram"
         ]
-        depts = [
-            ("Core Engineering", ["Software Engineer", "Senior Backend Dev", "DevOps Engineer", "QA Engineer", "Frontend Specialist"], 45, 90000, 220000),
-            ("Operations & Logistics", ["Operations Lead", "Fleet Coordinator", "Dispatcher", "Inventory Specialist", "Ops Assistant"], 55, 45000, 110000),
-            ("Sales & Commercial", ["Sales Manager", "Account Executive", "Marketing Specialist", "Business Development Lead"], 35, 60000, 160000),
-            ("Customer Experience", ["Customer Support Rep", "Senior CS Specialist", "Support Team Lead", "Technical Helpdesk"], 30, 40000, 85000),
-            ("Finance & Accounts", ["Senior Accountant", "Payroll Analyst", "Billing Officer", "Internal Auditor"], 18, 65000, 175000),
-            ("Human Resources", ["HR Manager", "Talent Acquisition Specialist", "HR Officer", "People Ops Lead"], 17, 55000, 150000)
+
+        main_depts = [
+            ("Core Engineering" if org_id == 'ORG-873824' else "Mercury Engineering", 45, 90000, 220000),
+            ("Operations & Logistics" if org_id == 'ORG-873824' else "Mercury Operations", 55, 45000, 110000),
+            ("Sales & Commercial" if org_id == 'ORG-873824' else "Mercury Commercial", 35, 60000, 160000),
+            ("Customer Experience" if org_id == 'ORG-873824' else "Mercury Support", 30, 40000, 85000),
+            ("Finance & Accounts" if org_id == 'ORG-873824' else "Mercury Finance", 18, 65000, 175000),
+            ("Human Resources" if org_id == 'ORG-873824' else "Mercury HR", 17, 55000, 150000)
         ]
 
         used_emails = set()
@@ -292,13 +393,14 @@ def _execute_seed_for_org(db_path, target):
                 if r[1]: used_cnics.add(r[1])
 
         emp_idx = 1
-        employees = []
-        for dept_name, roles, target_count, min_sal, max_sal in depts:
+        employees_to_insert = []
+        for dept_name, target_count, min_sal, max_sal in main_depts:
+            avail_desigs = desig_by_dept.get(dept_name, ["Associate Specialist"])
             for _ in range(target_count):
                 fn = random.choice(first_names)
                 ln = random.choice(last_names)
                 name = f"{fn} {ln}"
-                pos = random.choice(roles)
+                pos = random.choice(avail_desigs)
                 sal = float(round(random.randint(min_sal, max_sal) / 1000) * 1000)
 
                 clean_org_prefix = org_name.lower().replace(" ", "")
@@ -339,7 +441,7 @@ def _execute_seed_for_org(db_path, target):
                 elif emp_idx <= 195: persona = 'leave_taker'
                 else: persona = 'absentee'
 
-                employees.append({
+                employees_to_insert.append({
                     'name': name,
                     'email': email_base,
                     'phone': phone,
@@ -359,7 +461,7 @@ def _execute_seed_for_org(db_path, target):
             c = conn.cursor()
             pwd = generate_password_hash(f"{clean_org_prefix.capitalize()}Emp2026!")
             now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            for emp in employees:
+            for emp in employees_to_insert:
                 c.execute('''
                     INSERT INTO users (
                         name, email, phone, department, position, salary, role,
@@ -386,28 +488,34 @@ def _execute_seed_for_org(db_path, target):
                     INSERT INTO employee_shift_history (
                         user_id, shift_id, effective_from, shift_name, start_time, end_time,
                         grace_period_minutes, working_days, history_source, organization_id, branch_id
-                    ) VALUES (?, ?, ?, 'Morning Shift', '09:00', '17:00', 15, '[0, 1, 2, 3, 4, 5]', 'system_seed', ?, ?)
-                ''', (uid, emp['shift_id'], emp['join_date'], org_id, branch_id))
+                    ) VALUES (?, ?, ?, ?, '09:00', '17:00', 15, '[0, 1, 2, 3, 4, 5]', 'system_seed', ?, ?)
+                ''', (uid, emp['shift_id'], emp['join_date'], shift_morning_name, org_id, branch_id))
 
             conn.commit()
 
-    # -------------------------------------------------------------
-    # 5. LOAD ALL USERS IN ORG & GUARANTEE SALARY CONFIGS
-    # -------------------------------------------------------------
+    # Align ALL existing and new users with valid departments, designations, and salary_configs
     with sqlite3.connect(db_path) as conn:
         c = conn.cursor()
-        c.execute("SELECT id, name, salary, join_date, exit_date FROM users WHERE organization_id = ?", (org_id,))
-        users_in_org = c.fetchall()
+        c.execute("SELECT id, name, salary, join_date, exit_date, department, position FROM users WHERE organization_id = ?", (org_id,))
+        all_users = c.fetchall()
 
-        for uid, uname, usal, ujdate, uedate in users_in_org:
+        valid_dept_names = list(dept_id_map.keys())
+        for uid, uname, usal, ujdate, uedate, udept, upos in all_users:
+            # Ensure valid department and position
+            fixed_dept = udept
+            if fixed_dept not in valid_dept_names:
+                fixed_dept = "Administration" if "admin" in str(udept).lower() else valid_dept_names[0]
+            
+            avail_pos = desig_by_dept.get(fixed_dept, ["General Executive"])
+            fixed_pos = upos if upos in avail_pos else avail_pos[0]
+
             sal_val = float(usal or 50000.0)
-            if sal_val <= 0:
-                sal_val = 50000.0
-                c.execute("UPDATE users SET salary = 50000.0 WHERE id = ?", (uid,))
+            if sal_val <= 0: sal_val = 50000.0
+
+            c.execute("UPDATE users SET department = ?, position = ?, salary = ?, shift_id = ? WHERE id = ?", (fixed_dept, fixed_pos, sal_val, shift_morning_id, uid))
 
             basic = round(sal_val * 0.7, 2)
             allowances = round(sal_val * 0.3, 2)
-
             c.execute("SELECT user_id FROM salary_configs WHERE user_id = ?", (uid,))
             if not c.fetchone():
                 c.execute('''
@@ -423,100 +531,7 @@ def _execute_seed_for_org(db_path, target):
         conn.commit()
 
     # -------------------------------------------------------------
-    # 6. ATTENDANCE HISTORY (July 1 to September 30, 2026)
-    # -------------------------------------------------------------
-    with sqlite3.connect(db_path) as conn:
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM attendance WHERE organization_id = ?", (org_id,))
-        att_cnt = c.fetchone()[0]
-
-    if att_cnt < 5000:
-        start_dt = date(2026, 7, 1)
-        end_dt = date(2026, 9, 30)
-        total_days = (end_dt - start_dt).days + 1
-
-        attendance_inserts = []
-        ot_inserts = []
-
-        for day_offset in range(total_days):
-            cur_date = start_dt + timedelta(days=day_offset)
-            is_sunday = cur_date.weekday() == 6
-            is_holiday = cur_date.isoformat() == '2026-08-14'
-
-            for uid, uname, usal, ujdate, uedate in users_in_org:
-                j_date = datetime.strptime(ujdate or '2024-01-01', "%Y-%m-%d").date()
-                if cur_date < j_date:
-                    continue
-                if uedate:
-                    e_date = datetime.strptime(uedate, "%Y-%m-%d").date()
-                    if cur_date > e_date:
-                        continue
-
-                # Sunday / Holiday handling
-                if is_sunday or is_holiday:
-                    if (uid % 5 == 0) and random.random() < 0.25:
-                        in_time = f"{cur_date} 09:{random.randint(10, 30):02d}:00"
-                        out_time = f"{cur_date} 15:{random.randint(10, 45):02d}:00"
-                        attendance_inserts.append((
-                            uid, uname, 0.94, in_time, 'camera_entrance', 0.92,
-                            'Reception', f"CAM-{org_id}-01", f"CAM-{org_id}-02", 'Lobby Exit Gate',
-                            shift_morning_id, org_id, branch_id
-                        ))
-                        ot_inserts.append((
-                            uid, uname, cur_date.strftime("%Y-%m-%d"), 6.0,
-                            'Weekend Special Operations', 'Approved', admin_email,
-                            f"{cur_date} 16:00:00", org_id, branch_id
-                        ))
-                    continue
-
-                rand_val = random.random()
-                if (uid % 15 == 0) and rand_val < 0.20:
-                    continue  # Absent
-
-                if (uid % 4 == 0) and rand_val < 0.30:
-                    in_time = f"{cur_date} 09:{random.randint(18, 42):02d}:{random.randint(10, 55):02d}"
-                else:
-                    in_time = f"{cur_date} 08:{random.randint(45, 59):02d}:{random.randint(10, 55):02d}"
-
-                if (uid % 7 == 0) and rand_val < 0.30:
-                    ot_hrs = random.choice([2.0, 3.0, 4.0])
-                    out_hour = 17 + int(ot_hrs)
-                    out_time = f"{cur_date} {out_hour}:{random.randint(10, 45):02d}:00"
-                    ot_inserts.append((
-                        uid, uname, cur_date.strftime("%Y-%m-%d"), ot_hrs,
-                        'Sprint Deployment Overtime', 'Approved', admin_email,
-                        f"{cur_date} 17:30:00", org_id, branch_id
-                    ))
-                else:
-                    out_time = f"{cur_date} 17:{random.randint(5, 30):02d}:{random.randint(10, 55):02d}"
-
-                attendance_inserts.append((
-                    uid, uname, round(random.uniform(0.88, 0.98), 2), in_time, 'camera_entrance',
-                    round(random.uniform(0.85, 0.95), 2), 'Reception', f"CAM-{org_id}-01", f"CAM-{org_id}-02",
-                    'Lobby Exit Gate', shift_morning_id, org_id, branch_id
-                ))
-
-        with sqlite3.connect(db_path) as conn:
-            c = conn.cursor()
-            c.executemany('''
-                INSERT INTO attendance (
-                    user_id, detected_name, confidence, timestamp, source, frame_quality,
-                    location, device_id, checkout_camera_id, checkout_location, shift_id,
-                    organization_id, branch_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', attendance_inserts)
-
-            c.executemany('''
-                INSERT INTO overtime (
-                    user_id, user_name, ot_date, hours, reason, status, approved_by,
-                    created_at, organization_id, branch_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', ot_inserts)
-
-            conn.commit()
-
-    # -------------------------------------------------------------
-    # 7. ASSIGN PAYROLL COMPONENTS, ADJUSTMENTS, ADVANCES, LOANS
+    # 8. ASSIGN ALL 9 PAYROLL EXTENSION COMPONENTS & ADJUSTMENTS
     # -------------------------------------------------------------
     with sqlite3.connect(db_path) as conn:
         c = conn.cursor()
@@ -525,12 +540,16 @@ def _execute_seed_for_org(db_path, target):
         c.execute("DELETE FROM payroll_bonuses WHERE organization_id = ?", (org_id,))
         c.execute("DELETE FROM salary_revisions WHERE organization_id = ?", (org_id,))
 
+        c.execute("SELECT id, name, salary FROM users WHERE organization_id = ?", (org_id,))
+        org_users = c.fetchall()
+
         comp_assignments = []
         now_date_str = "2026-01-01"
 
-        for idx, (uid, uname, usal, ujdate, uedate) in enumerate(users_in_org):
+        for idx, (uid, uname, usal) in enumerate(org_users):
             sal_val = float(usal or 50000.0)
 
+            # Core allowances
             if "HRA" in comp_type_ids:
                 comp_assignments.append((org_id, branch_id, uid, comp_type_ids["HRA"], 0, 40.0, now_date_str))
             if "MED" in comp_type_ids:
@@ -557,11 +576,11 @@ def _execute_seed_for_org(db_path, target):
             if idx % 5 == 0:
                 c.execute('''
                     INSERT INTO payroll_bonuses (organization_id, branch_id, year, month, user_id, amount, note, source)
-                    VALUES (?, ?, 2026, 7, ?, 15000.0, 'Performance Milestone Bonus', 'excel')
+                    VALUES (?, ?, 2026, 7, ?, 15000.0, 'Quarterly Delivery Bonus', 'excel')
                 ''', (org_id, branch_id, uid))
                 c.execute('''
                     INSERT INTO payroll_bonuses (organization_id, branch_id, year, month, user_id, amount, note, source)
-                    VALUES (?, ?, 2026, 8, ?, 20000.0, 'Independence Day Project Bonus', 'excel')
+                    VALUES (?, ?, 2026, 8, ?, 20000.0, 'Project Milestone Bonus', 'excel')
                 ''', (org_id, branch_id, uid))
 
             if idx % 4 == 0:
@@ -594,97 +613,186 @@ def _execute_seed_for_org(db_path, target):
         conn.commit()
 
     # -------------------------------------------------------------
-    # 8. DIVERSE LEAVE REQUESTS (ALL 7 LEAVE TYPES + MULTIPLE STATUSES)
+    # 9. 3 MONTHS REAL ATTENDANCE (PROPER CHECK-IN & CHECK-OUT)
     # -------------------------------------------------------------
     with sqlite3.connect(db_path) as conn:
         c = conn.cursor()
+        c.execute("DELETE FROM attendance WHERE organization_id = ?", (org_id,))
+        c.execute("DELETE FROM overtime WHERE organization_id = ?", (org_id,))
         c.execute("DELETE FROM leave_requests WHERE organization_id = ?", (org_id,))
 
-        diverse_leave_types = [
-            ('Casual Leave', 1, [
-                'Attending family wedding ceremony', 'Renewing passport and national CNIC',
-                'Home repair and urgent plumbing maintenance', 'Child school admission interview'
-            ]),
-            ('Sick Leave', 1, [
-                'Seasonal viral flu and high temperature', 'Severe migraine and bed rest recommended',
-                'Dental root canal procedure and recovery', 'Food poisoning and medical observation'
-            ]),
-            ('Annual / Paid Leave', 1, [
-                'Annual family vacation trip to Northern Pakistan', 'Summer recreational holiday leave',
-                'Personal travel and family gathering'
-            ]),
-            ('Unpaid Leave (LWP)', 0, [
-                'Extended family commitment beyond quota', 'Personal business matter leave without pay',
-                'Unforeseen domestic travel beyond paid quota'
-            ]),
-            ('Emergency Leave', 1, [
-                'Urgent hospital emergency for family member', 'Unexpected domestic accident and repair',
-                'Sudden family crisis requiring immediate presence'
-            ]),
-            ('Bereavement Leave', 1, [
-                'Funeral and condolence gathering for close relative', 'Family bereavement rituals'
-            ])
+        c.execute("SELECT id, name, join_date, exit_date FROM users WHERE organization_id = ?", (org_id,))
+        user_list = c.fetchall()
+
+        start_dt = date(2026, 7, 1)
+        end_dt = date(2026, 9, 30)
+        total_days = (end_dt - start_dt).days + 1
+
+        attendance_rows = []
+        overtime_rows = []
+        leave_rows = []
+
+        leave_categories = [
+            ('Casual Leave', 1, 'Family wedding ceremony'),
+            ('Sick Leave', 1, 'Seasonal viral flu and recovery'),
+            ('Annual / Paid Leave', 1, 'Annual family vacation trip'),
+            ('Unpaid Leave (LWP)', 0, 'Personal urgent matters beyond quota'),
+            ('Emergency Leave', 1, 'Urgent household medical emergency'),
+            ('Bereavement Leave', 1, 'Condolence gathering for close relative')
         ]
 
-        leave_inserts = []
-        statuses = ['Approved', 'Approved', 'Approved', 'Pending', 'Rejected']
+        for day_offset in range(total_days):
+            cur_date = start_dt + timedelta(days=day_offset)
+            cur_date_str = cur_date.strftime("%Y-%m-%d")
+            is_sunday = cur_date.weekday() == 6
+            is_holiday = (cur_date_str == '2026-08-14')
 
-        base_dates = [
-            (date(2026, 7, 5), date(2026, 7, 6)),
-            (date(2026, 7, 12), date(2026, 7, 12)),
-            (date(2026, 7, 18), date(2026, 7, 22)),
-            (date(2026, 7, 28), date(2026, 7, 28)),
-            (date(2026, 8, 3), date(2026, 8, 4)),
-            (date(2026, 8, 10), date(2026, 8, 10)),
-            (date(2026, 8, 15), date(2026, 8, 19)),
-            (date(2026, 8, 24), date(2026, 8, 25)),
-            (date(2026, 9, 2), date(2026, 9, 2)),
-            (date(2026, 9, 8), date(2026, 9, 9)),
-            (date(2026, 9, 15), date(2026, 9, 18)),
-            (date(2026, 9, 22), date(2026, 9, 22)),
-            (date(2026, 9, 28), date(2026, 9, 29)),
-            (date(2026, 10, 5), date(2026, 10, 5)),
-            (date(2026, 10, 12), date(2026, 10, 13)),
-        ]
+            for idx, (uid, uname, ujdate, uedate) in enumerate(user_list):
+                j_date = datetime.strptime(ujdate or '2024-01-01', "%Y-%m-%d").date()
+                if cur_date < j_date: continue
+                if uedate:
+                    e_date = datetime.strptime(uedate, "%Y-%m-%d").date()
+                    if cur_date > e_date: continue
 
-        req_count = 0
-        for uid, uname, usal, ujdate, uedate in users_in_org:
-            if req_count >= 140:
-                break
+                # Sunday or Holiday: Weekend OT for selected team members
+                if is_sunday or is_holiday:
+                    if (idx % 6 == 0) and (day_offset % 3 == 0):
+                        cin_ts = f"{cur_date_str} 09:{random.randint(10, 25):02d}:00"
+                        cout_ts = f"{cur_date_str} 15:{random.randint(15, 45):02d}:00"
+                        attendance_rows.append((
+                            uid, uname, 0.95, cin_ts, 'camera_entrance', 0.92,
+                            'Main Entrance Turnstile', ent_cam_id, ext_cam_id, 'Lobby Exit Gate',
+                            shift_morning_id, org_id, branch_id
+                        ))
+                        attendance_rows.append((
+                            uid, uname, 0.94, cout_ts, 'camera_exit', 0.91,
+                            'Lobby Exit Gate', ext_cam_id, ext_cam_id, 'Lobby Exit Gate',
+                            shift_morning_id, org_id, branch_id
+                        ))
+                        overtime_rows.append((
+                            uid, uname, cur_date_str, 6.0,
+                            'Weekend Special Deployment', 'Approved', admin_email,
+                            f"{cur_date_str} 16:00:00", org_id, branch_id
+                        ))
+                    continue
 
-            chosen_lt_spec = diverse_leave_types[req_count % len(diverse_leave_types)]
-            lt_name, lt_is_paid, reasons = chosen_lt_spec
-            s_date, e_date = base_dates[req_count % len(base_dates)]
+                # Working day: Mon - Sat
+                # Pattern based on index and day
+                status_hash = (idx * 31 + day_offset) % 100
 
-            is_half = (lt_name in ['Casual Leave', 'Sick Leave', 'Emergency Leave'] and req_count % 3 == 0)
-            if is_half:
-                e_date = s_date
-                duration_str = 'half_day'
-                quota_charge = 0.5
-                paid_d = 0.5 if lt_is_paid else 0.0
-                unpaid_d = 0.0 if lt_is_paid else 0.5
-            else:
-                duration_str = 'full_day'
-                diff_days = (e_date - s_date).days + 1
-                quota_charge = float(diff_days)
-                paid_d = float(diff_days) if lt_is_paid else 0.0
-                unpaid_d = 0.0 if lt_is_paid else float(diff_days)
+                # 1. Unapproved Absentee (3% of logs) -> NO attendance punch, NO leave
+                if status_hash < 3:
+                    continue
 
-            status = statuses[req_count % len(statuses)]
-            reason = random.choice(reasons)
-            created_at = f"{s_date} 08:00:00"
+                # 2. Approved Full-day Leave (4% of logs) -> NO attendance punch, YES leave_requests
+                if 3 <= status_hash < 7:
+                    lt_spec = leave_categories[(idx + day_offset) % len(leave_categories)]
+                    lt_name, lt_is_paid, lt_reason = lt_spec
+                    leave_rows.append((
+                        uid, uname, lt_name, cur_date_str, cur_date_str,
+                        lt_reason, 'Approved', admin_email,
+                        f"{cur_date_str} 08:00:00",
+                        1.0 if lt_is_paid else 0.0,
+                        0.0 if lt_is_paid else 1.0,
+                        1.0, cur_date_str if lt_is_paid else None, cur_date_str if lt_is_paid else None,
+                        'full_day', None, 1.0, org_id, branch_id,
+                        'paid' if lt_is_paid else 'unpaid',
+                        'unpaid' if not lt_is_paid else 'paid'
+                    ))
+                    continue
 
-            leave_inserts.append((
-                uid, uname, lt_name, s_date.strftime("%Y-%m-%d"), e_date.strftime("%Y-%m-%d"),
-                reason, status, admin_email if status == 'Approved' else None,
-                created_at, paid_d, unpaid_d, quota_charge,
-                s_date.strftime("%Y-%m-%d") if lt_is_paid else None,
-                e_date.strftime("%Y-%m-%d") if lt_is_paid else None,
-                duration_str, None, quota_charge, org_id, branch_id,
-                'paid' if lt_is_paid else 'unpaid',
-                'unpaid' if not lt_is_paid else 'paid'
-            ))
-            req_count += 1
+                # 3. Approved Half-day Leave (3% of logs) -> Check-In 08:52, Early Check-Out 13:00
+                if 7 <= status_hash < 10:
+                    cin_ts = f"{cur_date_str} 08:{random.randint(48, 56):02d}:00"
+                    cout_ts = f"{cur_date_str} 13:{random.randint(5, 20):02d}:00"
+                    attendance_rows.append((
+                        uid, uname, 0.92, cin_ts, 'camera_entrance', 0.90,
+                        'Main Entrance Turnstile', ent_cam_id, ext_cam_id, 'Lobby Exit Gate',
+                        shift_morning_id, org_id, branch_id
+                    ))
+                    attendance_rows.append((
+                        uid, uname, 0.91, cout_ts, 'camera_exit', 0.89,
+                        'Lobby Exit Gate', ext_cam_id, ext_cam_id, 'Lobby Exit Gate',
+                        shift_morning_id, org_id, branch_id
+                    ))
+                    leave_rows.append((
+                        uid, uname, 'Casual Leave', cur_date_str, cur_date_str,
+                        'Personal urgent task half day', 'Approved', admin_email,
+                        f"{cur_date_str} 08:00:00", 0.5, 0.0, 0.5, cur_date_str, cur_date_str,
+                        'half_day', None, 0.5, org_id, branch_id, 'paid', 'unpaid'
+                    ))
+                    continue
+
+                # 4. Overtime day (12% of logs) -> Standard Check-In + Late Check-Out (19:30 or 20:00) + Approved OT
+                if 10 <= status_hash < 22:
+                    cin_ts = f"{cur_date_str} 08:{random.randint(45, 58):02d}:00"
+                    ot_hrs = 2.5 if (status_hash % 2 == 0) else 3.0
+                    cout_hour = 17 + int(ot_hrs)
+                    cout_min = 30 if ot_hrs == 2.5 else random.randint(10, 25)
+                    cout_ts = f"{cur_date_str} {cout_hour:02d}:{cout_min:02d}:00"
+
+                    attendance_rows.append((
+                        uid, uname, 0.96, cin_ts, 'camera_entrance', 0.94,
+                        'Main Entrance Turnstile', ent_cam_id, ext_cam_id, 'Lobby Exit Gate',
+                        shift_morning_id, org_id, branch_id
+                    ))
+                    attendance_rows.append((
+                        uid, uname, 0.95, cout_ts, 'camera_exit', 0.93,
+                        'Lobby Exit Gate', ext_cam_id, ext_cam_id, 'Lobby Exit Gate',
+                        shift_morning_id, org_id, branch_id
+                    ))
+                    overtime_rows.append((
+                        uid, uname, cur_date_str, ot_hrs,
+                        'Production Sprint & Release', 'Approved', admin_email,
+                        f"{cur_date_str} 17:30:00", org_id, branch_id
+                    ))
+                    continue
+
+                # 5. Late Arrival (8% of logs) -> Check-In 09:18 to 09:42 + Standard Check-Out
+                if 22 <= status_hash < 30:
+                    cin_ts = f"{cur_date_str} 09:{random.randint(18, 42):02d}:{random.randint(10, 55):02d}"
+                    cout_ts = f"{cur_date_str} 17:{random.randint(10, 30):02d}:00"
+                    attendance_rows.append((
+                        uid, uname, 0.93, cin_ts, 'camera_entrance', 0.91,
+                        'Main Entrance Turnstile', ent_cam_id, ext_cam_id, 'Lobby Exit Gate',
+                        shift_morning_id, org_id, branch_id
+                    ))
+                    attendance_rows.append((
+                        uid, uname, 0.94, cout_ts, 'camera_exit', 0.92,
+                        'Lobby Exit Gate', ext_cam_id, ext_cam_id, 'Lobby Exit Gate',
+                        shift_morning_id, org_id, branch_id
+                    ))
+                    continue
+
+                # 6. Standard Punctual Present (70% of logs) -> Check-In 08:45-08:58 + Check-Out 17:05-17:25
+                cin_ts = f"{cur_date_str} 08:{random.randint(45, 58):02d}:{random.randint(10, 55):02d}"
+                cout_ts = f"{cur_date_str} 17:{random.randint(5, 25):02d}:{random.randint(10, 55):02d}"
+                attendance_rows.append((
+                    uid, uname, round(random.uniform(0.91, 0.98), 2), cin_ts, 'camera_entrance',
+                    round(random.uniform(0.88, 0.95), 2), 'Main Entrance Turnstile', ent_cam_id,
+                    ext_cam_id, 'Lobby Exit Gate', shift_morning_id, org_id, branch_id
+                ))
+                attendance_rows.append((
+                    uid, uname, round(random.uniform(0.90, 0.97), 2), cout_ts, 'camera_exit',
+                    round(random.uniform(0.87, 0.94), 2), 'Lobby Exit Gate', ext_cam_id,
+                    ext_cam_id, 'Lobby Exit Gate', shift_morning_id, org_id, branch_id
+                ))
+
+        # Insert batch
+        c.executemany('''
+            INSERT INTO attendance (
+                user_id, detected_name, confidence, timestamp, source, frame_quality,
+                location, device_id, checkout_camera_id, checkout_location, shift_id,
+                organization_id, branch_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', attendance_rows)
+
+        c.executemany('''
+            INSERT INTO overtime (
+                user_id, user_name, ot_date, hours, reason, status, approved_by,
+                created_at, organization_id, branch_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', overtime_rows)
 
         c.executemany('''
             INSERT INTO leave_requests (
@@ -693,12 +801,12 @@ def _execute_seed_for_org(db_path, target):
                 leave_duration, half_leave_quota_type_id, half_leave_quota_charge, organization_id, branch_id,
                 paid_status, unpaid_status
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', leave_inserts)
+        ''', leave_rows)
 
         conn.commit()
 
     # -------------------------------------------------------------
-    # 9. RE-CALCULATE AND FINALIZE MONTHLY PAYROLL WITH ALL 9 FEATURES
+    # 10. RE-CALCULATE AND FINALIZE MONTHLY PAYROLL
     # -------------------------------------------------------------
     for pmonth in ['2026-07', '2026-08', '2026-09']:
         try:
@@ -714,7 +822,7 @@ def _execute_seed_for_org(db_path, target):
                 branch_id=branch_id,
                 finalized_by=admin_email
             )
-            print(f"[CloudSeed] Successfully finalized {pmonth} payroll for {org_id} with all 9 optional features!")
+            print(f"[CloudSeed] Successfully finalized {pmonth} dynamic payroll for {org_id}!")
         except Exception as p_err:
             print(f"[CloudSeed] Payroll calculation note for {org_id} ({pmonth}): {p_err}")
 
