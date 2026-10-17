@@ -646,7 +646,26 @@ def _pdf_rows_from_payslip(payslip: Dict[str, Any]) -> Tuple[List[Tuple[str, str
         earnings.append(("Bonus", _pdf_money(emp.get("bonus_amount"), currency, places)))
     if float(emp.get("off_day_extra_pay") or 0):
         earnings.append(("Rest-day extra", _pdf_money(emp.get("off_day_extra_pay"), currency, places)))
-    if float(emp.get("adjustment_amount") or 0):
+    adj_lines = [
+        item for item in (pay_lines or [])
+        if (item.get("note") is not None or item.get("source_month") is not None or (item.get("type") and not item.get("kind") and not item.get("category")))
+    ]
+    if adj_lines:
+        for adj in adj_lines:
+            amt = float(adj.get("amount") or 0)
+            if not amt:
+                continue
+            adj_type = str(adj.get("type") or "adjustment").replace("_", " ").title()
+            note = str(adj.get("note") or "").strip()
+            date_str = str(adj.get("date") or "").strip()
+            label = f"Adj: {adj_type}"
+            if note:
+                label += f" ({note[:16]})"
+            elif date_str:
+                label += f" ({date_str})"
+            if amt >= 0:
+                earnings.append((label, _pdf_money(amt, currency, places)))
+    elif float(emp.get("adjustment_amount") or 0):
         earnings.append(("Adjustments", _pdf_money(emp.get("adjustment_amount"), currency, places)))
     if float(emp.get("arrears_amount") or 0):
         earnings.append(("Arrears", _pdf_money(emp.get("arrears_amount"), currency, places)))
@@ -739,8 +758,26 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
         add("Overtime", ot_amount, ot_hours if ot_hours else 1)
     if not named_bonus:
         add("Bonus", emp.get("bonus_amount"))
-    add("Rest-day extra", emp.get("off_day_extra_pay"))
-    add("Adjustments", emp.get("adjustment_amount"))
+    adj_lines = [
+        item for item in (pay_lines or [])
+        if (item.get("note") is not None or item.get("source_month") is not None or (item.get("type") and not item.get("kind") and not item.get("category")))
+    ]
+    if adj_lines:
+        for adj in adj_lines:
+            amt = float(adj.get("amount") or 0)
+            if not amt:
+                continue
+            adj_type = str(adj.get("type") or "adjustment").replace("_", " ").title()
+            note = str(adj.get("note") or "").strip()
+            date_str = str(adj.get("date") or "").strip()
+            desc = f"Adjustment: {adj_type}"
+            if note:
+                desc += f" ({note})"
+            elif date_str:
+                desc += f" ({date_str})"
+            add(desc, abs(amt), 1, True)
+    elif float(emp.get("adjustment_amount") or 0):
+        add("Adjustments", emp.get("adjustment_amount"))
     add("Arrears", emp.get("arrears_amount"))
     for item in pay_lines or []:
         amount = float(item.get("amount") or 0)

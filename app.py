@@ -983,7 +983,13 @@ def create_user():
         salary = db.parse_salary_amount(data.get('salary', 0))
     except ValueError as salary_err:
         return jsonify({'error': str(salary_err)}), 400
-    join_date = data.get('join_date', '')
+    join_date = str(data.get('join_date') or '').strip()
+    if not join_date:
+        return jsonify({'error': 'Joining date is required for employee enrollment.', 'field': 'join_date'}), 400
+    try:
+        datetime.strptime(join_date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': 'Joining date must use YYYY-MM-DD format.', 'field': 'join_date'}), 400
     notes = data.get('notes', '')
     shift_id = int(data.get('shift_id', 1) or 1)
     
@@ -5606,8 +5612,6 @@ def api_add_overtime():
         parsed_ot = datetime.strptime(ot_date, '%Y-%m-%d').date()
     except ValueError:
         return jsonify({'success': False, 'error': 'ot_date must use YYYY-MM-DD format'}), 400
-    if parsed_ot > date.today():
-        return jsonify({'success': False, 'error': 'Overtime cannot be applied for a future date.'}), 400
 
     limit_status = db.get_overtime_limit_status(user_id, ot_date, hours)
     if limit_status.get('exceeded'):
@@ -5665,14 +5669,24 @@ def api_update_overtime(ot_id):
         return jsonify({'success': True, 'id': ot_id, 'status': new_status, 'approved_by': approved_by})
     if current_status != 'pending':
         return jsonify({'success': False, 'error': f'Overtime is already finalized as {current_status}.'}), 409
-    if new_status == 'approved' and db.get_user_attendance_status(
-        int(ot_record['user_id']), str(ot_record['ot_date'])
-    ) == 'absent':
-        return jsonify({
-            'success': False,
-            'reason_code': 'absent_on_overtime_date',
-            'error': 'This overtime was not approved because the employee was absent on the overtime date.'
-        }), 409
+    if new_status == 'approved':
+        day_type = db.get_overtime_day_type(int(ot_record['user_id']), str(ot_record['ot_date']))
+        if day_type == 'regular' and db.get_user_attendance_status(
+            int(ot_record['user_id']), str(ot_record['ot_date'])
+        ) == 'absent':
+            return jsonify({
+                'success': False,
+                'reason_code': 'absent_on_overtime_date',
+                'error': 'This overtime was not approved because the employee was absent on the overtime date.'
+            }), 409
+        with sqlite3.connect(db.DB_PATH) as _conn:
+            following_att = db._get_following_workday_attendance_status(_conn.cursor(), int(ot_record['user_id']), str(ot_record['ot_date']))
+        if following_att == 'absent':
+            return jsonify({
+                'success': False,
+                'reason_code': 'absent_on_following_workday',
+                'error': 'This overtime was not approved because the employee was absent on the following workday.'
+            }), 409
 
     try:
         success = db.update_overtime_status(
@@ -5729,11 +5743,18 @@ def api_bulk_approve_overtime():
             if cur_status != 'pending':
                 skipped.append({'id': ot_id, 'reason': f'already finalized as {cur_status}'})
                 continue
-            if new_status == 'approved' and db.get_user_attendance_status(
-                int(rec['user_id']), str(rec['ot_date'])
-            ) == 'absent':
-                blocked_absent.append({'id': ot_id, 'reason': 'employee was absent on the overtime date'})
-                continue
+            if new_status == 'approved':
+                day_type = db.get_overtime_day_type(int(rec['user_id']), str(rec['ot_date']))
+                if day_type == 'regular' and db.get_user_attendance_status(
+                    int(rec['user_id']), str(rec['ot_date'])
+                ) == 'absent':
+                    blocked_absent.append({'id': ot_id, 'reason': 'employee was absent on the overtime date'})
+                    continue
+                with sqlite3.connect(db.DB_PATH) as _conn:
+                    following_att = db._get_following_workday_attendance_status(_conn.cursor(), int(rec['user_id']), str(rec['ot_date']))
+                if following_att == 'absent':
+                    blocked_absent.append({'id': ot_id, 'reason': 'employee was absent on the following workday'})
+                    continue
             ok = db.update_overtime_status(
                 int(ot_id),
                 status=new_status,
@@ -6005,6 +6026,9 @@ def _parse_payroll_month_arg(value: Optional[str] = None) -> Tuple[str, int, int
 
 def _bonus_rows_from_workbook(file_storage) -> List[Dict[str, Any]]:
     import openpyxl
+    import re
+    if isinstance(file_storage, (bytes, bytearray)):
+        file_storage = io.BytesIO(file_storage)
     workbook = openpyxl.load_workbook(file_storage, data_only=True, read_only=True)
     try:
         sheet = workbook.active
@@ -6015,22 +6039,43 @@ def _bonus_rows_from_workbook(file_storage) -> List[Dict[str, Any]]:
         return []
     aliases = {
         'employee_id': 'employee_id', 'user_id': 'employee_id', 'id': 'employee_id',
-        'emp_id': 'employee_id', 'staff_id': 'employee_id',
-        'employee_name': 'name', 'name': 'name', 'employee': 'name',
-        'email': 'email',
+        'emp_id': 'employee_id', 'staff_id': 'employee_id', 'emp': 'employee_id',
+        'employee_name': 'name', 'name': 'name', 'employee': 'name', 'full_name': 'name',
+        'email': 'email', 'email_address': 'email',
         'amount': 'amount', 'bonus': 'amount', 'bonus_amount': 'amount',
-        'note': 'note', 'notes': 'note', 'remarks': 'note',
+        'note': 'note', 'notes': 'note', 'remarks': 'note', 'comment': 'note',
     }
-    headers = [aliases.get(str(cell or '').strip().lower().replace(' ', '_')) for cell in rows[0]]
+    def _clean_header(val):
+        h = str(val or '').strip().lower()
+        h = re.sub(r'\(.*?\)', '', h)
+        h = h.replace(' ', '_').replace('-', '_').strip('_')
+        return aliases.get(h, aliases.get(h.replace('_', '')))
+
+    headers = [_clean_header(cell) for cell in rows[0]]
     parsed: List[Dict[str, Any]] = []
+    instruction_keywords = (
+        'instruction', 'instructions', 'match employees', 'amount is the bonus',
+        'off-days follow', 'note:', 'notes:', 'total'
+    )
     for row in rows[1:]:
         if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+            continue
+        first_cell_str = str(row[0] or '').strip().lower()
+        if any(first_cell_str.startswith(kw) for kw in instruction_keywords):
+            continue
+        # Also check if any cell in the row starts with instructions
+        if any(str(c or '').strip().lower().startswith(('instructions', 'match employees by')) for c in row):
             continue
         item: Dict[str, Any] = {}
         for key, cell in zip(headers, row):
             if not key:
                 continue
             item[key] = cell
+        # If the row has neither an employee identifier nor an amount, skip
+        has_id = bool(item.get('employee_id') or item.get('email') or item.get('name'))
+        has_amount = item.get('amount') is not None and str(item.get('amount')).strip() != ''
+        if not has_id and not has_amount:
+            continue
         parsed.append(item)
     return parsed
 
@@ -6504,7 +6549,7 @@ def api_save_scoped_overtime_limit_rule():
     max_hours = data.get('overtime_max_hours')
     period = data.get('overtime_max_period')
     
-    if not scope_type or not scope_id or max_hours is None or not period:
+    if not scope_type or scope_id is None or str(scope_id).strip() == '' or max_hours is None or not period:
         return jsonify({'error': 'Missing required fields'}), 400
     try:
         max_h = float(max_hours)

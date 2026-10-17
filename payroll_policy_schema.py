@@ -172,12 +172,12 @@ def overtime_entry_pay(
         return _percent(cfg.get("holiday_ot_premium_percent") or 0.0)
 
     if day_type == "non_working_day":
+        mode = str(cfg.get("non_working_day_ot_pay_mode") or "multiplier").strip().lower()
+        factor = float(cfg.get("non_working_day_ot_multiplier") or 1.5)
+        if mode == "multiplier" or factor > 1.0:
+            return _line(rate * factor, (factor - 1.0) * 100.0)
         if not cfg.get("non_working_day_ot_premium_active"):
             return _line(rate, 0.0)
-        mode = str(cfg.get("non_working_day_ot_pay_mode") or "percent").strip().lower()
-        if mode == "multiplier":
-            factor = float(cfg.get("non_working_day_ot_multiplier") or 1.0)
-            return _line(rate * factor, (factor - 1.0) * 100.0)
         if mode == "fixed_hour":
             extra = float(cfg.get("non_working_day_ot_fixed_amount") or 0.0)
             equiv = (extra / rate * 100.0) if rate else 0.0

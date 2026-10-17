@@ -8108,7 +8108,7 @@ async function fetchMultiLiveDetections() {
             <div class="col-md-6">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">OT Hourly Rate (PKR/hr)</label>
-                <button type="button" class="btn btn-link p-0 text-decoration-none" onclick="calcSuggestedOtRate()" style="font-size: 0.72em; font-weight: 700; color: #247eae;">
+                <button type="button" id="modalSalaryCalcOtBtn" class="btn btn-link p-0 text-decoration-none" onclick="calcSuggestedOtRate()" style="font-size: 0.72em; font-weight: 700; color: #247eae;">
                   <i class="fa-solid fa-calculator"></i> Set 1/208th
                 </button>
               </div>
@@ -9647,6 +9647,11 @@ async function fetchMultiLiveDetections() {
 
         if (!name) {
           showMessage("enrollmentMessage", "Full name is required.", "error");
+          return;
+        }
+
+        if (!join_date) {
+          showMessage("enrollmentMessage", "Joining date is required.", "error");
           return;
         }
 
@@ -14064,8 +14069,8 @@ async function fetchMultiLiveDetections() {
         }
       }
 
-      async function loadPayrollScopeOptions() {
-        if (window._payrollScopeOptions) return window._payrollScopeOptions;
+      async function loadPayrollScopeOptions(force = false) {
+        if (!force && window._payrollScopeOptions) return window._payrollScopeOptions;
         try {
           const res = await fetch('/api/payroll/scope-options', { cache: 'no-store' });
           window._payrollScopeOptions = res.ok ? await res.json() : {};
@@ -14080,7 +14085,7 @@ async function fetchMultiLiveDetections() {
         const targetSelect = document.getElementById('halfLeaveRuleTarget');
         if (!targetSelect) return;
         targetSelect.innerHTML = '<option value="">Select…</option>';
-        const data = await loadPayrollScopeOptions();
+        const data = await loadPayrollScopeOptions(true);
         const options = scope === 'department' ? (data.departments || []) : (data.employees || []);
         options.forEach((opt) => {
           const el = document.createElement('option');
@@ -14510,7 +14515,7 @@ async function fetchMultiLiveDetections() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
               scope_type: scope,
-              scope_id: Number(targetId),
+              scope_id: scope === 'employee' ? (Number(targetId) || targetId) : String(targetId).trim(),
               overtime_max_hours: Number(maxHours),
               overtime_max_period: period
             })
@@ -14986,7 +14991,18 @@ async function fetchMultiLiveDetections() {
         pushItem('Overtime', emp.overtime_amount, Number(emp.overtime_hours || 0) || 1);
         if (!namedBonus) pushItem('Bonus', emp.bonus_amount, 1);
         pushItem('Rest-day extra', emp.off_day_extra_pay, 1);
-        pushItem('Adjustments', emp.adjustment_amount, 1);
+        const adjLines = (payLines || []).filter(item => (item.note !== undefined || item.source_month !== undefined || (item.type && !item.kind && !item.category)));
+        if (adjLines.length > 0) {
+          adjLines.forEach(adj => {
+            const amt = Number(adj.amount || 0);
+            if (!amt) return;
+            const typeLabel = adj.type ? (adj.type.charAt(0).toUpperCase() + adj.type.slice(1).replace('_', ' ')) : 'Adjustment';
+            const noteText = adj.note ? ` (${adj.note})` : (adj.date ? ` (${adj.date})` : '');
+            pushItem(`Adjustment: ${typeLabel}${noteText}`, Math.abs(amt), 1, true);
+          });
+        } else if (Number(emp.adjustment_amount || 0) > 0) {
+          pushItem('Adjustments', emp.adjustment_amount, 1);
+        }
         pushItem('Arrears', emp.arrears_amount, 1);
         (payLines || []).forEach((item) => {
           const amount = Number(item.amount || 0);
@@ -15351,12 +15367,26 @@ async function fetchMultiLiveDetections() {
         };
         const message = document.getElementById('payLineAssignMessage');
         try {
-          const response = await fetch(`${API_BASE}/payroll/employee-components`, {
+          let response = await fetch(`${API_BASE}/payroll/employee-components`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
-          const result = await response.json();
+          let result = await response.json();
+          if (response.status === 409 && result.needs_confirmation) {
+            const confirmed = await appConfirm(`${result.error || 'This pay line affects earlier months.'}\nDo you want to confirm and recalculate?`);
+            if (confirmed) {
+              payload.confirm_affected_months = true;
+              response = await fetch(`${API_BASE}/payroll/employee-components`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              result = await response.json();
+            } else {
+              return;
+            }
+          }
           if (!response.ok || !result.success) {
             if (message) message.textContent = `${result.field || 'form'}: ${result.error || 'Could not assign'}`;
             showAppToast(result.error || 'Could not assign pay line', 'error');
@@ -15494,12 +15524,26 @@ async function fetchMultiLiveDetections() {
           percent: Number(document.getElementById('modalSalaryComponentPercent')?.value || 0),
           effective_from: document.getElementById('modalSalaryComponentFrom')?.value || undefined
         };
-        const response = await fetch(`${API_BASE}/payroll/employee-components`, {
+        let response = await fetch(`${API_BASE}/payroll/employee-components`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const result = await response.json();
+        let result = await response.json();
+        if (response.status === 409 && result.needs_confirmation) {
+          const confirmed = await appConfirm(`${result.error || 'This pay line affects earlier months.'}\nDo you want to confirm and recalculate?`);
+          if (confirmed) {
+            payload.confirm_affected_months = true;
+            response = await fetch(`${API_BASE}/payroll/employee-components`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            result = await response.json();
+          } else {
+            return;
+          }
+        }
         if (!response.ok || !result.success) {
           showAppToast(result.error || 'Could not assign pay line', 'error');
           return;
@@ -16140,6 +16184,13 @@ async function fetchMultiLiveDetections() {
         const effective = document.getElementById('modalSalaryEffectiveFrom');
         if (effective && !effective.value) effective.value = new Date().toISOString().slice(0, 10);
 
+        window._currentSalaryWorkingHours = Number(item.applicable_working_hours || item.ot_hour_divisor || 208);
+        const otBtn = document.getElementById('modalSalaryCalcOtBtn');
+        if (otBtn) {
+          const hrsText = Number.isInteger(window._currentSalaryWorkingHours) ? window._currentSalaryWorkingHours : window._currentSalaryWorkingHours.toFixed(1);
+          otBtn.innerHTML = `<i class="fa-solid fa-calculator"></i> Set 1/${hrsText}th`;
+        }
+
         updateSalaryModalLiveCalc();
         await loadEmployeePayLines(item.user_id);
         modal.style.display = 'flex';
@@ -16171,7 +16222,8 @@ async function fetchMultiLiveDetections() {
 
       function calcSuggestedOtRate() {
         const basic = Math.max(0, parseFloat(document.getElementById('modalSalaryBasic')?.value || 0));
-        const suggested = basic > 0 ? (Math.round((basic / 208) * 100) / 100) : 0;
+        const divisor = Number(window._currentSalaryWorkingHours || 208);
+        const suggested = basic > 0 ? (Math.round((basic / divisor) * 100) / 100) : 0;
         const input = document.getElementById('modalSalaryOtRate');
         if (input) input.value = suggested;
       }
@@ -18528,14 +18580,30 @@ async function fetchMultiLiveDetections() {
       loadCompanyHolidaysForLeave();
 
       try {
-        const res = await fetch('/api/users');
+        const [res, deptRes] = await Promise.all([
+          fetch('/api/users', { cache: 'no-store' }),
+          fetch('/api/departments', { cache: 'no-store' }).catch(() => null)
+        ]);
         const data = await res.json();
         window._allLeaveUsers = data.users || [];
-        const depts = [...new Set(window._allLeaveUsers.map(u => u.department).filter(Boolean))].sort();
+        let allDepts = window._allLeaveUsers.map(u => u.department).filter(Boolean);
+        if (deptRes && deptRes.ok) {
+          try {
+            const deptData = await deptRes.json();
+            const deptList = Array.isArray(deptData) ? deptData : (deptData.departments || []);
+            deptList.forEach(d => {
+              const name = typeof d === 'string' ? d : (d.name || d.department);
+              if (name) allDepts.push(name);
+            });
+          } catch (_) {}
+        }
+        const depts = [...new Set(allDepts)].sort();
         const deptSelect = document.getElementById('modalLeaveDeptSelect');
         if (deptSelect) {
+          const prevVal = deptSelect.value;
           deptSelect.innerHTML = '<option value="">Select Department...</option>' + depts.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
-          deptSelect.value = '';
+          if (depts.includes(prevVal)) deptSelect.value = prevVal;
+          else deptSelect.value = '';
         }
         if (typeof filterLeaveEmployees === 'function') filterLeaveEmployees();
       } catch (e) {
@@ -18575,7 +18643,9 @@ async function fetchMultiLiveDetections() {
       if (!durationSelect || !typeSelect) return;
 
       const selectedType = (_allLeaveTypes || []).find(type => String(type.code) === String(typeSelect.value) || String(type.id) === String(typeSelect.value));
-      const halfLeaveAllowed = Boolean(Number(selectedType && selectedType.half_leave_enabled));
+      const quotaMode = window._payrollSettings?.half_leave_quota_mode || document.getElementById('payrollHalfLeaveQuotaMode')?.value || 'category';
+      const companyHalfLeaveEnabled = quotaMode === 'monthly_cap' || quotaMode === 'monthly_convert';
+      const halfLeaveAllowed = Boolean(Number(selectedType && selectedType.half_leave_enabled)) || companyHalfLeaveEnabled;
       durationSelect.disabled = false;
       const halfOption = durationSelect.querySelector('option[value="half"]');
       if (halfOption) halfOption.disabled = !halfLeaveAllowed;
@@ -18583,7 +18653,7 @@ async function fetchMultiLiveDetections() {
       if (hint) {
         hint.textContent = halfLeaveAllowed
           ? 'Full day or half day can be selected for this leave type.'
-          : 'This leave type is full-day only. Enable half-day on the leave type to allow half-day requests.';
+          : 'This leave type is full-day only. Enable half-day on the leave type or in Half Leave settings to allow half-day requests.';
       }
       onLeaveDurationChange();
     }
@@ -19511,7 +19581,6 @@ async function fetchMultiLiveDetections() {
         const mm = String(today.getMonth() + 1).padStart(2, '0');
         const dd = String(today.getDate()).padStart(2, '0');
         const todayIso = `${yyyy}-${mm}-${dd}`;
-        dateInput.max = todayIso;
         dateInput.value = todayIso;
       }
 
@@ -19659,10 +19728,7 @@ async function fetchMultiLiveDetections() {
       }
       const now = new Date();
       const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      if (otDate > todayIso) {
-        if (msg) msg.innerHTML = '<div class="alert alert-danger py-2">Overtime cannot be applied for a future date.</div>';
-        return;
-      }
+      const isFutureDate = otDate > todayIso;
 
       try {
         const res = await fetch('/api/overtime', {
@@ -19677,7 +19743,7 @@ async function fetchMultiLiveDetections() {
         });
         const data = await res.json();
         if (data.success && data.id) {
-          if (initialStatus === 'approved' && !data.limit_exceeded) {
+          if (!isFutureDate && initialStatus === 'approved' && !data.limit_exceeded) {
             const approvalRes = await fetch(`/api/overtime/${data.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
