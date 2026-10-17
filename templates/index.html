@@ -6272,20 +6272,20 @@ async function fetchMultiLiveDetections() {
           <h4>Optional features</h4>
           <p class="payroll-panel-help">Turn on only what this company uses. You set the amounts yourself.</p>
           <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px 14px;">
-            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_named_components" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Extra pay items<br><span style="font-weight:500; color:#64748b;">House rent, tax, loan: set a default amount or % below.</span></span></label>
-            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_bonuses" type="checkbox" class="form-check-input" style="margin:3px 0 0;" checked><span>Excel bonuses<br><span style="font-weight:500; color:#64748b;">Different amount per person each month.</span></span></label>
-            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_individual_adjustments" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>One-person extras<br><span style="font-weight:500; color:#64748b;">A special amount for one staff member.</span></span></label>
-            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_salary_revisions" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Mid-month salary change<br><span style="font-weight:500; color:#64748b;">New basic starts from the change date.</span></span></label>
-            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_tax" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Tax<br><span style="font-weight:500; color:#64748b;">A deduction with a fixed amount or % of basic.</span></span></label>
-            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_loans" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Loan<br><span style="font-weight:500; color:#64748b;">Monthly loan installment.</span></span></label>
-            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_advances" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Advance<br><span style="font-weight:500; color:#64748b;">Amount recovered from salary.</span></span></label>
-            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_provident" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Provident fund<br><span style="font-weight:500; color:#64748b;">% of basic or a fixed monthly amount.</span></span></label>
-            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_insurance" type="checkbox" class="form-check-input" style="margin:3px 0 0;"><span>Insurance<br><span style="font-weight:500; color:#64748b;">Fixed monthly amount or % of basic.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_named_components" type="checkbox" class="form-check-input" style="margin:3px 0 0;" onchange="updatePayrollFeatureSectionsVisibility()"><span>Extra pay items<br><span style="font-weight:500; color:#64748b;">House rent, tax, loan: set a default amount or % below.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_bonuses" type="checkbox" class="form-check-input" style="margin:3px 0 0;" checked onchange="updatePayrollFeatureSectionsVisibility()"><span>Excel bonuses<br><span style="font-weight:500; color:#64748b;">Different amount per person each month.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_individual_adjustments" type="checkbox" class="form-check-input" style="margin:3px 0 0;" onchange="updatePayrollFeatureSectionsVisibility()"><span>One-person extras<br><span style="font-weight:500; color:#64748b;">A special amount for one staff member.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_salary_revisions" type="checkbox" class="form-check-input" style="margin:3px 0 0;" onchange="updatePayrollFeatureSectionsVisibility()"><span>Mid-month salary change<br><span style="font-weight:500; color:#64748b;">New basic starts from the change date.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_tax" type="checkbox" class="form-check-input" style="margin:3px 0 0;" onchange="updatePayrollFeatureSectionsVisibility()"><span>Tax<br><span style="font-weight:500; color:#64748b;">A deduction with a fixed amount or % of basic.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_loans" type="checkbox" class="form-check-input" style="margin:3px 0 0;" onchange="updatePayrollFeatureSectionsVisibility()"><span>Loan<br><span style="font-weight:500; color:#64748b;">Monthly loan installment.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_advances" type="checkbox" class="form-check-input" style="margin:3px 0 0;" onchange="updatePayrollFeatureSectionsVisibility()"><span>Advance<br><span style="font-weight:500; color:#64748b;">Amount recovered from salary.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_provident" type="checkbox" class="form-check-input" style="margin:3px 0 0;" onchange="updatePayrollFeatureSectionsVisibility()"><span>Provident fund<br><span style="font-weight:500; color:#64748b;">% of basic or a fixed monthly amount.</span></span></label>
+            <label style="display:flex; gap:8px; align-items:flex-start; font-weight:700; color:#475569;"><input id="flag_enable_insurance" type="checkbox" class="form-check-input" style="margin:3px 0 0;" onchange="updatePayrollFeatureSectionsVisibility()"><span>Insurance<br><span style="font-weight:500; color:#64748b;">Fixed monthly amount or % of basic.</span></span></label>
           </div>
           <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; margin-top:12px;">Save features</button>
         </section>
 
-        <section class="payroll-panel">
+        <section class="payroll-panel" id="section_enable_bonuses">
           <h4>Excel bonuses</h4>
           <p class="payroll-panel-help">Download the sheet, enter an amount for each person, then upload. Unused people can stay at 0. This is for one month only.</p>
           <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
@@ -6301,7 +6301,7 @@ async function fetchMultiLiveDetections() {
           </div>
         </section>
 
-        <section class="payroll-panel">
+        <section class="payroll-panel" id="section_enable_named_components">
           <h4>Extra pay and deductions</h4>
           <p class="payroll-panel-help">Add items like house rent or tax. Then choose who they apply to. A start date is required.</p>
           <form class="payroll-rule-form" onsubmit="event.preventDefault(); savePayrollComponentType();">
@@ -6391,6 +6391,90 @@ async function fetchMultiLiveDetections() {
                 <tbody id="payLineDuplicateBody"><tr><td class="text-muted">None.</td></tr></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <section class="payroll-panel" id="section_enable_individual_adjustments">
+          <h4>One-person extras</h4>
+          <p class="payroll-panel-help">A special amount for one staff member (rest-day exception, mid-month bonus, extra earning/deduction, or arrears). Org rest-day policy still applies to everyone else.</p>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-weight:700; color:#173042;">Individual Staff Exceptions & Arrears</div>
+              <div style="color:#64748b; font-size:0.85em; margin-top:2px;">Record special rates or one-off additions/deductions for specific employees on monthly runs.</div>
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="scrollToPayrollExceptions()" style="font-weight:700;">View & Add Exceptions</button>
+          </div>
+        </section>
+
+        <section class="payroll-panel" id="section_enable_salary_revisions">
+          <h4>Mid-month salary change</h4>
+          <p class="payroll-panel-help">When an employee's basic salary changes during a month, the system prorates the old basic up to the change date and the new basic from the change date forward.</p>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-weight:700; color:#173042;">Configure salary revision dates</div>
+              <div style="color:#64748b; font-size:0.85em; margin-top:2px;">Set the effective date when updating basic salary in Staff Directory or Salary Packages.</div>
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="switchPayrollHubTab('packages')" style="font-weight:700;">Go to Packages</button>
+          </div>
+        </section>
+
+        <section class="payroll-panel" id="section_enable_tax">
+          <h4>Tax</h4>
+          <p class="payroll-panel-help">Tax deduction with a fixed amount or percentage of basic salary. Creates a line item deducted from gross pay.</p>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-weight:700; color:#173042;">Manage Tax Components</div>
+              <div style="color:#64748b; font-size:0.85em; margin-top:2px;">Define tax rules with category "Tax" under Extra pay items or assign to specific staff.</div>
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickSelectComponentCategory('tax')" style="font-weight:700;">+ Configure Tax Item</button>
+          </div>
+        </section>
+
+        <section class="payroll-panel" id="section_enable_loans">
+          <h4>Loan</h4>
+          <p class="payroll-panel-help">Monthly loan installments deducted from employee salary.</p>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-weight:700; color:#173042;">Manage Loan Deductions</div>
+              <div style="color:#64748b; font-size:0.85em; margin-top:2px;">Set fixed monthly loan recovery amount per staff member or group.</div>
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickSelectComponentCategory('loan')" style="font-weight:700;">+ Configure Loan Item</button>
+          </div>
+        </section>
+
+        <section class="payroll-panel" id="section_enable_advances">
+          <h4>Advance</h4>
+          <p class="payroll-panel-help">Amount recovered from salary for salary advances issued during the period.</p>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-weight:700; color:#173042;">Manage Salary Advances</div>
+              <div style="color:#64748b; font-size:0.85em; margin-top:2px;">Add advance deduction lines under Extra pay items to deduct from monthly payroll.</div>
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickSelectComponentCategory('advance')" style="font-weight:700;">+ Configure Advance Item</button>
+          </div>
+        </section>
+
+        <section class="payroll-panel" id="section_enable_provident">
+          <h4>Provident fund</h4>
+          <p class="payroll-panel-help">Provident fund deduction (% of basic or a fixed monthly amount).</p>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-weight:700; color:#173042;">Manage Provident Fund</div>
+              <div style="color:#64748b; font-size:0.85em; margin-top:2px;">Configure provident fund percentage or fixed amount rules for staff.</div>
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickSelectComponentCategory('provident')" style="font-weight:700;">+ Configure Provident Item</button>
+          </div>
+        </section>
+
+        <section class="payroll-panel" id="section_enable_insurance">
+          <h4>Insurance</h4>
+          <p class="payroll-panel-help">Fixed monthly amount or % of basic for health/life insurance coverage.</p>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-weight:700; color:#173042;">Manage Insurance Coverage</div>
+              <div style="color:#64748b; font-size:0.85em; margin-top:2px;">Configure insurance deduction rates or fixed premium amounts.</div>
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickSelectComponentCategory('insurance')" style="font-weight:700;">+ Configure Insurance Item</button>
           </div>
         </section>
         </div>
@@ -13195,6 +13279,7 @@ async function fetchMultiLiveDetections() {
         if (document.getElementById('editCNIC')) document.getElementById('editCNIC').value = user.cnic || '';
         if (document.getElementById('editSalary')) document.getElementById('editSalary').value = user.salary || '';
         if (document.getElementById('editJoinDate')) document.getElementById('editJoinDate').value = user.join_date || '';
+        if (document.getElementById('editExitDate')) document.getElementById('editExitDate').value = user.exit_date || '';
         if (document.getElementById('editShiftId')) document.getElementById('editShiftId').value = user.shift_id || 1;
         if (document.getElementById('editNotes')) document.getElementById('editNotes').value = user.notes || '';
 
@@ -14248,7 +14333,53 @@ async function fetchMultiLiveDetections() {
         } catch (e) {
           showToast('Error deleting rule.', 'danger');
         }
+      function updatePayrollFeatureSectionsVisibility(settings) {
+        const flags = [
+          'enable_named_components', 'enable_bonuses', 'enable_individual_adjustments',
+          'enable_salary_revisions', 'enable_tax', 'enable_loans', 'enable_advances',
+          'enable_provident', 'enable_insurance'
+        ];
+        flags.forEach((flag) => {
+          const el = document.getElementById(`flag_${flag}`);
+          if (settings && typeof settings[flag] !== 'undefined' && el) {
+            el.checked = Boolean(Number(settings[flag] ?? (flag === 'enable_bonuses' ? 1 : 0)));
+          }
+          const isEnabled = el ? el.checked : (settings ? Boolean(Number(settings[flag])) : false);
+          const sec = document.getElementById(`section_${flag}`);
+          if (sec) {
+            sec.style.display = isEnabled ? 'block' : 'none';
+          }
+        });
       }
+      window.updatePayrollFeatureSectionsVisibility = updatePayrollFeatureSectionsVisibility;
+
+      function quickSelectComponentCategory(cat) {
+        const catSelect = document.getElementById('payrollComponentCategory');
+        const kindSelect = document.getElementById('payrollComponentKind');
+        const namedFlag = document.getElementById('flag_enable_named_components');
+        if (catSelect) catSelect.value = cat;
+        if (kindSelect) kindSelect.value = 'deduction';
+        if (namedFlag && !namedFlag.checked) {
+          namedFlag.checked = true;
+          updatePayrollFeatureSectionsVisibility();
+        }
+        const nameInput = document.getElementById('payrollComponentName');
+        if (nameInput) {
+          nameInput.focus();
+          nameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+      window.quickSelectComponentCategory = quickSelectComponentCategory;
+
+      function scrollToPayrollExceptions() {
+        const hubTab = document.querySelector('[data-payroll-hub="extras"]');
+        if (hubTab) hubTab.click();
+        const sec = document.getElementById('section_enable_individual_adjustments');
+        if (sec) {
+          sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+      window.scrollToPayrollExceptions = scrollToPayrollExceptions;
 
       async function loadPayrollSettings() {
         const toggle = document.getElementById('deductUnpaidLeaveToggle');
@@ -14328,14 +14459,7 @@ async function fetchMultiLiveDetections() {
           setVal('offDayAttendancePayMultiplier', settings.off_day_attendance_pay_multiplier ?? 1.5);
           setVal('offDayAttendancePayFixedAmount', settings.off_day_attendance_pay_fixed_amount ?? 0);
           updatePayrollExtraPayModeUI();
-          [
-            'enable_named_components', 'enable_bonuses', 'enable_individual_adjustments',
-            'enable_salary_revisions', 'enable_tax', 'enable_loans', 'enable_advances',
-            'enable_provident', 'enable_insurance'
-          ].forEach((flag) => {
-            const el = document.getElementById(`flag_${flag}`);
-            if (el) el.checked = Boolean(Number(settings[flag] ?? (flag === 'enable_bonuses' ? 1 : 0)));
-          });
+          updatePayrollFeatureSectionsVisibility(settings);
           if (!_payslipLetterheadDirty) applyPayslipLetterhead(settings);
           await loadPayrollComponentTypes();
           await loadPayLineDuplicates();
@@ -15829,6 +15953,7 @@ async function fetchMultiLiveDetections() {
             conversionCount.value = result.settings?.half_leaves_per_quota_day || 2;
           }
           updateHalfLeaveQuotaModeUI();
+          updatePayrollFeatureSectionsVisibility(result.settings);
           if (message) message.textContent = 'Saved.';
           showAppToast('Payroll settings saved.', 'success');
           if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
@@ -18855,7 +18980,7 @@ async function fetchMultiLiveDetections() {
           typeSelect.innerHTML = types.map(t => {
             const periodTag = t.allowance_period === 'monthly' ? 'Month' : (t.allowance_period === 'half_yearly' ? '6-Month' : 'Year');
             const durationMonths = Number(t.allowance_months || (t.allowance_period === 'monthly' ? 1 : (t.allowance_period === 'half_yearly' ? 6 : 12)));
-            return `<option value="${escapeHtml(t.code)}">${escapeHtml(t.name)} (${t.yearly_allowance} Days/${periodTag}, ${durationMonths} month${durationMonths === 1 ? '' : 's'} - ${t.is_paid ? 'Paid' : 'Unpaid'})</option>`;
+            return `<option value="${escapeHtml(t.code)}" data-id="${t.id}" data-half="${t.half_leave_enabled ? '1' : '0'}">${escapeHtml(t.name)} (${t.yearly_allowance} Days/${periodTag}, ${durationMonths} month${durationMonths === 1 ? '' : 's'} - ${t.is_paid ? 'Paid' : 'Unpaid'})</option>`;
           }).join('');
         }
       } catch (e) {}
@@ -18879,18 +19004,23 @@ async function fetchMultiLiveDetections() {
       const hint = document.getElementById('modalLeaveDurationHint');
       if (!durationSelect || !typeSelect) return;
 
+      const selectedOption = typeSelect.selectedOptions && typeSelect.selectedOptions[0];
+      const optHalf = selectedOption ? selectedOption.dataset.half : null;
       const selectedType = (_allLeaveTypes || []).find(type => String(type.code) === String(typeSelect.value) || String(type.id) === String(typeSelect.value));
-      const quotaMode = window._payrollSettings?.half_leave_quota_mode || document.getElementById('payrollHalfLeaveQuotaMode')?.value || 'category';
+      const quotaMode = window._payrollSettings?.half_leave_quota_mode || document.getElementById('halfLeaveQuotaMode')?.value || document.getElementById('payrollHalfLeaveQuotaMode')?.value || 'category';
       const companyHalfLeaveEnabled = quotaMode === 'monthly_cap' || quotaMode === 'monthly_convert';
-      const halfLeaveAllowed = Boolean(Number(selectedType && selectedType.half_leave_enabled)) || companyHalfLeaveEnabled;
+      const typeHalfAllowed = selectedType ? Boolean(Number(selectedType.half_leave_enabled)) : (optHalf === '1');
+      const halfLeaveAllowed = typeHalfAllowed || companyHalfLeaveEnabled;
       durationSelect.disabled = false;
       const halfOption = durationSelect.querySelector('option[value="half"]');
       if (halfOption) halfOption.disabled = !halfLeaveAllowed;
-      if (!halfLeaveAllowed) durationSelect.value = 'full';
+      if (!halfLeaveAllowed && durationSelect.value === 'half') {
+        durationSelect.value = 'full';
+      }
       if (hint) {
         hint.textContent = halfLeaveAllowed
           ? 'Full day or half day can be selected for this leave type.'
-          : 'This leave type is full-day only. Enable half-day on the leave type or in Half Leave settings to allow half-day requests.';
+          : 'Half day is not allowed for this leave type. Enable "Allow half-day requests" on this leave type or in Half Leave settings.';
       }
       onLeaveDurationChange();
     }

@@ -1700,6 +1700,7 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
                        COALESCE(u.cnic, '') as cnic,
                        COALESCE(u.salary, 0) as salary,
                        COALESCE(u.join_date, '') as join_date,
+                       COALESCE(u.exit_date, '') as exit_date,
                        COALESCE(u.shift_id, 1) as shift_id,
                        COALESCE(s.name, 'Morning Shift') as shift_name,
                        COALESCE(s.start_time, '09:00') as shift_start,
@@ -1748,12 +1749,13 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
             'department': r[4], 'enrollment_date': r[5], 'created_at': r[6],
             'active': r[7], 'notes': r[8], 'photo_path': r[9], 'status_today': r[10],
             'position': r[11], 'cnic': r[12], 'salary': r[13], 'join_date': r[14],
-            'shift_id': r[15], 'shift_name': r[16], 'shift_start': r[17],
-            'shift_end': r[18], 'shift_grace': r[19],
-            'checkin_cameras': r[20], 'checkout_cameras': r[21],
-            'organization_id': r[22], 'branch_id': r[23],
-            'embedding_count': r[24] if len(r) > 24 else 0,
-            'has_embedding': (r[24] > 0) if len(r) > 24 else False
+            'exit_date': r[15],
+            'shift_id': r[16], 'shift_name': r[17], 'shift_start': r[18],
+            'shift_end': r[19], 'shift_grace': r[20],
+            'checkin_cameras': r[21], 'checkout_cameras': r[22],
+            'organization_id': r[23], 'branch_id': r[24],
+            'embedding_count': r[25] if len(r) > 25 else 0,
+            'has_embedding': (r[25] > 0) if len(r) > 25 else False
         } for r in rows]
     except Exception as e:
         logger.error(f"Failed to get all users: {e}")
@@ -1805,6 +1807,7 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                         "Changing this shift effective date reclassifies processed attendance. "
                         "Confirm to continue."
                     )
+            norm_exit = str(exit_date).strip()[:10] if (exit_date is not None and str(exit_date).strip()) else (None if exit_date is not None else '__KEEP__')
             cursor.execute('''
                 UPDATE users 
                 SET name = ?, email = ?, phone = ?, department = ?, notes = ?,
@@ -1812,13 +1815,14 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                     cnic = COALESCE(?, cnic),
                     salary = COALESCE(?, salary),
                     join_date = COALESCE(?, join_date),
-                    exit_date = COALESCE(?, exit_date),
+                    exit_date = CASE WHEN ? = '__KEEP__' THEN exit_date ELSE ? END,
                     shift_id = COALESCE(?, shift_id),
                     checkin_cameras = COALESCE(?, checkin_cameras),
                     checkout_cameras = COALESCE(?, checkout_cameras)
                 WHERE id = ?
-            ''', (name.strip(), email, phone, department, notes, position, cnic, salary, join_date, exit_date, persisted_shift_id, checkin_cameras, checkout_cameras, user_id))
+            ''', (name.strip(), email, phone, department, notes, position, cnic, salary, join_date, norm_exit, norm_exit, persisted_shift_id, checkin_cameras, checkout_cameras, user_id))
             updated = cursor.rowcount > 0
+            cursor.execute("UPDATE overtime SET user_name = ? WHERE user_id = ?", (name.strip(), user_id))
             if updated and shift_id is not None and (shift_id != previous_shift_id or shift_effective_from is not None):
                 _record_employee_shift_history(cursor, user_id, shift_id, effective_date)
             if updated and join_date:
@@ -6435,6 +6439,8 @@ def check_leave_quota(
     end_date: Optional[str] = None,
     exclude_id: Optional[int] = None,
     leave_duration: str = 'full',
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Check if a requested leave duration is within the employee's allowed paid quota.
@@ -6507,7 +6513,10 @@ def check_leave_quota(
                     }
 
             # Find leave type owned by the employee's organization
-            org_id, _branch_id = _user_tenant(cursor, user_id) if user_id else ('DEFAULT_ORG', 'DEFAULT_BRANCH')
+            if user_id:
+                org_id, _branch_id = _user_tenant(cursor, user_id)
+            else:
+                org_id, _branch_id = _tenant_ids(organization_id, branch_id)
             cursor.execute(
                 """SELECT * FROM leave_types
                    WHERE (code = ? OR name = ?)
@@ -7088,7 +7097,7 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             query = """
-                SELECT o.*,
+                SELECT o.id, o.user_id, COALESCE(u.name, o.user_name) as user_name, o.ot_date, o.hours, o.reason, o.status, o.approved_by, o.created_at, o.rejection_reason,
                        COALESCE(u.department, '') as department,
                        COALESCE(u.position, '') as designation,
                        COALESCE(sc.ot_rate, CASE WHEN COALESCE(u.salary, sc.basic_salary, 0) > 0 THEN ROUND(COALESCE(u.salary, sc.basic_salary) / COALESCE(ps.ot_hour_divisor, 208.0), 2) ELSE 0.0 END) as ot_rate
@@ -7189,7 +7198,8 @@ def get_overtime_by_id(
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            query = """SELECT o.* FROM overtime o
+            query = """SELECT o.id, o.user_id, COALESCE(u.name, o.user_name) as user_name, o.ot_date, o.hours, o.reason, o.status, o.approved_by, o.created_at, o.rejection_reason
+                       FROM overtime o
                        JOIN users u ON u.id = o.user_id
                        WHERE o.id = ?"""
             params: List[Any] = [ot_id]
@@ -8713,13 +8723,14 @@ def replace_payroll_bonuses(
 
         if commit and not errors:
             cursor = conn.cursor()
-            cursor.execute(
-                """DELETE FROM payroll_bonuses
-                   WHERE year = ? AND month = ?
-                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
-                (int(year), int(month), org, branch),
-            )
+            if source != 'excel':
+                cursor.execute(
+                    """DELETE FROM payroll_bonuses
+                       WHERE year = ? AND month = ?
+                         AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                         AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                    (int(year), int(month), org, branch),
+                )
             for item in preview:
                 cursor.execute(
                     """
@@ -9977,6 +9988,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             ot_rate = 0.0
         overtime_breakdown = []
         overtime_amount = 0.0
+        ot_rest_day_extra_total = 0.0
+        ot_rest_day_dates = set()
         for overtime_entry in overtime_entries:
             entry_hours = float(overtime_entry['hours'] or 0.0)
             if entry_hours <= 0:
@@ -9990,7 +10003,16 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 holiday=overtime_entry.get('holiday'),
                 decimal_places=decimal_places,
             )
-            overtime_amount += category_amount
+            base_entry_amount = _m(entry_hours * ot_rate)
+            if day_type == 'non_working_day':
+                rest_day_extra_component = _m(max(0.0, category_amount - base_entry_amount))
+                normal_ot_component = _m(category_amount - rest_day_extra_component)
+                overtime_amount += normal_ot_component
+                ot_rest_day_extra_total += rest_day_extra_component
+                ot_rest_day_dates.add(str(overtime_entry['ot_date']))
+            else:
+                overtime_amount += category_amount
+
             breakdown_entry = {
                 'day_type': day_type,
                 'date': overtime_entry['ot_date'],
@@ -10026,10 +10048,12 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 extra_maps['adjustments'].get(int(employee_id), []),
                 daily_rate, off_day_dates, decimal_places,
             )
-        off_days_worked = len(adj_pack.get('remaining_off_days') or [])
-        off_day_extra_pay = _off_day_attendance_extra(
-            daily_rate, off_days_worked, payroll_settings, decimal_places
+        attendance_off_days_worked = len(adj_pack.get('remaining_off_days') or [])
+        attendance_off_day_extra = _off_day_attendance_extra(
+            daily_rate, attendance_off_days_worked, payroll_settings, decimal_places
         )
+        off_day_extra_pay = _m(attendance_off_day_extra + ot_rest_day_extra_total)
+        off_days_worked = attendance_off_days_worked + len(ot_rest_day_dates)
         bonus_amount = _m(bonus_amounts.get(int(employee_id), 0.0)) if _payroll_flag_on(payroll_settings, 'enable_bonuses') else 0.0
 
         allowances = lump_allowances

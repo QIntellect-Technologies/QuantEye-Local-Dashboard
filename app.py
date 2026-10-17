@@ -5385,6 +5385,8 @@ def api_check_leave_quota():
         start_date=start_date,
         end_date=end_date,
         leave_duration=leave_duration,
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
     )
     return jsonify(res), 200
 

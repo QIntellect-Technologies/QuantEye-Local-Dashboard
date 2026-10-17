@@ -779,6 +779,8 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
     elif float(emp.get("adjustment_amount") or 0):
         add("Adjustments", emp.get("adjustment_amount"))
     add("Arrears", emp.get("arrears_amount"))
+    if float(emp.get("off_day_extra_pay") or 0):
+        add("Rest-day extra", emp.get("off_day_extra_pay"))
     for item in pay_lines or []:
         amount = float(item.get("amount") or 0)
         if not amount:
