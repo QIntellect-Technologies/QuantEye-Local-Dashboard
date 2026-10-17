@@ -605,9 +605,15 @@ def init_db():
                 ('quota_through_date', 'TEXT'),
                 ('start_time', 'TEXT'),
                 ('end_time', 'TEXT'),
+                ('paid_status', "TEXT DEFAULT 'pending'"),
+                ('unpaid_status', "TEXT DEFAULT 'pending'"),
+                ('rejection_reason', 'TEXT'),
+                ('restored_dates', "TEXT DEFAULT ''"),
             ]:
                 if column not in leave_request_columns:
                     cursor.execute(f"ALTER TABLE leave_requests ADD COLUMN {column} {column_type}")
+                    if column in ('paid_status', 'unpaid_status'):
+                        cursor.execute(f"UPDATE leave_requests SET {column} = COALESCE(status, 'pending') WHERE {column} IS NULL")
 
             # Company holidays table
             cursor.execute('''
@@ -1273,6 +1279,11 @@ def init_db():
             # Create composite tenant indexes for ultra-fast, 100% isolated queries
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_org ON users(organization_id, active)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_attendance_org ON attendance(organization_id, timestamp)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_attendance_user_ts ON attendance(user_id, timestamp)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_attendance_ts ON attendance(timestamp)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_leave_requests_user_status ON leave_requests(user_id, status)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_manual_absent_user_date ON manual_absent(user_id, date)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_shift_history_user ON employee_shift_history(user_id, effective_from)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_embeddings_org ON embeddings(organization_id, user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_departments_org ON departments(organization_id, active)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_shifts_org ON shifts(organization_id, active)')
@@ -1779,7 +1790,7 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                 if payroll_month_is_finalized(affected_month, org_id, branch_id):
                     raise ValueError(PAYROLL_LOCK_MESSAGE)
                 past_logs = cursor.execute(
-                    "SELECT COUNT(*) FROM attendance_logs WHERE user_id = ? AND date(timestamp) >= ?",
+                    "SELECT COUNT(*) FROM attendance WHERE user_id = ? AND date(timestamp) >= ?",
                     (user_id, effective_date),
                 ).fetchone()[0]
                 if past_logs and not confirm_shift_reclassify:
@@ -1809,6 +1820,8 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
             logger.info(f"✓ User ID {user_id} updated: {name} (Shift: {shift_id}, In: {checkin_cameras}, Out: {checkout_cameras})")
             _cloud_mirror("mirror_user_id", user_id)
         return updated
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Failed to update user ID {user_id}: {e}")
         return False
@@ -2954,7 +2967,72 @@ def _record_automatic_checkout_overtime(
         "INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, status, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
         (user_id, user_name, actual_date, overtime_hours, reason, u_ot_org, u_ot_branch),
     )
-    return overtime_hours
+def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> bool:
+    """
+    LV-05: When an employee with approved leave is subsequently recorded as present on that date,
+    restore their leave entitlement unless payroll for that month is already finalized.
+    Safe against duplicate calls (idempotent via restored_dates tracking).
+    """
+    try:
+        month_str = log_date[:7]
+        org_id, branch_id = _user_tenant(cursor, user_id)
+        if payroll_month_is_finalized(month_str, org_id, branch_id):
+            return False
+
+        cursor.execute("""
+            SELECT id, leave_type, leave_duration, start_date, end_date, status,
+                   paid_status, unpaid_status, restored_dates, reason
+            FROM leave_requests
+            WHERE user_id = ?
+              AND status IN ('approved', 'partially_approved')
+              AND start_date <= ? AND end_date >= ?
+        """, (user_id, log_date, log_date))
+        rows = cursor.fetchall()
+        for lr in rows:
+            if isinstance(lr, (tuple, list)):
+                leave_id = lr[0]
+                lr_duration = lr[2]
+                lr_start = lr[3]
+                lr_end = lr[4]
+                lr_status = lr[5]
+                lr_restored_dates = lr[8]
+                lr_reason = lr[9]
+            else:
+                leave_id = lr['id']
+                lr_duration = lr['leave_duration']
+                lr_start = lr['start_date']
+                lr_end = lr['end_date']
+                lr_status = lr['status']
+                lr_restored_dates = lr['restored_dates']
+                lr_reason = lr['reason']
+
+            restored = [d.strip() for d in str(lr_restored_dates or '').split(',') if d.strip()]
+            if log_date not in restored:
+                restored.append(log_date)
+                restored_str = ','.join(sorted(restored))
+                all_restored = False
+                try:
+                    s_dt = datetime.strptime(lr_start, '%Y-%m-%d')
+                    e_dt = datetime.strptime(lr_end, '%Y-%m-%d')
+                    total_req_days = (e_dt - s_dt).days + 1
+                    all_restored = len(restored) >= total_req_days
+                except Exception:
+                    pass
+                new_status = 'cancelled_worked' if all_restored else lr_status
+                cursor.execute("""
+                    UPDATE leave_requests
+                    SET restored_dates = ?,
+                        status = ?,
+                        reason = CASE WHEN reason IS NULL OR reason = ''
+                                      THEN '[Leave entitlement restored: employee worked on ' || ? || ']'
+                                      ELSE reason || ' [Entitlement restored for ' || ? || ']' END
+                    WHERE id = ?
+                """, (restored_str, new_status, log_date, log_date, leave_id))
+                logger.info(f"LV-05: Restored leave entitlement for user #{user_id} on {log_date} (leave request #{leave_id})")
+        return True
+    except Exception as e:
+        logger.error(f"Error checking leave restoration for user {user_id} on {log_date}: {e}")
+        return False
 
 
 def log_attendance(user_id: int, detected_name: str, confidence: float, source: str = 'camera', location: str | None = None, device_id: str | None = None, bypass_shift_check: bool = False, checkout_camera_id: str | None = None, checkout_location: str | None = None, attendance_time: Optional[datetime] = None) -> Tuple[bool, str]:
@@ -2971,10 +3049,12 @@ def log_attendance(user_id: int, detected_name: str, confidence: float, source: 
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+            log_date_str = attendance_time.strftime('%Y-%m-%d')
             cursor.execute(
                 'DELETE FROM manual_absent WHERE user_id = ? AND date = date(?)',
-                (user_id, attendance_time.strftime('%Y-%m-%d'))
+                (user_id, log_date_str)
             )
+            _restore_worked_leave_if_applicable(cursor, user_id, log_date_str)
             cursor.execute("SELECT organization_id, branch_id FROM users WHERE id = ?", (user_id,))
             u_row = cursor.fetchone()
             u_org = (u_row[0] if u_row else None) or 'DEFAULT_ORG'
@@ -3421,19 +3501,34 @@ def get_detailed_attendance_report(
                 start_date, end_date = cursor.fetchone()
                 is_multi_day = True
             elif target_date and not start_date:
-                start_date = target_date
-                end_date = target_date
-                is_multi_day = False
+                td_str = str(target_date).strip()
+                if ' to ' in td_str:
+                    s_part, e_part = td_str.split(' to ', 1)
+                    start_date, end_date = s_part.strip(), e_part.strip()
+                elif ' - ' in td_str and not td_str.startswith('-'):
+                    s_part, e_part = td_str.split(' - ', 1)
+                    start_date, end_date = s_part.strip(), e_part.strip()
+                else:
+                    start_date = td_str
+                    end_date = td_str
+                is_multi_day = (start_date != end_date)
             else:
                 end_date = end_date or start_date
                 start_date = start_date or end_date
                 is_multi_day = (start_date != end_date)
 
-            # Generate chronological list of dates in the range
-            dt_start = datetime.strptime(start_date, "%Y-%m-%d")
-            dt_end = datetime.strptime(end_date, "%Y-%m-%d")
-            total_days = (dt_end - dt_start).days + 1
-            date_list = [(dt_start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(total_days)]
+            # Strict normalization to calendar day (YYYY-MM-DD), removing time or timezone differences
+            start_date = str(start_date).strip().split('T')[0].split(' ')[0][:10]
+            end_date = str(end_date).strip().split('T')[0].split(' ')[0][:10]
+            d1_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+            d2_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+            if d1_date > d2_date:
+                d1_date, d2_date = d2_date, d1_date
+                start_date, end_date = end_date, start_date
+
+            # Inclusive calendar day count: (end - start) + 1
+            total_days = (d2_date - d1_date).days + 1
+            date_list = [(d1_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(total_days)]
             report_org = organization_id or 'DEFAULT_ORG'
             report_branch = branch_id or 'DEFAULT_BRANCH'
             cursor.execute(
@@ -3534,6 +3629,8 @@ def get_detailed_attendance_report(
                     'end_date': end_date,
                     'total_days': total_days,
                     'summary': {
+                        'total_days': total_days,
+                        'duration_days': total_days,
                         'total_enrolled': 0,
                         'total_matching': 0,
                         'attended_count': 0,
@@ -3615,12 +3712,15 @@ def get_detailed_attendance_report(
 
             # Retrieve approved leaves with leave_type & is_paid lookup
             cursor.execute(f'''
-                  SELECT lr.user_id, lr.start_date, lr.end_date, lr.leave_type, lr.leave_duration,
-                      lr.paid_days, lr.unpaid_days, lr.paid_through_date,
+                  SELECT lr.id, lr.user_id, lr.start_date, lr.end_date, lr.leave_type, lr.leave_duration,
+                      lr.paid_days, lr.unpaid_days, lr.paid_through_date, lr.paid_status, lr.unpaid_status,
+                      lr.status, lr.restored_dates,
                        COALESCE(lt.is_paid, CASE WHEN lr.leave_type = 'unpaid' THEN 0 ELSE 1 END) as is_paid
                 FROM leave_requests lr
                 LEFT JOIN leave_types lt ON lt.code = lr.leave_type OR lt.name = lr.leave_type
-                WHERE lr.user_id IN ({placeholders}) AND lr.status = 'approved' AND lr.end_date >= ? AND lr.start_date <= ?
+                WHERE lr.user_id IN ({placeholders})
+                  AND (lr.status = 'approved' OR lr.paid_status = 'approved' OR lr.unpaid_status = 'approved')
+                  AND lr.end_date >= ? AND lr.start_date <= ?
             ''', (*user_ids, start_date, end_date))
             leave_rows = cursor.fetchall()
             leave_map = {}
@@ -3631,17 +3731,62 @@ def get_detailed_attendance_report(
                 paid_days = int(lr['paid_days'] or 0) if explicit_allocation else None
                 unpaid_days = int(lr['unpaid_days'] or 0) if explicit_allocation else None
                 paid_through_date = lr['paid_through_date']
-                leave_is_paid = bool(lr['is_paid'])
+                leave_is_paid_default = bool(lr['is_paid'])
+
+                restored_dates_raw = lr['restored_dates'] if 'restored_dates' in lr.keys() else ''
+                restored_set = set(d.strip() for d in (restored_dates_raw or '').split(',') if d.strip())
+
+                p_status = (lr['paid_status'] or ('approved' if lr['status'] == 'approved' else 'pending')).lower()
+                up_status = (lr['unpaid_status'] or ('approved' if lr['status'] == 'approved' else 'pending')).lower()
+
                 try:
                     cur_l = datetime.strptime(l_start, "%Y-%m-%d")
                     end_l = datetime.strptime(l_end, "%Y-%m-%d")
                     while cur_l <= end_l:
                         current_date = cur_l.strftime("%Y-%m-%d")
-                        is_paid_day = leave_is_paid
-                        if explicit_allocation:
-                            is_paid_day = unpaid_days == 0 or (
-                                paid_days > 0 and paid_through_date is not None and current_date <= paid_through_date
+                        if current_date in restored_set:
+                            cur_l += timedelta(days=1)
+                            continue
+
+                        if is_half_leave:
+                            if leave_is_paid_default:
+                                if p_status != 'approved':
+                                    cur_l += timedelta(days=1)
+                                    continue
+                                is_paid_day = True
+                            else:
+                                if up_status != 'approved':
+                                    cur_l += timedelta(days=1)
+                                    continue
+                                is_paid_day = False
+                        elif explicit_allocation:
+                            is_in_paid_range = (
+                                unpaid_days == 0 or (
+                                    paid_days > 0 and paid_through_date is not None and current_date <= paid_through_date
+                                )
                             )
+                            if is_in_paid_range:
+                                if p_status != 'approved':
+                                    cur_l += timedelta(days=1)
+                                    continue
+                                is_paid_day = True
+                            else:
+                                if up_status != 'approved':
+                                    cur_l += timedelta(days=1)
+                                    continue
+                                is_paid_day = False
+                        else:
+                            if leave_is_paid_default:
+                                if p_status != 'approved':
+                                    cur_l += timedelta(days=1)
+                                    continue
+                                is_paid_day = True
+                            else:
+                                if up_status != 'approved':
+                                    cur_l += timedelta(days=1)
+                                    continue
+                                is_paid_day = False
+
                         leave_map[(l_uid, current_date)] = {
                             'leave_type': l_type,
                             'is_paid': is_paid_day,
@@ -3905,9 +4050,11 @@ def get_detailed_attendance_report(
                             'scheduled_working_day' if is_scheduled_workday else
                             'non_working_day' if schedule_known else 'schedule_unknown'
                         ),
-                        'status_display': f"{status.upper().replace('_', ' ')} + HALF LEAVE" if half_leave_active else status.upper().replace('_', ' '),
-                        'half_leave_count': int(half_leave_active),
-                        'half_leave_type': leave_info['leave_type'] if half_leave_active and leave_info else None,
+                        'status_display': f"{status.upper().replace('_', ' ')} + HALF LEAVE" if (half_leave_active or (leave_info and leave_info.get('is_half_leave'))) else status.upper().replace('_', ' '),
+                        'half_leave_count': 1 if (half_leave_active or (leave_info and leave_info.get('is_half_leave'))) else 0,
+                        'half_leave_type': leave_info.get('leave_type') if (leave_info and leave_info.get('is_half_leave')) else None,
+                        'is_half_leave': bool(half_leave_active or (leave_info and leave_info.get('is_half_leave'))),
+                        'half_leave_is_paid': bool(leave_info and leave_info.get('is_paid')),
                         'first_seen': first_seen,
                         'last_seen': last_seen,
                         'location': loc,
@@ -4111,6 +4258,8 @@ def get_detailed_attendance_report(
                 'end_date': end_date,
                 'total_days': total_days,
                 'summary': {
+                    'total_days': total_days,
+                    'duration_days': total_days,
                     'total_enrolled': len(users),
                     'total_registered': len(users),
                     'total_matching': len(records),
@@ -4390,7 +4539,7 @@ def mark_user_present_today(
 
         if target_date == 'today' or not target_date:
             target_date = datetime.now().strftime("%Y-%m-%d")
-        actual_date = target_date
+        actual_date = str(target_date)[:10]
         
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -4408,8 +4557,9 @@ def mark_user_present_today(
                 if organization_id != 'DEFAULT_ORG' and user_org != organization_id:
                     return False
             
-            # Clear manual absent
+            # Clear manual absent and restore worked leave entitlement
             cursor.execute('DELETE FROM manual_absent WHERE user_id = ? AND date = ?', (user_id, actual_date))
+            _restore_worked_leave_if_applicable(cursor, user_id, actual_date)
             
             # Resolve applicable shift
             selected_shift = None
@@ -5343,15 +5493,25 @@ def get_leave_by_id(leave_id: int, organization_id: Optional[str] = None) -> Opt
     return None
 
 
-def update_leave_status(leave_id: int, status: str = 'approved', approved_by: str = 'Admin', organization_id: Optional[str] = None) -> bool:
-    """Update status unless it would create overlapping active leave, verifying tenant authorization."""
+def update_leave_status(
+    leave_id: int,
+    status: str = 'approved',
+    approved_by: str = 'Admin',
+    organization_id: Optional[str] = None,
+    portion: Optional[str] = None,
+    rejection_reason: Optional[str] = None,
+) -> bool:
+    """Update status unless it would create overlapping active leave, verifying tenant authorization.
+    Supports portion-based approval (LV-01, LV-02) and rejection reasons (LV-03)."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute('BEGIN IMMEDIATE')
             cursor.execute(
-                "SELECT user_id, start_date, end_date, organization_id, branch_id FROM leave_requests WHERE id = ?",
+                """SELECT user_id, start_date, end_date, organization_id, branch_id,
+                          paid_days, unpaid_days, paid_status, unpaid_status, status, leave_type
+                   FROM leave_requests WHERE id = ?""",
                 (leave_id,)
             )
             leave = cursor.fetchone()
@@ -5368,18 +5528,59 @@ def update_leave_status(leave_id: int, status: str = 'approved', approved_by: st
                 leave['organization_id'],
                 leave['branch_id'] if 'branch_id' in leave.keys() else None,
             )
-            if str(status or '').strip().lower() in ('pending', 'approved', 'partially_approved'):
+
+            norm_status = str(status or 'approved').strip().lower()
+            norm_portion = str(portion or 'all').strip().lower() if portion else 'all'
+            
+            current_paid_status = leave['paid_status'] or ('approved' if leave['status'] == 'approved' else 'pending')
+            current_unpaid_status = leave['unpaid_status'] or ('approved' if leave['status'] == 'approved' else 'pending')
+            paid_days = int(leave['paid_days'] or 0) if leave['paid_days'] is not None else (0 if leave['leave_type'] == 'unpaid' else 1)
+            unpaid_days = int(leave['unpaid_days'] or 0) if leave['unpaid_days'] is not None else (1 if leave['leave_type'] == 'unpaid' else 0)
+
+            if norm_portion == 'paid':
+                new_paid_status = norm_status
+                new_unpaid_status = current_unpaid_status
+            elif norm_portion == 'unpaid':
+                new_paid_status = current_paid_status
+                new_unpaid_status = norm_status
+            else:
+                new_paid_status = norm_status
+                new_unpaid_status = norm_status
+
+            # Derive overall status
+            if unpaid_days > 0 and paid_days > 0:
+                if new_paid_status == 'approved' and new_unpaid_status == 'approved':
+                    overall_status = 'approved'
+                elif new_paid_status == 'rejected' and new_unpaid_status == 'rejected':
+                    overall_status = 'rejected'
+                elif new_paid_status == 'approved' or new_unpaid_status == 'approved':
+                    overall_status = 'partially_approved'
+                elif new_paid_status == 'rejected' or new_unpaid_status == 'rejected':
+                    overall_status = 'partially_rejected'
+                else:
+                    overall_status = 'pending'
+            elif unpaid_days > 0:
+                overall_status = new_unpaid_status
+            else:
+                overall_status = new_paid_status
+
+            if overall_status in ('pending', 'approved', 'partially_approved'):
                 conflict = _find_active_leave_overlap(
                     cursor, leave['user_id'], leave['start_date'], leave['end_date'], exclude_id=leave_id
                 )
                 if conflict:
                     logger.warning(
-                        f"Cannot set leave request #{leave_id} to {status}: dates overlap active request #{conflict['id']}"
+                        f"Cannot set leave request #{leave_id} to {overall_status}: dates overlap active request #{conflict['id']}"
                     )
                     return False
+
+            reason_val = str(rejection_reason).strip() if (rejection_reason and norm_status == 'rejected') else None
             cursor.execute(
-                "UPDATE leave_requests SET status = ?, approved_by = ? WHERE id = ?",
-                (status, approved_by, leave_id)
+                """UPDATE leave_requests
+                   SET status = ?, paid_status = ?, unpaid_status = ?, approved_by = ?,
+                       rejection_reason = COALESCE(?, rejection_reason)
+                   WHERE id = ?""",
+                (overall_status, new_paid_status, new_unpaid_status, approved_by, reason_val, leave_id)
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -5766,27 +5967,37 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
                     )
                     cursor.execute("""
                         SELECT start_date, end_date, quota_days, quota_through_date, leave_duration,
-                               half_leave_quota_type_id, half_leave_quota_charge FROM leave_requests
-                        WHERE user_id = ? AND status = 'approved' AND (leave_type = ? OR leave_type = ?)
+                               half_leave_quota_type_id, half_leave_quota_charge, restored_dates FROM leave_requests
+                        WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved') AND (leave_type = ? OR leave_type = ?)
                           AND end_date >= ? AND start_date <= ?
                     """, (u['id'], lt['code'], lt['name'], cycle_start, cycle_end))
                     actual_used = 0.0
                     for request_row in cursor.fetchall():
+                        restored_dates_raw = request_row['restored_dates'] if 'restored_dates' in request_row.keys() else ''
+                        restored_set = set(d.strip() for d in (restored_dates_raw or '').split(',') if d.strip())
                         if request_row['leave_duration'] == 'half':
+                            if request_row['start_date'] in restored_set:
+                                continue
                             if request_row['half_leave_quota_charge'] and request_row['half_leave_quota_type_id'] == lt['id']:
-                                actual_used += 1
+                                actual_used += 1.0
+                            else:
+                                actual_used += 0.5
                             continue
                         clipped_start = max(request_row['start_date'], cycle_start)
                         clipped_end = min(request_row['end_date'], cycle_end)
                         if request_row['quota_days'] is None:
-                            actual_used += _count_scheduled_leave_days(cursor, u['id'], clipped_start, clipped_end)
+                            scheduled_days = _count_scheduled_leave_days(cursor, u['id'], clipped_start, clipped_end)
+                            restored_in_range = sum(1 for d in restored_set if clipped_start <= d <= clipped_end)
+                            actual_used += max(0.0, scheduled_days - restored_in_range)
                         else:
                             quota_end = min(clipped_end, request_row['quota_through_date'] or request_row['end_date'])
                             if quota_end >= clipped_start:
-                                actual_used += _count_scheduled_leave_days(cursor, u['id'], clipped_start, quota_end)
+                                scheduled_days = _count_scheduled_leave_days(cursor, u['id'], clipped_start, quota_end)
+                                restored_in_range = sum(1 for d in restored_set if clipped_start <= d <= quota_end)
+                                actual_used += max(0.0, scheduled_days - restored_in_range)
                     cursor.execute("""
                         SELECT COUNT(*) FROM leave_requests
-                        WHERE user_id = ? AND status = 'approved' AND leave_duration = 'half'
+                        WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved') AND leave_duration = 'half'
                           AND half_leave_quota_charge = 1 AND half_leave_quota_type_id = ?
                           AND (leave_type != ? AND leave_type != ?)
                           AND end_date >= ? AND start_date <= ?
@@ -6217,9 +6428,9 @@ def check_leave_quota(
                     lt_dict.get('allowance_months')
                 )
                 cursor.execute("""
-                                             SELECT id, start_date, end_date, quota_days, quota_through_date, leave_duration,
-                                                 half_leave_quota_type_id, half_leave_quota_charge FROM leave_requests
-                    WHERE user_id = ? AND status = 'approved' AND (leave_type = ? OR leave_type = ?)
+                    SELECT id, start_date, end_date, quota_days, quota_through_date, leave_duration,
+                           half_leave_quota_type_id, half_leave_quota_charge, restored_dates FROM leave_requests
+                    WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved') AND (leave_type = ? OR leave_type = ?)
                       AND end_date >= ? AND start_date <= ?
                 """, (user_id, lt_dict['code'], lt_dict['name'], cycle_start, cycle_end))
                 approved_requests = cursor.fetchall()
@@ -6227,24 +6438,31 @@ def check_leave_quota(
                 for req in approved_requests:
                     if exclude_id and req['id'] == exclude_id:
                         continue
+                    restored_dates_raw = req['restored_dates'] if 'restored_dates' in req.keys() else ''
+                    restored_set = set(d.strip() for d in (restored_dates_raw or '').split(',') if d.strip())
                     if req['leave_duration'] == 'half':
+                        if req['start_date'] in restored_set:
+                            continue
                         if req['half_leave_quota_charge'] and req['half_leave_quota_type_id'] == lt_dict['id']:
-                            already_used += 1
+                            already_used += 1.0
+                        else:
+                            already_used += 0.5
                         continue
                     try:
                         clipped_start = max(req['start_date'], cycle_start)
                         clipped_end = min(req['end_date'], cycle_end)
+                        restored_in_range = sum(1 for d in restored_set if clipped_start <= d <= clipped_end)
                         if req['quota_days'] is None:
-                            already_used += _count_scheduled_leave_days(cursor, user_id, clipped_start, clipped_end)
+                            already_used += max(0.0, _count_scheduled_leave_days(cursor, user_id, clipped_start, clipped_end) - restored_in_range)
                         else:
                             quota_end = min(clipped_end, req['quota_through_date'] or req['end_date'])
                             if quota_end >= clipped_start:
-                                already_used += _count_scheduled_leave_days(cursor, user_id, clipped_start, quota_end)
+                                already_used += max(0.0, _count_scheduled_leave_days(cursor, user_id, clipped_start, quota_end) - restored_in_range)
                     except Exception:
                         already_used += 1.0
                 cursor.execute("""
                     SELECT COUNT(*) FROM leave_requests
-                    WHERE user_id = ? AND status = 'approved' AND leave_duration = 'half'
+                    WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved') AND leave_duration = 'half'
                       AND half_leave_quota_charge = 1 AND half_leave_quota_type_id = ?
                       AND leave_type != ? AND leave_type != ?
                       AND end_date >= ? AND start_date <= ?
@@ -9159,21 +9377,68 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             {'date': day['date'], 'override_type': day['calendar_override']}
             for day in month_schedule_records if day.get('calendar_override')
         ]
-        present_days = sum(day.get('scheduled_workday', True) and day.get('status') in ('present', 'checked_out') for day in eligible_records)
-        late_days = sum(day.get('scheduled_workday', True) and day.get('status') == 'late' for day in eligible_records)
+        # PAY-01: Correctly calculate days accounting for half-day leaves (0.5 duration)
+        present_days = 0.0
+        late_days = 0.0
+        approved_leave_days = 0.0
+        approved_leave_days_period = 0.0
+        unpaid_leave_days = 0.0
+        unexcused_absent_days = 0.0
+
+        for day in eligible_records:
+            if not day.get('scheduled_workday', True):
+                continue
+            st = day.get('status')
+            is_half = bool(day.get('is_half_leave'))
+            half_is_paid = bool(day.get('half_leave_is_paid'))
+
+            if st in ('present', 'checked_out'):
+                if is_half:
+                    present_days += 0.5
+                    if half_is_paid:
+                        approved_leave_days_period += 0.5
+                    else:
+                        unpaid_leave_days += 0.5
+                else:
+                    present_days += 1.0
+            elif st == 'late':
+                if is_half:
+                    late_days += 0.5
+                    if half_is_paid:
+                        approved_leave_days_period += 0.5
+                    else:
+                        unpaid_leave_days += 0.5
+                else:
+                    late_days += 1.0
+            elif st == 'on_leave':
+                if is_half:
+                    approved_leave_days_period += 0.5
+                    unexcused_absent_days += 0.5
+                else:
+                    approved_leave_days_period += 1.0
+            elif st == 'on_leave_unpaid':
+                if is_half:
+                    unpaid_leave_days += 0.5
+                    unexcused_absent_days += 0.5
+                else:
+                    unpaid_leave_days += 1.0
+            elif st == 'absent':
+                unexcused_absent_days += 1.0
+
+        for day in month_schedule_records:
+            if not day.get('scheduled_workday', True):
+                continue
+            st = day.get('status')
+            is_half = bool(day.get('is_half_leave'))
+            half_is_paid = bool(day.get('half_leave_is_paid'))
+            if st == 'on_leave':
+                approved_leave_days += 0.5 if is_half else 1.0
+            elif is_half and half_is_paid and st in ('present', 'checked_out', 'late'):
+                approved_leave_days += 0.5
+
         half_leave_count = sum(int(day.get('half_leave_count') or 0) for day in eligible_records)
-        unpaid_leave_days = sum(1 for day in month_schedule_records if day.get('scheduled_workday', True) and day.get('status') == 'on_leave_unpaid')
-        unexcused_absent_days = sum(
-            bool(day.get('scheduled_workday')) and day.get('status') == 'absent' for day in eligible_records
-        )
-        absent_days = unexcused_absent_days + sum(
-            1 for day in eligible_records if day.get('scheduled_workday', True) and day.get('status') == 'on_leave_unpaid'
-        )
-        
-        approved_leave_days = sum(day.get('scheduled_workday', True) and day.get('status') == 'on_leave' for day in month_schedule_records)
-        approved_leave_days_period = sum(day.get('scheduled_workday', True) and day.get('status') == 'on_leave' for day in eligible_records)
-        
-        payable_days = min(scheduled_workdays, present_days + late_days + approved_leave_days_period)
+        absent_days = unexcused_absent_days + unpaid_leave_days
+        payable_days = min(float(scheduled_workdays), round(present_days + late_days + approved_leave_days_period, 2))
         
         proration_factor = _payroll_proration_factor(
             proration_basis,
@@ -9367,7 +9632,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         net_salary = round(max(0.0, gross_salary - total_emp_deductions), 2)
 
         if attendance_mode == 'payable_days':
-            matched_rule_label = f'Pay {int(payable_days)}/{int(month_scheduled_workdays)} working days'
+            p_label = int(payable_days) if float(payable_days).is_integer() else round(payable_days, 1)
+            matched_rule_label = f'Pay {p_label}/{int(month_scheduled_workdays)} working days'
         elif matched_rule:
             max_absent = matched_rule['max_absent_days']
             matched_rule_label = (
@@ -9383,7 +9649,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         earn_div = float(month_scheduled_workdays or 0)
         earned_so_far = _m(package * (float(payable_days) / earn_div) if earn_div else 0.0)
         remaining_days = max(0, int(month_scheduled_workdays or 0) - int(scheduled_workdays or 0))
-        projected_payable = min(int(month_scheduled_workdays or 0), int(payable_days or 0) + remaining_days)
+        proj_val = min(float(month_scheduled_workdays or 0), float(payable_days or 0) + remaining_days)
+        projected_payable = int(proj_val) if float(proj_val).is_integer() else round(proj_val, 1)
         projected_month_end = _m(package * (float(projected_payable) / earn_div) if earn_div else 0.0)
         rows.append({
             'employee_id': employee_id,

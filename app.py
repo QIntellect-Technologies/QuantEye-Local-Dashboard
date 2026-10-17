@@ -5311,7 +5311,14 @@ def api_update_leave(leave_id):
         return jsonify({'success': False, 'message': 'Leave request not found or unauthorized'}), 404
     data = request.get_json() or {}
     try:
-        updated = db.update_leave_status(leave_id, data.get('status', 'approved'), data.get('approved_by', 'Admin'), organization_id=current_tenant)
+        updated = db.update_leave_status(
+            leave_id=leave_id,
+            status=data.get('status', 'approved'),
+            approved_by=data.get('approved_by', 'Admin'),
+            organization_id=current_tenant,
+            portion=data.get('portion'),
+            rejection_reason=data.get('rejection_reason'),
+        )
     except ValueError as exc:
         if str(exc) == db.PAYROLL_LOCK_MESSAGE:
             return jsonify({'error': str(exc), 'reopen': '/api/payroll/reopen'}), 409

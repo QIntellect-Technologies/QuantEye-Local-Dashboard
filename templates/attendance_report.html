@@ -1386,24 +1386,36 @@
             return params.toString();
         }
 
+        let reportAbortController = null;
         async function fetchReport() {
-            if (isFetching) return;
-            isFetching = true;
+            if (reportAbortController) {
+                reportAbortController.abort();
+            }
+            reportAbortController = new AbortController();
+            const signal = reportAbortController.signal;
 
             const tbody = document.getElementById('attendanceTableBody');
             const emptyState = document.getElementById('emptyState');
             if (tbody && (!tbody.children || tbody.children.length === 0)) {
                 tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:40px; color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:var(--primary-cyan); margin-bottom:8px;"></i><p>Loading attendance records...</p></td></tr>';
+            } else if (tbody) {
+                tbody.style.opacity = '0.5';
             }
 
             const query = buildFilterQuery();
             try {
-                const res = await fetch(`/api/reports/attendance?${query}`);
+                const res = await fetch(`/api/reports/attendance?${query}`, { signal });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 reportData = await res.json();
                 renderReportUI(reportData);
             } catch (err) {
+                if (err.name === 'AbortError') return;
                 console.error("Failed to fetch report:", err);
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--danger-red);"><i class="fa-solid fa-triangle-exclamation" style="font-size:1.5rem; margin-bottom:8px;"></i><p>Failed to load attendance records.</p><button type="button" class="btn btn-sm btn-outline-light" onclick="fetchReport()" style="margin-top:10px; cursor:pointer;"><i class="fa-solid fa-rotate-right"></i> Retry</button></td></tr>';
+                }
             } finally {
+                if (tbody) tbody.style.opacity = '1';
                 isFetching = false;
             }
         }
