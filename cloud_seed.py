@@ -188,13 +188,13 @@ def _execute_seed_for_org(db_path, target):
             ('Maternity / Paternity Leave', 'maternity', 60.0, 1, 0, 'Parental childcare leave')
         ]
         for lt_name, lt_code, lt_allowance, lt_paid, lt_half, lt_desc in leave_types_spec:
-            c.execute("SELECT id FROM leave_types WHERE organization_id = ? AND code = ?", (org_id, lt_code))
+            c.execute("SELECT id FROM leave_types WHERE organization_id = ? AND (code = ? OR name = ?)", (org_id, lt_code, lt_name))
             row_lt = c.fetchone()
             if row_lt:
                 c.execute('''
-                    UPDATE leave_types SET name = ?, yearly_allowance = ?, is_paid = ?, half_leave_enabled = 1, description = ?
+                    UPDATE leave_types SET name = ?, code = ?, yearly_allowance = ?, is_paid = ?, half_leave_enabled = 1, description = ?
                     WHERE id = ?
-                ''', (lt_name, lt_allowance, lt_paid, lt_desc, row_lt[0]))
+                ''', (lt_name, lt_code, lt_allowance, lt_paid, lt_desc, row_lt[0]))
             else:
                 c.execute('''
                     INSERT INTO leave_types (name, code, yearly_allowance, is_paid, description, active, allowance_period, half_leave_enabled, half_leaves_per_quota_day, organization_id, branch_id)
@@ -240,7 +240,7 @@ def _execute_seed_for_org(db_path, target):
         ]
         comp_type_ids = {}
         for c_name, c_code, c_kind, c_cat, c_calc, c_def in component_types_spec:
-            c.execute("SELECT id FROM payroll_component_types WHERE organization_id = ? AND code = ?", (org_id, c_code))
+            c.execute("SELECT id FROM payroll_component_types WHERE organization_id = ? AND (code = ? OR name = ?)", (org_id, c_code, c_name))
             row_c = c.fetchone()
             if row_c:
                 comp_type_ids[c_code] = row_c[0]
