@@ -257,6 +257,7 @@ def check_module_entitlement_for_request():
                 '/m/icon-192.png', '/m/icon-512.png', '/m/QuantEye.apk',
                 '/.well-known/assetlinks.json',
                 '/api/mobile/login', '/api/mobile/logout', '/api/mobile/today',
+                '/api/mobile/month', '/api/mobile/profile',
                 '/api/enrollment/unlock', '/api/enrollment/lock'}:
         return None
     # Branch profile, departments, and designations stay available for licensed ops.
@@ -380,6 +381,8 @@ def require_admin_session_for_app_data():
         '/api/mobile/login',
         '/api/mobile/logout',
         '/api/mobile/today',
+        '/api/mobile/month',
+        '/api/mobile/profile',
     }
 
     if request.method == 'OPTIONS' or request.path.startswith('/static/'):
@@ -3889,6 +3892,40 @@ def api_mobile_today():
     return jsonify({'success': True, 'attendance': card})
 
 
+@app.route('/api/mobile/month', methods=['GET'])
+def api_mobile_month():
+    user_id = session.get('mobile_employee_id')
+    organization_id = session.get('mobile_organization_id')
+    if not user_id or not organization_id:
+        return jsonify({'success': False, 'message': 'Please log in.'}), 401
+    target_month = request.args.get('month', '').strip() or None
+    month_data = db.employee_mobile_month_attendance(
+        int(user_id),
+        str(organization_id),
+        str(session.get('mobile_branch_id') or 'DEFAULT_BRANCH'),
+        target_month=target_month,
+    )
+    return jsonify({'success': True, 'data': month_data})
+
+
+@app.route('/api/mobile/profile', methods=['GET'])
+def api_mobile_profile():
+    user_id = session.get('mobile_employee_id')
+    organization_id = session.get('mobile_organization_id')
+    if not user_id or not organization_id:
+        return jsonify({'success': False, 'message': 'Please log in.'}), 401
+    _allowed, company_name = _mobile_company(str(organization_id))
+    if not company_name:
+        company_name = str(session.get('mobile_company_name') or '')
+    profile_data = db.employee_mobile_profile(
+        int(user_id),
+        str(organization_id),
+        str(session.get('mobile_branch_id') or 'DEFAULT_BRANCH'),
+        company_name=company_name,
+    )
+    return jsonify({'success': True, 'profile': profile_data})
+
+
 @app.route('/api/mobile/credentials', methods=['GET'])
 def api_mobile_list_credentials():
     if not (session.get('client_user') or session.get('admin_unlocked')):
@@ -5204,6 +5241,12 @@ def api_add_leave():
         if quota_range:
             quota_through_date = quota_range[1]
 
+    start_time = (data.get('start_time') or '').strip() or None
+    end_time = (data.get('end_time') or '').strip() or None
+    if leave_duration == 'half' and start_time and end_time:
+        if end_time <= start_time:
+            return jsonify({'success': False, 'message': 'Leave end time must be later than start time.'}), 400
+
     user = db.get_user_by_id(int(user_id))
     try:
         lid = db.add_leave_request(
@@ -5219,6 +5262,8 @@ def api_add_leave():
             quota_days=quota_days,
             paid_through_date=paid_through_date,
             quota_through_date=quota_through_date,
+            start_time=start_time,
+            end_time=end_time,
         )
     except ValueError as exc:
         if str(exc) == db.PAYROLL_LOCK_MESSAGE:
@@ -5450,6 +5495,38 @@ def api_add_holiday():
     if hid:
         return jsonify({'success': True, 'id': hid}), 201
     return jsonify({'success': False, 'message': 'Failed to add holiday'}), 400
+
+
+@app.route('/api/holidays/<int:holiday_id>', methods=['PUT', 'POST'])
+def api_update_holiday(holiday_id):
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    hdate = data.get('holiday_date', '').strip()
+    edate = data.get('end_date', '').strip() or hdate
+    if not name or not hdate:
+        return jsonify({'success': False, 'message': 'name and holiday_date are required'}), 400
+    try:
+        holiday_start = datetime.strptime(hdate, '%Y-%m-%d')
+        holiday_end = datetime.strptime(edate, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Holiday dates must use YYYY-MM-DD format.'}), 400
+    if holiday_end < holiday_start:
+        return jsonify({'success': False, 'message': 'Holiday end date cannot be earlier than its start date.'}), 400
+    current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
+    ok = db.update_company_holiday(
+        holiday_id=holiday_id,
+        name=name,
+        holiday_date=hdate,
+        end_date=edate,
+        description=data.get('description', ''),
+        is_recurring=int(data.get('is_recurring', 0)),
+        organization_id=current_tenant,
+        branch_id=current_branch,
+    )
+    if ok:
+        return jsonify({'success': True}), 200
+    return jsonify({'success': False, 'message': 'Failed to update holiday'}), 400
 
 
 @app.route('/api/holidays/<int:holiday_id>', methods=['DELETE'])

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <link rel="manifest" href="/m/manifest.webmanifest">
   <meta name="theme-color" content="#0f3d4c">
-  <title>My Attendance</title>
+  <title>QuantEye Mobile</title>
   <style>
     :root {
       --ink: #143044;
@@ -14,15 +14,16 @@
       --card: #ffffff;
       --teal: #0f766e;
       --teal-dark: #115e59;
-      --page: #eef3f6;
+      --teal-light: #f0fdfa;
+      --page: #f8fafc;
     }
     * { box-sizing: border-box; }
-    html, body { height: 100%; }
+    html, body { height: 100%; margin: 0; padding: 0; }
     body {
-      margin: 0;
-      font-family: "Segoe UI", sans-serif;
-      background: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f1f5f9;
       color: var(--ink);
+      -webkit-font-smoothing: antialiased;
     }
     .shell {
       width: 100%;
@@ -32,12 +33,14 @@
       margin: 0 auto;
       display: flex;
       flex-direction: column;
-      background: #fff;
+      background: #ffffff;
+      box-shadow: 0 0 30px rgba(0,0,0,0.06);
     }
     .top {
       background: linear-gradient(165deg, #0f3d4c 0%, #0f766e 100%);
       color: #fff;
-      padding: 28px 20px 36px;
+      padding: 24px 20px 28px;
+      flex-shrink: 0;
     }
     .brand { display: flex; align-items: center; gap: 12px; }
     .mark {
@@ -45,25 +48,28 @@
       background: rgba(255,255,255,0.16);
       display: grid; place-items: center;
       font-weight: 800; letter-spacing: 0.02em;
+      font-size: 1.2rem;
     }
-    .eyebrow { margin: 0; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.78; }
-    h1 { margin: 2px 0 0; font-size: 1.35rem; line-height: 1.25; font-weight: 700; }
-    .intro { margin: 14px 0 0; color: rgba(255,255,255,0.86); font-size: 0.95rem; }
+    .eyebrow { margin: 0; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.8; }
+    h1 { margin: 2px 0 0; font-size: 1.3rem; line-height: 1.25; font-weight: 700; }
+    .intro { margin: 10px 0 0; color: rgba(255,255,255,0.88); font-size: 0.92rem; }
+    
     main {
       flex: 1;
       display: flex;
       flex-direction: column;
-      padding: 8px 18px 0;
+      padding: 12px 18px 16px;
+      overflow-y: auto;
     }
     form, .card {
       flex: 1;
       display: flex;
       flex-direction: column;
       background: var(--card);
-      padding: 8px 0 12px;
     }
-    form[hidden], .card[hidden] { display: none; }
+    form[hidden], .card[hidden] { display: none !important; }
     .fill { flex: 1; }
+    
     label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--muted); margin: 12px 0 6px; }
     input {
       width: 100%; border: 1px solid var(--line); background: #f8fbfc;
@@ -71,44 +77,136 @@
     }
     input:focus { outline: 2px solid rgba(15, 118, 110, 0.25); border-color: var(--teal); }
     button {
-      width: 100%; margin-top: 16px; border: 0; border-radius: 12px;
-      padding: 13px; font-weight: 700; font-size: 1rem; cursor: pointer;
+      width: 100%; margin-top: 14px; border: 0; border-radius: 12px;
+      padding: 13px; font-weight: 700; font-size: 0.95rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
     }
     .primary { background: var(--teal); color: #fff; }
     .primary:active { background: var(--teal-dark); }
     .ghost { background: #f3f7f8; color: var(--ink); margin-top: 8px; }
-    .error { color: #b42318; font-weight: 700; min-height: 1.2em; margin-top: 8px; }
-    .person { display: flex; align-items: center; gap: 12px; }
+    .ghost:active { background: #e2e8f0; }
+    .error { color: #b42318; font-weight: 700; min-height: 1.2em; margin-top: 8px; font-size: 0.88rem; }
+    
+    .person { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
     .avatar {
       width: 52px; height: 52px; border-radius: 16px; flex: 0 0 auto;
       background: #e6f4f2; color: var(--teal-dark);
-      display: grid; place-items: center; font-size: 1.2rem; font-weight: 800;
+      display: grid; place-items: center; font-size: 1.25rem; font-weight: 800;
     }
-    .person h2 { margin: 0; font-size: 1.15rem; }
-    .person p { margin: 3px 0 0; color: var(--muted); font-size: 0.88rem; }
+    .person h2 { margin: 0; font-size: 1.15rem; color: var(--ink); }
+    .person p { margin: 3px 0 0; color: var(--muted); font-size: 0.85rem; }
+    
     .pill {
-      margin-left: auto; border-radius: 999px; padding: 6px 10px;
+      margin-left: auto; border-radius: 999px; padding: 5px 10px;
       font-size: 0.75rem; font-weight: 800; white-space: nowrap;
     }
     .present { background: #e8f7ee; color: #157a3b; }
     .absent { background: #fdecec; color: #b42318; }
     .out { background: #e7f1fb; color: #175cd3; }
     .leave { background: #fff6e5; color: #b54708; }
-    .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 16px; }
-    .stat { background: #f6fafb; border-radius: 14px; padding: 12px 10px; }
-    .stat span { display: block; color: var(--muted); font-size: 0.72rem; font-weight: 700; }
-    .stat strong { display: block; margin-top: 4px; font-size: 0.95rem; }
-    .rows { margin-top: 8px; }
-    .row { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .off { background: #f1f5f9; color: #64748b; }
+
+    .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 14px; }
+    .stat { background: #f8fafc; border: 1px solid var(--line); border-radius: 12px; padding: 10px 8px; text-align: center; }
+    .stat span { display: block; color: var(--muted); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat strong { display: block; margin-top: 4px; font-size: 0.95rem; color: var(--ink); }
+
+    .rows { margin-top: 12px; }
+    .row { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
     .row span { color: var(--muted); }
-    .row strong { text-align: right; }
+    .row strong { text-align: right; color: var(--ink); font-weight: 600; }
+    
+    /* Month View Styling */
+    .month-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+    }
+    .month-header h3 { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--ink); }
+    .month-stats {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px;
+    }
+    .m-stat {
+      background: #f8fafc; border: 1px solid var(--line); border-radius: 10px;
+      padding: 8px 4px; text-align: center;
+    }
+    .m-stat span { display: block; font-size: 0.65rem; color: var(--muted); font-weight: 700; }
+    .m-stat strong { display: block; font-size: 1.05rem; margin-top: 2px; }
+    .m-stat.green strong { color: #157a3b; }
+    .m-stat.red strong { color: #b42318; }
+    .m-stat.amber strong { color: #b54708; }
+    .m-stat.slate strong { color: #0f766e; }
+    
+    .days-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+    .day-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; background: #ffffff; border: 1px solid var(--line);
+      border-radius: 12px; transition: background 0.15s ease;
+    }
+    .day-date { display: flex; flex-direction: column; min-width: 65px; }
+    .day-date strong { font-size: 0.92rem; color: var(--ink); }
+    .day-date span { font-size: 0.72rem; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+    .day-times { display: flex; flex-direction: column; align-items: flex-start; font-size: 0.8rem; color: #475569; }
+    .day-times span { line-height: 1.3; }
+    .day-times small { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+    
+    /* Profile View Styling */
+    .profile-hero {
+      display: flex; flex-direction: column; align-items: center; text-align: center;
+      padding: 14px 0 18px; border-bottom: 1px solid var(--line); margin-bottom: 8px;
+    }
+    .profile-avatar {
+      width: 68px; height: 68px; border-radius: 20px;
+      background: linear-gradient(135deg, #0f766e 0%, #0f3d4c 100%);
+      color: #fff; display: grid; place-items: center; font-size: 1.8rem; font-weight: 800;
+      margin-bottom: 10px; box-shadow: 0 4px 14px rgba(15,118,110,0.25);
+    }
+    .profile-hero h2 { margin: 0; font-size: 1.25rem; color: var(--ink); }
+    .profile-hero p { margin: 4px 0 0; color: var(--muted); font-size: 0.88rem; font-weight: 600; }
+    
+    /* Bottom Navigation Bar */
+    .bottom-nav {
+      display: flex;
+      background: #ffffff;
+      border-top: 1px solid var(--line);
+      padding: 6px 12px;
+      flex-shrink: 0;
+      justify-content: space-around;
+      gap: 6px;
+    }
+    .bottom-nav[hidden] { display: none !important; }
+    .nav-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      background: transparent;
+      border: 0;
+      border-radius: 10px;
+      padding: 6px 4px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin: 0;
+      transition: all 0.15s ease;
+    }
+    .nav-tab svg { width: 20px; height: 20px; fill: currentColor; }
+    .nav-tab.active {
+      color: var(--teal);
+      background: var(--teal-light);
+    }
+
     .footer {
-      padding: 14px 18px calc(18px + env(safe-area-inset-bottom));
+      padding: 10px 18px calc(14px + env(safe-area-inset-bottom));
       text-align: center;
       border-top: 1px solid var(--line);
       color: var(--muted);
-      font-size: 0.78rem;
+      font-size: 0.75rem;
       line-height: 1.45;
+      background: #ffffff;
+      flex-shrink: 0;
     }
     .footer strong { color: var(--teal-dark); font-weight: 700; }
   </style>
@@ -125,7 +223,9 @@
       </div>
       <p class="intro" id="intro">Opening your attendance…</p>
     </header>
+    
     <main>
+      <!-- Login View -->
       <form id="loginForm" hidden>
         <label for="email">Work email</label>
         <input id="email" type="email" autocomplete="username" placeholder="name@company.com" required>
@@ -135,7 +235,9 @@
         <div class="fill"></div>
         <button class="primary" type="submit">Sign in</button>
       </form>
-      <section id="attendanceCard" class="card" hidden>
+
+      <!-- Tab 1: Today Attendance Card -->
+      <section id="todayCard" class="card" hidden>
         <div class="person">
           <div class="avatar" id="empInitial">Q</div>
           <div>
@@ -155,22 +257,92 @@
           <div class="row"><span>Shift</span><strong id="empShift"></strong></div>
         </div>
         <div class="fill"></div>
-        <button class="primary" type="button" id="refreshButton">Refresh</button>
-        <button class="ghost" type="button" id="logoutButton">Log out</button>
+        <button class="primary" type="button" id="refreshButton">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          Refresh Today
+        </button>
+      </section>
+
+      <!-- Tab 2: This Month Attendance Card -->
+      <section id="monthCard" class="card" hidden>
+        <div class="month-header">
+          <h3 id="monthTitle">This Month</h3>
+          <span id="monthSub" style="font-size:0.8rem; color:var(--muted); font-weight:600;">Daily Log</span>
+        </div>
+        <div class="month-stats">
+          <div class="m-stat green"><span>Present</span><strong id="mStatPresent">0</strong></div>
+          <div class="m-stat red"><span>Absent</span><strong id="mStatAbsent">0</strong></div>
+          <div class="m-stat amber"><span>Leaves</span><strong id="mStatLeave">0</strong></div>
+          <div class="m-stat slate"><span>Working</span><strong id="mStatWorking">0</strong></div>
+        </div>
+        <div id="daysContainer" class="days-list">
+          <div style="text-align:center; padding:24px 0; color:var(--muted); font-size:0.9rem;">Loading monthly attendance...</div>
+        </div>
+      </section>
+
+      <!-- Tab 3: My Profile Card -->
+      <section id="profileCard" class="card" hidden>
+        <div class="profile-hero">
+          <div class="profile-avatar" id="pAvatar">Q</div>
+          <h2 id="pName">—</h2>
+          <p id="pDesignation">—</p>
+        </div>
+        <div class="rows">
+          <div class="row"><span>Department</span><strong id="pDepartment">—</strong></div>
+          <div class="row"><span>Assigned Shift</span><strong id="pShift">—</strong></div>
+          <div class="row"><span>Shift Timing</span><strong id="pTiming">—</strong></div>
+          <div class="row"><span>Work Email</span><strong id="pEmail">—</strong></div>
+          <div class="row"><span>Phone</span><strong id="pPhone">—</strong></div>
+          <div class="row"><span>Company</span><strong id="pCompany">—</strong></div>
+          <div class="row"><span>Join Date</span><strong id="pJoinDate">—</strong></div>
+        </div>
+        <div class="fill"></div>
+        <button class="ghost" type="button" id="logoutButton">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+          Log out
+        </button>
       </section>
     </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav id="mobileNavBar" class="bottom-nav" hidden>
+      <button type="button" class="nav-tab active" id="tabToday" onclick="switchTab('today')">
+        <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>
+        Today
+      </button>
+      <button type="button" class="nav-tab" id="tabMonth" onclick="switchTab('month')">
+        <svg viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5z"/></svg>
+        This Month
+      </button>
+      <button type="button" class="nav-tab" id="tabProfile" onclick="switchTab('profile')">
+        <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        My Profile
+      </button>
+    </nav>
+
+    <!-- Pinned Footer -->
     <footer class="footer">
       <div>Powered by <strong>QIntellect Technologies</strong></div>
       <div>© 2026 QIntellect Technologies. All rights reserved.</div>
     </footer>
   </div>
+
   <script>
     const loginForm = document.getElementById('loginForm');
-    const attendanceCard = document.getElementById('attendanceCard');
+    const todayCard = document.getElementById('todayCard');
+    const monthCard = document.getElementById('monthCard');
+    const profileCard = document.getElementById('profileCard');
+    const mobileNavBar = document.getElementById('mobileNavBar');
     const loginError = document.getElementById('loginError');
 
+    let currentTab = 'today';
+    let cachedToday = null;
+    let cachedMonth = null;
+    let cachedProfile = null;
+
     function showText(id, value) {
-      document.getElementById(id).textContent = value || '—';
+      const el = document.getElementById(id);
+      if (el) el.textContent = value || '—';
     }
 
     function prettyDate(value) {
@@ -181,28 +353,55 @@
     }
 
     function statusClass(status) {
-      if (status === 'Present') return 'pill present';
-      if (status === 'Checked Out') return 'pill out';
-      if (status === 'On Leave') return 'pill leave';
+      const s = String(status || '').toLowerCase();
+      if (s === 'present' || s === 'late') return 'pill present';
+      if (s === 'checked out' || s === 'checked_out') return 'pill out';
+      if (s.includes('leave')) return 'pill leave';
+      if (s === 'off day' || s === 'weekend' || s === 'holiday') return 'pill off';
       return 'pill absent';
     }
 
     function showLogin() {
       loginForm.hidden = false;
-      attendanceCard.hidden = true;
+      todayCard.hidden = true;
+      monthCard.hidden = true;
+      profileCard.hidden = true;
+      mobileNavBar.hidden = true;
       document.getElementById('companyName').textContent = 'Attendance';
       document.getElementById('intro').textContent = 'Sign in with your work email.';
     }
 
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+      const activeBtn = document.getElementById(`tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
+      if (activeBtn) activeBtn.classList.add('active');
+
+      todayCard.hidden = (tab !== 'today');
+      monthCard.hidden = (tab !== 'month');
+      profileCard.hidden = (tab !== 'profile');
+
+      if (tab === 'today') {
+        document.getElementById('intro').textContent = prettyDate(cachedToday?.date);
+      } else if (tab === 'month') {
+        document.getElementById('intro').textContent = 'Attendance log for this month.';
+        loadMonthData();
+      } else if (tab === 'profile') {
+        document.getElementById('intro').textContent = 'Your employee profile & shift details.';
+        loadProfileData();
+      }
+    }
+
     function showCard(card) {
+      cachedToday = card;
       const status = card.status || 'Absent';
       const role = [card.designation, card.department].filter(Boolean).join(' · ');
       const shift = [card.shift_name, card.shift_timing].filter(Boolean).join(' · ');
       const initial = (card.name || 'Q').trim().charAt(0).toUpperCase();
+
       loginForm.hidden = true;
-      attendanceCard.hidden = false;
+      mobileNavBar.hidden = false;
       document.getElementById('companyName').textContent = card.company || 'My Attendance';
-      document.getElementById('intro').textContent = prettyDate(card.date);
       document.getElementById('empInitial').textContent = initial;
       showText('empName', card.name);
       showText('empRole', role);
@@ -212,19 +411,105 @@
       showText('empIn', card.check_in);
       showText('empOut', card.check_out);
       showText('empWorked', card.working_time);
+
       const statusEl = document.getElementById('empStatus');
       statusEl.textContent = status;
       statusEl.className = statusClass(status);
+
+      switchTab(currentTab);
     }
 
     async function showAttendance() {
-      const response = await fetch('/api/mobile/today', { credentials: 'same-origin' });
-      const data = await response.json().catch(function() { return {}; });
-      if (!response.ok) {
+      try {
+        const response = await fetch('/api/mobile/today', { credentials: 'same-origin' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showLogin();
+          return;
+        }
+        showCard(data.attendance || {});
+      } catch (err) {
         showLogin();
-        return;
       }
-      showCard(data.attendance || {});
+    }
+
+    async function loadMonthData(force = false) {
+      if (cachedMonth && !force) return;
+      const container = document.getElementById('daysContainer');
+      try {
+        const response = await fetch('/api/mobile/month', { credentials: 'same-origin' });
+        const res = await response.json().catch(() => ({}));
+        if (!response.ok || !res.success) {
+          container.innerHTML = '<div style="text-align:center; padding:20px; color:#b42318;">Failed to load monthly record.</div>';
+          return;
+        }
+        const mData = res.data || {};
+        cachedMonth = mData;
+
+        // Render summary stats
+        showText('mStatPresent', mData.present_days || 0);
+        showText('mStatAbsent', mData.absent_days || 0);
+        showText('mStatLeave', mData.leave_days || 0);
+        showText('mStatWorking', mData.working_days || 0);
+
+        if (mData.month) {
+          const parts = mData.month.split('-');
+          const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 1);
+          const monthLabel = d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+          showText('monthTitle', monthLabel);
+        }
+
+        const days = mData.days || [];
+        if (!days.length) {
+          container.innerHTML = '<div style="text-align:center; padding:24px 0; color:var(--muted);">No attendance recorded this month.</div>';
+          return;
+        }
+
+        // Render days in reverse chronological order (latest day first)
+        const sortedDays = [...days].reverse();
+        container.innerHTML = sortedDays.map(d => {
+          const st = d.status || 'Absent';
+          const pClass = statusClass(st);
+          return `
+            <div class="day-item">
+              <div class="day-date">
+                <strong>${d.date ? d.date.slice(8, 10) : '--'} ${d.date ? new Date(d.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short' }) : ''}</strong>
+                <span>${d.day || '--'}</span>
+              </div>
+              <div class="day-times">
+                <span>In: <strong>${d.check_in || '--:--'}</strong> &bull; Out: <strong>${d.check_out || '--:--'}</strong></span>
+                <small>Worked: ${d.working_time || '--'}</small>
+              </div>
+              <span class="${pClass}">${st}</span>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        container.innerHTML = '<div style="text-align:center; padding:20px; color:#b42318;">Network error loading month.</div>';
+      }
+    }
+
+    async function loadProfileData(force = false) {
+      if (cachedProfile && !force) return;
+      try {
+        const response = await fetch('/api/mobile/profile', { credentials: 'same-origin' });
+        const res = await response.json().catch(() => ({}));
+        if (!response.ok || !res.success) return;
+        const p = res.profile || {};
+        cachedProfile = p;
+
+        const initial = (p.name || 'Q').trim().charAt(0).toUpperCase();
+        showText('pAvatar', initial);
+        showText('pName', p.name);
+        showText('pDesignation', p.designation);
+        showText('pDepartment', p.department);
+        showText('pShift', p.shift_name);
+        showText('pTiming', p.shift_timing);
+        showText('pEmail', p.email);
+        showText('pPhone', p.phone);
+        showText('pCompany', p.company);
+        showText('pJoinDate', p.join_date);
+      } catch (err) {}
     }
 
     loginForm.addEventListener('submit', async (event) => {
@@ -239,23 +524,36 @@
           password: document.getElementById('password').value
         })
       });
-      const data = await response.json().catch(function() { return {}; });
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        loginError.textContent = data.message || 'Login failed.';
+        loginError.textContent = data.message || 'Login failed. Please check credentials.';
         return;
       }
+      currentTab = 'today';
+      cachedToday = null;
+      cachedMonth = null;
+      cachedProfile = null;
       showAttendance();
     });
 
-    document.getElementById('refreshButton').addEventListener('click', showAttendance);
+    document.getElementById('refreshButton').addEventListener('click', () => {
+      showAttendance();
+      if (currentTab === 'month') loadMonthData(true);
+      if (currentTab === 'profile') loadProfileData(true);
+    });
+
     document.getElementById('logoutButton').addEventListener('click', async () => {
       await fetch('/api/mobile/logout', { method: 'POST', credentials: 'same-origin' });
+      cachedToday = null;
+      cachedMonth = null;
+      cachedProfile = null;
       showLogin();
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/m/sw.js').catch(function() {});
+      navigator.serviceWorker.register('/m/sw.js').catch(() => {});
     }
+
     showAttendance();
   </script>
 </body>

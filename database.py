@@ -603,6 +603,8 @@ def init_db():
                 ('quota_days', 'INTEGER'),
                 ('paid_through_date', 'TEXT'),
                 ('quota_through_date', 'TEXT'),
+                ('start_time', 'TEXT'),
+                ('end_time', 'TEXT'),
             ]:
                 if column not in leave_request_columns:
                     cursor.execute(f"ALTER TABLE leave_requests ADD COLUMN {column} {column_type}")
@@ -3941,6 +3943,8 @@ def get_detailed_attendance_report(
                     # ONE ROW PER EMPLOYEE
                     unpaid_leave_days = sum(1 for day in emp_daily_records if day.get('status') == 'on_leave_unpaid')
                     total_leave_days = emp_leave_days + unpaid_leave_days
+                    consistent_working_days = max(emp_working_days, emp_present_days + total_leave_days)
+                    consistent_absent_days = max(0, consistent_working_days - emp_present_days - total_leave_days)
                     records.append({
                         'user_id': uid,
                         'name': u['name'],
@@ -3958,18 +3962,18 @@ def get_detailed_attendance_report(
                         'checkin_cameras': u['checkin_cameras'],
                         'checkout_cameras': u['checkout_cameras'],
                         'total_days': total_days,
-                        'working_days': emp_working_days,
+                        'working_days': consistent_working_days,
                         'present_days': emp_present_days,
-                        'absent_days': emp_absent_days,
+                        'absent_days': consistent_absent_days,
                         'late_days': emp_late_days,
                         'leave_days': total_leave_days,
                         'paid_leave_days': emp_leave_days,
                         'unpaid_leave_days': unpaid_leave_days,
                         'total_leave_days': total_leave_days,
-                        'payable_days': min(emp_working_days, emp_present_days + emp_late_days + emp_leave_days),
+                        'payable_days': min(consistent_working_days, emp_present_days + emp_late_days + emp_leave_days),
                         'attendance_rate': emp_rate,
-                        'present_display': f"{emp_present_days} / {emp_working_days}",
-                        'absent_display': f"{emp_absent_days} / {emp_working_days}",
+                        'present_display': f"{emp_present_days} / {consistent_working_days}",
+                        'absent_display': f"{consistent_absent_days} / {consistent_working_days}",
                         'daily_records': emp_daily_records
                     })
                 else:
@@ -4928,6 +4932,90 @@ def employee_mobile_attendance(user_id: int, organization_id: str, branch_id: st
     }
 
 
+def employee_mobile_month_attendance(user_id: int, organization_id: str, branch_id: str, target_month: Optional[str] = None) -> Dict[str, Any]:
+    """Return each day's attendance for the employee for this month."""
+    if not target_month:
+        target_month = datetime.now().strftime("%Y-%m")
+
+    try:
+        y, m = target_month.split('-')
+        start_date = f"{y}-{m}-01"
+        import calendar
+        _, last_day = calendar.monthrange(int(y), int(m))
+        end_date = f"{y}-{m}-{last_day:02d}"
+    except Exception:
+        start_date = datetime.now().strftime("%Y-%m-01")
+        end_date = datetime.now().strftime("%Y-%m-%d")
+
+    report = get_detailed_attendance_report(
+        start_date=start_date,
+        end_date=end_date,
+        user_id=int(user_id),
+        organization_id=organization_id,
+        branch_id=branch_id,
+    )
+    records = report.get('records') or []
+    rec = records[0] if records else {}
+    daily_records = rec.get('daily_records') or []
+
+    days = []
+    for day in daily_records:
+        raw_st = str(day.get('status') or 'absent').strip().lower()
+        if raw_st == 'checked_out':
+            status = 'Checked Out'
+        elif raw_st in {'present', 'late'}:
+            status = 'Present'
+        elif raw_st in {'on_leave', 'on_leave_unpaid'}:
+            status = 'On Leave'
+        elif raw_st in {'holiday', 'off_day', 'weekend'}:
+            status = 'Off Day' if raw_st == 'off_day' else ('Holiday' if raw_st == 'holiday' else 'Weekend')
+        else:
+            status = 'Absent'
+
+        days.append({
+            'date': day.get('date'),
+            'date_formatted': day.get('date_formatted') or day.get('date'),
+            'day': day.get('day') or '',
+            'check_in': _clock_label(day.get('first_seen')) or '--:--',
+            'check_out': _clock_label(day.get('last_seen')) or '--:--',
+            'status': status,
+            'working_time': _worked_label(day.get('first_seen'), day.get('last_seen')) or '--',
+        })
+
+    return {
+        'month': target_month,
+        'present_days': rec.get('present_days', 0),
+        'absent_days': rec.get('absent_days', 0),
+        'late_days': rec.get('late_days', 0),
+        'leave_days': rec.get('leave_days', 0),
+        'working_days': rec.get('working_days', 0),
+        'days': days,
+    }
+
+
+def employee_mobile_profile(user_id: int, organization_id: str, branch_id: str, company_name: str = '') -> Dict[str, Any]:
+    """Return employee profile details for mobile view."""
+    user = get_user_by_id(int(user_id), organization_id=organization_id) or {}
+    shift = _current_shift_for_mobile(int(user_id), organization_id)
+    shift_start = shift.get('shift_start') or ''
+    shift_end = shift.get('shift_end') or ''
+    start_label = _clock_label(shift_start) or shift_start
+    end_label = _clock_label(shift_end) or shift_end
+    timing = f'{start_label} - {end_label}' if start_label and end_label else ''
+    return {
+        'id': user.get('id'),
+        'name': user.get('name') or '',
+        'email': user.get('email') or '',
+        'phone': user.get('phone') or '',
+        'designation': user.get('position') or 'Staff Member',
+        'department': user.get('department') or 'General',
+        'shift_name': shift.get('shift_name') or 'Morning Shift',
+        'shift_timing': timing,
+        'company': company_name or 'QuantEye Attendance',
+        'join_date': user.get('join_date') or user.get('enrollment_date') or '',
+    }
+
+
 def change_password(user_id: int, new_password: str) -> bool:
     """Store a new password hash and clear any legacy plaintext value."""
     if len(new_password) < 14:
@@ -5049,6 +5137,8 @@ def add_leave_request(
     leave_duration: str = 'full',
     half_leave_quota_type_id: Optional[int] = None,
     half_leave_quota_charge: bool = False,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
 ) -> Optional[int]:
     """Insert a new leave request with strict date ordering validation."""
     try:
@@ -5079,11 +5169,13 @@ def add_leave_request(
                      '''INSERT INTO leave_requests (
                                 user_id, user_name, leave_type, leave_duration, start_date, end_date, reason,
                                 paid_days, unpaid_days, quota_days, paid_through_date, quota_through_date,
-                                half_leave_quota_type_id, half_leave_quota_charge, organization_id, branch_id
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                half_leave_quota_type_id, half_leave_quota_charge, organization_id, branch_id,
+                                start_time, end_time
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                          (user_id, user_name, leave_type, leave_duration, s_str, e_str, reason,
                       paid_days, unpaid_days, quota_days, paid_through_date, quota_through_date,
-                      half_leave_quota_type_id, int(bool(half_leave_quota_charge)), u_org, u_branch)
+                      half_leave_quota_type_id, int(bool(half_leave_quota_charge)), u_org, u_branch,
+                      start_time, end_time)
             )
             conn.commit()
             leave_id = cursor.lastrowid
@@ -5520,6 +5612,42 @@ def delete_company_holiday(
             return cursor.rowcount > 0
     except Exception as e:
         logger.error(f"Delete company holiday error: {e}")
+        return False
+
+
+def update_company_holiday(
+    holiday_id: int,
+    name: str,
+    holiday_date: str,
+    end_date: Optional[str] = None,
+    description: str = '',
+    is_recurring: int = 0,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> bool:
+    """Update an existing company holiday within its owning tenant and branch."""
+    try:
+        if not end_date:
+            end_date = holiday_date
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            query = """
+                UPDATE company_holidays
+                   SET name = ?, holiday_date = ?, end_date = ?, description = ?, is_recurring = ?
+                 WHERE id = ?
+            """
+            params: List[Any] = [name, holiday_date, end_date, description, is_recurring, holiday_id]
+            if organization_id is not None:
+                query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
+                params.append(organization_id)
+            if branch_id is not None:
+                query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+                params.append(branch_id)
+            cursor.execute(query, params)
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Update company holiday error: {e}")
         return False
 
 

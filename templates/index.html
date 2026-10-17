@@ -7772,6 +7772,16 @@ async function fetchMultiLiveDetections() {
             <input type="date" id="modalLeaveEndDate" class="form-control" onchange="validateModalLeaveQuota()" />
           </div>
         </div>
+        <div id="modalLeaveTimeContainer" class="row g-3 mb-3" style="display: none;">
+          <div class="col-md-6">
+            <label class="form-label" style="font-weight: 600; color: #173042;">Half Day Start Time *</label>
+            <input type="time" id="modalLeaveStartTime" class="form-control" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" style="font-weight: 600; color: #173042;">Half Day End Time *</label>
+            <input type="time" id="modalLeaveEndTime" class="form-control" />
+          </div>
+        </div>
         <div id="modalLeaveQuotaAlert" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:0.83rem; font-weight:600; line-height:1.45;"></div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Reason for Leave</label>
@@ -8000,15 +8010,16 @@ async function fetchMultiLiveDetections() {
     </div>
   </div>
 
-  <!-- Add Company Holiday Modal -->
+  <!-- Add/Edit Company Holiday Modal -->
   <div id="companyHolidayModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(6px); padding: 20px;" onclick="if(event.target===this) closeAddHolidayModal();">
     <div style="background: #ffffff; width: 100%; max-width: 480px; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); overflow: hidden; display: flex; flex-direction: column;">
       <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin: 0; font-size: 1.15em; font-weight: 700; color: #0f172a;"><i class="fa-solid fa-gifts" style="color:#0d9488;"></i> Add Company Holiday</h3>
+        <h3 id="companyHolidayModalTitle" style="margin: 0; font-size: 1.15em; font-weight: 700; color: #0f172a;"><i class="fa-solid fa-gifts" style="color:#0d9488;"></i> Add Company Holiday</h3>
         <button type="button" class="btn-close" onclick="closeAddHolidayModal()"></button>
       </div>
       <div style="padding: 20px 24px;">
         <div id="holidayMsg"></div>
+        <input type="hidden" id="modalHolidayId" value="" />
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Holiday Title *</label>
           <input type="text" id="modalHolidayName" class="form-control" placeholder="e.g. Eid-ul-Fitr Holiday, Independence Day" />
@@ -11954,7 +11965,7 @@ async function fetchMultiLiveDetections() {
             if (isLeaveToday) {
               const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
               actionCell.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px; color:#1d4ed8; font-size:0.76em; font-weight:700; white-space:nowrap;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
-            } else if (!hasAttendance && !['not_employed', 'schedule_unknown', 'holiday', 'off_day', 'weekend', 'on_leave', 'on_leave_unpaid'].includes(st)) {
+            } else if (!hasAttendance && st !== 'not_employed') {
               const btn = document.createElement('button');
               btn.style.cssText = 'padding:4px 10px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #16a34a; color:#15803d; background:#f0fdf4; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
               btn.innerHTML = '<i class="fa-solid fa-check"></i> Mark Present';
@@ -17714,9 +17725,15 @@ async function fetchMultiLiveDetections() {
       _leaveRequestDisplayData = new Map(displayRequests.map(req => [String(req.id), req]));
       const filtered = displayRequests.filter(req => {
         const nameStr = (req.user_name || '').toLowerCase();
-        const idStr = `${req.user_id || ''} ${(req.child_requests || []).map(child => child.id).join(' ')}`.toLowerCase();
-        const reqIdStr = String(req.id || '').toLowerCase();
-        const nameMatch = !search || nameStr.includes(search) || idStr.includes(search) || reqIdStr.includes(search);
+        let searchMatch = true;
+        if (search) {
+          const numMatch = search.replace(/^#/, '');
+          if (/^\d+$/.test(numMatch)) {
+            searchMatch = (String(req.id) === numMatch || String(req.user_id) === numMatch);
+          } else {
+            searchMatch = nameStr.includes(search) || (req.department || '').toLowerCase().includes(search) || (req.leave_type || '').toLowerCase().includes(search);
+          }
+        }
         const statusMatch = statusFilter === 'all' || String(req.status || '').toLowerCase() === statusFilter;
         const dateFilter = document.getElementById('leaveDateFilter')?.value || '';
         
@@ -17815,9 +17832,8 @@ async function fetchMultiLiveDetections() {
         } catch (e) {}
 
         let statusBadge = '<span class="badge bg-warning-subtle text-warning-emphasis">Pending</span>';
-        if (req.status === 'approved') statusBadge = '<span class="badge bg-success-subtle text-success">Approved</span>';
+        if (req.status === 'approved' || req.status === 'partially_approved') statusBadge = '<span class="badge bg-success-subtle text-success">Approved</span>';
         else if (req.status === 'rejected') statusBadge = '<span class="badge bg-danger-subtle text-danger">Rejected</span>';
-        else if (req.status === 'partially_approved') statusBadge = '<span class="badge bg-info-subtle text-info">Partially Approved</span>';
 
         const leaveType = String(req.leave_type || 'annual').toLowerCase();
         const paidDays = Number(req.paid_days != null ? req.paid_days : (leaveType === 'unpaid' ? 0 : numDays));
@@ -17826,13 +17842,17 @@ async function fetchMultiLiveDetections() {
 
         const halfLeaveCount = Number(req.half_leave_count || (req.leave_duration === 'half' ? 1 : 0));
         const fullDayCount = Math.max(0, numDays - halfLeaveCount);
-        const durationLabel = halfLeaveCount || fullDayCount
-          ? `${fullDayCount ? `${fullDayCount} day(s)` : ''}${fullDayCount && halfLeaveCount ? ' + ' : ''}${halfLeaveCount ? `${halfLeaveCount} half leave(s)` : ''}`
-          : `${numDays} day(s)`;
+        const isHalfDay = req.leave_duration === 'half' || (halfLeaveCount === 1 && fullDayCount === 0);
+        const timeSpan = (isHalfDay && req.start_time) ? ` (${req.start_time}${req.end_time ? ' - ' + req.end_time : ''})` : '';
+        const durationLabel = isHalfDay
+          ? `Half Day${timeSpan}`
+          : (halfLeaveCount || fullDayCount
+            ? `${fullDayCount ? `${fullDayCount} day(s)` : ''}${fullDayCount && halfLeaveCount ? ' + ' : ''}${halfLeaveCount ? `${halfLeaveCount} half leave(s)` : ''}`
+            : `${numDays} day(s)`);
         const daysBadge = isInvalidRange
           ? `<span class="badge bg-danger text-white" style="font-size:0.75em; padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-triangle-exclamation"></i> Invalid range</span>`
           : `<span class="badge bg-teal-subtle text-teal" style="font-size:0.75em; color:#0d9488; background:#ccfbf1; padding:2px 6px; border-radius:4px;">${durationLabel}</span>`;
-        const halfLeaveBadge = halfLeaveCount ? `<span class="badge bg-info-subtle text-info">${halfLeaveCount} half leave(s)</span>` : '';
+        const halfLeaveBadge = halfLeaveCount ? `<span class="badge bg-info-subtle text-info">${isHalfDay ? `Half Day${timeSpan}` : `${halfLeaveCount} half leave(s)`}</span>` : '';
         const fullDaySplit = fullDayCount
           ? `<span class="badge bg-success-subtle text-success">${paidDays} paid</span><span class="badge bg-warning-subtle text-warning-emphasis">${unpaidDays} unpaid</span>`
           : '';
@@ -17844,7 +17864,7 @@ async function fetchMultiLiveDetections() {
             </td>
             <td><span class="badge bg-light text-dark border" style="text-transform:capitalize;">${escapeHtml(req.leave_type || 'annual')}</span></td>
             <td>
-              <div style="font-weight:600; color:#475569; font-size:0.88em; font-family:'JetBrains Mono', monospace;">${start} &rarr; ${end}</div>
+              <div style="font-weight:600; color:#475569; font-size:0.88em; font-family:'JetBrains Mono', monospace;">${start}${isHalfDay ? timeSpan : (start !== end ? ` &rarr; ${end}` : '')}</div>
               ${daysBadge}
             </td>
             <td><div style="display:flex; flex-wrap:wrap; gap:4px;">${halfLeaveBadge}${fullDaySplit}</div></td>
@@ -18364,6 +18384,7 @@ async function fetchMultiLiveDetections() {
       try {
         const res = await fetch('/api/holidays');
         const data = await res.json();
+        window._allCompanyHolidays = Array.isArray(data) ? data : [];
         if (!Array.isArray(data) || data.length === 0) {
           tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted p-4">No public holidays added yet.</td></tr>';
           return;
@@ -18376,6 +18397,7 @@ async function fetchMultiLiveDetections() {
             <td style="font-size:0.85em; color:#64748b;">${escapeHtml(h.description || '--')}</td>
             <td>${h.is_recurring ? '<span class="badge bg-info-subtle text-info">Annual</span>' : '<span class="badge bg-secondary-subtle text-secondary">One-time</span>'}</td>
             <td>
+              <button class="btn btn-sm btn-outline-primary py-0 px-2 me-1" onclick="openEditCompanyHolidayModal(${h.id})" title="Edit Holiday"><i class="fa-solid fa-pen-to-square"></i></button>
               <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteCompanyHoliday(${h.id})" title="Delete Holiday"><i class="fa-solid fa-trash"></i></button>
             </td>
           </tr>
@@ -18492,6 +18514,12 @@ async function fetchMultiLiveDetections() {
       if (eInput) eInput.value = '';
       if (durationInput) { durationInput.value = 'full'; durationInput.disabled = false; }
       if (eInput) eInput.disabled = false;
+      const stInput = document.getElementById('modalLeaveStartTime');
+      const etInput = document.getElementById('modalLeaveEndTime');
+      if (stInput) stInput.value = '';
+      if (etInput) etInput.value = '';
+      const timeContainer = document.getElementById('modalLeaveTimeContainer');
+      if (timeContainer) timeContainer.style.display = 'none';
 
       select.innerHTML = '<option value="">Loading active staff...</option>';
       select.disabled = true;
@@ -18718,6 +18746,10 @@ async function fetchMultiLiveDetections() {
       const isHalfLeave = document.getElementById('modalLeaveDurationSelect')?.value === 'half';
       const startInput = document.getElementById('modalLeaveStartDate');
       const endInput = document.getElementById('modalLeaveEndDate');
+      const timeContainer = document.getElementById('modalLeaveTimeContainer');
+      if (timeContainer) {
+        timeContainer.style.display = isHalfLeave ? 'flex' : 'none';
+      }
       if (endInput) {
         endInput.disabled = isHalfLeave;
         if (isHalfLeave && startInput?.value) endInput.value = startInput.value;
@@ -18757,6 +18789,21 @@ async function fetchMultiLiveDetections() {
         return;
       }
 
+      let startTime = null;
+      let endTime = null;
+      if (leaveDuration === 'half') {
+        startTime = document.getElementById('modalLeaveStartTime')?.value || null;
+        endTime = document.getElementById('modalLeaveEndTime')?.value || null;
+        if (!startTime || !endTime) {
+          alert("Please select both start time and end time for half-day leave.");
+          return;
+        }
+        if (endTime <= startTime) {
+          alert("Half-day end time must be later than start time.");
+          return;
+        }
+      }
+
       let excessTreatment = null;
       if (!currentLeaveQuotaValid) {
         // TICKET-12: Excess Leave: Paid/Unpaid Selection via UI
@@ -18783,6 +18830,8 @@ async function fetchMultiLiveDetections() {
             leave_duration: leaveDuration,
             start_date: startDate,
             end_date: endDate,
+            start_time: startTime,
+            end_time: endTime,
             reason: reason,
             excess_treatment: excessTreatment
           })
@@ -19040,19 +19089,49 @@ async function fetchMultiLiveDetections() {
     function openAddHolidayModal() {
       const modal = document.getElementById('companyHolidayModal');
       if (!modal) return;
+      const title = document.getElementById('companyHolidayModalTitle');
+      if (title) title.innerHTML = '<i class="fa-solid fa-gifts" style="color:#0d9488;"></i> Add Company Holiday';
+      const idInput = document.getElementById('modalHolidayId');
+      if (idInput) idInput.value = '';
       const dInput = document.getElementById('modalHolidayDate');
       const eInput = document.getElementById('modalHolidayEndDate');
       const nInput = document.getElementById('modalHolidayName');
       const descInput = document.getElementById('modalHolidayDesc');
+      const recInput = document.getElementById('modalHolidayRecurring');
       const msgDiv = document.getElementById('holidayMsg');
       if (msgDiv) msgDiv.innerHTML = '';
       if (nInput) nInput.value = '';
       if (descInput) descInput.value = '';
+      if (recInput) recInput.checked = true;
       if (dInput) {
         const todayStr = new Date().toISOString().split('T')[0];
         if (!dInput.value) dInput.value = todayStr;
       }
       if (eInput) eInput.value = '';
+      modal.style.display = 'flex';
+    }
+
+    function openEditCompanyHolidayModal(holidayId) {
+      const modal = document.getElementById('companyHolidayModal');
+      if (!modal) return;
+      const h = (window._allCompanyHolidays || []).find(item => String(item.id) === String(holidayId));
+      if (!h) return;
+      const title = document.getElementById('companyHolidayModalTitle');
+      if (title) title.innerHTML = '<i class="fa-solid fa-gifts" style="color:#0d9488;"></i> Edit Public Holiday';
+      const idInput = document.getElementById('modalHolidayId');
+      if (idInput) idInput.value = h.id || '';
+      const nInput = document.getElementById('modalHolidayName');
+      if (nInput) nInput.value = h.name || '';
+      const dInput = document.getElementById('modalHolidayDate');
+      if (dInput) dInput.value = h.holiday_date || '';
+      const eInput = document.getElementById('modalHolidayEndDate');
+      if (eInput) eInput.value = h.end_date || h.holiday_date || '';
+      const descInput = document.getElementById('modalHolidayDesc');
+      if (descInput) descInput.value = h.description || '';
+      const recInput = document.getElementById('modalHolidayRecurring');
+      if (recInput) recInput.checked = Boolean(Number(h.is_recurring));
+      const msgDiv = document.getElementById('holidayMsg');
+      if (msgDiv) msgDiv.innerHTML = '';
       modal.style.display = 'flex';
     }
 
@@ -19062,6 +19141,7 @@ async function fetchMultiLiveDetections() {
     }
 
     async function submitCompanyHoliday() {
+      const holidayId = document.getElementById('modalHolidayId')?.value;
       const name = document.getElementById('modalHolidayName').value.trim();
       const hdate = document.getElementById('modalHolidayDate').value;
       const edate = document.getElementById('modalHolidayEndDate')?.value || '';
@@ -19074,8 +19154,10 @@ async function fetchMultiLiveDetections() {
       }
 
       try {
-        const res = await fetch('/api/holidays', {
-          method: 'POST',
+        const url = holidayId ? `/api/holidays/${holidayId}` : '/api/holidays';
+        const method = holidayId ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method: method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: name, holiday_date: hdate, end_date: edate, description: desc, is_recurring: isRec })
         });
@@ -19083,14 +19165,14 @@ async function fetchMultiLiveDetections() {
         if (data.success) {
           closeAddHolidayModal();
           if (typeof showAppToast === 'function') {
-            showAppToast("Public holiday added successfully!", "success");
+            showAppToast(holidayId ? "Public holiday updated successfully!" : "Public holiday added successfully!", "success");
           }
           loadCompanyHolidays();
         } else {
-          alert("Failed to add holiday: " + (data.message || 'Error'));
+          alert("Failed to save holiday: " + (data.message || 'Error'));
         }
       } catch (e) {
-        alert("Error adding holiday.");
+        alert("Error saving holiday.");
       }
     }
 
@@ -19130,6 +19212,7 @@ async function fetchMultiLiveDetections() {
     window.deleteLeaveType = deleteLeaveType;
     window.loadCompanyHolidays = loadCompanyHolidays;
     window.openAddHolidayModal = openAddHolidayModal;
+    window.openEditCompanyHolidayModal = openEditCompanyHolidayModal;
     window.closeAddHolidayModal = closeAddHolidayModal;
     window.submitCompanyHoliday = submitCompanyHoliday;
     window.deleteCompanyHoliday = deleteCompanyHoliday;
@@ -19193,6 +19276,16 @@ async function fetchMultiLiveDetections() {
       }
     }
 
+    function formatOtDuration(hours) {
+      const hNum = parseFloat(hours) || 0;
+      if (hNum <= 0) return '0h 0m (0.00h)';
+      const totalMinutes = Math.round(hNum * 60);
+      const h = Math.floor(totalMinutes / 60);
+      const m = totalMinutes % 60;
+      if (h === 0) return `${m}m (${hNum.toFixed(2)}h)`;
+      return `${h}h ${m}m (${hNum.toFixed(2)}h)`;
+    }
+
     function renderOvertimeKPIs(records) {
       const totalLogs = records.length;
       const approved = records.filter(r => (r.status || '').toLowerCase() === 'approved');
@@ -19206,7 +19299,7 @@ async function fetchMultiLiveDetections() {
       const kpiAmount = document.getElementById('otKpiApprovedAmount');
 
       if (kpiTotal) kpiTotal.textContent = totalLogs;
-      if (kpiHours) kpiHours.textContent = `${approvedHours.toFixed(1)} hrs`;
+      if (kpiHours) kpiHours.textContent = formatOtDuration(approvedHours);
       if (kpiPending) kpiPending.textContent = pending.length;
       if (kpiAmount) kpiAmount.textContent = `PKR ${approvedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
@@ -19374,7 +19467,7 @@ async function fetchMultiLiveDetections() {
               <small class="text-muted">${escapeOtHtml(group.designation || 'Staff Member')}</small>
             </td>
             <td style="font-weight:600; color:#475569;" title="${escapeOtHtml(dates.join(', '))}">${escapeOtHtml(dateSummary || '--')}</td>
-            <td class="text-center" style="font-weight:700; color:#6366f1;">${hours.toFixed(1)} hrs</td>
+            <td class="text-center" style="font-weight:700; color:#6366f1;">${formatOtDuration(hours)}</td>
             <td class="text-end" style="color:#475569;">PKR ${rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr</td>
             <td class="text-end" style="font-weight:800; color:#047857;">PKR ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td style="max-width:220px; font-size:0.88em; color:#475569;" title="${escapeOtHtml(reasons.join('; '))}">${escapeOtHtml(reasonSummary)}</td>
@@ -19960,7 +20053,7 @@ async function fetchMultiLiveDetections() {
         if (element) element.textContent = value;
       };
       setStat('otDetailStatRecords', _otDetailRecords.length);
-      setStat('otDetailStatHours', totalHours.toFixed(1));
+      setStat('otDetailStatHours', formatOtDuration(totalHours));
       setStat('otDetailStatPending', pendingRecs.length);
       setStat('otDetailStatApproved', approvedRecs.length);
       setStat('otDetailStatRejected', rejectedRecs.length);
@@ -19972,7 +20065,7 @@ async function fetchMultiLiveDetections() {
         return;
       }
 
-      if (footerInfo) footerInfo.textContent = `${_otDetailRecords.length} records | ${pendingRecs.length} pending | ${approvedHours.toFixed(1)} hrs approved`;
+      if (footerInfo) footerInfo.textContent = `${_otDetailRecords.length} records | ${pendingRecs.length} pending | ${formatOtDuration(approvedHours)} approved`;
 
       tbody.innerHTML = _otDetailRecords.map(r => {
         const hours = parseFloat(r.hours||0);
@@ -19991,7 +20084,7 @@ async function fetchMultiLiveDetections() {
           <tr style="${!isPending ? 'opacity:0.7;' : ''}">
             <td><input type="checkbox" class="otDetailCheck" data-id="${r.id}" data-status="${st}" ${!isPending ? 'disabled' : ''} /></td>
             <td style="font-weight:600; color:#475569;">${escapeOtHtml(r.ot_date||'--')}</td>
-            <td class="text-center" style="font-weight:700; color:#6366f1;">${hours.toFixed(1)} hrs</td>
+            <td class="text-center" style="font-weight:700; color:#6366f1;">${formatOtDuration(hours)}</td>
             <td class="text-center" style="font-size:0.86em; color:#475569;">PKR ${rate.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}/hr<div style="font-size:0.74em; color:#64748b;">${dayTypeLabel}${premiumLabel}</div></td>
             <td class="text-center" style="font-weight:700; color:#047857;">PKR ${amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
             <td style="font-size:0.88em; color:#475569;" title="${escapeOtHtml(r.reason||'')}">${escapeOtHtml(r.reason||'--')}</td>

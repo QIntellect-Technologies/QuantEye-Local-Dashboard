@@ -423,6 +423,36 @@ def mirror_shift(row: Dict[str, Any]) -> None:
     _with_cursor(_write)
 
 
+def mirror_mobile_credentials(user_id: int, organization_id: str, password_hash: str) -> None:
+    org_id = str(organization_id or "").strip()
+    def _write(cur):
+        try:
+            cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)")
+            cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS mobile_login INT DEFAULT 0")
+        except Exception:
+            pass
+        if org_id and _real_tenant(org_id):
+            cur.execute(
+                """
+                UPDATE employees
+                   SET password_hash = %s, mobile_login = 1, updated_at = CURRENT_TIMESTAMP
+                 WHERE (id = %s OR employee_code = %s)
+                   AND organization_id = %s
+                """,
+                (password_hash, str(user_id), str(user_id), org_id),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE employees
+                   SET password_hash = %s, mobile_login = 1, updated_at = CURRENT_TIMESTAMP
+                 WHERE (id = %s OR employee_code = %s)
+                """,
+                (password_hash, str(user_id), str(user_id)),
+            )
+    _with_cursor(_write)
+
+
 def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
     """Copy Postgres employee rows into SQLite when the local cache is missing them.
 
@@ -438,9 +468,16 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
     inserted = 0
     try:
         with conn.cursor() as cur:
+            try:
+                cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)")
+                cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS mobile_login INT DEFAULT 0")
+            except Exception:
+                pass
             cur.execute(
                 """
-                SELECT id, employee_code, name, email, phone, is_active
+                SELECT id, employee_code, name, email, phone, is_active,
+                       COALESCE(password_hash, '') as password_hash,
+                       COALESCE(mobile_login, 0) as mobile_login
                 FROM employees
                 WHERE organization_id = %s AND branch_id = %s
                 """,
@@ -456,17 +493,24 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                     user_id = int(str(row.get("id") or "").strip())
                 except (TypeError, ValueError):
                     continue
+                pw_hash = row.get("password_hash") or None
+                mob_login = int(row.get("mobile_login", 0) or 0)
                 exists = sqlite_cur.execute(
                     "SELECT 1 FROM users WHERE id = ? AND organization_id = ? AND branch_id = ?",
                     (user_id, org_id, br_id),
                 ).fetchone()
                 if exists:
+                    if pw_hash or mob_login:
+                        sqlite_cur.execute(
+                            "UPDATE users SET password_hash = COALESCE(?, password_hash), mobile_login = MAX(?, COALESCE(mobile_login, 0)) WHERE id = ? AND organization_id = ?",
+                            (pw_hash, mob_login, user_id, org_id),
+                        )
                     continue
                 sqlite_cur.execute(
                     """
                     INSERT INTO users (
-                        id, name, email, phone, notes, active, organization_id, branch_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        id, name, email, phone, notes, active, organization_id, branch_id, password_hash, mobile_login
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         user_id,
@@ -477,6 +521,8 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                         1 if row.get("is_active", True) else 0,
                         org_id,
                         br_id,
+                        pw_hash,
+                        mob_login,
                     ),
                 )
                 inserted += 1
