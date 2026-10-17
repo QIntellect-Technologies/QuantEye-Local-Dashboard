@@ -1395,11 +1395,20 @@
 
         let reportAbortController = null;
         async function fetchReport() {
+            if (isFetching) return;
+            isFetching = true;
             if (reportAbortController) {
                 reportAbortController.abort();
             }
             reportAbortController = new AbortController();
             const signal = reportAbortController.signal;
+
+            const refreshBtn = document.querySelector('.header-actions button[onclick="refreshReport()"]');
+            const origRefreshHtml = refreshBtn ? refreshBtn.innerHTML : null;
+            if (refreshBtn) {
+                refreshBtn.innerHTML = '<i class="fa-solid fa-rotate-right fa-spin"></i> Refreshing...';
+                refreshBtn.disabled = true;
+            }
 
             const tbody = document.getElementById('attendanceTableBody');
             const emptyState = document.getElementById('emptyState');
@@ -1424,6 +1433,10 @@
             } finally {
                 if (tbody) tbody.style.opacity = '1';
                 isFetching = false;
+                if (refreshBtn && origRefreshHtml) {
+                    refreshBtn.innerHTML = origRefreshHtml;
+                    refreshBtn.disabled = false;
+                }
             }
         }
 

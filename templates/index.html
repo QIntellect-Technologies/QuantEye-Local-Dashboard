@@ -8900,7 +8900,7 @@ async function fetchMultiLiveDetections() {
                 </td>
                 <td class="text-center fw-semibold" style="color:#475569;">${Number(row.scheduled_workdays || 0)}</td>
                 <td class="text-center"><span class="badge bg-success-subtle text-success">${Number(row.present_days || 0)}</span></td>
-                ${payrollHasLeave() ? `<td class="text-center payroll-leave-only"><span class="badge ${Number(row.half_leave_count || 0) > 0 ? 'bg-info-subtle text-info' : 'bg-light text-muted'}">${Number(row.half_leave_count || 0)}</span></td>` : ''}
+                ${payrollHasLeave() ? `<td class="text-center payroll-leave-only"><span class="badge ${Number(row.half_leave_count || 0) > 0 ? 'bg-info-subtle text-info' : 'bg-light text-muted'}" title="${Number(row.half_leave_count || 0)} occurrence(s) = ${Number(row.equivalent_half_leave_days != null ? row.equivalent_half_leave_days : (Number(row.half_leave_count || 0) * 0.5))} equivalent leave day(s)">${Number(row.half_leave_count || 0)}${Number(row.half_leave_count || 0) > 0 ? ` (${Number(row.equivalent_half_leave_days != null ? row.equivalent_half_leave_days : (Number(row.half_leave_count || 0) * 0.5))}d)` : ''}</span></td>` : ''}
                 <td class="text-center"><span class="badge ${Number(row.absent_days || 0) > 0 ? 'bg-danger-subtle text-danger' : 'bg-light text-muted'}">${Number(row.absent_days || 0)}</span></td>
                 <td class="text-center"><span class="badge ${Number(row.late_days || 0) > 0 ? 'bg-warning-subtle text-warning-emphasis' : 'bg-light text-muted'}">${Number(row.late_days || 0)}</span></td>
                 ${payrollHasLeave() ? `<td class="text-center payroll-leave-only"><span class="badge ${Number((row.paid_leave_days != null ? row.paid_leave_days : row.approved_leave_days) || 0) > 0 ? 'bg-info-subtle text-info' : 'bg-light text-muted'}">${Number((row.paid_leave_days != null ? row.paid_leave_days : row.approved_leave_days) || 0)}</span></td>
@@ -8938,7 +8938,7 @@ async function fetchMultiLiveDetections() {
                 <td class="text-end">${payrollMoney(row.basic_salary)}</td>
                 <td class="text-center">${Number(row.scheduled_workdays || 0)}</td>
                 <td class="text-center">${Number(row.present_days || 0)}</td>
-                ${payrollHasLeave() ? `<td class="text-center payroll-leave-only">${Number(row.half_leave_count || 0)}</td>` : ''}
+                ${payrollHasLeave() ? `<td class="text-center payroll-leave-only">${Number(row.half_leave_count || 0)}${Number(row.half_leave_count || 0) > 0 ? ` (${Number(row.equivalent_half_leave_days != null ? row.equivalent_half_leave_days : (Number(row.half_leave_count || 0) * 0.5))}d)` : ''}</td>` : ''}
                 <td class="text-center">${Number(row.absent_days || 0)}</td>
                 <td class="text-center">${Number(row.late_days || 0)}</td>
                 ${payrollHasLeave() ? `<td class="text-center payroll-leave-only">${Number((row.paid_leave_days != null ? row.paid_leave_days : row.approved_leave_days) || 0)}</td>
@@ -9036,7 +9036,7 @@ async function fetchMultiLiveDetections() {
             <td class="text-end">${payrollMoney(row.basic_salary)}</td>
             <td>${Number(row.scheduled_workdays || 0)}</td>
             <td>${Number(row.present_days || 0)}</td>
-            ${hasLeave ? `<td class="payroll-leave-only">${Number(row.half_leave_count || 0)}</td>` : ''}
+            ${hasLeave ? `<td class="payroll-leave-only">${Number(row.half_leave_count || 0)}${Number(row.half_leave_count || 0) > 0 ? ` (${Number(row.equivalent_half_leave_days != null ? row.equivalent_half_leave_days : (Number(row.half_leave_count || 0) * 0.5))}d)` : ''}</td>` : ''}
             <td>${Number(row.absent_days || 0)}</td>
             <td>${Number(row.late_days || 0)}</td>
             ${hasLeave ? `<td class="payroll-leave-only">${paidLeaveDays}</td><td class="payroll-leave-only">${Number(row.unpaid_leave_days || 0)}</td><td class="payroll-leave-only">${totalLeaveDays}</td>` : ''}
@@ -13513,6 +13513,31 @@ async function fetchMultiLiveDetections() {
             body: JSON.stringify({ shift_id: parseInt(shiftId), effective_from: getShiftEffectiveFrom() })
           });
           const data = await resp.json();
+          if (resp.status === 409 && (data.error || '').includes('reclassifies')) {
+            const confirmed = await appConfirm(`${data.error}\n\nDo you want to apply this shift change and reclassify attendance?`);
+            if (confirmed) {
+              const retryResp = await fetch(`${API_BASE}/users/${userId}/assign-shift`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shift_id: parseInt(shiftId), effective_from: getShiftEffectiveFrom(), confirm_shift_reclassify: true })
+              });
+              const retryData = await retryResp.json();
+              if (retryResp.ok && retryData.success) {
+                showAppToast(retryData.message || `Shift updated for ${userName}`, 'success');
+                loadShiftsList();
+                if (typeof loadTabStaffDirectory === 'function') loadTabStaffDirectory();
+                return;
+              } else {
+                showAppToast(retryData.error || 'Failed to update shift', 'error');
+                loadShiftsList();
+                return;
+              }
+            } else {
+              showAppToast('Shift change cancelled', 'info');
+              loadShiftsList();
+              return;
+            }
+          }
           if (resp.ok && data.success) {
             showAppToast(data.message || `Shift updated for ${userName}`, 'success');
             loadShiftsList();
@@ -18006,6 +18031,8 @@ async function fetchMultiLiveDetections() {
         let actionBtns = `<button class="btn btn-sm btn-outline-primary py-0 px-2" onclick="openLeaveCompleteView(${req.id})" title="View complete leave request"><i class="fa-solid fa-eye"></i> Complete View</button>`;
         if (req.status === 'pending' || req.paid_status === 'pending' || req.unpaid_status === 'pending') {
           actionBtns += ` <button class="btn btn-sm btn-outline-danger py-0 px-2 ms-1" onclick="promptRejectLeave(${req.id})" title="Reject leave request"><i class="fa-solid fa-xmark"></i> Reject</button>`;
+        } else if (req.status === 'rejected') {
+          actionBtns += ` <button class="btn btn-sm btn-outline-success py-0 px-2 ms-1" onclick="updateLeaveStatus(${req.id}, 'approved')" title="Approve leave request"><i class="fa-solid fa-check"></i> Approve</button>`;
         }
 
         const halfLeaveCount = Number(req.half_leave_count || (req.leave_duration === 'half' ? 1 : 0));
@@ -18167,7 +18194,7 @@ async function fetchMultiLiveDetections() {
         const element = document.getElementById(id);
         if (element) element.textContent = value;
       };
-      const pendingSegments = segments.filter(s => s.pending);
+      const pendingSegments = segments.filter(s => s.pending || s.status.toLowerCase() === 'rejected');
       const actions = document.getElementById('leaveCompleteActions');
       if (actions) {
         actions.innerHTML = pendingSegments.length ? `
@@ -18215,7 +18242,7 @@ async function fetchMultiLiveDetections() {
       if (balanceView) balanceView.innerHTML = '<span class="text-muted">Loading balances...</span>';
       const allocationBody = document.getElementById('leaveCompleteAllocationBody');
       if (allocationBody) {
-        allocationBody.innerHTML = segments.map(segment => `<tr><td><input type="checkbox" class="leave-segment-select" data-id="${segment.id}" data-portion="${segment.portion || 'all'}" value="${segment.id}" aria-label="Select ${escapeHtml(segment.label)} segment" ${segment.pending ? 'onchange="updateLeaveCompleteSelection()"' : 'disabled'} /></td><td>${escapeHtml(segment.label)}</td><td style="white-space:nowrap;">${escapeHtml(segment.start || '--')} &rarr; ${escapeHtml(segment.end || '--')}</td><td style="max-width:180px; white-space:normal; overflow-wrap:anywhere; user-select:text;">${escapeHtml(segment.reason || '--')}</td><td class="text-center">${segment.days} ${segment.unit || 'day(s)'}</td><td><span class="badge ${segment.treatment === 'Unpaid' ? 'bg-warning-subtle text-warning-emphasis' : 'bg-success-subtle text-success'}">${segment.treatment}</span></td><td>${escapeHtml(segment.status || 'Pending')}</td></tr>`).join('');
+        allocationBody.innerHTML = segments.map(segment => `<tr><td><input type="checkbox" class="leave-segment-select" data-id="${segment.id}" data-portion="${segment.portion || 'all'}" value="${segment.id}" aria-label="Select ${escapeHtml(segment.label)} segment" ${(segment.pending || segment.status.toLowerCase() === 'rejected') ? 'onchange="updateLeaveCompleteSelection()"' : 'disabled'} /></td><td>${escapeHtml(segment.label)}</td><td style="white-space:nowrap;">${escapeHtml(segment.start || '--')} &rarr; ${escapeHtml(segment.end || '--')}</td><td style="max-width:180px; white-space:normal; overflow-wrap:anywhere; user-select:text;">${escapeHtml(segment.reason || '--')}</td><td class="text-center">${segment.days} ${segment.unit || 'day(s)'}</td><td><span class="badge ${segment.treatment === 'Unpaid' ? 'bg-warning-subtle text-warning-emphasis' : 'bg-success-subtle text-success'}">${segment.treatment}</span></td><td>${escapeHtml(segment.status || 'Pending')}</td></tr>`).join('');
         updateLeaveCompleteSelection();
       }
       enableLeaveAllocationDragScroll();
@@ -18513,7 +18540,17 @@ async function fetchMultiLiveDetections() {
           if (Number(pack.is_paid ?? lt.is_paid ?? 1) === 0) {
             return `<td><span class="text-danger font-weight-bold">${pack.used || 0}</span> days</td>`;
           }
-          return `<td><span class="font-weight-bold">${pack.used || 0}</span> / ${pack.allocated || 0} <small class="text-muted">(${pack.remaining ?? 0} rem)</small></td>`;
+          let overrideBadge = '';
+          const totalOv = Number(pack.total_override_days || 0);
+          const reqOvs = Array.isArray(pack.request_overrides) ? pack.request_overrides : [];
+          if (totalOv > 0) {
+            const reqDetails = reqOvs.map(r => `Req #${r.request_id}: +${r.override_days}d`).join(', ');
+            overrideBadge = `<span class="badge bg-warning-subtle text-warning-emphasis ms-1" title="Standard: ${pack.standard_quota || 0}d, Override: +${totalOv}d ${reqDetails ? `(${reqDetails})` : ''}" style="font-size:0.75em; padding:2px 4px;">+${totalOv} override${reqOvs.length === 1 ? ` (Req #${reqOvs[0].request_id})` : ''}</span>`;
+          } else if (pack.allocated_override != null && pack.standard_quota != null && pack.allocated > pack.standard_quota) {
+            const diff = pack.allocated - pack.standard_quota;
+            overrideBadge = `<span class="badge bg-warning-subtle text-warning-emphasis ms-1" title="Standard: ${pack.standard_quota}d, Override: +${diff}d" style="font-size:0.75em; padding:2px 4px;">+${diff} override</span>`;
+          }
+          return `<td><span class="font-weight-bold">${pack.used || 0}</span> / ${pack.allocated || 0}${overrideBadge} <small class="text-muted">(${pack.remaining ?? 0} rem)</small></td>`;
         }).join('');
         return `
           <tr>
@@ -19933,12 +19970,20 @@ async function fetchMultiLiveDetections() {
     }
 
     async function updateOvertimeStatus(otId, newStatus) {
+      let rejectionReason = null;
+      if (newStatus === 'rejected') {
+        const inputReason = prompt('Optional rejection reason (leave blank if none):');
+        if (inputReason === null) return;
+        rejectionReason = inputReason.trim() || undefined;
+      }
       if (!await appConfirm(`Are you sure you want to mark overtime record #${otId} as ${newStatus.toUpperCase()}?`)) return;
       try {
+        const payload = { status: newStatus, approved_by: 'Admin' };
+        if (rejectionReason) payload.rejection_reason = rejectionReason;
         const res = await fetch(`/api/overtime/${otId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: newStatus, approved_by: 'Admin' })
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (data.success) {
@@ -20403,12 +20448,17 @@ async function fetchMultiLiveDetections() {
     async function otDetailRejectSelected() {
       const ids = otDetailGetSelectedPendingIds();
       if (!ids.length) { showAppToast('Select at least one pending record to reject.', 'warning'); return; }
+      const inputReason = prompt('Optional rejection reason (leave blank if none):');
+      if (inputReason === null) return;
+      const rejectionReason = inputReason.trim() || undefined;
       if (!await appConfirm(`Reject ${ids.length} selected OT record(s)?\n\nThis decision is permanent and cannot be undone.`)) return;
       try {
+        const payload = { ids, status: 'rejected', approved_by: 'Admin' };
+        if (rejectionReason) payload.rejection_reason = rejectionReason;
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids, status: 'rejected', approved_by: 'Admin' })
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         showOvertimeBulkResult(data, 'Overtime review complete.');
@@ -20454,12 +20504,17 @@ async function fetchMultiLiveDetections() {
     window.otDetailApproveSingle = otDetailApproveSingle;
 
     async function otDetailRejectSingle(id) {
+      const inputReason = prompt('Optional rejection reason (leave blank if none):');
+      if (inputReason === null) return;
+      const rejectionReason = inputReason.trim() || undefined;
       if (!await appConfirm('Reject this overtime record?')) return;
       try {
+        const payload = { ids: [id], status: 'rejected', approved_by: 'Admin' };
+        if (rejectionReason) payload.rejection_reason = rejectionReason;
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: [id], status: 'rejected', approved_by: 'Admin' })
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         showOvertimeBulkResult(data, 'Overtime rejected.');

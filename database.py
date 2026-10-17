@@ -669,6 +669,13 @@ def init_db():
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
             ''')
+            ot_columns = {row[1] for row in cursor.execute("PRAGMA table_info(overtime)").fetchall()}
+            for column, column_type in [
+                ('rejection_reason', 'TEXT'),
+            ]:
+                if column not in ot_columns:
+                    cursor.execute(f"ALTER TABLE overtime ADD COLUMN {column} {column_type}")
+
 
             # Salary configs table
             cursor.execute('''
@@ -2869,14 +2876,14 @@ def delete_shift(shift_id: int, organization_id: Optional[str] = None) -> bool:
         return False
 
 
-def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str] = None) -> bool:
-    """Assign a shift to an individual user immediately in the database."""
+def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str] = None, confirm_shift_reclassify: bool = False) -> bool:
+    """Assign a shift to an individual user immediately in the database, verifying reclassification impact."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             effective_date = _normalize_shift_effective_date(effective_from)
             cursor.execute(
-                "SELECT COALESCE(shift_id, 1), organization_id FROM users WHERE id = ? AND active = 1",
+                "SELECT COALESCE(shift_id, 1), organization_id, COALESCE(branch_id, 'DEFAULT_BRANCH') FROM users WHERE id = ? AND active = 1",
                 (user_id,),
             )
             current_shift = cursor.fetchone()
@@ -2890,6 +2897,24 @@ def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str]
                     shift_id, user_id,
                 )
                 return False
+            
+            # SH-01: Check if change affects dates with processed attendance
+            if shift_id is not None and (shift_id != current_shift[0] or effective_from is not None):
+                affected_month = effective_date[:7]
+                org_id = current_shift[1] or 'DEFAULT_ORG'
+                branch_id = current_shift[2] or 'DEFAULT_BRANCH'
+                if payroll_month_is_finalized(affected_month, org_id, branch_id):
+                    raise ValueError(PAYROLL_LOCK_MESSAGE)
+                past_logs = cursor.execute(
+                    "SELECT COUNT(*) FROM attendance WHERE user_id = ? AND date(timestamp) >= ?",
+                    (user_id, effective_date),
+                ).fetchone()[0]
+                if past_logs and not confirm_shift_reclassify:
+                    raise ValueError(
+                        "Changing this shift effective date reclassifies processed attendance. "
+                        "Confirm to continue."
+                    )
+
             is_current = effective_date <= datetime.now().date().isoformat()
             if is_current:
                 cursor.execute("UPDATE users SET shift_id = ? WHERE id = ? AND active = 1", (shift_id, user_id))
@@ -2900,6 +2925,8 @@ def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str]
             if updated:
                 logger.info(f"✓ Shift ID {shift_id} assigned to User ID {user_id}")
             return updated
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Failed to assign shift {shift_id} to user {user_id}: {e}")
         return False
@@ -3797,18 +3824,20 @@ def get_detailed_attendance_report(
             cursor.execute("SELECT id, name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes, working_days FROM shifts")
             all_shifts_lookup = {r['id']: dict(r) for r in cursor.fetchall()}
 
-            # One range query, aggregated in Python (avoids six correlated subqueries per day).
+            # ATT-01: Sargable range query using indexed timestamp boundaries
+            start_ts = f"{start_date} 00:00:00"
+            end_ts = f"{end_date} 23:59:59.999999"
             cursor.execute(
                 f'''
                 SELECT user_id, timestamp, location, device_id, checkout_location, checkout_camera_id,
                        source, notes, marked_by, shift_id
                 FROM attendance
                 WHERE user_id IN ({placeholders})
-                  AND date(timestamp) >= ?
-                  AND date(timestamp) <= ?
+                  AND timestamp >= ?
+                  AND timestamp <= ?
                 ORDER BY user_id, timestamp
                 ''',
-                (*user_ids, start_date, end_date),
+                (*user_ids, start_ts, end_ts),
             )
             att_map = {}
             for raw in cursor.fetchall():
@@ -4058,6 +4087,9 @@ def get_detailed_attendance_report(
 
                     # Priority order: Actual Face Attendance > Approved Leave > Manual Absent override only when no attendance exists > Unexcused Absence
                     if att:
+                        # LV-05: If employee actually worked on an approved leave day, ensure entitlement is restored
+                        if leave_info:
+                            _restore_worked_leave_if_applicable(cursor, uid, cur_date)
                         first_seen = att['first_seen']
                         raw_last_seen = att['last_seen']
                         last_seen = None
@@ -6232,9 +6264,43 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
                     half_allowance = int(lt.get('half_leave_allowance_count') or 0)
                     half_leave_remaining = max(0, half_allowance - half_leave_count) if lt.get('half_leave_mode') == 'separate' else None
 
+                    # LV-08: Distinguish standard entitlement from employee-specific and request-specific quota overrides
+                    standard_quota = float(lt.get('yearly_allowance') or 0.0)
+                    allocated_override = round(alloc - standard_quota, 2) if alloc != standard_quota else 0.0
+
+                    cursor.execute("""
+                        SELECT id, start_date, end_date, quota_days, paid_days, leave_type, reason
+                        FROM leave_requests
+                        WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved')
+                          AND (leave_type = ? OR leave_type = ? OR leave_type = 'excess_paid')
+                          AND end_date >= ? AND start_date <= ?
+                          AND (
+                              (paid_days > quota_days AND quota_days IS NOT NULL)
+                              OR leave_type = 'excess_paid'
+                          )
+                    """, (u['id'], lt['code'], lt['name'], cycle_start, cycle_end))
+                    req_overrides = []
+                    request_override_days = 0.0
+                    for ro in cursor.fetchall():
+                        o_days = float((ro['paid_days'] or 0) - (ro['quota_days'] or 0)) if ro['leave_type'] != 'excess_paid' else float(ro['paid_days'] or 0)
+                        if o_days > 0:
+                            request_override_days += o_days
+                            req_overrides.append({
+                                'request_id': ro['id'],
+                                'start_date': ro['start_date'],
+                                'end_date': ro['end_date'],
+                                'override_days': o_days,
+                                'reason': ro['reason'] or ''
+                            })
+                    total_override_days = round(max(allocated_override, 0.0) + request_override_days, 2)
+
                     u_balances['balances'][lt['code']] = {
                         'type_name': lt['name'],
+                        'standard_quota': standard_quota,
                         'allocated': alloc,
+                        'allocated_override': allocated_override,
+                        'request_overrides': req_overrides,
+                        'total_override_days': total_override_days,
                         'used': used_val,
                         'remaining': max(0.0, alloc - used_val),
                         'half_leave_count': half_leave_count,
@@ -7119,6 +7185,7 @@ def update_overtime_status(
     approved_by: str = 'Admin',
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
+    rejection_reason: Optional[str] = None,
 ) -> bool:
     """Finalize a pending overtime record without allowing later status changes."""
     try:
@@ -7130,9 +7197,9 @@ def update_overtime_status(
             ).fetchone()
             if row:
                 raise_if_payroll_month_locked(str(row[0])[:10], row[1], row[2])
-            query = """UPDATE overtime SET status = ?, approved_by = ?
+            query = """UPDATE overtime SET status = ?, approved_by = ?, rejection_reason = COALESCE(?, rejection_reason)
                        WHERE id = ? AND LOWER(COALESCE(status, 'pending')) = 'pending'"""
-            params: List[Any] = [status, approved_by, ot_id]
+            params: List[Any] = [status, approved_by, rejection_reason, ot_id]
             if organization_id is not None:
                 query += """ AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
                              AND EXISTS (SELECT 1 FROM users u WHERE u.id = overtime.user_id
@@ -10019,7 +10086,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             )
         else:
             matched_rule_label = 'No absence deduction' if unexcused_absent_days == 0 else 'No matching rule'
-        paid_leave_days = approved_leave_days
+        # PAY-02: Include only leave actually taken through the live period window in payroll
+        paid_leave_days = approved_leave_days_period
         total_leave_days = paid_leave_days + unpaid_leave_days
         package = basic_salary + allowances
         earn_div = float(month_scheduled_workdays or 0)
@@ -10055,6 +10123,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'calendar_details': calendar_details,
             'present_days': present_days,
             'half_leave_count': half_leave_count,
+            'equivalent_half_leave_days': round(half_leave_count * 0.5, 2),
             'half_leave_deduction': half_leave_deduction,
             'matched_half_leave_rule': (
                 f"{matched_half_leave_rule['min_absent_days']}+ half-leave occurrences"
@@ -10064,7 +10133,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             ),
             'absent_days': absent_days,
             'late_days': late_days,
-            'approved_leave_days': approved_leave_days,
+            'approved_leave_days': approved_leave_days_period,
             'paid_leave_days': paid_leave_days,
             'unpaid_leave_days': unpaid_leave_days,
             'unpaid_leave_deduction': unpaid_leave_deduction,

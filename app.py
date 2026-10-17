@@ -2753,10 +2753,14 @@ def api_assign_user_shift(user_id):
         if not shift_id:
             return jsonify({'error': 'Shift ID is required'}), 400
         effective_from = data.get('effective_from')
-        success = db.assign_user_shift(user_id, int(shift_id), effective_from)
+        confirm_shift_reclassify = bool(data.get('confirm_shift_reclassify'))
+        success = db.assign_user_shift(user_id, int(shift_id), effective_from, confirm_shift_reclassify=confirm_shift_reclassify)
         if success:
             return jsonify({'success': True, 'message': f'Shift assigned to User #{user_id}', 'effective_from': effective_from}), 200
         return jsonify({'error': 'User not found or shift assignment failed'}), 400
+    except ValueError as exc:
+        status = 409 if str(exc) == db.PAYROLL_LOCK_MESSAGE or 'reclassifies' in str(exc) else 400
+        return jsonify({'error': str(exc), 'field': 'effective_from'}), status
     except Exception as e:
         logger.error(f"API assign user shift error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -5722,6 +5726,7 @@ def api_update_overtime(ot_id):
                 'error': 'This overtime was not approved because the employee was absent on the following workday.'
             }), 409
 
+    rejection_reason = data.get('rejection_reason')
     try:
         success = db.update_overtime_status(
             ot_id,
@@ -5729,6 +5734,7 @@ def api_update_overtime(ot_id):
             approved_by=approved_by,
             organization_id=current_tenant,
             branch_id=current_branch,
+            rejection_reason=rejection_reason,
         )
     except ValueError as exc:
         if str(exc) == db.PAYROLL_LOCK_MESSAGE:
@@ -5795,6 +5801,7 @@ def api_bulk_approve_overtime():
                 approved_by=approved_by,
                 organization_id=current_tenant,
                 branch_id=current_branch,
+                rejection_reason=data.get('rejection_reason'),
             )
             if ok:
                 updated.append(ot_id)
