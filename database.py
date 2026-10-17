@@ -3035,6 +3035,51 @@ def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> 
         return False
 
 
+def _unrestore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> bool:
+    """
+    ATT-02: When attendance changes from Present to Absent, reverse any previous leave restoration
+    for that date so leave deduction and leave balances remain consistent.
+    """
+    try:
+        month_str = log_date[:7]
+        org_id, branch_id = _user_tenant(cursor, user_id)
+        if payroll_month_is_finalized(month_str, org_id, branch_id):
+            return False
+
+        cursor.execute("""
+            SELECT id, status, restored_dates
+            FROM leave_requests
+            WHERE user_id = ?
+              AND start_date <= ? AND end_date >= ?
+        """, (user_id, log_date, log_date))
+        rows = cursor.fetchall()
+        for lr in rows:
+            if isinstance(lr, (tuple, list)):
+                leave_id = lr[0]
+                lr_status = lr[1]
+                lr_restored_dates = lr[2]
+            else:
+                leave_id = lr['id']
+                lr_status = lr['status']
+                lr_restored_dates = lr['restored_dates']
+
+            restored = [d.strip() for d in str(lr_restored_dates or '').split(',') if d.strip()]
+            if log_date in restored:
+                restored.remove(log_date)
+                restored_str = ','.join(sorted(restored))
+                new_status = 'approved' if lr_status == 'cancelled_worked' else lr_status
+                cursor.execute("""
+                    UPDATE leave_requests
+                    SET restored_dates = ?, status = ?
+                    WHERE id = ?
+                """, (restored_str, new_status, leave_id))
+                logger.info(f"ATT-02: Re-applied leave deduction for user #{user_id} on {log_date} (removed from restored_dates of leave #{leave_id})")
+        return True
+    except Exception as e:
+        logger.error(f"Error un-restoring leave for user {user_id} on {log_date}: {e}")
+        return False
+
+
 def log_attendance(user_id: int, detected_name: str, confidence: float, source: str = 'camera', location: str | None = None, device_id: str | None = None, bypass_shift_check: bool = False, checkout_camera_id: str | None = None, checkout_location: str | None = None, attendance_time: Optional[datetime] = None) -> Tuple[bool, str]:
     """Log attendance detection with room location, device ID, and shift grace period verification."""
     if attendance_time is None:
@@ -3505,9 +3550,37 @@ def get_detailed_attendance_report(
                 if ' to ' in td_str:
                     s_part, e_part = td_str.split(' to ', 1)
                     start_date, end_date = s_part.strip(), e_part.strip()
-                elif ' - ' in td_str and not td_str.startswith('-'):
+                elif ' - ' in td_str and not td_str.startswith('-') and len(td_str) > 7:
                     s_part, e_part = td_str.split(' - ', 1)
                     start_date, end_date = s_part.strip(), e_part.strip()
+                elif len(td_str) == 7 and td_str.count('-') == 1:
+                    try:
+                        m_dt = datetime.strptime(td_str, "%Y-%m").date()
+                        start_date = m_dt.strftime("%Y-%m-01")
+                        if m_dt.month == 12:
+                            next_m = m_dt.replace(year=m_dt.year + 1, month=1)
+                        else:
+                            next_m = m_dt.replace(month=m_dt.month + 1)
+                        end_date = (next_m - timedelta(days=1)).strftime("%Y-%m-%d")
+                    except ValueError:
+                        start_date = td_str
+                        end_date = td_str
+                elif td_str.lower() in [
+                    'january', 'february', 'march', 'april', 'may', 'june',
+                    'july', 'august', 'september', 'october', 'november', 'december'
+                ]:
+                    try:
+                        cur_year = datetime.now().year
+                        m_dt = datetime.strptime(f"{td_str} {cur_year}", "%B %Y").date()
+                        start_date = m_dt.strftime("%Y-%m-01")
+                        if m_dt.month == 12:
+                            next_m = m_dt.replace(year=m_dt.year + 1, month=1)
+                        else:
+                            next_m = m_dt.replace(month=m_dt.month + 1)
+                        end_date = (next_m - timedelta(days=1)).strftime("%Y-%m-%d")
+                    except ValueError:
+                        start_date = td_str
+                        end_date = td_str
                 else:
                     start_date = td_str
                     end_date = td_str
@@ -3800,13 +3873,15 @@ def get_detailed_attendance_report(
             for u in users:
                 d = u['department'] or 'General / Unassigned'
                 if d not in dept_stats:
-                    dept_stats[d] = {'total_staff': 0, 'attended_staff': 0, 'present_days': 0, 'absent_days': 0, 'late_days': 0}
+                    dept_stats[d] = {'total_staff': 0, 'attended_staff': 0, 'present_days': 0, 'absent_days': 0, 'late_days': 0, 'paid_leave_days': 0, 'unpaid_leave_days': 0}
                 dept_stats[d]['total_staff'] += 1
 
             records = []
             total_present_days_all = 0
             total_late_days_all = 0
             total_absent_days_all = 0
+            total_paid_leave_days_all = 0
+            total_unpaid_leave_days_all = 0
             attended_users_count = 0
 
             for u in users:
@@ -3822,6 +3897,7 @@ def get_detailed_attendance_report(
                 emp_absent_days = 0
                 emp_working_days = 0
                 emp_leave_days = 0
+                emp_unpaid_leave_days = 0
 
                 for cur_date in date_list:
                     while history_index < len(shift_history) and shift_history[history_index]['effective_from'] <= cur_date:
@@ -3983,7 +4059,7 @@ def get_detailed_attendance_report(
                             emp_leave_days += 1
                         else:
                             status = 'on_leave_unpaid'
-                            emp_absent_days += 1
+                            emp_unpaid_leave_days += 1
                         first_seen = None
                         last_seen = None
                         loc = '-'
@@ -4027,6 +4103,32 @@ def get_detailed_attendance_report(
                             emp_absent_days += 1
                             emp_working_days += 1
 
+                    # ATT-04: Determine Day Type from existing sources
+                    day_type = None
+                    if override_type == 'holiday':
+                        day_type = 'Public Holiday'
+                    elif (uid, cur_date) in leave_map:
+                        day_type = 'Leave Day'
+                    elif not is_scheduled_workday or override_type == 'off_day':
+                        day_type = 'Rest Day'
+                    else:
+                        day_type = 'Regular Working Day'
+
+                    # Presentation status display (ATT-04: Present — Public Holiday / Leave Day / Rest Day)
+                    if att:
+                        base_st = 'Present' if status == 'present' else ('Late' if status == 'late' else 'Checked Out')
+                        if day_type in ('Public Holiday', 'Leave Day', 'Rest Day'):
+                            status_display_val = f"{base_st} — {day_type}"
+                        elif half_leave_active or (leave_info and leave_info.get('is_half_leave')):
+                            status_display_val = f"{base_st.upper()} + HALF LEAVE"
+                        else:
+                            status_display_val = base_st.upper()
+                    else:
+                        if half_leave_active or (leave_info and leave_info.get('is_half_leave')):
+                            status_display_val = f"{status.upper().replace('_', ' ')} + HALF LEAVE"
+                        else:
+                            status_display_val = status.upper().replace('_', ' ')
+
                     day_source = att.get('source', 'manual' if is_manual_absent else 'auto') if att is not None else ('manual' if is_manual_absent else 'auto')
                     day_marked_by = (att.get('marked_by', 'Admin') if att and att.get('source') == 'manual' else ('Admin' if is_manual_absent else 'System')) if att is not None or is_manual_absent else 'System'
                     if str(day_source).lower() == 'manual':
@@ -4040,6 +4142,7 @@ def get_detailed_attendance_report(
                         'date_formatted': dt_obj.strftime("%d %b %Y"),
                         'day': day_name,
                         'status': status,
+                        'day_type': day_type,
                         'scheduled_workday': is_scheduled_workday,
                         'shift_history_missing': not schedule_known,
                         'calendar_override': override_type,
@@ -4050,7 +4153,7 @@ def get_detailed_attendance_report(
                             'scheduled_working_day' if is_scheduled_workday else
                             'non_working_day' if schedule_known else 'schedule_unknown'
                         ),
-                        'status_display': f"{status.upper().replace('_', ' ')} + HALF LEAVE" if (half_leave_active or (leave_info and leave_info.get('is_half_leave'))) else status.upper().replace('_', ' '),
+                        'status_display': status_display_val,
                         'half_leave_count': 1 if (half_leave_active or (leave_info and leave_info.get('is_half_leave'))) else 0,
                         'half_leave_type': leave_info.get('leave_type') if (leave_info and leave_info.get('is_half_leave')) else None,
                         'is_half_leave': bool(half_leave_active or (leave_info and leave_info.get('is_half_leave'))),
@@ -4080,10 +4183,14 @@ def get_detailed_attendance_report(
                 dept_stats[dept]['present_days'] += emp_present_days
                 dept_stats[dept]['absent_days'] += emp_absent_days
                 dept_stats[dept]['late_days'] += emp_late_days
+                dept_stats[dept]['paid_leave_days'] += emp_leave_days
+                dept_stats[dept]['unpaid_leave_days'] += emp_unpaid_leave_days
 
                 total_present_days_all += emp_present_days
                 total_late_days_all += emp_late_days
                 total_absent_days_all += emp_absent_days
+                total_paid_leave_days_all += emp_leave_days
+                total_unpaid_leave_days_all += emp_unpaid_leave_days
 
                 effective_working_days = max(emp_working_days, 1) if emp_working_days > 0 else total_days
                 emp_rate = round((emp_present_days / effective_working_days * 100), 1) if effective_working_days > 0 else 0.0
@@ -4122,11 +4229,11 @@ def get_detailed_attendance_report(
                         continue
 
                 if is_multi_day:
-                    # ONE ROW PER EMPLOYEE
-                    unpaid_leave_days = sum(1 for day in emp_daily_records if day.get('status') == 'on_leave_unpaid')
+                    # ONE ROW PER EMPLOYEE (ATT-03: unique classification per day)
+                    unpaid_leave_days = emp_unpaid_leave_days
                     total_leave_days = emp_leave_days + unpaid_leave_days
-                    consistent_working_days = max(emp_working_days, emp_present_days + total_leave_days)
-                    consistent_absent_days = max(0, consistent_working_days - emp_present_days - total_leave_days)
+                    consistent_working_days = emp_working_days
+                    consistent_absent_days = emp_absent_days
                     records.append({
                         'user_id': uid,
                         'name': u['name'],
@@ -4152,7 +4259,7 @@ def get_detailed_attendance_report(
                         'paid_leave_days': emp_leave_days,
                         'unpaid_leave_days': unpaid_leave_days,
                         'total_leave_days': total_leave_days,
-                        'payable_days': min(consistent_working_days, emp_present_days + emp_late_days + emp_leave_days),
+                        'payable_days': min(consistent_working_days, emp_present_days + emp_leave_days),
                         'attendance_rate': emp_rate,
                         'present_display': f"{emp_present_days} / {consistent_working_days}",
                         'absent_display': f"{consistent_absent_days} / {consistent_working_days}",
@@ -4161,6 +4268,7 @@ def get_detailed_attendance_report(
                 else:
                     # Single day view: 1 row for that day
                     day_entry = emp_daily_records[0] if emp_daily_records else {}
+                    st_val = day_entry.get('status', 'absent')
                     records.append({
                         'user_id': uid,
                         'name': u['name'],
@@ -4177,7 +4285,9 @@ def get_detailed_attendance_report(
                         'photo_path': u['photo_path'],
                         'checkin_cameras': u['checkin_cameras'],
                         'checkout_cameras': u['checkout_cameras'],
-                        'status': day_entry.get('status', 'absent'),
+                        'status': st_val,
+                        'day_type': day_entry.get('day_type'),
+                        'status_display': day_entry.get('status_display'),
                         'shift_id': day_entry.get('shift_id') or u['shift_id'],
                         'first_seen': day_entry.get('first_seen'),
                         'last_seen': day_entry.get('last_seen'),
@@ -4191,10 +4301,14 @@ def get_detailed_attendance_report(
                         'source': day_entry.get('source', 'auto'),
                         'marked_by': day_entry.get('marked_by', 'System'),
                         'notes': day_entry.get('notes', ''),
-                        'paid_leave_days': int(day_entry.get('status') == 'on_leave'),
-                        'unpaid_leave_days': int(day_entry.get('status') == 'on_leave_unpaid'),
-                        'total_leave_days': int(day_entry.get('status') in ('on_leave', 'on_leave_unpaid')),
-                        'leave_days': int(day_entry.get('status') in ('on_leave', 'on_leave_unpaid')),
+                        'paid_leave_days': int(st_val == 'on_leave'),
+                        'unpaid_leave_days': int(st_val == 'on_leave_unpaid'),
+                        'total_leave_days': int(st_val in ('on_leave', 'on_leave_unpaid')),
+                        'leave_days': int(st_val in ('on_leave', 'on_leave_unpaid')),
+                        'present_days': int(st_val in ('present', 'late', 'checked_out')),
+                        'absent_days': int(st_val == 'absent'),
+                        'payable_days': int(st_val in ('present', 'late', 'checked_out', 'on_leave')),
+                        'working_days': int(bool(day_entry.get('scheduled_workday'))),
                         'date': start_date,
                         'daily_records': emp_daily_records
                     })
@@ -4220,6 +4334,8 @@ def get_detailed_attendance_report(
                     'absent': ddata['absent_days'],
                     'late_days': ddata['late_days'],
                     'late': ddata['late_days'],
+                    'paid_leave_days': ddata.get('paid_leave_days', 0),
+                    'unpaid_leave_days': ddata.get('unpaid_leave_days', 0),
                     'attendance_rate': d_rate
                 })
 
@@ -4239,8 +4355,11 @@ def get_detailed_attendance_report(
                     'unpaid_leave_days': record.get('unpaid_leave_days', 0),
                     'total_leave_days': record.get('total_leave_days', record.get('leave_days', 0)),
                     'payable_days': record.get('payable_days', 0),
+                    'working_days': record.get('working_days', 0),
                     'attendance_rate': record.get('attendance_rate', 0.0),
                     'status': record.get('status', 'absent'),
+                    'day_type': record.get('day_type'),
+                    'status_display': record.get('status_display'),
                 }
 
             date_label = start_date if not is_multi_day else f"{start_date} to {end_date}"
@@ -4271,6 +4390,8 @@ def get_detailed_attendance_report(
                     'late': total_late_days_all,
                     'total_absent_days': total_absent_days_all,
                     'absent': total_absent_days_all,
+                    'total_paid_leave_days': total_paid_leave_days_all,
+                    'total_unpaid_leave_days': total_unpaid_leave_days_all,
                     'attendance_rate': overall_rate,
                     'employees': employee_summary,
                 },
@@ -4391,17 +4512,18 @@ def mark_user_absent_today(user_id: int, target_date: Optional[str] = None, orga
             if organization_id and organization_id != 'all':
                 if organization_id != 'DEFAULT_ORG' and user_org != organization_id:
                     return False
+            actual_date = target_date[:10] if target_date else datetime.now().date().isoformat()
             if target_date:
                 cursor.execute('''
                     DELETE FROM attendance 
                     WHERE user_id = ? AND date(timestamp) = ?
-                ''', (user_id, target_date))
+                ''', (user_id, actual_date))
                 deleted_count = cursor.rowcount
 
                 cursor.execute('''
                     INSERT OR REPLACE INTO manual_absent (user_id, date, organization_id, branch_id)
                     VALUES (?, ?, ?, ?)
-                ''', (user_id, target_date, user_org, user_branch))
+                ''', (user_id, actual_date, user_org, user_branch))
             else:
                 cursor.execute('''
                     DELETE FROM attendance 
@@ -4413,6 +4535,29 @@ def mark_user_absent_today(user_id: int, target_date: Optional[str] = None, orga
                     INSERT OR REPLACE INTO manual_absent (user_id, date, organization_id, branch_id)
                     VALUES (?, date('now', 'localtime'), ?, ?)
                 ''', (user_id, user_org, user_branch))
+
+            # ATT-02: Re-apply leave deduction if this date was previously restored when employee was marked Present
+            _unrestore_worked_leave_if_applicable(cursor, user_id, actual_date)
+
+            # OT-01: When attendance becomes Absent, remove pending automatically generated overtime
+            # Manual overtime requests and approved overtime records are preserved untouched
+            cursor.execute("""
+                SELECT id, status, reason
+                FROM overtime
+                WHERE user_id = ? AND ot_date = ?
+            """, (user_id, actual_date))
+            for ot_row in cursor.fetchall():
+                ot_id = ot_row[0] if isinstance(ot_row, (tuple, list)) else ot_row['id']
+                ot_st = (ot_row[1] if isinstance(ot_row, (tuple, list)) else ot_row['status'] or 'pending').lower()
+                ot_reason = str(ot_row[2] if isinstance(ot_row, (tuple, list)) else ot_row['reason'] or '')
+                is_auto = (
+                    ot_reason.startswith('Automatic camera checkout') or
+                    ot_reason.startswith('Manual attendance checkout')
+                )
+                if is_auto and ot_st == 'pending':
+                    cursor.execute("DELETE FROM overtime WHERE id = ?", (ot_id,))
+                    logger.info(f"OT-01: Removed automatic pending overtime ID #{ot_id} for user #{user_id} on {actual_date} due to absent status")
+
             conn.commit()
         logger.info(f"✓ Manually marked user ID {user_id} absent for {target_date or 'today'} (removed {deleted_count} logs, recorded manual_absent)")
         return True
@@ -9437,7 +9582,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 approved_leave_days += 0.5
 
         half_leave_count = sum(int(day.get('half_leave_count') or 0) for day in eligible_records)
-        absent_days = unexcused_absent_days + unpaid_leave_days
+        absent_days = unexcused_absent_days
         payable_days = min(float(scheduled_workdays), round(present_days + late_days + approved_leave_days_period, 2))
         
         proration_factor = _payroll_proration_factor(

@@ -1303,7 +1303,14 @@
             document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
             
             const customGroup = document.getElementById('customRangeGroup');
-            if (customGroup) customGroup.classList.remove('show');
+            const sInput = document.getElementById('startDate');
+            const eInput = document.getElementById('endDate');
+
+            if (preset !== 'custom') {
+                if (customGroup) customGroup.classList.remove('show');
+                if (sInput) sInput.value = '';
+                if (eInput) eInput.value = '';
+            }
 
             if (preset === 'today') {
                 document.getElementById('btnToday')?.classList.add('active');
@@ -1321,8 +1328,6 @@
                 document.getElementById('btnCustom')?.classList.add('active');
                 if (customGroup) customGroup.classList.add('show');
 
-                const sInput = document.getElementById('startDate');
-                const eInput = document.getElementById('endDate');
                 if (sInput && eInput && (!sInput.value || !eInput.value)) {
                     const now = new Date();
                     const year = now.getFullYear();
@@ -1351,10 +1356,10 @@
             if (camera !== 'all') params.append('camera_id', camera);
             if (search) params.append('search', search);
 
-            const s = document.getElementById('startDate')?.value;
-            const e = document.getElementById('endDate')?.value;
+            const s = document.getElementById('startDate')?.value?.trim();
+            const e = document.getElementById('endDate')?.value?.trim();
 
-            if (currentFilterDate === 'custom' || (s && e)) {
+            if (currentFilterDate === 'custom') {
                 if (s && e) {
                     params.append('start_date', s <= e ? s : e);
                     params.append('end_date', s <= e ? e : s);
@@ -1379,6 +1384,8 @@
                 params.append('date', 'this_month');
             } else if (currentFilterDate === 'last30') {
                 params.append('date', 'last30');
+            } else if (currentFilterDate) {
+                params.append('date', currentFilterDate);
             } else {
                 params.append('date', 'today');
             }
@@ -1450,6 +1457,8 @@
             if (shift) shift.value = 'all';
             const status = document.getElementById('statusFilter');
             if (status) status.value = 'all';
+            const camera = document.getElementById('cameraFilter');
+            if (camera) camera.value = 'all';
             const search = document.getElementById('searchInput');
             if (search) search.value = '';
 
@@ -1666,12 +1675,24 @@
                     // SINGLE DAY VIEW
                     let statusBadge = '';
                     const st = (r.status || 'absent').toLowerCase();
+                    const dayType = r.day_type;
+                    const isPresentType = ['present', 'late', 'checked_out'].includes(st);
+                    const dayTypeSuffix = (isPresentType && dayType && ['Public Holiday', 'Leave Day', 'Rest Day'].includes(dayType)) ? ` — ${dayType}` : '';
+
                     if (st === 'present') {
-                        statusBadge = `<span class="status-pill present"><i class="fa-solid fa-circle-check"></i> Present</span>`;
+                        statusBadge = `<span class="status-pill present"><i class="fa-solid fa-circle-check"></i> Present${dayTypeSuffix}</span>`;
                     } else if (st === 'late') {
-                        statusBadge = `<span class="status-pill late"><i class="fa-solid fa-clock"></i> Late</span>`;
+                        statusBadge = `<span class="status-pill late"><i class="fa-solid fa-clock"></i> Late${dayTypeSuffix}</span>`;
                     } else if (st === 'checked_out') {
-                        statusBadge = `<span class="status-pill present" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3);"><i class="fa-solid fa-arrow-right-from-bracket"></i> Checked Out</span>`;
+                        statusBadge = `<span class="status-pill present" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3);"><i class="fa-solid fa-arrow-right-from-bracket"></i> Checked Out${dayTypeSuffix}</span>`;
+                    } else if (st === 'on_leave') {
+                        statusBadge = `<span class="status-pill" style="background:rgba(20,184,166,0.15); color:#2dd4bf; border:1px solid rgba(20,184,166,0.3);"><i class="fa-solid fa-envelope-open-text"></i> On Leave</span>`;
+                    } else if (st === 'on_leave_unpaid') {
+                        statusBadge = `<span class="status-pill" style="background:rgba(244,63,94,0.15); color:#fb7185; border:1px solid rgba(244,63,94,0.3);"><i class="fa-solid fa-envelope-open-text"></i> Unpaid Leave</span>`;
+                    } else if (st === 'holiday') {
+                        statusBadge = `<span class="status-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-umbrella-beach"></i> Holiday</span>`;
+                    } else if (st === 'weekend' || st === 'off_day') {
+                        statusBadge = `<span class="status-pill" style="background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3);"><i class="fa-solid fa-bed"></i> Weekend / Off</span>`;
                     } else {
                         statusBadge = `<span class="status-pill absent"><i class="fa-solid fa-circle-xmark"></i> Absent</span>`;
                     }
@@ -1766,18 +1787,25 @@
                 dailyRecords.forEach(d => {
                     const tr = document.createElement('tr');
                     const st = (d.status || 'absent').toLowerCase();
+                    const dayType = d.day_type;
+                    const isPresentType = ['present', 'late', 'checked_out'].includes(st);
+                    const dayTypeSuffix = (isPresentType && dayType && ['Public Holiday', 'Leave Day', 'Rest Day'].includes(dayType)) ? ` — ${dayType}` : '';
                     let stBadge = '';
 
                     if (st === 'present') {
-                        stBadge = `<span class="status-pill present"><i class="fa-solid fa-circle-check"></i> Present</span>`;
+                        stBadge = `<span class="status-pill present"><i class="fa-solid fa-circle-check"></i> Present${dayTypeSuffix}</span>`;
                     } else if (st === 'late') {
-                        stBadge = `<span class="status-pill late"><i class="fa-solid fa-clock"></i> Late</span>`;
+                        stBadge = `<span class="status-pill late"><i class="fa-solid fa-clock"></i> Late${dayTypeSuffix}</span>`;
                     } else if (st === 'checked_out') {
-                        stBadge = `<span class="status-pill present" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3);"><i class="fa-solid fa-arrow-right-from-bracket"></i> Checked Out</span>`;
-                    } else if (st === 'weekend') {
+                        stBadge = `<span class="status-pill present" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3);"><i class="fa-solid fa-arrow-right-from-bracket"></i> Checked Out${dayTypeSuffix}</span>`;
+                    } else if (st === 'weekend' || st === 'off_day') {
                         stBadge = `<span class="status-pill" style="background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3);"><i class="fa-solid fa-bed"></i> Weekend / Off</span>`;
+                    } else if (st === 'holiday') {
+                        stBadge = `<span class="status-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-umbrella-beach"></i> Holiday</span>`;
                     } else if (st === 'on_leave') {
                         stBadge = `<span class="status-pill" style="background:rgba(20,184,166,0.15); color:#2dd4bf; border:1px solid rgba(20,184,166,0.3);"><i class="fa-solid fa-envelope-open-text"></i> On Leave</span>`;
+                    } else if (st === 'on_leave_unpaid') {
+                        stBadge = `<span class="status-pill" style="background:rgba(244,63,94,0.15); color:#fb7185; border:1px solid rgba(244,63,94,0.3);"><i class="fa-solid fa-envelope-open-text"></i> Unpaid Leave</span>`;
                     } else {
                         stBadge = `<span class="status-pill absent"><i class="fa-solid fa-circle-xmark"></i> Absent</span>`;
                     }
