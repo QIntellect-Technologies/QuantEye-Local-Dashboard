@@ -1346,6 +1346,11 @@ def init_db():
             cloud_pg.bootstrap_cloud_postgres()
         except Exception as error:
             logger.warning("Cloud Postgres bootstrap skipped: %s", error)
+        try:
+            from cloud_seed import ensure_cloud_mercury_seeded
+            ensure_cloud_mercury_seeded(DB_PATH)
+        except Exception as error:
+            logger.warning("Cloud seed skipped: %s", error)
         return True
     except Exception as e:
         logger.exception("Database initialization failed: %s", e)
