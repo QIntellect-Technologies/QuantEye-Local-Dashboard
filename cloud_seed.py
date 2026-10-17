@@ -60,7 +60,8 @@ def ensure_cloud_mercury_seeded(db_path=None, force=False):
         org_id = target['org_id']
         org_name = target['org_name']
         try:
-            with sqlite3.connect(db_path) as conn:
+            with sqlite3.connect(db_path, timeout=60.0) as conn:
+                conn.execute("PRAGMA busy_timeout = 60000")
                 c = conn.cursor()
                 try:
                     c.execute("SELECT COUNT(*) FROM departments WHERE organization_id = ?", (org_id,))
@@ -69,13 +70,13 @@ def ensure_cloud_mercury_seeded(db_path=None, force=False):
                     c.execute("SELECT COUNT(*) FROM designations WHERE organization_id = ?", (org_id,))
                     desig_count = c.fetchone()[0]
 
-                    c.execute("SELECT COUNT(*) FROM attendance WHERE organization_id = ?", (org_id,))
-                    att_count = c.fetchone()[0]
+                    c.execute("SELECT COUNT(*) FROM attendance WHERE organization_id = ? AND timestamp >= '2026-10-01'", (org_id,))
+                    oct_count = c.fetchone()[0]
                 except Exception:
                     continue
 
-                # If departments, designations and proper check-in/out records (att_count >= 15000) exist, skip
-                if not force and dept_count >= 5 and desig_count >= 15 and att_count >= 15000:
+                # If departments, designations and October attendance exist, skip
+                if not force and dept_count >= 5 and desig_count >= 15 and oct_count >= 2000:
                     continue
 
             print(f"[CloudSeed] Running End-to-End Workforce Seeding for {org_name} ({org_id})...")
@@ -95,7 +96,7 @@ def _execute_seed_for_org(db_path, target):
     import database
     import payroll_extensions
 
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path, timeout=60.0) as conn:
         c = conn.cursor()
         payroll_extensions.ensure_payroll_extension_tables(c)
 
@@ -356,7 +357,7 @@ def _execute_seed_for_org(db_path, target):
     # -------------------------------------------------------------
     # 7. EMPLOYEES: BUILD OR MAP TO DEPARTMENTS & DESIGNATIONS
     # -------------------------------------------------------------
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path, timeout=60.0) as conn:
         c = conn.cursor()
         c.execute("SELECT COUNT(*) FROM users WHERE organization_id = ?", (org_id,))
         current_emp_count = c.fetchone()[0]
@@ -386,7 +387,7 @@ def _execute_seed_for_org(db_path, target):
         used_emails = set()
         used_cnics = set()
 
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(db_path, timeout=60.0) as conn:
             c = conn.cursor()
             for r in c.execute("SELECT email, cnic FROM users WHERE organization_id = ?", (org_id,)).fetchall():
                 if r[0]: used_emails.add(r[0].lower())
@@ -457,7 +458,7 @@ def _execute_seed_for_org(db_path, target):
                 })
                 emp_idx += 1
 
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(db_path, timeout=60.0) as conn:
             c = conn.cursor()
             pwd = generate_password_hash(f"{clean_org_prefix.capitalize()}Emp2026!")
             now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -494,7 +495,7 @@ def _execute_seed_for_org(db_path, target):
             conn.commit()
 
     # Align ALL existing and new users with valid departments, designations, and salary_configs
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path, timeout=60.0) as conn:
         c = conn.cursor()
         c.execute("SELECT id, name, salary, join_date, exit_date, department, position FROM users WHERE organization_id = ?", (org_id,))
         all_users = c.fetchall()
@@ -533,7 +534,7 @@ def _execute_seed_for_org(db_path, target):
     # -------------------------------------------------------------
     # 8. ASSIGN ALL 9 PAYROLL EXTENSION COMPONENTS & ADJUSTMENTS
     # -------------------------------------------------------------
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path, timeout=60.0) as conn:
         c = conn.cursor()
         c.execute("DELETE FROM payroll_employee_components WHERE organization_id = ?", (org_id,))
         c.execute("DELETE FROM payroll_adjustments WHERE organization_id = ?", (org_id,))
@@ -615,7 +616,7 @@ def _execute_seed_for_org(db_path, target):
     # -------------------------------------------------------------
     # 9. 3 MONTHS REAL ATTENDANCE (PROPER CHECK-IN & CHECK-OUT)
     # -------------------------------------------------------------
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path, timeout=60.0) as conn:
         c = conn.cursor()
         c.execute("DELETE FROM attendance WHERE organization_id = ?", (org_id,))
         c.execute("DELETE FROM overtime WHERE organization_id = ?", (org_id,))
@@ -625,7 +626,7 @@ def _execute_seed_for_org(db_path, target):
         user_list = c.fetchall()
 
         start_dt = date(2026, 7, 1)
-        end_dt = date(2026, 9, 30)
+        end_dt = max(date(2026, 10, 17), datetime.now().date())
         total_days = (end_dt - start_dt).days + 1
 
         attendance_rows = []
@@ -825,6 +826,18 @@ def _execute_seed_for_org(db_path, target):
             print(f"[CloudSeed] Successfully finalized {pmonth} dynamic payroll for {org_id}!")
         except Exception as p_err:
             print(f"[CloudSeed] Payroll calculation note for {org_id} ({pmonth}): {p_err}")
+
+    # Pre-calculate 2026-10 draft payroll so opening October payroll in the UI is instantaneous
+    try:
+        database.calculate_monthly_payroll(
+            payroll_month='2026-10',
+            organization_id=org_id,
+            branch_id=branch_id,
+            force_recalculate=True
+        )
+        print(f"[CloudSeed] Successfully pre-calculated 2026-10 payroll for {org_id}!")
+    except Exception as oct_err:
+        print(f"[CloudSeed] 2026-10 calculation note for {org_id}: {oct_err}")
 
 if __name__ == '__main__':
     ensure_cloud_mercury_seeded(force=True)

@@ -342,8 +342,11 @@ def enqueue_sync_outbox(
 def init_db():
     """Initialize SQLite database with proper schema, columns, and indexes."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with sqlite3.connect(DB_PATH, timeout=60.0) as conn:
             cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode = WAL")
+            cursor.execute("PRAGMA synchronous = NORMAL")
+            cursor.execute("PRAGMA busy_timeout = 60000")
             cursor.execute("PRAGMA foreign_keys = OFF")
             cursor.execute("PRAGMA legacy_alter_table = ON")
             _repair_legacy_user_foreign_key_references(cursor)
@@ -9695,9 +9698,10 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
     decimal_places = int(payroll_settings.get('decimal_places') or DEFAULT_DECIMAL_PLACES)
     def _m(value):
         return _payroll_money(value, decimal_places)
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=60.0) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
+        cursor.execute("PRAGMA busy_timeout = 60000")
         cursor.execute('''
             SELECT u.id AS employee_id, u.name AS employee_name,
                    COALESCE(u.department, '') AS department,
@@ -10473,9 +10477,10 @@ def get_monthly_payroll(
     branch_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Load a finalized payroll snapshot for a month, if one exists for the specified tenant."""
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=60.0) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
+        cursor.execute("PRAGMA busy_timeout = 60000")
         if organization_id:
             query = """SELECT * FROM payroll_runs
                        WHERE payroll_month = ? AND status = 'Finalized'
@@ -10647,8 +10652,9 @@ def finalize_monthly_payroll(
         missing_names = [row['employee_name'] for row in preview.get('records', []) if row.get('rule_missing')]
         raise ValueError("Configure active payroll rules for: " + ', '.join(missing_names))
     try:
-        with sqlite3.connect(DB_PATH, timeout=30) as conn:
+        with sqlite3.connect(DB_PATH, timeout=60.0) as conn:
             cursor = conn.cursor()
+            cursor.execute("PRAGMA busy_timeout = 60000")
             cursor.execute("BEGIN IMMEDIATE")
             cursor.execute(
                 """SELECT id, status, COALESCE(organization_id, 'DEFAULT_ORG') AS organization_id,
