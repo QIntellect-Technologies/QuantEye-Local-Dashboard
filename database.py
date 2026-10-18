@@ -4230,7 +4230,12 @@ def get_detailed_attendance_report(
                     )
 
                     # TICKET 18/19: Joiner/Exit Pro-Rata
-                    employed_from = (u.get('join_date') or str(u.get('enrollment_date') or '').split(' ')[0] or str(u.get('created_at') or '').split(' ')[0]).strip()
+                    cand_employed_dates = []
+                    for d_raw in (u.get('join_date'), u.get('enrollment_date'), u.get('created_at')):
+                        d_clean = str(d_raw or '').split(' ')[0].split('T')[0].strip()
+                        if d_clean and len(d_clean) >= 10:
+                            cand_employed_dates.append(d_clean[:10])
+                    employed_from = min(cand_employed_dates) if cand_employed_dates else ''
                     exit_date_str = (u.get('exit_date') or '').strip()
                     is_employed_on_date = True
                     if employed_from and cur_date < employed_from:
@@ -10321,8 +10326,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
     rows = []
     for employee in employees:
         employee_id = employee['employee_id']
+        cand_emp = [str(d)[:10] for d in [employee.get('join_date'), employee.get('enrollment_date'), employee.get('created_at'), employee.get('employed_from')] if d and len(str(d).strip()) >= 10]
         try:
-            employed_from = datetime.strptime(str(employee['employed_from'])[:10], "%Y-%m-%d").date()
+            employed_from = datetime.strptime(min(cand_emp), "%Y-%m-%d").date() if cand_emp else month_start
         except (TypeError, ValueError):
             employed_from = month_start
             

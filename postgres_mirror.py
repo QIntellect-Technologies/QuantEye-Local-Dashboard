@@ -489,6 +489,7 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
             cur.execute(
                 """
                 SELECT id, employee_code, name, email, phone, is_active,
+                       shift_id,
                        COALESCE(password_hash, '') as password_hash,
                        COALESCE(mobile_login, 0) as mobile_login,
                        created_at::text as created_at
@@ -512,6 +513,12 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                 pw_hash = row.get("password_hash") or None
                 mob_login = int(row.get("mobile_login", 0) or 0)
                 row_created = str(row.get("created_at") or "").split("+")[0].strip() or None
+                join_date_val = row_created.split()[0] if row_created else None
+                s_id_raw = row.get("shift_id")
+                try:
+                    emp_shift_id = int(str(s_id_raw).strip()) if s_id_raw is not None and str(s_id_raw).strip() != "" else None
+                except (ValueError, TypeError):
+                    emp_shift_id = None
                 exists = sqlite_cur.execute(
                     "SELECT 1 FROM users WHERE id = ? AND organization_id = ? AND branch_id = ?",
                     (user_id, org_id, br_id),
@@ -524,9 +531,12 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             email = COALESCE(?, email),
                             phone = COALESCE(?, phone),
                             active = ?,
+                            shift_id = COALESCE(?, shift_id),
                             password_hash = COALESCE(?, password_hash),
                             mobile_login = MAX(?, COALESCE(mobile_login, 0)),
-                            created_at = COALESCE(?, created_at)
+                            created_at = COALESCE(?, created_at),
+                            join_date = CASE WHEN join_date IS NULL OR join_date = '' OR (join_date > ? AND ? IS NOT NULL) THEN COALESCE(?, join_date) ELSE join_date END,
+                            enrollment_date = CASE WHEN enrollment_date IS NULL OR enrollment_date = '' OR (enrollment_date > ? AND ? IS NOT NULL) THEN COALESCE(?, enrollment_date) ELSE enrollment_date END
                         WHERE id = ? AND organization_id = ?
                         """,
                         (
@@ -534,8 +544,15 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             row.get("email"),
                             row.get("phone"),
                             1 if row.get("is_active", True) else 0,
+                            emp_shift_id,
                             pw_hash,
                             mob_login,
+                            row_created,
+                            join_date_val,
+                            join_date_val,
+                            join_date_val,
+                            row_created,
+                            row_created,
                             row_created,
                             user_id,
                             org_id,
@@ -545,8 +562,8 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                 sqlite_cur.execute(
                     """
                     INSERT INTO users (
-                        id, name, email, phone, notes, active, organization_id, branch_id, password_hash, mobile_login, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, name, email, phone, notes, active, shift_id, organization_id, branch_id, password_hash, mobile_login, created_at, join_date, enrollment_date
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         user_id,
@@ -555,10 +572,13 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                         row.get("phone") or "",
                         row.get("employee_code") or f"EMP-{user_id}",
                         1 if row.get("is_active", True) else 0,
+                        emp_shift_id,
                         org_id,
                         br_id,
                         pw_hash,
                         mob_login,
+                        row_created,
+                        join_date_val,
                         row_created,
                     ),
                 )
@@ -582,6 +602,18 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                     "DELETE FROM attendance WHERE organization_id = ? AND device_id LIKE 'CAM-ORG-%' AND device_id NOT LIKE ?",
                     (org_id, f"%{org_id}%"),
                 )
+                if pg_ids:
+                    placeholders = ",".join("?" for _ in pg_ids)
+                    # Purge any stale attendance rows belonging to other tenants mapped to this org's user IDs
+                    sqlite_cur.execute(
+                        f"DELETE FROM attendance WHERE user_id IN ({placeholders}) AND organization_id IS NOT NULL AND organization_id != ? AND organization_id != 'DEFAULT_ORG'",
+                        (*pg_ids, org_id),
+                    )
+                    # Backfill organization_id for any orphan attendance records of this tenant's users
+                    sqlite_cur.execute(
+                        f"UPDATE attendance SET organization_id = ?, branch_id = COALESCE(branch_id, ?) WHERE user_id IN ({placeholders}) AND (organization_id IS NULL OR organization_id = '' OR organization_id = 'DEFAULT_ORG') AND (device_id IS NULL OR device_id NOT LIKE 'CAM-ORG-%' OR device_id LIKE ?)",
+                        (org_id, br_id, *pg_ids, f"%{org_id}%"),
+                    )
             sqlite_conn.commit()
         if inserted:
             logger.info(
