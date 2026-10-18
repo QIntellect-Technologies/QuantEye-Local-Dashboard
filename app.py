@@ -3775,7 +3775,8 @@ def api_client_login():
             headers={"Content-Type": "application/json"},
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=4.0) as resp:
+        auth_timeout = float(os.environ.get("CLIENT_AUTH_TIMEOUT", "12.0"))
+        with urllib.request.urlopen(req, timeout=auth_timeout) as resp:
             auth_data = json.loads(resp.read().decode('utf-8'))
     except urllib.error.HTTPError as e:
         logger.info("Main Dashboard rejected client login with HTTP %s", e.code)

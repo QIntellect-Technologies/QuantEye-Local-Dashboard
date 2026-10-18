@@ -17715,9 +17715,7 @@ async function fetchMultiLiveDetections() {
               credentials: 'same-origin',
               body: JSON.stringify({ username, password, portal_slug: window.companyPortalSlug || '' })
             });
-            if (res.ok) {
-              data = await res.json();
-            }
+            data = await res.json().catch(() => ({}));
           } catch(e) {}
         }
 
