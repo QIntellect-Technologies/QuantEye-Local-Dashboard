@@ -1702,13 +1702,7 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
     """Get all active users with today's attendance status, shift details, and camera assignments via optimized join, strictly scoped by organization and branch."""
     if organization_id and organization_id not in ('all', 'DEFAULT_ORG') and branch_id and branch_id not in ('all', 'DEFAULT_BRANCH'):
         try:
-            with sqlite3.connect(DB_PATH) as conn:
-                cached = conn.execute(
-                    "SELECT COUNT(*) FROM users WHERE organization_id = ? AND branch_id = ?",
-                    (organization_id, branch_id),
-                ).fetchone()[0]
-            if cached == 0:
-                _cloud_mirror("hydrate_branch_employees", organization_id, branch_id)
+            _cloud_mirror("hydrate_branch_employees", organization_id, branch_id)
         except Exception as error:
             logger.warning("Could not hydrate staff cache from Postgres: %s", error)
     if organization_id and organization_id != 'all':
@@ -2764,6 +2758,12 @@ def get_default_shift() -> Optional[Dict]:
 def get_shift_by_id(shift_id: int, organization_id: Optional[str] = None) -> Optional[Dict]:
     """Retrieve a single shift by ID, optionally verifying tenant isolation."""
     try:
+        import postgres_mirror as cloud_pg
+        if cloud_pg.postgres_is_configured():
+            cloud_pg.fetch_pg_shift(shift_id, organization_id)
+    except Exception as e:
+        logger.debug("PostgreSQL authoritative shift fetch skipped: %s", e)
+    try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT id, name, start_time, end_time, grace_period_minutes, active, organization_id FROM shifts WHERE id = ?', (shift_id,))
@@ -2855,6 +2855,11 @@ def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace
             conn.commit()
             if updated:
                 logger.info(f"✓ Shift ID {shift_id} updated: {name}")
+                full_shift = cursor.execute("SELECT * FROM shifts WHERE id = ?", (shift_id,)).fetchone()
+                if full_shift:
+                    cols = [col[0] for col in cursor.description]
+                    shift_dict = dict(zip(cols, full_shift))
+                    _cloud_mirror("mirror_shift", shift_dict)
             return updated
     except ValueError:
         raise
@@ -5114,6 +5119,12 @@ def get_user_photo(user_id: int, organization_id: Optional[str] = None) -> Optio
 def get_user_by_id(user_id: int, organization_id: Optional[str] = None) -> Optional[Dict]:
     """Retrieve full user profile by user_id, optionally verifying organization_id."""
     try:
+        import postgres_mirror as cloud_pg
+        if cloud_pg.postgres_is_configured():
+            cloud_pg.fetch_pg_employee(user_id, organization_id)
+    except Exception as e:
+        logger.debug("PostgreSQL authoritative employee fetch skipped: %s", e)
+    try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
@@ -5825,6 +5836,12 @@ def get_leave_requests(user_id: Optional[int] = None, status: Optional[str] = No
 def get_leave_by_id(leave_id: int, organization_id: Optional[str] = None) -> Optional[Dict]:
     """Retrieve single leave request by id with tenant scoping."""
     try:
+        import postgres_mirror as cloud_pg
+        if cloud_pg.postgres_is_configured():
+            cloud_pg.fetch_pg_leave(leave_id)
+    except Exception as e:
+        logger.debug("PostgreSQL authoritative leave fetch skipped: %s", e)
+    try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
@@ -5934,7 +5951,12 @@ def update_leave_status(
                 (overall_status, new_paid_status, new_unpaid_status, approved_by, reason_val, leave_id)
             )
             conn.commit()
-            return cursor.rowcount > 0
+            updated = cursor.rowcount > 0
+            if updated:
+                full_leave = cursor.execute("SELECT * FROM leave_requests WHERE id = ?", (leave_id,)).fetchone()
+                if full_leave:
+                    _cloud_mirror("mirror_leave", dict(full_leave))
+            return updated
     except ValueError:
         raise
     except Exception as e:
@@ -7246,6 +7268,12 @@ def get_overtime_by_id(
 ) -> Optional[Dict]:
     """Retrieve an overtime record by ID, optionally constrained to its owning scope."""
     try:
+        import postgres_mirror as cloud_pg
+        if cloud_pg.postgres_is_configured():
+            cloud_pg.fetch_pg_overtime(ot_id)
+    except Exception as e:
+        logger.debug("PostgreSQL authoritative overtime fetch skipped: %s", e)
+    try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
@@ -7381,7 +7409,16 @@ def update_overtime_status(
 
             cursor.execute(query, params)
             conn.commit()
-            return cursor.rowcount > 0
+            updated = cursor.rowcount > 0
+            if updated:
+                conn.row_factory = sqlite3.Row
+                full_ot = conn.execute(
+                    "SELECT o.*, COALESCE(u.name, o.user_name) as user_name FROM overtime o LEFT JOIN users u ON u.id = o.user_id WHERE o.id = ?",
+                    (ot_id,)
+                ).fetchone()
+                if full_ot:
+                    _cloud_mirror("mirror_overtime", dict(full_ot))
+            return updated
     except ValueError:
         raise
     except Exception as e:
