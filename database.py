@@ -5426,7 +5426,7 @@ def _clock_label(value: Any) -> str:
         return ''
     suffix = 'AM' if hour < 12 else 'PM'
     hour12 = hour % 12 or 12
-    return f'{hour12}:{minute:02d} {suffix}'
+    return f'{hour12:02d}:{minute:02d} {suffix}'
 
 
 def _worked_label(first_seen: Any, last_seen: Any) -> str:
@@ -5489,6 +5489,85 @@ def _current_shift_for_mobile(user_id: int, organization_id: str) -> Dict[str, s
     }
 
 
+def get_latest_employee_punch(user_id: int, organization_id: str, branch_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve the most recent punch event for the employee today with greeting message."""
+    today_str = date.today().isoformat()
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT a.id, a.user_id, a.timestamp, a.source, a.location, a.device_id,
+                       u.name
+                FROM attendance a
+                LEFT JOIN users u ON a.user_id = u.id
+                WHERE a.user_id = ?
+                  AND a.timestamp >= ?
+                  AND (a.organization_id = ? OR a.organization_id IS NULL OR a.organization_id = 'DEFAULT_ORG')
+                ORDER BY a.timestamp DESC, a.id DESC
+                LIMIT 1
+                """,
+                (int(user_id), f"{today_str} 00:00:00", organization_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            punch_time_raw = str(row['timestamp'] or '')
+            punch_clock = _clock_label(punch_time_raw) or punch_time_raw
+            full_name = str(row['name'] or 'Employee').strip()
+            first_name = full_name.split()[0] if full_name else 'there'
+            
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM attendance
+                WHERE user_id = ? AND timestamp >= ?
+                """,
+                (int(user_id), f"{today_str} 00:00:00"),
+            )
+            count = int(cursor.fetchone()[0] or 1)
+            
+            try:
+                dt = datetime.fromisoformat(punch_time_raw.replace('Z', ''))
+                hour = dt.hour
+            except Exception:
+                hour = datetime.now().hour
+
+            if hour < 12:
+                greeting = "Good morning"
+            elif hour < 17:
+                greeting = "Good afternoon"
+            else:
+                greeting = "Good evening"
+
+            if count <= 1:
+                punch_type = "in"
+                title = "Check-in Confirmed"
+                message = f"{greeting}, {first_name}! Checked in at {punch_clock}."
+            else:
+                punch_type = "out"
+                title = "Check-out Confirmed"
+                message = f"Checked out at {punch_clock}. Have a great day, {first_name}!"
+
+            return {
+                'id': row['id'],
+                'user_id': row['user_id'],
+                'employee_name': full_name,
+                'first_name': first_name,
+                'timestamp': punch_time_raw,
+                'punch_time': punch_clock,
+                'punch_type': punch_type,
+                'punch_count': count,
+                'location': row['location'] or 'Office Entrance',
+                'device_id': row['device_id'] or 'Camera #1',
+                'title': title,
+                'message': message,
+            }
+    except Exception as e:
+        logger.error(f"Error fetching latest employee punch: {e}")
+        return None
+
+
 def employee_mobile_attendance(user_id: int, organization_id: str, branch_id: str) -> Dict[str, Any]:
     """Today's attendance for one employee, using the report the portal already builds."""
     user = get_user_by_id(int(user_id), organization_id=organization_id) or {}
@@ -5514,17 +5593,23 @@ def employee_mobile_attendance(user_id: int, organization_id: str, branch_id: st
     start_label = _clock_label(shift_start) or shift_start
     end_label = _clock_label(shift_end) or shift_end
     timing = f'{start_label} - {end_label}' if start_label and end_label else ''
+    punch_info = get_latest_employee_punch(int(user_id), organization_id, branch_id)
     return {
         'name': row.get('name') or user.get('name') or '',
         'designation': row.get('position') or user.get('position') or '',
         'department': row.get('department') or user.get('department') or '',
         'shift_name': shift.get('shift_name') or '',
         'shift_timing': timing,
+        'shift_start': shift_start,
+        'shift_end': shift_end,
         'check_in': _clock_label(row.get('first_seen')),
         'check_out': _clock_label(row.get('last_seen')),
+        'raw_check_in': row.get('first_seen'),
+        'raw_check_out': row.get('last_seen'),
         'status': status,
         'working_time': _worked_label(row.get('first_seen'), row.get('last_seen')),
         'date': row.get('date') or report.get('start_date') or '',
+        'latest_punch': punch_info,
     }
 
 

@@ -3973,6 +3973,20 @@ def api_mobile_today():
     return jsonify({'success': True, 'attendance': card})
 
 
+@app.route('/api/mobile/latest-punch', methods=['GET'])
+def api_mobile_latest_punch():
+    user_id = session.get('mobile_employee_id')
+    organization_id = session.get('mobile_organization_id')
+    if not user_id or not organization_id:
+        return jsonify({'success': False, 'message': 'Please log in.'}), 401
+    punch = db.get_latest_employee_punch(
+        int(user_id),
+        str(organization_id),
+        str(session.get('mobile_branch_id') or 'DEFAULT_BRANCH'),
+    )
+    return jsonify({'success': True, 'punch': punch})
+
+
 @app.route('/api/mobile/month', methods=['GET'])
 def api_mobile_month():
     user_id = session.get('mobile_employee_id')

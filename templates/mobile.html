@@ -209,10 +209,261 @@
       flex-shrink: 0;
     }
     .footer strong { color: var(--teal-dark); font-weight: 700; }
+
+    /* Instant Punch Push Notification Toast */
+    .punch-toast {
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%) translateY(0);
+      width: calc(100% - 24px);
+      max-width: 440px;
+      background: linear-gradient(135deg, #092e38 0%, #0f4c5c 100%);
+      color: #ffffff;
+      border: 1.5px solid #10b981;
+      border-radius: 16px;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.32), 0 0 20px rgba(16, 185, 129, 0.35);
+      padding: 12px 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      z-index: 99999;
+      animation: slideDownToast 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .punch-toast[hidden] { display: none !important; }
+    .punch-toast.hiding {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-25px);
+    }
+    @keyframes slideDownToast {
+      from { opacity: 0; transform: translateX(-50%) translateY(-35px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    .toast-bell {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .bell-glow {
+      position: absolute;
+      inset: -3px;
+      border-radius: 15px;
+      border: 2px solid #34d399;
+      animation: toastPulse 2s infinite ease-out;
+    }
+    @keyframes toastPulse {
+      0% { transform: scale(0.95); opacity: 0.9; }
+      100% { transform: scale(1.3); opacity: 0; }
+    }
+    .toast-body { flex: 1; min-width: 0; }
+    .toast-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2px;
+    }
+    .toast-badge {
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #34d399;
+    }
+    .toast-time { font-size: 0.7rem; color: rgba(255,255,255,0.7); }
+    .toast-message {
+      margin: 2px 0 3px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      line-height: 1.3;
+      color: #ffffff;
+    }
+    .toast-sub {
+      font-size: 0.74rem;
+      color: rgba(255,255,255,0.75);
+      display: block;
+    }
+    .toast-close {
+      background: transparent;
+      border: 0;
+      color: rgba(255,255,255,0.6);
+      font-size: 1.4rem;
+      line-height: 1;
+      padding: 0 4px;
+      cursor: pointer;
+      width: auto;
+      margin: 0;
+    }
+    .toast-close:hover { color: #fff; }
+
+    /* Live Shift Countdown & Overtime Meter Widget */
+    .meter-card {
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 13px 15px;
+      margin: 10px 0 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: all 0.3s ease;
+    }
+    .meter-card.meter-overtime {
+      background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+      border: 1.5px solid #10b981;
+      box-shadow: 0 8px 24px rgba(16, 185, 129, 0.18);
+    }
+    .meter-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .meter-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .badge-shift {
+      background: #f0fdfa;
+      color: #0f766e;
+      border: 1px solid rgba(15,118,110,0.25);
+    }
+    .badge-overtime {
+      background: #10b981;
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(16,185,129,0.35);
+      animation: overtimeGlow 2s infinite alternate;
+    }
+    @keyframes overtimeGlow {
+      from { box-shadow: 0 2px 8px rgba(16,185,129,0.35); }
+      to { box-shadow: 0 4px 14px rgba(16,185,129,0.7); }
+    }
+    .badge-completed {
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .badge-neutral {
+      background: #f1f5f9;
+      color: #64748b;
+    }
+    .meter-pulse {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      display: inline-block;
+      animation: dotBlink 1.4s infinite ease-in-out;
+    }
+    @keyframes dotBlink {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.75); }
+    }
+    .meter-hours-tag {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .meter-body {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    .meter-text-group { display: flex; flex-direction: column; }
+    .meter-caption {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .meter-countdown {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--ink);
+      line-height: 1.15;
+      margin-top: 2px;
+      letter-spacing: -0.02em;
+    }
+    .meter-card.meter-overtime .meter-countdown {
+      color: #047857;
+      text-shadow: 0 1px 2px rgba(4,120,87,0.15);
+    }
+    .meter-status-note {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-align: right;
+      max-width: 150px;
+      line-height: 1.25;
+    }
+    .meter-card.meter-overtime .meter-status-note {
+      color: #059669;
+      font-weight: 700;
+    }
+    .meter-track {
+      width: 100%;
+      height: 7px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .meter-card.meter-overtime .meter-track {
+      background: #bbf7d0;
+    }
+    .meter-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #0f766e 0%, #14b8a6 100%);
+      transition: width 0.4s ease;
+    }
+    .meter-card.meter-overtime .meter-fill {
+      background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+      box-shadow: 0 0 10px rgba(16,185,129,0.5);
+    }
+    .meter-footer {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
   <div class="shell">
+    <!-- Instant Live Punch Notification Toast -->
+    <div id="punchToast" class="punch-toast" hidden>
+      <div class="toast-bell">
+        <span class="bell-glow"></span>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+          <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/>
+        </svg>
+      </div>
+      <div class="toast-body">
+        <div class="toast-header">
+          <span class="toast-badge">AI Camera Verified</span>
+          <span class="toast-time" id="toastTime">Just now</span>
+        </div>
+        <p class="toast-message" id="toastMessage">Good morning! Checked in.</p>
+        <span class="toast-sub" id="toastSub">Entrance Gate Camera • Face Recognized</span>
+      </div>
+      <button type="button" class="toast-close" onclick="dismissPunchToast()">&times;</button>
+    </div>
     <header class="top">
       <div class="brand">
         <div class="mark" aria-hidden="true">Q</div>
@@ -246,6 +497,35 @@
           </div>
           <strong id="empStatus" class="pill"></strong>
         </div>
+
+        <!-- Live Shift Countdown & Overtime Meter -->
+        <div id="shiftMeterCard" class="meter-card">
+          <div class="meter-header">
+            <div class="meter-badge badge-shift" id="meterBadge">
+              <span class="meter-pulse"></span>
+              <span id="meterBadgeText">Shift Countdown</span>
+            </div>
+            <div class="meter-hours-tag" id="meterHoursTag">--:-- – --:--</div>
+          </div>
+
+          <div class="meter-body">
+            <div class="meter-text-group">
+              <span class="meter-caption" id="meterCaption">Time Remaining in Shift</span>
+              <div class="meter-countdown" id="meterCountdown">--:--:--</div>
+            </div>
+            <div class="meter-status-note" id="meterNote">Calculating active shift time…</div>
+          </div>
+
+          <div class="meter-track">
+            <div class="meter-fill" id="meterFill" style="width: 0%;"></div>
+          </div>
+
+          <div class="meter-footer">
+            <span id="meterFootLeft">Shift Target: 8 hrs</span>
+            <span id="meterFootRight">Regular Hours</span>
+          </div>
+        </div>
+
         <div class="stats">
           <div class="stat"><span>Check-in</span><strong id="empIn"></strong></div>
           <div class="stat"><span>Check-out</span><strong id="empOut"></strong></div>
@@ -392,6 +672,258 @@
       }
     }
 
+    let meterInterval = null;
+    let punchPollingInterval = null;
+    let lastSeenPunchId = localStorage.getItem('qe_last_punch_id') || null;
+    let toastDismissTimer = null;
+
+    function parseClockToDate(todayDateStr, clockStr) {
+      if (!clockStr) return null;
+      const parts = clockStr.trim().split(':');
+      if (parts.length < 2) return null;
+      const hours = parseInt(parts[0], 10);
+      const minutes = parseInt(parts[1], 10);
+      const seconds = parts.length > 2 ? parseInt(parts[2], 10) : 0;
+      const d = new Date(todayDateStr + 'T00:00:00');
+      d.setHours(hours, minutes, seconds, 0);
+      return d;
+    }
+
+    function formatTime(ms) {
+      if (ms < 0) ms = 0;
+      const totalSec = Math.floor(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function updateShiftMeter(card) {
+      if (!card) return;
+      const meterCard = document.getElementById('shiftMeterCard');
+      if (!meterCard) return;
+
+      const badge = document.getElementById('meterBadge');
+      const badgeText = document.getElementById('meterBadgeText');
+      const hoursTag = document.getElementById('meterHoursTag');
+      const caption = document.getElementById('meterCaption');
+      const timer = document.getElementById('meterCountdown');
+      const note = document.getElementById('meterNote');
+      const fill = document.getElementById('meterFill');
+      const footLeft = document.getElementById('meterFootLeft');
+      const footRight = document.getElementById('meterFootRight');
+
+      const todayStr = (card.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+      const status = String(card.status || '').toLowerCase();
+
+      // Resolve shift start and end
+      let startDt = parseClockToDate(todayStr, card.shift_start);
+      let endDt = parseClockToDate(todayStr, card.shift_end);
+
+      if (!startDt || !endDt) {
+        if (card.raw_check_in) {
+          try {
+            startDt = new Date(card.raw_check_in.replace(' ', 'T'));
+            endDt = new Date(startDt.getTime() + 8 * 60 * 60 * 1000);
+          } catch(e) {
+            startDt = new Date(todayStr + 'T09:00:00');
+            endDt = new Date(todayStr + 'T17:00:00');
+          }
+        } else {
+          startDt = new Date(todayStr + 'T09:00:00');
+          endDt = new Date(todayStr + 'T17:00:00');
+        }
+      } else if (endDt <= startDt) {
+        endDt = new Date(endDt.getTime() + 24 * 60 * 60 * 1000);
+      }
+
+      const shiftTotalMs = Math.max(endDt.getTime() - startDt.getTime(), 1);
+      const shiftHours = (shiftTotalMs / (1000 * 60 * 60)).toFixed(1).replace('.0', '');
+      const timingLabel = card.shift_timing || `${startDt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} – ${endDt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      if (hoursTag) hoursTag.textContent = timingLabel;
+
+      const now = Date.now();
+
+      // State 1: Checked Out
+      if (status === 'checked out' || status === 'checked_out' || (card.check_in && card.check_out && card.check_out !== '--:--')) {
+        meterCard.className = 'meter-card';
+        badge.className = 'meter-badge badge-completed';
+        badgeText.textContent = 'Shift Completed';
+        caption.textContent = 'Total Time Logged';
+        timer.textContent = card.working_time || 'Done';
+        note.textContent = `Punched out at ${card.check_out || 'End of Day'}`;
+        fill.style.width = '100%';
+        footLeft.textContent = `Shift Window: ${shiftHours} hrs`;
+        footRight.textContent = 'Duty Finished';
+        return;
+      }
+
+      // State 2: On Leave or Absent
+      if (status.includes('leave') || status === 'absent') {
+        meterCard.className = 'meter-card';
+        badge.className = 'meter-badge badge-neutral';
+        badgeText.textContent = status.includes('leave') ? 'On Leave' : 'Not Clocked In';
+        caption.textContent = 'Scheduled Shift';
+        timer.textContent = timingLabel;
+        note.textContent = status.includes('leave') ? 'Leave approved for today' : 'No punch recorded yet today';
+        fill.style.width = '0%';
+        footLeft.textContent = `Target: ${shiftHours} hrs`;
+        footRight.textContent = 'Awaiting Punch';
+        return;
+      }
+
+      // State 3: Active Presence (Present / Late)
+      const isPresent = (status === 'present' || status === 'late' || Boolean(card.check_in));
+
+      if (isPresent) {
+        if (now < endDt.getTime()) {
+          // Regular Shift: Countdown mode
+          const remainingMs = endDt.getTime() - now;
+          const elapsedMs = Math.max(0, now - startDt.getTime());
+          const percent = Math.min(100, Math.max(5, Math.round((elapsedMs / shiftTotalMs) * 100)));
+
+          meterCard.className = 'meter-card';
+          badge.className = 'meter-badge badge-shift';
+          badgeText.textContent = 'Shift in Progress';
+          caption.textContent = 'Time Remaining in Shift';
+          timer.textContent = formatTime(remainingMs);
+          
+          const endClockStr = endDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          note.textContent = `Regular hours complete at ${endClockStr}`;
+          fill.style.width = percent + '%';
+          footLeft.textContent = `Shift Length: ${shiftHours} hrs`;
+          footRight.textContent = `${percent}% elapsed`;
+        } else {
+          // Overtime active! Turn Emerald Green and count UP
+          const overtimeMs = now - endDt.getTime();
+          meterCard.className = 'meter-card meter-overtime';
+          badge.className = 'meter-badge badge-overtime';
+          badgeText.textContent = '⚡ OVERTIME ACTIVE';
+          caption.textContent = 'Overtime Accumulated';
+          timer.textContent = '+' + formatTime(overtimeMs);
+          
+          const endClockStr = endDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          note.textContent = `Shift completed at ${endClockStr} • Overtime accumulating live`;
+          fill.style.width = '100%';
+          footLeft.textContent = `Target: ${shiftHours} hrs met`;
+          footRight.textContent = 'OT Clock Ticking';
+        }
+      } else {
+        if (now < startDt.getTime()) {
+          const untilStartMs = startDt.getTime() - now;
+          meterCard.className = 'meter-card';
+          badge.className = 'meter-badge badge-neutral';
+          badgeText.textContent = 'Upcoming Shift';
+          caption.textContent = 'Shift Starts In';
+          timer.textContent = formatTime(untilStartMs);
+          note.textContent = `Starts today at ${startDt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+          fill.style.width = '0%';
+          footLeft.textContent = `Target: ${shiftHours} hrs`;
+          footRight.textContent = 'Ready to Punch';
+        } else {
+          meterCard.className = 'meter-card';
+          badge.className = 'meter-badge badge-neutral';
+          badgeText.textContent = 'Shift Started';
+          caption.textContent = 'Awaiting Punch-in';
+          timer.textContent = timingLabel;
+          note.textContent = `Shift began at ${startDt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+          fill.style.width = '0%';
+          footLeft.textContent = `Target: ${shiftHours} hrs`;
+          footRight.textContent = 'Not Punched';
+        }
+      }
+    }
+
+    function startShiftMeter(card) {
+      if (meterInterval) clearInterval(meterInterval);
+      updateShiftMeter(card);
+      meterInterval = setInterval(() => {
+        updateShiftMeter(cachedToday);
+      }, 1000);
+    }
+
+    function triggerPunchNotification(punch) {
+      if (!punch || !punch.message) return;
+      
+      // 1. Play phone vibration if supported
+      if (navigator.vibrate) {
+        try { navigator.vibrate([150, 80, 150]); } catch(e) {}
+      }
+
+      // 2. Trigger OS Web Push notification if permission granted
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(reg => {
+              reg.showNotification(punch.title || 'QuantEye Attendance', {
+                body: punch.message,
+                icon: '/m/icon-192.png',
+                badge: '/m/icon-192.png',
+                vibrate: [150, 80, 150],
+                tag: 'quanteye-punch-' + (punch.id || Date.now()),
+                renotify: true
+              });
+            }).catch(() => {
+              new Notification(punch.title || 'QuantEye Attendance', { body: punch.message, icon: '/m/icon-192.png' });
+            });
+          } else {
+            new Notification(punch.title || 'QuantEye Attendance', { body: punch.message, icon: '/m/icon-192.png' });
+          }
+        } catch (err) {}
+      }
+
+      // 3. Show in-app slide-down toast banner
+      showPunchToast(punch);
+    }
+
+    function showPunchToast(punch) {
+      const toast = document.getElementById('punchToast');
+      if (!toast) return;
+      document.getElementById('toastMessage').textContent = punch.message;
+      document.getElementById('toastTime').textContent = punch.punch_time ? `At ${punch.punch_time}` : 'Just now';
+      document.getElementById('toastSub').textContent = `${punch.location || 'Entrance Gate'} • Camera Verified`;
+      
+      toast.hidden = false;
+      toast.classList.remove('hiding');
+
+      if (toastDismissTimer) clearTimeout(toastDismissTimer);
+      toastDismissTimer = setTimeout(() => {
+        dismissPunchToast();
+      }, 7000);
+    }
+
+    function dismissPunchToast() {
+      const toast = document.getElementById('punchToast');
+      if (!toast) return;
+      toast.classList.add('hiding');
+      setTimeout(() => { toast.hidden = true; toast.classList.remove('hiding'); }, 300);
+    }
+
+    async function checkLivePunch() {
+      if (todayCard.hidden) return;
+      try {
+        const res = await fetch('/api/mobile/latest-punch', { credentials: 'same-origin' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success || !data.punch) return;
+        
+        const p = data.punch;
+        const currentPunchId = String(p.id);
+
+        if (!lastSeenPunchId) {
+          lastSeenPunchId = currentPunchId;
+          localStorage.setItem('qe_last_punch_id', currentPunchId);
+          return;
+        }
+
+        if (currentPunchId !== lastSeenPunchId) {
+          lastSeenPunchId = currentPunchId;
+          localStorage.setItem('qe_last_punch_id', currentPunchId);
+          triggerPunchNotification(p);
+          showAttendance(true);
+        }
+      } catch (err) {}
+    }
+
     function showCard(card) {
       cachedToday = card;
       const status = card.status || 'Absent';
@@ -416,20 +948,36 @@
       statusEl.textContent = status;
       statusEl.className = statusClass(status);
 
+      // Start dynamic shift countdown & overtime meter
+      startShiftMeter(card);
+
+      // Initialize punch tracker
+      if (card.latest_punch && card.latest_punch.id) {
+        if (!lastSeenPunchId) {
+          lastSeenPunchId = String(card.latest_punch.id);
+          localStorage.setItem('qe_last_punch_id', lastSeenPunchId);
+        }
+      }
+
+      // Start live camera punch heartbeat polling if not active
+      if (!punchPollingInterval) {
+        punchPollingInterval = setInterval(checkLivePunch, 5000);
+      }
+
       switchTab(currentTab);
     }
 
-    async function showAttendance() {
+    async function showAttendance(isSilent = false) {
       try {
         const response = await fetch('/api/mobile/today', { credentials: 'same-origin' });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          showLogin();
+          if (!isSilent) showLogin();
           return;
         }
         showCard(data.attendance || {});
       } catch (err) {
-        showLogin();
+        if (!isSilent) showLogin();
       }
     }
 
@@ -533,6 +1081,12 @@
       cachedToday = null;
       cachedMonth = null;
       cachedProfile = null;
+      
+      // Request push notification permission on sign in
+      if ('Notification' in window && Notification.permission === 'default') {
+        try { Notification.requestPermission(); } catch(e) {}
+      }
+
       showAttendance();
     });
 
@@ -544,6 +1098,12 @@
 
     document.getElementById('logoutButton').addEventListener('click', async () => {
       await fetch('/api/mobile/logout', { method: 'POST', credentials: 'same-origin' });
+      if (meterInterval) clearInterval(meterInterval);
+      if (punchPollingInterval) {
+        clearInterval(punchPollingInterval);
+        punchPollingInterval = null;
+      }
+      dismissPunchToast();
       cachedToday = null;
       cachedMonth = null;
       cachedProfile = null;
