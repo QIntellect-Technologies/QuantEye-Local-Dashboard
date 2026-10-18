@@ -1446,14 +1446,20 @@
         }
 
         let reportAbortController = null;
+        let activeReportRequestId = 0;
+
         async function fetchReport() {
-            if (isFetching) return;
-            isFetching = true;
             if (reportAbortController) {
-                reportAbortController.abort();
+                try {
+                    reportAbortController.abort();
+                } catch (e) {
+                    // Ignore abort errors
+                }
             }
             reportAbortController = new AbortController();
             const signal = reportAbortController.signal;
+            const requestId = ++activeReportRequestId;
+            isFetching = true;
 
             const refreshBtn = document.querySelector('.header-actions button[onclick="refreshReport()"]');
             const origRefreshHtml = refreshBtn ? refreshBtn.innerHTML : null;
@@ -1474,20 +1480,26 @@
             try {
                 const res = await fetch(`/api/reports/attendance?${query}`, { signal });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                reportData = await res.json();
-                renderReportUI(reportData);
+                const data = await res.json();
+                if (requestId === activeReportRequestId) {
+                    reportData = data;
+                    renderReportUI(reportData);
+                }
             } catch (err) {
-                if (err.name === 'AbortError') return;
+                if (err.name === 'AbortError' || signal.aborted) return;
+                if (requestId !== activeReportRequestId) return;
                 console.error("Failed to fetch report:", err);
                 if (tbody) {
                     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--danger-red);"><i class="fa-solid fa-triangle-exclamation" style="font-size:1.5rem; margin-bottom:8px;"></i><p>Failed to load attendance records.</p><button type="button" class="btn btn-sm btn-outline-light" onclick="fetchReport()" style="margin-top:10px; cursor:pointer;"><i class="fa-solid fa-rotate-right"></i> Retry</button></td></tr>';
                 }
             } finally {
-                if (tbody) tbody.style.opacity = '1';
-                isFetching = false;
-                if (refreshBtn && origRefreshHtml) {
-                    refreshBtn.innerHTML = origRefreshHtml;
-                    refreshBtn.disabled = false;
+                if (requestId === activeReportRequestId) {
+                    if (tbody) tbody.style.opacity = '1';
+                    isFetching = false;
+                    if (refreshBtn && origRefreshHtml) {
+                        refreshBtn.innerHTML = origRefreshHtml;
+                        refreshBtn.disabled = false;
+                    }
                 }
             }
         }

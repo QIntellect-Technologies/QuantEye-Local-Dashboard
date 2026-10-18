@@ -5745,7 +5745,7 @@ def api_add_overtime():
 def api_update_overtime(ot_id):
     data = request.get_json() or {}
     new_status = data.get('status', 'approved')
-    approved_by = data.get('approved_by', 'Admin')
+    approved_by = data.get('approved_by') or session.get('admin_name') or session.get('client_user') or session.get('username') or 'Admin'
 
     if new_status not in ('approved', 'rejected'):
         return jsonify({'success': False, 'error': 'status must be approved or rejected'}), 400
@@ -5763,7 +5763,8 @@ def api_update_overtime(ot_id):
     if current_status == new_status.lower():
         return jsonify({'success': True, 'id': ot_id, 'status': new_status, 'approved_by': approved_by})
     if current_status != 'pending':
-        return jsonify({'success': False, 'error': f'Overtime is already finalized as {current_status}.'}), 409
+        if not (current_status == 'approved' and new_status.lower() == 'rejected'):
+            return jsonify({'success': False, 'error': f'Overtime is already finalized as {current_status}.'}), 409
     if new_status == 'approved':
         day_type = db.get_overtime_day_type(int(ot_record['user_id']), str(ot_record['ot_date']))
         if day_type == 'regular' and db.get_user_attendance_status(
@@ -5801,7 +5802,7 @@ def api_update_overtime(ot_id):
         latest_record = db.get_overtime_by_id(
             ot_id, organization_id=current_tenant, branch_id=current_branch
         )
-        if latest_record and (latest_record.get('status') or 'pending').lower() != 'pending':
+        if latest_record and (latest_record.get('status') or 'pending').lower() not in ('pending', 'approved'):
             return jsonify({'success': False, 'error': 'Overtime was finalized by another request.'}), 409
         return jsonify({'success': False, 'error': 'Overtime record not found or could not be updated'}), 404
     return jsonify({'success': True, 'id': ot_id, 'status': new_status, 'approved_by': approved_by})
@@ -5813,7 +5814,7 @@ def api_bulk_approve_overtime():
     data = request.get_json() or {}
     ot_ids = data.get('ids', [])
     new_status = data.get('status', 'approved')
-    approved_by = data.get('approved_by', 'Admin')
+    approved_by = data.get('approved_by') or session.get('admin_name') or session.get('client_user') or session.get('username') or 'Admin'
 
     if new_status not in ('approved', 'rejected'):
         return jsonify({'success': False, 'error': 'status must be approved or rejected'}), 400
@@ -5837,7 +5838,7 @@ def api_bulk_approve_overtime():
                 errors.append({'id': ot_id, 'reason': 'not found'})
                 continue
             cur_status = (rec.get('status') or 'pending').lower()
-            if cur_status != 'pending':
+            if cur_status != 'pending' and not (cur_status == 'approved' and new_status.lower() == 'rejected'):
                 skipped.append({'id': ot_id, 'reason': f'already finalized as {cur_status}'})
                 continue
             if new_status == 'approved':
@@ -5868,7 +5869,7 @@ def api_bulk_approve_overtime():
                     organization_id=current_tenant,
                     branch_id=current_branch,
                 )
-                if latest_rec and (latest_rec.get('status') or 'pending').lower() != 'pending':
+                if latest_rec and (latest_rec.get('status') or 'pending').lower() not in ('pending', 'approved'):
                     skipped.append({'id': ot_id, 'reason': 'already finalized'})
                 else:
                     errors.append({'id': ot_id, 'reason': 'update failed'})

@@ -692,6 +692,9 @@ def init_db():
             ot_columns = {row[1] for row in cursor.execute("PRAGMA table_info(overtime)").fetchall()}
             for column, column_type in [
                 ('rejection_reason', 'TEXT'),
+                ('rejected_by', 'TEXT'),
+                ('rejected_at', 'TEXT'),
+                ('audit_trail', 'TEXT'),
             ]:
                 if column not in ot_columns:
                     cursor.execute(f"ALTER TABLE overtime ADD COLUMN {column} {column_type}")
@@ -7145,6 +7148,7 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
             cursor = conn.cursor()
             query = """
                 SELECT o.id, o.user_id, COALESCE(u.name, o.user_name) as user_name, o.ot_date, o.hours, o.reason, o.status, o.approved_by, o.created_at, o.rejection_reason,
+                       o.rejected_by, o.rejected_at, o.audit_trail,
                        COALESCE(u.department, '') as department,
                        COALESCE(u.position, '') as designation,
                        COALESCE(sc.ot_rate, CASE WHEN COALESCE(u.salary, sc.basic_salary, 0) > 0 THEN ROUND(COALESCE(u.salary, sc.basic_salary) / COALESCE(ps.ot_hour_divisor, 208.0), 2) ELSE 0.0 END) as ot_rate
@@ -7245,7 +7249,8 @@ def get_overtime_by_id(
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            query = """SELECT o.id, o.user_id, COALESCE(u.name, o.user_name) as user_name, o.ot_date, o.hours, o.reason, o.status, o.approved_by, o.created_at, o.rejection_reason
+            query = """SELECT o.id, o.user_id, COALESCE(u.name, o.user_name) as user_name, o.ot_date, o.hours, o.reason, o.status, o.approved_by, o.created_at, o.rejection_reason,
+                              o.rejected_by, o.rejected_at, o.audit_trail
                        FROM overtime o
                        JOIN users u ON u.id = o.user_id
                        WHERE o.id = ?"""
@@ -7297,19 +7302,72 @@ def update_overtime_status(
     branch_id: Optional[str] = None,
     rejection_reason: Optional[str] = None,
 ) -> bool:
-    """Finalize a pending overtime record without allowing later status changes."""
+    """Update an overtime record status (pending -> approved/rejected, or approved -> rejected) while recording audit history."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            ot_cols = {r[1] for r in cursor.execute("PRAGMA table_info(overtime)").fetchall()}
+            for col, col_type in [
+                ('rejection_reason', 'TEXT'),
+                ('rejected_by', 'TEXT'),
+                ('rejected_at', 'TEXT'),
+                ('audit_trail', 'TEXT'),
+            ]:
+                if col not in ot_cols:
+                    cursor.execute(f"ALTER TABLE overtime ADD COLUMN {col} {col_type}")
+                    ot_cols.add(col)
+
             row = cursor.execute(
-                "SELECT ot_date, COALESCE(organization_id,'DEFAULT_ORG'), COALESCE(branch_id,'DEFAULT_BRANCH') FROM overtime WHERE id = ?",
+                """SELECT ot_date, COALESCE(organization_id,'DEFAULT_ORG'), COALESCE(branch_id,'DEFAULT_BRANCH'),
+                          COALESCE(status, 'pending'), rejection_reason, audit_trail
+                   FROM overtime WHERE id = ?""",
                 (ot_id,),
             ).fetchone()
-            if row:
-                raise_if_payroll_month_locked(str(row[0])[:10], row[1], row[2])
-            query = """UPDATE overtime SET status = ?, approved_by = ?, rejection_reason = COALESCE(?, rejection_reason)
-                       WHERE id = ? AND LOWER(COALESCE(status, 'pending')) = 'pending'"""
-            params: List[Any] = [status, approved_by, rejection_reason, ot_id]
+            if not row:
+                return False
+            ot_date_val, org_val, branch_val, cur_status, existing_rej_reason, existing_audit = row
+            cur_status = str(cur_status).lower()
+            norm_new_status = str(status).lower()
+
+            raise_if_payroll_month_locked(str(ot_date_val)[:10], org_val, branch_val)
+
+            if norm_new_status == 'rejected':
+                if cur_status not in ('pending', 'approved'):
+                    return False
+            elif norm_new_status == 'approved':
+                if cur_status != 'pending':
+                    return False
+            else:
+                return False
+
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            audit_entry = f"[{now_str}] Status changed from '{cur_status}' to '{norm_new_status}' by '{approved_by}'."
+            if rejection_reason:
+                audit_entry += f" Reason: {rejection_reason}"
+            new_audit = f"{existing_audit}\n{audit_entry}".strip() if existing_audit else audit_entry
+
+            final_rej_reason = rejection_reason if rejection_reason is not None else existing_rej_reason
+            if norm_new_status == 'rejected' and not final_rej_reason and cur_status == 'approved':
+                final_rej_reason = f"Rejected post-approval by {approved_by}"
+
+            rej_by = approved_by if norm_new_status == 'rejected' else None
+            rej_at = now_str if norm_new_status == 'rejected' else None
+
+            set_clauses = [
+                "status = ?",
+                "approved_by = ?",
+                "rejection_reason = ?",
+                "rejected_by = COALESCE(?, rejected_by)",
+                "rejected_at = COALESCE(?, rejected_at)",
+                "audit_trail = ?"
+            ]
+            params: List[Any] = [norm_new_status, approved_by, final_rej_reason, rej_by, rej_at, new_audit]
+
+            where_statuses = "('pending', 'approved')" if norm_new_status == 'rejected' else "('pending')"
+            query = f"""UPDATE overtime SET {', '.join(set_clauses)}
+                       WHERE id = ? AND LOWER(COALESCE(status, 'pending')) IN {where_statuses}"""
+            params.append(ot_id)
+
             if organization_id is not None:
                 query += """ AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
                              AND EXISTS (SELECT 1 FROM users u WHERE u.id = overtime.user_id
@@ -7320,6 +7378,7 @@ def update_overtime_status(
                              AND EXISTS (SELECT 1 FROM users u WHERE u.id = overtime.user_id
                                          AND COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?)"""
                 params.extend([branch_id, branch_id])
+
             cursor.execute(query, params)
             conn.commit()
             return cursor.rowcount > 0

@@ -20580,13 +20580,14 @@ async function fetchMultiLiveDetections() {
         const st = (r.status||'pending').toLowerCase();
         const isPending = st === 'pending';
         const isApproved = st === 'approved';
+        const canAct = isPending || isApproved;
         let statusBadge;
         if (st === 'approved') statusBadge = '<span class="badge bg-success-subtle text-success"><i class="fa-solid fa-check"></i> Approved</span>';
         else if (st === 'rejected') statusBadge = '<span class="badge bg-danger-subtle text-danger"><i class="fa-solid fa-xmark"></i> Rejected</span>';
         else statusBadge = '<span class="badge bg-warning-subtle text-warning-emphasis"><i class="fa-solid fa-hourglass-half"></i> Pending</span>';
         return `
-          <tr style="${!isPending ? 'opacity:0.7;' : ''}">
-            <td><input type="checkbox" class="otDetailCheck" data-id="${r.id}" data-status="${st}" ${!isPending ? 'disabled' : ''} /></td>
+          <tr style="${!canAct ? 'opacity:0.7;' : ''}">
+            <td><input type="checkbox" class="otDetailCheck" data-id="${r.id}" data-status="${st}" ${!canAct ? 'disabled' : ''} /></td>
             <td style="font-weight:600; color:#475569;">${escapeOtHtml(r.ot_date||'--')}</td>
             <td class="text-center" style="font-weight:700; color:#6366f1;">${formatOtDuration(hours)}</td>
             <td class="text-center" style="font-size:0.86em; color:#475569;">PKR ${rate.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}/hr<div style="font-size:0.74em; color:#64748b;">${dayTypeLabel}${premiumLabel}</div></td>
@@ -20598,7 +20599,9 @@ async function fetchMultiLiveDetections() {
               <button class="btn btn-sm btn-outline-success me-1" onclick="otDetailApproveSingle(${r.id})" title="Approve overtime record"><i class="fa-solid fa-check"></i></button>
               <button class="btn btn-sm btn-outline-danger me-1" onclick="otDetailRejectSingle(${r.id})" title="Reject overtime record"><i class="fa-solid fa-xmark"></i></button>
               <button class="btn btn-sm btn-outline-secondary" onclick="deleteOvertimeRecord(${r.id})" title="Delete overtime record" aria-label="Delete overtime record"><i class="fa-solid fa-trash"></i></button>
-            ` : (isApproved ? '' : `<button class="btn btn-sm btn-outline-danger" onclick="deleteOvertimeRecord(${r.id})" title="Delete this overtime record" aria-label="Delete overtime record"><i class="fa-solid fa-trash"></i></button>`)}</td>
+            ` : (isApproved ? `
+              <button class="btn btn-sm btn-outline-danger me-1" onclick="otDetailRejectSingle(${r.id})" title="Reject approved overtime record"><i class="fa-solid fa-xmark"></i> Reject</button>
+            ` : `<button class="btn btn-sm btn-outline-danger" onclick="deleteOvertimeRecord(${r.id})" title="Delete this overtime record" aria-label="Delete overtime record"><i class="fa-solid fa-trash"></i></button>`)}</td>
           </tr>`;
       }).join('');
     }
@@ -20612,7 +20615,9 @@ async function fetchMultiLiveDetections() {
     }
 
     async function otDetailApproveSelected() {
-      const ids = otDetailGetSelectedPendingIds();
+      const ids = [...document.querySelectorAll('.otDetailCheck:checked:not([disabled])')]
+        .filter(cb => (cb.dataset.status || '').toLowerCase() === 'pending')
+        .map(cb => parseInt(cb.dataset.id));
       if (!ids.length) { showAppToast('Select at least one pending record to approve.', 'warning'); return; }
       if (!await appConfirm(`Approve ${ids.length} selected OT record(s)?\n\nThis decision is permanent and cannot be undone.`)) return;
       try {
@@ -20631,11 +20636,11 @@ async function fetchMultiLiveDetections() {
 
     async function otDetailRejectSelected() {
       const ids = otDetailGetSelectedPendingIds();
-      if (!ids.length) { showAppToast('Select at least one pending record to reject.', 'warning'); return; }
+      if (!ids.length) { showAppToast('Select at least one record to reject.', 'warning'); return; }
       const inputReason = prompt('Optional rejection reason (leave blank if none):');
       if (inputReason === null) return;
       const rejectionReason = inputReason.trim() || undefined;
-      if (!await appConfirm(`Reject ${ids.length} selected OT record(s)?\n\nThis decision is permanent and cannot be undone.`)) return;
+      if (!await appConfirm(`Reject ${ids.length} selected OT record(s)?\n\nAny approved overtime among them will be excluded from payroll.`)) return;
       try {
         const payload = { ids, status: 'rejected', approved_by: 'Admin' };
         if (rejectionReason) payload.rejection_reason = rejectionReason;
@@ -20688,10 +20693,15 @@ async function fetchMultiLiveDetections() {
     window.otDetailApproveSingle = otDetailApproveSingle;
 
     async function otDetailRejectSingle(id) {
+      const rec = _otDetailRecords.find(item => Number(item.id) === Number(id));
+      const isApprovedRec = (rec?.status || '').toLowerCase() === 'approved';
       const inputReason = prompt('Optional rejection reason (leave blank if none):');
       if (inputReason === null) return;
       const rejectionReason = inputReason.trim() || undefined;
-      if (!await appConfirm('Reject this overtime record?')) return;
+      const confirmMsg = isApprovedRec
+        ? `Are you sure you want to REJECT this already APPROVED overtime record (#${id})?\n\nIt will be excluded from payable overtime and payroll calculations.`
+        : 'Reject this overtime record?';
+      if (!await appConfirm(confirmMsg)) return;
       try {
         const payload = { ids: [id], status: 'rejected', approved_by: 'Admin' };
         if (rejectionReason) payload.rejection_reason = rejectionReason;
