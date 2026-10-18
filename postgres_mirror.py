@@ -490,7 +490,8 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                 """
                 SELECT id, employee_code, name, email, phone, is_active,
                        COALESCE(password_hash, '') as password_hash,
-                       COALESCE(mobile_login, 0) as mobile_login
+                       COALESCE(mobile_login, 0) as mobile_login,
+                       created_at::text as created_at
                 FROM employees
                 WHERE organization_id = %s AND branch_id = %s
                 """,
@@ -510,6 +511,7 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                 pg_ids.add(user_id)
                 pw_hash = row.get("password_hash") or None
                 mob_login = int(row.get("mobile_login", 0) or 0)
+                row_created = str(row.get("created_at") or "").split("+")[0].strip() or None
                 exists = sqlite_cur.execute(
                     "SELECT 1 FROM users WHERE id = ? AND organization_id = ? AND branch_id = ?",
                     (user_id, org_id, br_id),
@@ -523,7 +525,8 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             phone = COALESCE(?, phone),
                             active = ?,
                             password_hash = COALESCE(?, password_hash),
-                            mobile_login = MAX(?, COALESCE(mobile_login, 0))
+                            mobile_login = MAX(?, COALESCE(mobile_login, 0)),
+                            created_at = COALESCE(?, created_at)
                         WHERE id = ? AND organization_id = ?
                         """,
                         (
@@ -533,6 +536,7 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             1 if row.get("is_active", True) else 0,
                             pw_hash,
                             mob_login,
+                            row_created,
                             user_id,
                             org_id,
                         ),
@@ -541,8 +545,8 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                 sqlite_cur.execute(
                     """
                     INSERT INTO users (
-                        id, name, email, phone, notes, active, organization_id, branch_id, password_hash, mobile_login
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, name, email, phone, notes, active, organization_id, branch_id, password_hash, mobile_login, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         user_id,
@@ -555,6 +559,7 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                         br_id,
                         pw_hash,
                         mob_login,
+                        row_created,
                     ),
                 )
                 inserted += 1
