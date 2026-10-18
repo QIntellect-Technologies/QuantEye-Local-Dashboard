@@ -10529,6 +10529,19 @@ def _persist_draft_monthly_payroll(preview: Dict[str, Any], organization_id: str
             raise RuntimeError("Failed to create payroll draft")
         _insert_payroll_records(cursor, run_id, preview.get('records', []), finalized=False, organization_id=organization_id, branch_id=branch_id)
         conn.commit()
+        _cloud_mirror("mirror_payroll_run", {
+            "id": run_id,
+            "organization_id": organization_id,
+            "branch_id": branch_id or "DEFAULT_BRANCH",
+            "payroll_month": preview.get("payroll_month"),
+            "period_start": preview.get("period_start"),
+            "period_end": preview.get("period_end"),
+            "employee_count": preview.get("employee_count", 0),
+            "total_basic_salary": preview.get("total_basic_salary", 0.0),
+            "total_deduction": preview.get("total_deduction", 0.0),
+            "total_net_salary": preview.get("total_net_salary", 0.0),
+            "status": "draft"
+        }, preview.get("records", []))
         return run_id
 
 
@@ -10812,6 +10825,19 @@ def finalize_monthly_payroll(
                 'finalize_early': bool(preview.get('finalize_early')),
             })
             conn.commit()
+            _cloud_mirror("mirror_payroll_run", {
+                "id": run_id,
+                "organization_id": organization_id,
+                "branch_id": branch_id or "DEFAULT_BRANCH",
+                "payroll_month": preview.get("payroll_month"),
+                "period_start": preview.get("period_start"),
+                "period_end": preview.get("period_end"),
+                "employee_count": preview.get("employee_count", 0),
+                "total_basic_salary": preview.get("total_basic_salary", 0.0),
+                "total_deduction": preview.get("total_deduction", 0.0),
+                "total_net_salary": preview.get("total_net_salary", 0.0),
+                "status": "approved"
+            }, preview.get("records", []))
         return get_monthly_payroll(
             preview['payroll_month'],
             organization_id=organization_id,

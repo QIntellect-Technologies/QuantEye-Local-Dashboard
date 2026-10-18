@@ -217,7 +217,7 @@ def mirror_camera(camera: Dict[str, Any]) -> None:
             ),
         )
 
-    _with_cursor(_write)
+    return _with_cursor(_write)
 
 
 def delete_camera(camera_id: str, organization_id: Optional[str] = None) -> None:
@@ -289,7 +289,7 @@ def mirror_attendance_event(event: Dict[str, Any]) -> None:
             ),
         )
 
-    _with_cursor(_write)
+    return _with_cursor(_write)
 
 
 def _map_leave_type(raw: str) -> str:
@@ -322,6 +322,14 @@ def mirror_leave(row: Dict[str, Any]) -> None:
         _ensure_tenant(cur, org_id, branch_id)
         cur.execute(
             """
+            INSERT INTO employees (id, organization_id, branch_id, employee_code, name, is_active)
+            VALUES (%s, %s, %s, %s, %s, TRUE)
+            ON CONFLICT (organization_id, id) DO NOTHING
+            """,
+            (employee_id, org_id, branch_id, employee_id, str(row.get("user_name") or f"Employee {employee_id}")),
+        )
+        cur.execute(
+            """
             INSERT INTO leave_requests (
                 id, organization_id, branch_id, employee_id, leave_type,
                 start_date, end_date, status, reason
@@ -343,7 +351,7 @@ def mirror_leave(row: Dict[str, Any]) -> None:
             ),
         )
 
-    _with_cursor(_write)
+    return _with_cursor(_write)
 
 
 def mirror_overtime(row: Dict[str, Any]) -> None:
@@ -362,6 +370,14 @@ def mirror_overtime(row: Dict[str, Any]) -> None:
 
     def _write(cur):
         _ensure_tenant(cur, org_id, branch_id)
+        cur.execute(
+            """
+            INSERT INTO employees (id, organization_id, branch_id, employee_code, name, is_active)
+            VALUES (%s, %s, %s, %s, %s, TRUE)
+            ON CONFLICT (organization_id, id) DO NOTHING
+            """,
+            (employee_id, org_id, branch_id, employee_id, str(row.get("user_name") or f"Employee {employee_id}")),
+        )
         cur.execute(
             """
             INSERT INTO overtime_records (
@@ -384,7 +400,7 @@ def mirror_overtime(row: Dict[str, Any]) -> None:
             ),
         )
 
-    _with_cursor(_write)
+    return _with_cursor(_write)
 
 
 def mirror_shift(row: Dict[str, Any]) -> None:
@@ -420,7 +436,7 @@ def mirror_shift(row: Dict[str, Any]) -> None:
             ),
         )
 
-    _with_cursor(_write)
+    return _with_cursor(_write)
 
 
 def mirror_mobile_credentials(user_id: int, organization_id: str, password_hash: str) -> None:
@@ -631,3 +647,89 @@ def bootstrap_cloud_postgres() -> None:
         logger.warning("Postgres bootstrap from SQLite skipped: %s", error)
     finally:
         conn.close()
+
+
+def mirror_payroll_run(run: Dict[str, Any], records: Optional[List[Dict[str, Any]]] = None) -> bool:
+    """Synchronize monthly payroll run and its records to PostgreSQL."""
+    org_id = str(run.get("organization_id") or "").strip()
+    branch_id = str(run.get("branch_id") or "BR-01").strip() or "BR-01"
+    if not _real_tenant(org_id, branch_id):
+        return False
+    run_id = str(run.get("id") or "").strip()
+    if not run_id:
+        return False
+    stat = str(run.get("status") or "draft").lower()
+    if stat not in {"draft", "approved", "paid", "cancelled"}:
+        stat = "draft"
+
+    def _write(cur):
+        _ensure_tenant(cur, org_id, branch_id)
+        cur.execute(
+            """
+            INSERT INTO payroll_runs (
+                id, organization_id, branch_id, payroll_month, period_start, period_end,
+                employee_count, total_basic_salary, total_deduction, status, total_amount
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (organization_id, id) DO UPDATE SET
+                status = EXCLUDED.status,
+                total_amount = EXCLUDED.total_amount,
+                employee_count = EXCLUDED.employee_count,
+                total_basic_salary = EXCLUDED.total_basic_salary,
+                total_deduction = EXCLUDED.total_deduction
+            """,
+            (
+                run_id,
+                org_id,
+                branch_id,
+                run.get("payroll_month") or "2026-10",
+                run.get("period_start") or "2026-10-01",
+                run.get("period_end") or "2026-10-31",
+                int(run.get("employee_count") or 0),
+                float(run.get("total_basic_salary") or 0.0),
+                float(run.get("total_deduction") or 0.0),
+                stat,
+                float(run.get("total_net_salary") or run.get("total_amount") or 0.0),
+            ),
+        )
+        if records:
+            from psycopg2.extras import execute_values
+            rec_tuples = []
+            for r in records:
+                eid = str(r.get("employee_id") or "")
+                if not eid:
+                    continue
+                rid = str(r.get("id") or f"{run_id}_{eid}")
+                rec_tuples.append((
+                    rid,
+                    org_id,
+                    branch_id,
+                    run_id,
+                    eid,
+                    float(r.get("basic_salary") or 0.0),
+                    float(r.get("allowances") or 0.0),
+                    float(r.get("deduction_amount") or r.get("deductions") or 0.0),
+                    float(r.get("net_salary") or 0.0),
+                    int(r.get("scheduled_workdays") or 0),
+                    int(float(r.get("present_days") or 0)),
+                    int(float(r.get("absent_days") or 0)),
+                    int(float(r.get("late_days") or 0)),
+                    int(float(r.get("approved_leave_days") or 0)),
+                    float(r.get("payable_days") or 0.0),
+                ))
+            if rec_tuples:
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO payroll_records (
+                        id, organization_id, branch_id, payroll_run_id, employee_id,
+                        basic_salary, allowances, deductions, net_salary,
+                        scheduled_workdays, present_days, absent_days, late_days,
+                        approved_leave_days, payable_days
+                    ) VALUES %s
+                    ON CONFLICT (organization_id, id) DO NOTHING
+                    """,
+                    rec_tuples,
+                    page_size=500,
+                )
+
+    return _with_cursor(_write)
