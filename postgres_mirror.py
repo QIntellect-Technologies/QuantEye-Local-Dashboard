@@ -570,6 +570,13 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                         "DELETE FROM users WHERE id = ? AND organization_id = ? AND branch_id = ?",
                         (cid, org_id, br_id),
                     )
+
+            # Purge any cross-tenant or corrupted attendance records with mismatched camera tags for this organization
+            if org_id and org_id != 'DEFAULT_ORG':
+                sqlite_cur.execute(
+                    "DELETE FROM attendance WHERE organization_id = ? AND device_id LIKE 'CAM-ORG-%' AND device_id NOT LIKE ?",
+                    (org_id, f"%{org_id}%"),
+                )
             sqlite_conn.commit()
         if inserted:
             logger.info(

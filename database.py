@@ -3979,20 +3979,44 @@ def get_detailed_attendance_report(
             cursor.execute("SELECT id, name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes, working_days FROM shifts")
             all_shifts_lookup = {r['id']: dict(r) for r in cursor.fetchall()}
 
-            # ATT-01: Sargable range query using indexed timestamp boundaries
+            # ATT-01: Sargable range query using indexed timestamp boundaries with strict tenant & camera isolation
             start_ts = f"{start_date} 00:00:00"
             end_ts = f"{end_date} 23:59:59.999999"
+
+            att_conditions = [
+                f"user_id IN ({placeholders})",
+                "timestamp >= ?",
+                "timestamp <= ?"
+            ]
+            att_params = list(user_ids) + [start_ts, end_ts]
+
+            if report_org and report_org != 'all':
+                if report_org == 'DEFAULT_ORG':
+                    att_conditions.append("(organization_id = 'DEFAULT_ORG' OR organization_id IS NULL)")
+                else:
+                    att_conditions.append("(organization_id = ? OR organization_id IS NULL)")
+                    att_params.append(report_org)
+                    # Cross-tenant camera isolation: Never allow cameras explicitly tagged with a different organization prefix
+                    att_conditions.append("(device_id IS NULL OR device_id NOT LIKE 'CAM-ORG-%' OR device_id LIKE ?)")
+                    att_params.append(f"%{report_org}%")
+
+            if branch_id and branch_id != 'all':
+                if branch_id == 'DEFAULT_BRANCH':
+                    att_conditions.append("(branch_id = 'DEFAULT_BRANCH' OR branch_id IS NULL)")
+                else:
+                    att_conditions.append("(branch_id = ? OR branch_id IS NULL)")
+                    att_params.append(branch_id)
+
+            att_where_sql = " AND ".join(att_conditions)
             cursor.execute(
                 f'''
                 SELECT user_id, timestamp, location, device_id, checkout_location, checkout_camera_id,
                        source, notes, marked_by, shift_id
                 FROM attendance
-                WHERE user_id IN ({placeholders})
-                  AND timestamp >= ?
-                  AND timestamp <= ?
+                WHERE {att_where_sql}
                 ORDER BY user_id, timestamp
                 ''',
-                (*user_ids, start_ts, end_ts),
+                att_params,
             )
             att_map = {}
             for raw in cursor.fetchall():
