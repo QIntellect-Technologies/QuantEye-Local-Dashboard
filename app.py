@@ -3042,7 +3042,9 @@ def api_bulk_mark_attendance():
 @app.route('/api/attendance/logs', methods=['GET'])
 def get_attendance_logs():
     limit = request.args.get('limit', 100, type=int)
-    logs = db.get_attendance_logs(limit)
+    current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
+    logs = db.get_attendance_logs(limit, organization_id=current_tenant, branch_id=current_branch)
     response = jsonify({
         'logs': logs,
         'server_time': datetime.now().astimezone().isoformat(timespec='seconds')
@@ -4403,12 +4405,14 @@ def api_get_attendance():
     limit = request.args.get('limit', 200, type=int)
     start = request.args.get('start')
     end = request.args.get('end')
+    current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
     if user_id and start and end:
         logs = db.get_attendance_by_user(user_id, start_date=start, end_date=end)
     elif user_id:
         logs = db.get_attendance_by_user(user_id)
     else:
-        logs = db.get_attendance_logs(limit=limit)
+        logs = db.get_attendance_logs(limit=limit, organization_id=current_tenant, branch_id=current_branch)
     return jsonify(logs)
 
 

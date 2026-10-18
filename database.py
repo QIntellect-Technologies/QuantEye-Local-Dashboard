@@ -106,13 +106,24 @@ def _user_tenant(cursor, user_id: int) -> Tuple[str, str]:
     return row[0], row[1]
 
 
-def _cloud_mirror(action: str, *args, **kwargs) -> None:
+def postgres_is_configured() -> bool:
+    try:
+        import postgres_mirror as cloud_pg
+        return cloud_pg.postgres_is_configured()
+    except Exception:
+        return False
+
+
+def _cloud_mirror(action: str, *args, **kwargs) -> Any:
     """Best-effort replica to Railway Postgres. Never breaks local SQLite/AI."""
     try:
         import postgres_mirror as cloud_pg
-        getattr(cloud_pg, action)(*args, **kwargs)
+        fn = getattr(cloud_pg, action, None)
+        if fn:
+            return fn(*args, **kwargs)
     except Exception as error:
         logger.warning("Cloud Postgres mirror skipped (%s): %s", action, error)
+    return None
 
 def _quote_sqlite_identifier(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
@@ -1607,8 +1618,27 @@ def purge_organization_data(organization_id: str) -> bool:
         return False
 
 
-def get_user_by_name(name: str) -> Optional[Dict]:
-    """Retrieve user by name."""
+def get_user_by_name(name: str, organization_id: Optional[str] = None) -> Optional[Dict]:
+    """Retrieve user by name with PostgreSQL authority when configured."""
+    if postgres_is_configured():
+        try:
+            import postgres_mirror as cloud_pg
+            pg_user = cloud_pg.fetch_pg_user_by_name(name, organization_id)
+            if pg_user is False:
+                return None
+            if isinstance(pg_user, dict):
+                return {
+                    'id': pg_user.get('id'),
+                    'name': pg_user.get('name'),
+                    'email': pg_user.get('email'),
+                    'shift_id': pg_user.get('shift_id', 1),
+                    'checkin_cameras': pg_user.get('checkin_cameras', 'all'),
+                    'checkout_cameras': pg_user.get('checkout_cameras', 'all'),
+                    'organization_id': pg_user.get('organization_id', 'DEFAULT_ORG'),
+                    'branch_id': pg_user.get('branch_id', 'DEFAULT_BRANCH'),
+                }
+        except Exception as e:
+            logger.warning("Postgres unreachable for get_user_by_name; falling back to SQLite cache: %s", e)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -2472,21 +2502,31 @@ def _clone_shift_row(cursor: sqlite3.Cursor, source_id: int, organization_id: st
     row = cursor.fetchone()
     if not row:
         return None
-    cursor.execute(
-        """
-        INSERT INTO shifts (
-            name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes,
-            working_days, is_default, active, organization_id, branch_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            row[0], row[1], row[2], row[3] or 15, row[4] or 0,
-            row[5] or json.dumps([0, 1, 2, 3, 4, 5]),
-            row[6] or 0, 1 if row[7] is None else row[7],
-            organization_id, branch_id or 'DEFAULT_BRANCH',
-        ),
-    )
-    return cursor.lastrowid
+    s_name = row[0]
+    existing = cursor.execute("SELECT 1 FROM shifts WHERE name = ?", (s_name,)).fetchone()
+    if existing:
+        s_name = f"{row[0]} ({organization_id})"
+        existing2 = cursor.execute("SELECT 1 FROM shifts WHERE name = ?", (s_name,)).fetchone()
+        if existing2:
+            s_name = f"{row[0]} ({organization_id}_{source_id})"
+    try:
+        cursor.execute(
+            """
+            INSERT INTO shifts (
+                name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes,
+                working_days, is_default, active, organization_id, branch_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                s_name, row[1], row[2], row[3] or 15, row[4] or 0,
+                row[5] or json.dumps([0, 1, 2, 3, 4, 5]),
+                row[6] or 0, 1 if row[7] is None else row[7],
+                organization_id, branch_id or 'DEFAULT_BRANCH',
+            ),
+        )
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        return None
 
 
 def _repair_shared_shift_tenants(cursor: sqlite3.Cursor) -> None:
@@ -2562,19 +2602,29 @@ def _ensure_organization_default_shift(cursor: sqlite3.Cursor, organization_id: 
     )
     if cursor.fetchone()[0] > 0:
         return
-    cursor.execute(
-        """
-        INSERT INTO shifts (
-            name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes,
-            working_days, is_default, active, organization_id, branch_id
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
-        """,
-        (
-            'Morning Shift', '09:00', '17:00', 15, 0,
-            json.dumps([0, 1, 2, 3, 4, 5]),
-            organization_id, branch_id or 'DEFAULT_BRANCH',
-        ),
-    )
+    s_name = 'Morning Shift'
+    existing = cursor.execute("SELECT 1 FROM shifts WHERE name = ?", (s_name,)).fetchone()
+    if existing:
+        s_name = f"Morning Shift ({organization_id})"
+        existing2 = cursor.execute("SELECT 1 FROM shifts WHERE name = ?", (s_name,)).fetchone()
+        if existing2:
+            s_name = f"Morning Shift ({organization_id}_default)"
+    try:
+        cursor.execute(
+            """
+            INSERT INTO shifts (
+                name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes,
+                working_days, is_default, active, organization_id, branch_id
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+            """,
+            (
+                s_name, '09:00', '17:00', 15, 0,
+                json.dumps([0, 1, 2, 3, 4, 5]),
+                organization_id, branch_id or 'DEFAULT_BRANCH',
+            ),
+        )
+    except sqlite3.IntegrityError:
+        return
     new_id = cursor.lastrowid
     cursor.execute(
         """
@@ -2637,6 +2687,13 @@ def get_all_shifts(
     branch_id: Optional[str] = None,
 ) -> List[Dict]:
     """Retrieve shifts with employee counts scoped to the requested organization and branch."""
+    if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+        if postgres_is_configured():
+            try:
+                import postgres_mirror as cloud_pg
+                cloud_pg.fetch_pg_all_shifts(organization_id, branch_id, active_only)
+            except Exception as error:
+                logger.warning("Postgres unreachable for shifts; falling back to SQLite cache: %s", error)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -2760,9 +2817,11 @@ def get_shift_by_id(shift_id: int, organization_id: Optional[str] = None) -> Opt
     try:
         import postgres_mirror as cloud_pg
         if cloud_pg.postgres_is_configured():
-            cloud_pg.fetch_pg_shift(shift_id, organization_id)
+            pg_res = cloud_pg.fetch_pg_shift(shift_id, organization_id)
+            if pg_res is False:
+                return None
     except Exception as e:
-        logger.debug("PostgreSQL authoritative shift fetch skipped: %s", e)
+        logger.warning("Postgres unreachable for get_shift_by_id; falling back to SQLite cache: %s", e)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -3401,13 +3460,20 @@ def get_locator_history(user_id: Optional[int] = None, room_name: Optional[str] 
 
 def get_attendance_logs(limit: int = 100, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict]:
     """Retrieve recent attendance logs with location and device, strictly scoped by organization and branch."""
+    if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+        if postgres_is_configured():
+            try:
+                import postgres_mirror as cloud_pg
+                cloud_pg.fetch_pg_attendance_logs(organization_id, branch_id, limit)
+            except Exception as error:
+                logger.warning("Postgres unreachable for attendance logs; falling back to SQLite cache: %s", error)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             query = '''
-                SELECT a.id, u.name, a.detected_name, a.confidence, a.timestamp, a.source, a.location, a.device_id
+                SELECT a.id, COALESCE(u.name, a.detected_name, 'Unknown') as name, a.detected_name, a.confidence, a.timestamp, a.source, a.location, a.device_id
                 FROM attendance a
-                JOIN users u ON a.user_id = u.id
+                LEFT JOIN users u ON a.user_id = u.id
                 WHERE 1=1
             '''
             params = []
@@ -3415,13 +3481,13 @@ def get_attendance_logs(limit: int = 100, organization_id: Optional[str] = None,
                 if organization_id == 'DEFAULT_ORG':
                     query += " AND (a.organization_id = 'DEFAULT_ORG' OR a.organization_id IS NULL OR u.organization_id = 'DEFAULT_ORG' OR u.organization_id IS NULL)"
                 else:
-                    query += " AND (a.organization_id = ? OR u.organization_id = ?)"
+                    query += " AND (a.organization_id = ? OR (a.organization_id IS NULL AND u.organization_id = ?))"
                     params.extend([organization_id, organization_id])
             if branch_id and branch_id != 'all':
                 if branch_id == 'DEFAULT_BRANCH':
                     query += " AND (a.branch_id = 'DEFAULT_BRANCH' OR a.branch_id IS NULL OR u.branch_id = 'DEFAULT_BRANCH' OR u.branch_id IS NULL)"
                 else:
-                    query += " AND (a.branch_id = ? OR u.branch_id = ?)"
+                    query += " AND (a.branch_id = ? OR (a.branch_id IS NULL AND u.branch_id = ?))"
                     params.extend([branch_id, branch_id])
             query += " ORDER BY a.timestamp DESC LIMIT ?"
             params.append(limit)
@@ -5121,9 +5187,11 @@ def get_user_by_id(user_id: int, organization_id: Optional[str] = None) -> Optio
     try:
         import postgres_mirror as cloud_pg
         if cloud_pg.postgres_is_configured():
-            cloud_pg.fetch_pg_employee(user_id, organization_id)
+            pg_res = cloud_pg.fetch_pg_employee(user_id, organization_id)
+            if pg_res is False:
+                return None
     except Exception as e:
-        logger.debug("PostgreSQL authoritative employee fetch skipped: %s", e)
+        logger.warning("Postgres unreachable for get_user_by_id; falling back to SQLite cache: %s", e)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -5757,6 +5825,13 @@ def add_leave_requests(user_id: int, user_name: str, requests: List[Tuple[str, s
 
 def get_leave_requests(user_id: Optional[int] = None, status: Optional[str] = None, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict]:
     """Get list of leave requests optionally filtered by user_id, status, organization_id, and branch_id."""
+    if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+        if postgres_is_configured():
+            try:
+                import postgres_mirror as cloud_pg
+                cloud_pg.fetch_pg_leave_requests(organization_id, branch_id, user_id, status)
+            except Exception as error:
+                logger.warning("Postgres unreachable for leave requests; falling back to SQLite cache: %s", error)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -5838,9 +5913,11 @@ def get_leave_by_id(leave_id: int, organization_id: Optional[str] = None) -> Opt
     try:
         import postgres_mirror as cloud_pg
         if cloud_pg.postgres_is_configured():
-            cloud_pg.fetch_pg_leave(leave_id)
+            pg_res = cloud_pg.fetch_pg_leave(leave_id, organization_id)
+            if pg_res is False:
+                return None
     except Exception as e:
-        logger.debug("PostgreSQL authoritative leave fetch skipped: %s", e)
+        logger.warning("Postgres unreachable for get_leave_by_id; falling back to SQLite cache: %s", e)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -7164,6 +7241,13 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                  start_date: Optional[str] = None, end_date: Optional[str] = None,
                  organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict]:
     """Get overtime records optionally filtered by user_id, status, department, and date range."""
+    if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+        if postgres_is_configured():
+            try:
+                import postgres_mirror as cloud_pg
+                cloud_pg.fetch_pg_overtime_records(organization_id, branch_id, user_id, status, start_date, end_date)
+            except Exception as error:
+                logger.warning("Postgres unreachable for overtime; falling back to SQLite cache: %s", error)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -7270,9 +7354,11 @@ def get_overtime_by_id(
     try:
         import postgres_mirror as cloud_pg
         if cloud_pg.postgres_is_configured():
-            cloud_pg.fetch_pg_overtime(ot_id)
+            pg_res = cloud_pg.fetch_pg_overtime(ot_id, organization_id)
+            if pg_res is False:
+                return None
     except Exception as e:
-        logger.debug("PostgreSQL authoritative overtime fetch skipped: %s", e)
+        logger.warning("Postgres unreachable for get_overtime_by_id; falling back to SQLite cache: %s", e)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -10625,6 +10711,15 @@ def get_monthly_payroll(
     branch_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Load a finalized payroll snapshot for a month, if one exists for the specified tenant."""
+    if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+        if postgres_is_configured():
+            try:
+                import postgres_mirror as cloud_pg
+                pg_res = cloud_pg.fetch_pg_monthly_payroll(payroll_month, organization_id, branch_id)
+                if pg_res is False:
+                    return None
+            except Exception as error:
+                logger.warning("Postgres unreachable for monthly payroll; falling back to SQLite cache: %s", error)
     with sqlite3.connect(DB_PATH, timeout=60.0) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()

@@ -470,10 +470,7 @@ def mirror_mobile_credentials(user_id: int, organization_id: str, password_hash:
 
 
 def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
-    """Copy Postgres employee rows into SQLite when the local cache is missing them.
-
-    Face embeddings are never stored in Postgres and are not created here.
-    """
+    """Copy Postgres employee rows into SQLite and prune stale SQLite users for the tenant."""
     org_id = str(organization_id or "").strip()
     br_id = str(branch_id or "").strip()
     if not postgres_is_configured() or not _real_tenant(org_id, br_id):
@@ -502,6 +499,7 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
             rows = list(cur.fetchall() or [])
         if not rows:
             return 0
+        pg_ids = set()
         with sqlite3.connect(_sqlite_path()) as sqlite_conn:
             sqlite_cur = sqlite_conn.cursor()
             for row in rows:
@@ -509,6 +507,7 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                     user_id = int(str(row.get("id") or "").strip())
                 except (TypeError, ValueError):
                     continue
+                pg_ids.add(user_id)
                 pw_hash = row.get("password_hash") or None
                 mob_login = int(row.get("mobile_login", 0) or 0)
                 exists = sqlite_cur.execute(
@@ -519,7 +518,7 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                     sqlite_cur.execute(
                         """
                         UPDATE users SET
-                            name = COALESCE(?, name),
+                            name = ?,
                             email = COALESCE(?, email),
                             phone = COALESCE(?, phone),
                             active = ?,
@@ -559,6 +558,18 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                     ),
                 )
                 inserted += 1
+            # Prune cached SQLite users in this org/branch that do not exist in PostgreSQL
+            sqlite_cur.execute(
+                "SELECT id FROM users WHERE organization_id = ? AND branch_id = ?",
+                (org_id, br_id),
+            )
+            for cached_id_row in sqlite_cur.fetchall():
+                cid = cached_id_row[0]
+                if cid not in pg_ids:
+                    sqlite_cur.execute(
+                        "DELETE FROM users WHERE id = ? AND organization_id = ? AND branch_id = ?",
+                        (cid, org_id, br_id),
+                    )
             sqlite_conn.commit()
         if inserted:
             logger.info(
@@ -575,7 +586,7 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
         conn.close()
 
 
-def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> Any:
     """Authoritatively fetch a single employee from PostgreSQL into SQLite cache."""
     if not postgres_is_configured() or not user_id:
         return None
@@ -607,7 +618,13 @@ def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> Op
             )
             row = cur.fetchone()
         if not row:
-            return None
+            try:
+                with sqlite3.connect(_sqlite_path()) as s_conn:
+                    s_conn.execute("DELETE FROM users WHERE id = ? AND organization_id = ?", (user_id, org_id))
+                    s_conn.commit()
+            except Exception:
+                pass
+            return False
         
         org_id = row.get("organization_id") or "DEFAULT_ORG"
         br_id = row.get("branch_id") or "BR-01"
@@ -620,7 +637,7 @@ def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> Op
                 sqlite_cur.execute(
                     """
                     UPDATE users SET
-                        name = COALESCE(?, name),
+                        name = ?,
                         email = COALESCE(?, email),
                         phone = COALESCE(?, phone),
                         active = ?,
@@ -675,7 +692,129 @@ def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> Op
         conn.close()
 
 
-def fetch_pg_shift(shift_id: int, organization_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def fetch_pg_user_by_name(name: str, organization_id: Optional[str] = None) -> Any:
+    """Authoritatively fetch an employee by name from PostgreSQL and update SQLite cache."""
+    if not postgres_is_configured() or not name:
+        return None
+    conn = _connect()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            try:
+                cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)")
+                cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS mobile_login INT DEFAULT 0")
+            except Exception:
+                pass
+            if organization_id and _real_tenant(organization_id):
+                cur.execute(
+                    """
+                    SELECT id, organization_id, branch_id, employee_code, name, email, phone,
+                           is_active, COALESCE(password_hash, '') as password_hash,
+                           COALESCE(mobile_login, 0) as mobile_login,
+                           COALESCE(shift_id, '1') as shift_id
+                    FROM employees
+                    WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s)) AND organization_id = %s
+                    LIMIT 1
+                    """,
+                    (name, organization_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, organization_id, branch_id, employee_code, name, email, phone,
+                           is_active, COALESCE(password_hash, '') as password_hash,
+                           COALESCE(mobile_login, 0) as mobile_login,
+                           COALESCE(shift_id, '1') as shift_id
+                    FROM employees
+                    WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+                    LIMIT 1
+                    """,
+                    (name,),
+                )
+            row = cur.fetchone()
+        if not row:
+            return False
+        
+        try:
+            user_id = int(str(row.get("id") or "").strip())
+        except (ValueError, TypeError):
+            user_id = 0
+        org_id = row.get("organization_id") or "DEFAULT_ORG"
+        br_id = row.get("branch_id") or "BR-01"
+        pw_hash = row.get("password_hash") or None
+        mob_login = int(row.get("mobile_login", 0) or 0)
+        try:
+            shift_id = int(str(row.get("shift_id") or "1"))
+        except (ValueError, TypeError):
+            shift_id = 1
+
+        with sqlite3.connect(_sqlite_path()) as sqlite_conn:
+            sqlite_cur = sqlite_conn.cursor()
+            exists = sqlite_cur.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone()
+            if exists:
+                sqlite_cur.execute(
+                    """
+                    UPDATE users SET
+                        name = ?,
+                        email = COALESCE(?, email),
+                        phone = COALESCE(?, phone),
+                        active = ?,
+                        organization_id = COALESCE(?, organization_id),
+                        branch_id = COALESCE(?, branch_id),
+                        notes = COALESCE(?, notes),
+                        password_hash = COALESCE(?, password_hash),
+                        mobile_login = MAX(?, COALESCE(mobile_login, 0)),
+                        shift_id = COALESCE(?, shift_id)
+                    WHERE id = ?
+                    """,
+                    (
+                        row.get("name"),
+                        row.get("email"),
+                        row.get("phone"),
+                        1 if row.get("is_active", True) else 0,
+                        org_id,
+                        br_id,
+                        row.get("employee_code"),
+                        pw_hash,
+                        mob_login,
+                        shift_id,
+                        user_id,
+                    ),
+                )
+            else:
+                sqlite_cur.execute(
+                    """
+                    INSERT INTO users (
+                        id, name, email, phone, notes, active, organization_id, branch_id, password_hash, mobile_login, shift_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        row.get("name"),
+                        row.get("email") or "",
+                        row.get("phone") or "",
+                        row.get("employee_code") or f"EMP-{user_id}",
+                        1 if row.get("is_active", True) else 0,
+                        org_id,
+                        br_id,
+                        pw_hash,
+                        mob_login,
+                        shift_id,
+                    ),
+                )
+            sqlite_conn.commit()
+            sqlite_conn.row_factory = sqlite3.Row
+            full_user = sqlite_conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            return dict(full_user) if full_user else dict(row)
+    except Exception as error:
+        logger.warning("Could not fetch employee by name from Postgres: %s", error)
+        return None
+    finally:
+        conn.close()
+
+
+def fetch_pg_shift(shift_id: int, organization_id: Optional[str] = None) -> Any:
     """Authoritatively fetch a single shift from PostgreSQL into SQLite cache."""
     if not postgres_is_configured() or not shift_id or not organization_id or not _real_tenant(organization_id):
         return None
@@ -685,32 +824,55 @@ def fetch_pg_shift(shift_id: int, organization_id: Optional[str] = None) -> Opti
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, organization_id, branch_id, name, start_time, end_time, grace_period_minutes, is_active FROM shifts WHERE id = %s AND organization_id = %s",
+                """
+                SELECT id, organization_id, branch_id, name,
+                       to_char(start_time, 'HH24:MI') as start_time,
+                       to_char(end_time, 'HH24:MI') as end_time,
+                       grace_minutes
+                FROM shifts
+                WHERE id = %s AND organization_id = %s
+                """,
                 (str(shift_id), organization_id),
             )
             row = cur.fetchone()
         if not row:
-            return None
+            try:
+                with sqlite3.connect(_sqlite_path()) as s_conn:
+                    s_conn.execute("DELETE FROM shifts WHERE id = ? AND organization_id = ?", (shift_id, organization_id))
+                    s_conn.commit()
+            except Exception:
+                pass
+            return False
         with sqlite3.connect(_sqlite_path()) as sqlite_conn:
             sqlite_cur = sqlite_conn.cursor()
+            s_name = row.get("name") or f"Shift {shift_id}"
+            exists_name = sqlite_cur.execute("SELECT id FROM shifts WHERE name = ? AND id != ?", (s_name, shift_id)).fetchone()
+            if exists_name:
+                s_name = f"{s_name} ({organization_id})"
+                exists_name2 = sqlite_cur.execute("SELECT id FROM shifts WHERE name = ? AND id != ?", (s_name, shift_id)).fetchone()
+                if exists_name2:
+                    s_name = f"{row.get('name') or 'Shift'} ({organization_id}_{shift_id})"
             exists = sqlite_cur.execute("SELECT 1 FROM shifts WHERE id = ?", (shift_id,)).fetchone()
             if exists:
                 sqlite_cur.execute(
                     """
                     UPDATE shifts SET
-                        name = COALESCE(?, name),
-                        start_time = COALESCE(?, start_time),
-                        end_time = COALESCE(?, end_time),
-                        grace_period_minutes = COALESCE(?, grace_period_minutes),
-                        active = ?
+                        name = ?,
+                        start_time = ?,
+                        end_time = ?,
+                        grace_period_minutes = ?,
+                        active = 1,
+                        organization_id = ?,
+                        branch_id = COALESCE(?, branch_id)
                     WHERE id = ?
                     """,
                     (
-                        row.get("name"),
-                        row.get("start_time"),
-                        row.get("end_time"),
-                        row.get("grace_period_minutes", 15),
-                        1 if row.get("is_active", True) else 0,
+                        s_name,
+                        row.get("start_time") or "09:00",
+                        row.get("end_time") or "17:00",
+                        row.get("grace_minutes", 15),
+                        organization_id,
+                        row.get("branch_id") or "DEFAULT_BRANCH",
                         shift_id,
                     ),
                 )
@@ -718,16 +880,15 @@ def fetch_pg_shift(shift_id: int, organization_id: Optional[str] = None) -> Opti
                 sqlite_cur.execute(
                     """
                     INSERT INTO shifts (id, name, start_time, end_time, grace_period_minutes, active, organization_id, branch_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
                     """,
                     (
                         shift_id,
-                        row.get("name") or f"Shift {shift_id}",
+                        s_name,
                         row.get("start_time") or "09:00",
                         row.get("end_time") or "17:00",
-                        row.get("grace_period_minutes", 15),
-                        1 if row.get("is_active", True) else 0,
-                        row.get("organization_id") or "DEFAULT_ORG",
+                        row.get("grace_minutes", 15),
+                        organization_id,
                         row.get("branch_id") or "DEFAULT_BRANCH",
                     ),
                 )
@@ -742,7 +903,101 @@ def fetch_pg_shift(shift_id: int, organization_id: Optional[str] = None) -> Opti
         conn.close()
 
 
-def fetch_pg_leave(leave_id: int, organization_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def fetch_pg_all_shifts(organization_id: str, branch_id: Optional[str] = None, active_only: bool = True) -> Optional[List[Dict[str, Any]]]:
+    """Authoritatively fetch all shifts for a tenant from PostgreSQL and update SQLite cache."""
+    if not postgres_is_configured() or not _real_tenant(organization_id):
+        return None
+    conn = _connect()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            query = """
+                SELECT id, organization_id, branch_id, name,
+                       to_char(start_time, 'HH24:MI') as start_time,
+                       to_char(end_time, 'HH24:MI') as end_time,
+                       grace_minutes
+                FROM shifts
+                WHERE organization_id = %s
+            """
+            params = [organization_id]
+            if branch_id and branch_id != 'all':
+                query += " AND branch_id = %s"
+                params.append(branch_id)
+            cur.execute(query, params)
+            rows = list(cur.fetchall() or [])
+        
+        pg_ids = set()
+        with sqlite3.connect(_sqlite_path()) as sqlite_conn:
+            sqlite_cur = sqlite_conn.cursor()
+            for r in rows:
+                try:
+                    sid = int(str(r.get("id") or "").strip())
+                except (ValueError, TypeError):
+                    continue
+                pg_ids.add(sid)
+                s_name = r.get("name") or f"Shift {sid}"
+                exists_name = sqlite_cur.execute("SELECT id FROM shifts WHERE name = ? AND id != ?", (s_name, sid)).fetchone()
+                if exists_name:
+                    s_name = f"{s_name} ({organization_id})"
+                    exists_name2 = sqlite_cur.execute("SELECT id FROM shifts WHERE name = ? AND id != ?", (s_name, sid)).fetchone()
+                    if exists_name2:
+                        s_name = f"{r.get('name') or 'Shift'} ({organization_id}_{sid})"
+                exists = sqlite_cur.execute("SELECT 1 FROM shifts WHERE id = ?", (sid,)).fetchone()
+                if exists:
+                    sqlite_cur.execute(
+                        """
+                        UPDATE shifts SET
+                            name = ?,
+                            start_time = ?,
+                            end_time = ?,
+                            grace_period_minutes = ?,
+                            organization_id = ?,
+                            branch_id = COALESCE(?, branch_id)
+                        WHERE id = ?
+                        """,
+                        (
+                            s_name,
+                            r.get("start_time") or "09:00",
+                            r.get("end_time") or "17:00",
+                            r.get("grace_minutes", 15),
+                            organization_id,
+                            r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                            sid,
+                        ),
+                    )
+                else:
+                    sqlite_cur.execute(
+                        """
+                        INSERT INTO shifts (id, name, start_time, end_time, grace_period_minutes, active, organization_id, branch_id)
+                        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                        """,
+                        (
+                            sid,
+                            s_name,
+                            r.get("start_time") or "09:00",
+                            r.get("end_time") or "17:00",
+                            r.get("grace_minutes", 15),
+                            organization_id,
+                            r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                        ),
+                    )
+            # Prune phantom shifts in SQLite that do not exist in PostgreSQL for this tenant
+            sqlite_cur.execute("SELECT id FROM shifts WHERE organization_id = ?", (organization_id,))
+            cached_ids = [row[0] for row in sqlite_cur.fetchall()]
+            for cid in cached_ids:
+                if cid not in pg_ids:
+                    sqlite_cur.execute("DELETE FROM shifts WHERE id = ? AND organization_id = ?", (cid, organization_id))
+            sqlite_conn.commit()
+        return rows
+    except Exception as error:
+        logger.warning("Could not fetch shifts from Postgres: %s", error)
+        return None
+    finally:
+        conn.close()
+
+
+def fetch_pg_leave(leave_id: int, organization_id: Optional[str] = None) -> Any:
     """Authoritatively fetch a single leave from PostgreSQL into SQLite cache."""
     if not postgres_is_configured() or not leave_id:
         return None
@@ -763,19 +1018,44 @@ def fetch_pg_leave(leave_id: int, organization_id: Optional[str] = None) -> Opti
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, organization_id, branch_id, employee_id, leave_type, start_date, end_date, status, reason FROM leave_requests WHERE id = %s AND organization_id = %s",
+                "SELECT id, organization_id, branch_id, employee_id, leave_type, start_date::text as start_date, end_date::text as end_date, status, reason FROM leave_requests WHERE id = %s AND organization_id = %s",
                 (str(leave_id), org_id),
             )
             row = cur.fetchone()
         if not row:
-            return None
+            try:
+                with sqlite3.connect(_sqlite_path()) as s_conn:
+                    s_conn.execute("DELETE FROM leave_requests WHERE id = ? AND organization_id = ?", (leave_id, org_id))
+                    s_conn.commit()
+            except Exception:
+                pass
+            return False
         with sqlite3.connect(_sqlite_path()) as sqlite_conn:
             sqlite_cur = sqlite_conn.cursor()
             exists = sqlite_cur.execute("SELECT 1 FROM leave_requests WHERE id = ?", (leave_id,)).fetchone()
             if exists:
                 sqlite_cur.execute(
-                    "UPDATE leave_requests SET status = ?, reason = ? WHERE id = ?",
-                    (row.get("status"), row.get("reason"), leave_id),
+                    """
+                    UPDATE leave_requests SET
+                        status = ?,
+                        reason = ?,
+                        leave_type = COALESCE(?, leave_type),
+                        start_date = COALESCE(?, start_date),
+                        end_date = COALESCE(?, end_date),
+                        organization_id = ?,
+                        branch_id = COALESCE(?, branch_id)
+                    WHERE id = ?
+                    """,
+                    (
+                        row.get("status"),
+                        row.get("reason"),
+                        row.get("leave_type"),
+                        row.get("start_date"),
+                        row.get("end_date"),
+                        org_id,
+                        row.get("branch_id") or "DEFAULT_BRANCH",
+                        leave_id,
+                    ),
                 )
             else:
                 try:
@@ -795,7 +1075,7 @@ def fetch_pg_leave(leave_id: int, organization_id: Optional[str] = None) -> Opti
                         str(row.get("end_date")),
                         row.get("status"),
                         row.get("reason") or "",
-                        row.get("organization_id") or "DEFAULT_ORG",
+                        org_id,
                         row.get("branch_id") or "DEFAULT_BRANCH",
                     ),
                 )
@@ -810,7 +1090,116 @@ def fetch_pg_leave(leave_id: int, organization_id: Optional[str] = None) -> Opti
         conn.close()
 
 
-def fetch_pg_overtime(ot_id: int, organization_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def fetch_pg_leave_requests(organization_id: str, branch_id: Optional[str] = None, user_id: Optional[int] = None, status: Optional[str] = None) -> Optional[int]:
+    """Authoritatively fetch leave requests for a tenant from PostgreSQL and update SQLite cache."""
+    if not postgres_is_configured() or not _real_tenant(organization_id):
+        return None
+    conn = _connect()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            query = """
+                SELECT id, organization_id, branch_id, employee_id, leave_type,
+                       start_date::text as start_date, end_date::text as end_date,
+                       status, reason
+                FROM leave_requests
+                WHERE organization_id = %s
+            """
+            params = [organization_id]
+            if branch_id and branch_id != 'all':
+                query += " AND branch_id = %s"
+                params.append(branch_id)
+            if user_id:
+                query += " AND employee_id = %s"
+                params.append(str(user_id))
+            if status:
+                st = status.strip().lower()
+                if st == 'active':
+                    query += " AND LOWER(status) IN ('pending', 'approved', 'partially_approved')"
+                else:
+                    query += " AND LOWER(status) = %s"
+                    params.append(st)
+            cur.execute(query, params)
+            rows = list(cur.fetchall() or [])
+        
+        pg_ids = set()
+        with sqlite3.connect(_sqlite_path()) as sqlite_conn:
+            sqlite_cur = sqlite_conn.cursor()
+            for r in rows:
+                try:
+                    lid = int(str(r.get("id") or "").strip())
+                except (ValueError, TypeError):
+                    continue
+                pg_ids.add(lid)
+                try:
+                    uid = int(str(r.get("employee_id") or "").strip())
+                except (ValueError, TypeError):
+                    uid = 0
+                exists = sqlite_cur.execute("SELECT 1 FROM leave_requests WHERE id = ?", (lid,)).fetchone()
+                if exists:
+                    sqlite_cur.execute(
+                        """
+                        UPDATE leave_requests SET
+                            status = ?,
+                            reason = ?,
+                            leave_type = COALESCE(?, leave_type),
+                            start_date = COALESCE(?, start_date),
+                            end_date = COALESCE(?, end_date),
+                            organization_id = ?,
+                            branch_id = COALESCE(?, branch_id)
+                        WHERE id = ?
+                        """,
+                        (
+                            r.get("status"),
+                            r.get("reason") or "",
+                            r.get("leave_type"),
+                            r.get("start_date"),
+                            r.get("end_date"),
+                            organization_id,
+                            r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                            lid,
+                        ),
+                    )
+                else:
+                    sqlite_cur.execute(
+                        """
+                        INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, status, reason, organization_id, branch_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            lid,
+                            uid,
+                            r.get("leave_type") or "casual",
+                            r.get("start_date"),
+                            r.get("end_date"),
+                            r.get("status") or "pending",
+                            r.get("reason") or "",
+                            organization_id,
+                            r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                        ),
+                    )
+            # Prune phantom leave requests in SQLite that do not exist in PostgreSQL for this tenant
+            sqlite_query = "SELECT id FROM leave_requests WHERE organization_id = ?"
+            sq_params = [organization_id]
+            if user_id:
+                sqlite_query += " AND user_id = ?"
+                sq_params.append(user_id)
+            sqlite_cur.execute(sqlite_query, sq_params)
+            cached_ids = [row[0] for row in sqlite_cur.fetchall()]
+            for cid in cached_ids:
+                if cid not in pg_ids:
+                    sqlite_cur.execute("DELETE FROM leave_requests WHERE id = ? AND organization_id = ?", (cid, organization_id))
+            sqlite_conn.commit()
+        return len(rows)
+    except Exception as error:
+        logger.warning("Could not fetch leave requests from Postgres: %s", error)
+        return None
+    finally:
+        conn.close()
+
+
+def fetch_pg_overtime(ot_id: int, organization_id: Optional[str] = None) -> Any:
     """Authoritatively fetch a single overtime record from PostgreSQL into SQLite cache."""
     if not postgres_is_configured() or not ot_id:
         return None
@@ -831,19 +1220,42 @@ def fetch_pg_overtime(ot_id: int, organization_id: Optional[str] = None) -> Opti
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, organization_id, branch_id, employee_id, work_date, hours, reason, status FROM overtime_records WHERE id = %s AND organization_id = %s",
+                "SELECT id, organization_id, branch_id, employee_id, work_date::text as work_date, hours, reason, status FROM overtime_records WHERE id = %s AND organization_id = %s",
                 (str(ot_id), org_id),
             )
             row = cur.fetchone()
         if not row:
-            return None
+            try:
+                with sqlite3.connect(_sqlite_path()) as s_conn:
+                    s_conn.execute("DELETE FROM overtime WHERE id = ? AND organization_id = ?", (ot_id, org_id))
+                    s_conn.commit()
+            except Exception:
+                pass
+            return False
         with sqlite3.connect(_sqlite_path()) as sqlite_conn:
             sqlite_cur = sqlite_conn.cursor()
             exists = sqlite_cur.execute("SELECT 1 FROM overtime WHERE id = ?", (ot_id,)).fetchone()
             if exists:
                 sqlite_cur.execute(
-                    "UPDATE overtime SET status = ?, hours = ?, reason = ? WHERE id = ?",
-                    (row.get("status"), float(row.get("hours") or 0), row.get("reason"), ot_id),
+                    """
+                    UPDATE overtime SET
+                        status = ?,
+                        hours = ?,
+                        reason = ?,
+                        ot_date = COALESCE(?, ot_date),
+                        organization_id = ?,
+                        branch_id = COALESCE(?, branch_id)
+                    WHERE id = ?
+                    """,
+                    (
+                        row.get("status"),
+                        float(row.get("hours") or 0),
+                        row.get("reason"),
+                        row.get("work_date"),
+                        org_id,
+                        row.get("branch_id") or "DEFAULT_BRANCH",
+                        ot_id,
+                    ),
                 )
             else:
                 try:
@@ -862,7 +1274,7 @@ def fetch_pg_overtime(ot_id: int, organization_id: Optional[str] = None) -> Opti
                         float(row.get("hours") or 0),
                         row.get("reason") or "",
                         row.get("status"),
-                        row.get("organization_id") or "DEFAULT_ORG",
+                        org_id,
                         row.get("branch_id") or "DEFAULT_BRANCH",
                     ),
                 )
@@ -872,6 +1284,340 @@ def fetch_pg_overtime(ot_id: int, organization_id: Optional[str] = None) -> Opti
             return dict(full_row) if full_row else dict(row)
     except Exception as error:
         logger.warning("Could not fetch overtime from Postgres: %s", error)
+        return None
+    finally:
+        conn.close()
+
+
+def fetch_pg_overtime_records(
+    organization_id: str,
+    branch_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+    status: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Optional[int]:
+    """Authoritatively fetch overtime records for a tenant from PostgreSQL and update SQLite cache."""
+    if not postgres_is_configured() or not _real_tenant(organization_id):
+        return None
+    conn = _connect()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            query = """
+                SELECT id, organization_id, branch_id, employee_id,
+                       work_date::text as work_date, hours, reason, status
+                FROM overtime_records
+                WHERE organization_id = %s
+            """
+            params = [organization_id]
+            if branch_id and branch_id != 'all':
+                query += " AND branch_id = %s"
+                params.append(branch_id)
+            if user_id:
+                query += " AND employee_id = %s"
+                params.append(str(user_id))
+            if status and status.lower() != 'all':
+                query += " AND LOWER(status) = %s"
+                params.append(status.lower())
+            if start_date:
+                query += " AND work_date >= %s"
+                params.append(start_date)
+            if end_date:
+                query += " AND work_date <= %s"
+                params.append(end_date)
+            cur.execute(query, params)
+            rows = list(cur.fetchall() or [])
+        
+        pg_ids = set()
+        with sqlite3.connect(_sqlite_path()) as sqlite_conn:
+            sqlite_cur = sqlite_conn.cursor()
+            for r in rows:
+                try:
+                    oid = int(str(r.get("id") or "").strip())
+                except (ValueError, TypeError):
+                    continue
+                pg_ids.add(oid)
+                try:
+                    uid = int(str(r.get("employee_id") or "").strip())
+                except (ValueError, TypeError):
+                    uid = 0
+                exists = sqlite_cur.execute("SELECT 1 FROM overtime WHERE id = ?", (oid,)).fetchone()
+                if exists:
+                    sqlite_cur.execute(
+                        """
+                        UPDATE overtime SET
+                            status = ?,
+                            hours = ?,
+                            reason = ?,
+                            ot_date = COALESCE(?, ot_date),
+                            organization_id = ?,
+                            branch_id = COALESCE(?, branch_id)
+                        WHERE id = ?
+                        """,
+                        (
+                            r.get("status"),
+                            float(r.get("hours") or 0.0),
+                            r.get("reason") or "",
+                            r.get("work_date"),
+                            organization_id,
+                            r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                            oid,
+                        ),
+                    )
+                else:
+                    sqlite_cur.execute(
+                        """
+                        INSERT INTO overtime (id, user_id, ot_date, hours, reason, status, organization_id, branch_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            oid,
+                            uid,
+                            r.get("work_date"),
+                            float(r.get("hours") or 0.0),
+                            r.get("reason") or "",
+                            r.get("status") or "pending",
+                            organization_id,
+                            r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                        ),
+                    )
+            # Prune phantom overtime in SQLite that do not exist in PostgreSQL for this tenant
+            sqlite_query = "SELECT id FROM overtime WHERE organization_id = ?"
+            sq_params = [organization_id]
+            if user_id:
+                sqlite_query += " AND user_id = ?"
+                sq_params.append(user_id)
+            sqlite_cur.execute(sqlite_query, sq_params)
+            cached_ids = [row[0] for row in sqlite_cur.fetchall()]
+            for cid in cached_ids:
+                if cid not in pg_ids:
+                    sqlite_cur.execute("DELETE FROM overtime WHERE id = ? AND organization_id = ?", (cid, organization_id))
+            sqlite_conn.commit()
+        return len(rows)
+    except Exception as error:
+        logger.warning("Could not fetch overtime from Postgres: %s", error)
+        return None
+    finally:
+        conn.close()
+
+
+def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id: Optional[str] = None) -> Any:
+    """Authoritatively fetch a finalized monthly payroll run and its records from PostgreSQL and update SQLite cache."""
+    if not postgres_is_configured() or not _real_tenant(organization_id):
+        return None
+    conn = _connect()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, organization_id, branch_id, payroll_month,
+                       period_start::text, period_end::text, employee_count,
+                       total_basic_salary, total_deduction, status, total_amount
+                FROM payroll_runs
+                WHERE organization_id = %s AND payroll_month = %s
+                """,
+                (organization_id, payroll_month),
+            )
+            run = cur.fetchone()
+            if not run:
+                with sqlite3.connect(_sqlite_path()) as sqlite_conn:
+                    sqlite_conn.execute("DELETE FROM payroll_runs WHERE organization_id = ? AND payroll_month = ?", (organization_id, payroll_month))
+                    sqlite_conn.commit()
+                return False
+            
+            run_id = str(run.get("id"))
+            cur.execute(
+                """
+                SELECT id, organization_id, branch_id, payroll_run_id, employee_id,
+                       basic_salary, allowances, deductions, net_salary,
+                       scheduled_workdays, present_days, absent_days, late_days,
+                       approved_leave_days, payable_days
+                FROM payroll_records
+                WHERE organization_id = %s AND payroll_run_id = %s
+                """,
+                (organization_id, run_id),
+            )
+            records = list(cur.fetchall() or [])
+        
+        with sqlite3.connect(_sqlite_path()) as sqlite_conn:
+            sqlite_cur = sqlite_conn.cursor()
+            stat = "Finalized" if str(run.get("status") or "").lower() in ("approved", "paid", "finalized") else "Draft"
+            sqlite_cur.execute(
+                """
+                INSERT INTO payroll_runs (
+                    id, organization_id, branch_id, payroll_month, period_start, period_end,
+                    employee_count, total_basic_salary, total_deductions, total_net_salary, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    status = excluded.status,
+                    total_net_salary = excluded.total_net_salary,
+                    employee_count = excluded.employee_count,
+                    total_basic_salary = excluded.total_basic_salary,
+                    total_deductions = excluded.total_deductions
+                """,
+                (
+                    run_id,
+                    organization_id,
+                    run.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                    payroll_month,
+                    run.get("period_start"),
+                    run.get("period_end"),
+                    int(run.get("employee_count") or len(records)),
+                    float(run.get("total_basic_salary") or 0.0),
+                    float(run.get("total_deduction") or 0.0),
+                    float(run.get("total_amount") or 0.0),
+                    stat,
+                ),
+            )
+            pg_rec_ids = set()
+            for rec in records:
+                rid = str(rec.get("id"))
+                pg_rec_ids.add(rid)
+                try:
+                    eid = int(str(rec.get("employee_id") or "0"))
+                except (ValueError, TypeError):
+                    eid = 0
+                sqlite_cur.execute(
+                    """
+                    INSERT INTO payroll_records (
+                        id, organization_id, branch_id, payroll_run_id, employee_id,
+                        basic_salary, allowances, deductions, net_salary,
+                        scheduled_workdays, present_days, absent_days, late_days,
+                        approved_leave_days, payable_days
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        basic_salary = excluded.basic_salary,
+                        allowances = excluded.allowances,
+                        deductions = excluded.deductions,
+                        net_salary = excluded.net_salary,
+                        payable_days = excluded.payable_days
+                    """,
+                    (
+                        rid,
+                        organization_id,
+                        rec.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                        run_id,
+                        eid,
+                        float(rec.get("basic_salary") or 0.0),
+                        float(rec.get("allowances") or 0.0),
+                        float(rec.get("deductions") or 0.0),
+                        float(rec.get("net_salary") or 0.0),
+                        int(rec.get("scheduled_workdays") or 0),
+                        int(float(rec.get("present_days") or 0)),
+                        int(float(rec.get("absent_days") or 0)),
+                        int(float(rec.get("late_days") or 0)),
+                        int(float(rec.get("approved_leave_days") or 0)),
+                        float(rec.get("payable_days") or 0.0),
+                    ),
+                )
+            sqlite_cur.execute("SELECT id FROM payroll_records WHERE payroll_run_id = ?", (run_id,))
+            for crid_row in sqlite_cur.fetchall():
+                if crid_row[0] not in pg_rec_ids:
+                    sqlite_cur.execute("DELETE FROM payroll_records WHERE id = ?", (crid_row[0],))
+            sqlite_conn.commit()
+        return dict(run)
+    except Exception as error:
+        logger.warning("Could not fetch monthly payroll from Postgres: %s", error)
+        return None
+    finally:
+        conn.close()
+
+
+def fetch_pg_attendance_logs(organization_id: str, branch_id: Optional[str] = None, limit: int = 100) -> Optional[int]:
+    """Authoritatively fetch attendance events for a tenant from PostgreSQL and update SQLite cache."""
+    if not postgres_is_configured() or not _real_tenant(organization_id):
+        return None
+    conn = _connect()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            query = """
+                SELECT id, organization_id, branch_id, employee_id, camera_id,
+                       timestamp::text as timestamp, event_type, confidence
+                FROM attendance_events
+                WHERE organization_id = %s
+            """
+            params = [organization_id]
+            if branch_id and branch_id != 'all':
+                query += " AND branch_id = %s"
+                params.append(branch_id)
+            query += " ORDER BY timestamp DESC LIMIT %s"
+            params.append(limit)
+            cur.execute(query, params)
+            rows = list(cur.fetchall() or [])
+        
+        pg_ids = set()
+        with sqlite3.connect(_sqlite_path()) as sqlite_conn:
+            sqlite_cur = sqlite_conn.cursor()
+            for r in rows:
+                try:
+                    aid = int(str(r.get("id") or "").strip())
+                except (ValueError, TypeError):
+                    continue
+                pg_ids.add(aid)
+                try:
+                    uid = int(str(r.get("employee_id") or "").strip())
+                except (ValueError, TypeError):
+                    uid = 0
+                user_name = "Employee"
+                u_row = sqlite_cur.execute("SELECT name FROM users WHERE id = ?", (uid,)).fetchone()
+                if u_row and u_row[0]:
+                    user_name = u_row[0]
+                exists = sqlite_cur.execute("SELECT 1 FROM attendance WHERE id = ?", (aid,)).fetchone()
+                if exists:
+                    sqlite_cur.execute(
+                        """
+                        UPDATE attendance SET
+                            confidence = ?,
+                            timestamp = ?,
+                            device_id = ?,
+                            location = ?,
+                            organization_id = ?,
+                            branch_id = COALESCE(?, branch_id)
+                        WHERE id = ?
+                        """,
+                        (
+                            float(r.get("confidence") or 1.0),
+                            r.get("timestamp"),
+                            r.get("camera_id") or "CAM-01",
+                            r.get("camera_id") or "Entrance",
+                            organization_id,
+                            r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                            aid,
+                        ),
+                    )
+                else:
+                    sqlite_cur.execute(
+                        """
+                        INSERT INTO attendance (id, user_id, detected_name, confidence, timestamp, source, location, device_id, organization_id, branch_id)
+                        VALUES (?, ?, ?, ?, ?, 'camera', ?, ?, ?, ?)
+                        """,
+                        (
+                            aid,
+                            uid,
+                            user_name,
+                            float(r.get("confidence") or 1.0),
+                            r.get("timestamp"),
+                            r.get("camera_id") or "Entrance",
+                            r.get("camera_id") or "CAM-01",
+                            organization_id,
+                            r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                        ),
+                    )
+            sqlite_cur.execute("SELECT id FROM attendance WHERE organization_id = ? ORDER BY timestamp DESC LIMIT ?", (organization_id, limit))
+            cached_ids = [row[0] for row in sqlite_cur.fetchall()]
+            for cid in cached_ids:
+                if cid not in pg_ids:
+                    sqlite_cur.execute("DELETE FROM attendance WHERE id = ? AND organization_id = ?", (cid, organization_id))
+            sqlite_conn.commit()
+        return len(rows)
+    except Exception as error:
+        logger.warning("Could not fetch attendance logs from Postgres: %s", error)
         return None
     finally:
         conn.close()
