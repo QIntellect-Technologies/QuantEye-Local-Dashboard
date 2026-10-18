@@ -619,8 +619,11 @@ def _pdf_rows_from_payslip(payslip: Dict[str, Any]) -> Tuple[List[Tuple[str, str
     currency = payslip.get("currency_code") or DEFAULT_CURRENCY
     places = int(payslip.get("decimal_places") or DEFAULT_DECIMAL_PLACES)
     deductions = payslip.get("deductions") or {}
+    is_prorated = bool(emp.get("is_prorated"))
+    proration_explanation = emp.get("proration_explanation")
+    basic_title = f"Basic pay ({proration_explanation})" if (is_prorated and proration_explanation) else "Basic pay"
     earnings: List[Tuple[str, str]] = [
-        ("Basic pay", _pdf_money(emp.get("basic_salary"), currency, places)),
+        (basic_title, _pdf_money(emp.get("basic_salary"), currency, places)),
     ]
     pay_lines = emp.get("pay_lines") or []
     if isinstance(pay_lines, str):
@@ -682,8 +685,16 @@ def _pdf_rows_from_payslip(payslip: Dict[str, Any]) -> Tuple[List[Tuple[str, str
         elif kind in ("earning", "allowance", "bonus"):
             if name.lower() not in ("basic", "basic pay"):
                 earnings.append((name, money_text))
-    if float(deductions.get("absence") or 0):
-        cuts.append(("Missed-day cut", _pdf_money(deductions.get("absence"), currency, places)))
+    absence_cut = float(deductions.get("absence") or 0)
+    if absence_cut > 0:
+        absent_days = float(emp.get("absent_days") or 0)
+        if absent_days > 0:
+            daily_rate = absence_cut / absent_days
+            days_str = int(absent_days) if absent_days.is_integer() else f"{absent_days:.1f}"
+            rate_str = _pdf_money(daily_rate, currency, places)
+            cuts.append((f"Missed-day cut ({days_str} day{'s' if days_str != 1 else ''} @ {rate_str}/day)", _pdf_money(absence_cut, currency, places)))
+        else:
+            cuts.append(("Missed-day cut", _pdf_money(absence_cut, currency, places)))
     if float(deductions.get("unpaid_leave") or 0):
         cuts.append(("Unpaid leave", _pdf_money(deductions.get("unpaid_leave"), currency, places)))
     if float(deductions.get("half_leave") or 0):
@@ -724,6 +735,8 @@ def _payslip_letterhead(payslip: Dict[str, Any]) -> Dict[str, str]:
 def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
     emp = payslip.get("employee") or {}
     deductions = payslip.get("deductions") or {}
+    currency = payslip.get("currency_code") or DEFAULT_CURRENCY
+    places = int(payslip.get("decimal_places") or DEFAULT_DECIMAL_PLACES)
     items: List[Dict[str, Any]] = []
 
     def add(description: str, amount: Any, qty: Any = 1, force: bool = False) -> None:
@@ -738,7 +751,12 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
             "amount": value,
         })
 
-    add("Basic pay", emp.get("basic_salary"), 1, True)
+    is_prorated = bool(emp.get("is_prorated"))
+    proration_explanation = emp.get("proration_explanation")
+    if is_prorated and proration_explanation:
+        add(f"Basic pay ({proration_explanation})", emp.get("basic_salary"), 1, True)
+    else:
+        add("Basic pay", emp.get("basic_salary"), 1, True)
     pay_lines = emp.get("pay_lines") or []
     if isinstance(pay_lines, str):
         try:
@@ -791,7 +809,18 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
             add(name, amount, 1, True)
         elif kind in ("earning", "allowance", "bonus") and name.lower() not in ("basic", "basic pay"):
             add(name, amount, 1, True)
-    add("Missed-day cut", deductions.get("absence"))
+    absence_cut = float(deductions.get("absence") or 0)
+    if absence_cut > 0:
+        absent_days = float(emp.get("absent_days") or 0)
+        if absent_days > 0:
+            daily_rate = absence_cut / absent_days
+            days_str = int(absent_days) if absent_days.is_integer() else f"{absent_days:.1f}"
+            rate_str = _pdf_money(daily_rate, currency, places)
+            add(f"Missed-day cut ({days_str} day{'s' if days_str != 1 else ''} @ {rate_str}/day)", absence_cut, absent_days)
+        else:
+            add("Missed-day cut", absence_cut)
+    else:
+        add("Missed-day cut", deductions.get("absence"))
     add("Unpaid leave", deductions.get("unpaid_leave"))
     add("Half-day leave cut", deductions.get("half_leave"))
     add("Days not present", deductions.get("attendance_shortfall"))

@@ -1435,7 +1435,8 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                 SELECT id, organization_id, branch_id, payroll_run_id, employee_id,
                        basic_salary, allowances, deductions, net_salary,
                        scheduled_workdays, present_days, absent_days, late_days,
-                       approved_leave_days, payable_days
+                       approved_leave_days, payable_days,
+                       is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation
                 FROM payroll_records
                 WHERE organization_id = %s AND payroll_run_id = %s
                 """,
@@ -1487,14 +1488,20 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                         id, organization_id, branch_id, payroll_run_id, employee_id,
                         basic_salary, allowances, deductions, net_salary,
                         scheduled_workdays, present_days, absent_days, late_days,
-                        approved_leave_days, payable_days
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        approved_leave_days, payable_days,
+                        is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         basic_salary = excluded.basic_salary,
                         allowances = excluded.allowances,
                         deductions = excluded.deductions,
                         net_salary = excluded.net_salary,
-                        payable_days = excluded.payable_days
+                        payable_days = excluded.payable_days,
+                        is_prorated = excluded.is_prorated,
+                        unprorated_basic_salary = excluded.unprorated_basic_salary,
+                        proration_days_paid = excluded.proration_days_paid,
+                        proration_method_days = excluded.proration_method_days,
+                        proration_explanation = excluded.proration_explanation
                     """,
                     (
                         rid,
@@ -1512,6 +1519,11 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                         int(float(rec.get("late_days") or 0)),
                         int(float(rec.get("approved_leave_days") or 0)),
                         float(rec.get("payable_days") or 0.0),
+                        int(rec.get("is_prorated") or 0),
+                        float(rec.get("unprorated_basic_salary") or 0.0),
+                        int(rec.get("proration_days_paid") or 0),
+                        int(rec.get("proration_method_days") or 0),
+                        str(rec.get("proration_explanation") or ""),
                     ),
                 )
             sqlite_cur.execute("SELECT id FROM payroll_records WHERE payroll_run_id = ?", (run_id,))
@@ -1780,6 +1792,11 @@ def mirror_payroll_run(run: Dict[str, Any], records: Optional[List[Dict[str, Any
                     int(float(r.get("late_days") or 0)),
                     int(float(r.get("approved_leave_days") or 0)),
                     float(r.get("payable_days") or 0.0),
+                    int(r.get("is_prorated") or 0),
+                    float(r.get("unprorated_basic_salary") or 0.0),
+                    int(r.get("proration_days_paid") or 0),
+                    int(r.get("proration_method_days") or 0),
+                    str(r.get("proration_explanation") or ""),
                 ))
             if rec_tuples:
                 execute_values(
@@ -1789,7 +1806,8 @@ def mirror_payroll_run(run: Dict[str, Any], records: Optional[List[Dict[str, Any
                         id, organization_id, branch_id, payroll_run_id, employee_id,
                         basic_salary, allowances, deductions, net_salary,
                         scheduled_workdays, present_days, absent_days, late_days,
-                        approved_leave_days, payable_days
+                        approved_leave_days, payable_days,
+                        is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation
                     ) VALUES %s
                     ON CONFLICT (organization_id, id) DO NOTHING
                     """,

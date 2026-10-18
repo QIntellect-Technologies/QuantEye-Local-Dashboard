@@ -8963,7 +8963,7 @@ async function fetchMultiLiveDetections() {
                   </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
                 </td>
-                <td class="text-end font-monospace">${payrollMoney(row.basic_salary)}</td>
+                <td class="text-end font-monospace">${payrollMoney(row.basic_salary)}${row.is_prorated && row.proration_explanation ? `<div style="font-size:0.72em; color:#64748b;" title="${payrollEscape(row.proration_explanation)}">${payrollEscape(row.proration_explanation)}</div>` : ''}</td>
                 <td class="text-end font-monospace text-success">${Number(row.allowances || 0) > 0 ? '+ ' + payrollMoney(row.allowances) : '—'}</td>
                 ${payrollHasOvertime() ? `<td class="text-end font-monospace text-info payroll-overtime-only">${Number(row.overtime_amount || 0) > 0 ? '+ ' + payrollMoney(row.overtime_amount) + `<div style="font-size:0.72em; color:#64748b;">(${Number(row.overtime_hours || 0).toFixed(1)} hrs)</div>` : '—'}</td>` : ''}
                 <td class="text-end font-monospace text-success">${Number(row.bonus_amount || 0) > 0 ? '+ ' + payrollMoney(row.bonus_amount) : '—'}</td>
@@ -9009,7 +9009,7 @@ async function fetchMultiLiveDetections() {
                   </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
                 </td>
-                <td class="text-end font-monospace">${payrollMoney(row.basic_salary)}</td>
+                <td class="text-end font-monospace">${payrollMoney(row.basic_salary)}${row.is_prorated && row.proration_explanation ? `<div style="font-size:0.72em; color:#64748b;" title="${payrollEscape(row.proration_explanation)}">${payrollEscape(row.proration_explanation)}</div>` : ''}</td>
                 <td><span class="badge bg-light text-dark border" style="font-size:0.82em;">${payrollEscape(matchedPolicyRules || row.matched_rule || 'No absence deduction')}</span></td>
                 <td class="text-center small">${payrollEscape(value)}</td>
                 <td class="text-end font-monospace text-danger">${payrollMoney(row.absence_deduction || 0)}</td>
@@ -9023,7 +9023,7 @@ async function fetchMultiLiveDetections() {
                 <td class="fw-semibold">${payrollEscape(row.employee_name)}</td>
                 <td>${payrollEscape(row.department || 'Unassigned')}</td>
                 <td>${payrollEscape(row.designation || 'Staff Member')}</td>
-                <td class="text-end">${payrollMoney(row.basic_salary)}</td>
+                <td class="text-end">${payrollMoney(row.basic_salary)}${row.is_prorated && row.proration_explanation ? `<div style="font-size:0.72em; color:#64748b;" title="${payrollEscape(row.proration_explanation)}">${payrollEscape(row.proration_explanation)}</div>` : ''}</td>
                 <td class="text-center">${Number(row.scheduled_workdays || 0)}</td>
                 <td class="text-center">${Number(row.present_days || 0)}</td>
                 ${payrollHasLeave() ? `<td class="text-center payroll-leave-only">${Number(row.half_leave_count || 0)}${Number(row.half_leave_count || 0) > 0 ? ` (${Number(row.equivalent_half_leave_days != null ? row.equivalent_half_leave_days : (Number(row.half_leave_count || 0) * 0.5))}d)` : ''}</td>` : ''}
@@ -15200,7 +15200,13 @@ async function fetchMultiLiveDetections() {
         };
         const namedEarn = (payLines || []).some((item) => String(item.kind || '') === 'earning' && Number(item.amount || 0) > 0);
         const namedBonus = (payLines || []).some((item) => String(item.category || '') === 'bonus' && Number(item.amount || 0) > 0);
-        pushItem('Basic pay', emp.basic_salary, 1, true);
+        const isProrated = Boolean(emp.is_prorated);
+        const prorationExplanation = emp.proration_explanation || '';
+        if (isProrated && prorationExplanation) {
+          pushItem(`Basic pay (${prorationExplanation})`, emp.basic_salary, 1, true);
+        } else {
+          pushItem('Basic pay', emp.basic_salary, 1, true);
+        }
         if (!namedEarn) pushItem('Allowances', emp.allowances, 1);
         pushItem('Overtime', emp.overtime_amount, Number(emp.overtime_hours || 0) || 1);
         if (!namedBonus) pushItem('Bonus', emp.bonus_amount, 1);
@@ -15229,7 +15235,16 @@ async function fetchMultiLiveDetections() {
             pushItem(name, amount, 1, true);
           }
         });
-        pushItem('Missed-day cut', deductions.absence, 1);
+        const absenceCut = Number(deductions.absence || 0);
+        const absentDays = Number(emp.absent_days || 0);
+        if (absenceCut > 0 && absentDays > 0) {
+          const dailyRate = absenceCut / absentDays;
+          const daysStr = Number.isInteger(absentDays) ? absentDays : absentDays.toFixed(1);
+          const rateStr = money(dailyRate);
+          pushItem(`Missed-day cut (${daysStr} day${daysStr === 1 ? '' : 's'} @ ${rateStr}/day)`, absenceCut, absentDays);
+        } else {
+          pushItem('Missed-day cut', deductions.absence, 1);
+        }
         pushItem('Unpaid leave', deductions.unpaid_leave, 1);
         pushItem('Half-day leave cut', deductions.half_leave, 1);
         pushItem('Days not present', deductions.attendance_shortfall, 1);

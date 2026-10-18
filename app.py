@@ -5332,7 +5332,8 @@ def api_add_leave():
         quota_mode = db.get_payroll_settings(organization_id=get_current_tenant_id()).get('half_leave_quota_mode') or 'category'
         company_half_allowed = quota_mode in ('monthly_cap', 'monthly_convert')
         type_half_allowed = bool(matched_type and matched_type.get('half_leave_enabled'))
-        if matched_type and not (type_half_allowed or company_half_allowed):
+        scoped_rule = db.get_scoped_payroll_rule('half_leave_quota', int(user_id)) if hasattr(db, 'get_scoped_payroll_rule') else None
+        if matched_type and not (type_half_allowed or company_half_allowed or scoped_rule):
             msg = f'Half-day leave is not permitted for leave type {matched_type.get("name", leave_type)}.'
             return jsonify({'success': False, 'message': msg, 'error': msg}), 400
 

@@ -233,6 +233,12 @@ def proration_factor(
     full_month_workdays: int,
 ) -> float:
     mode = str(basis or DEFAULT_PRORATION_BASIS).strip().lower()
+    if mode in ("all_days", "all_days_in_month", "calendar"):
+        mode = "calendar_days"
+    elif mode in ("working", "work_days"):
+        mode = "working_days"
+    elif mode in ("30", "30_days", "30days"):
+        mode = "30_day"
     if mode not in VALID_PRORATION_BASES:
         mode = LEGACY_PRORATION_BASIS
     if mode == "working_days":
