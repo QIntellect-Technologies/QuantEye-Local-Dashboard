@@ -3988,60 +3988,6 @@ def api_mobile_latest_punch():
     return jsonify({'success': True, 'punch': punch})
 
 
-@app.route('/api/debug/audit-fnk-users', methods=['GET'])
-def api_debug_audit_fnk():
-    import sqlite3
-    with sqlite3.connect(db.DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute("SELECT id, name, organization_id, branch_id, active, created_at, email FROM users WHERE name LIKE '%fnk%' OR name LIKE '%fork%' OR name LIKE '%siddique%' OR name LIKE '%salman%' OR name LIKE '%shahid%' OR name LIKE '%sikander%' OR name LIKE '%shoaib%' OR organization_id = 'ORG-816975'")
-        matching = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT id, name, organization_id, branch_id, active, created_at, email FROM users WHERE created_at >= '2026-10-15' AND created_at <= '2026-10-17 23:59:59'")
-        oct16 = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT a.id, a.user_id, a.timestamp, u.name, a.organization_id FROM attendance a LEFT JOIN users u ON a.user_id = u.id WHERE a.timestamp >= '2026-10-15' AND a.timestamp <= '2026-10-17 23:59:59' ORDER BY a.id DESC LIMIT 50")
-        att_oct16 = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT id, name, organization_id, branch_id, active, created_at, email FROM users WHERE id BETWEEN 15 AND 40")
-        range_users = [dict(r) for r in cur.fetchall()]
-    return jsonify({
-        'matching_fnk': matching,
-        'range_users': range_users
-    })
-
-
-@app.route('/api/debug/link-fnk-employees', methods=['POST', 'GET'])
-def api_debug_link_fnk_employees():
-    import sqlite3
-    target_org = 'ORG-816975'
-    target_branch = 'BR-A1408A7B21D944E5'
-    user_ids = [20, 23, 24, 25, 36]
-    with sqlite3.connect(db.DB_PATH) as conn:
-        cur = conn.cursor()
-        # Rename Salman to Salman - FnK
-        cur.execute("UPDATE users SET name = 'Salman - FnK' WHERE id = 20 AND name = 'Salman'")
-        # Re-bind users 20, 23, 24, 25 to target_org and branch
-        for uid in [20, 23, 24, 25]:
-            cur.execute("UPDATE users SET organization_id = ?, branch_id = ?, active = 1 WHERE id = ?", (target_org, target_branch, uid))
-        # Re-bind all attendance history for these 5 employees to target_org
-        cur.execute(f"UPDATE attendance SET organization_id = ?, branch_id = ? WHERE user_id IN ({','.join(map(str, user_ids))})", (target_org, target_branch))
-        # If any attendance belonged to ID 22 (duplicate Siddique), map it to ID 36 or re-bind
-        cur.execute("UPDATE attendance SET user_id = 36, organization_id = ?, branch_id = ? WHERE user_id = 22", (target_org, target_branch))
-        conn.commit()
-        
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute("SELECT id, name, email, organization_id, branch_id, active, created_at FROM users WHERE organization_id = ?", (target_org,))
-        linked_users = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT COUNT(*) FROM attendance WHERE organization_id = ?", (target_org,))
-        att_count = cur.fetchone()[0]
-
-    return jsonify({
-        'success': True,
-        'total_enrolled': len(linked_users),
-        'users': linked_users,
-        'total_attendance_records': att_count
-    })
-
-
 @app.route('/api/mobile/month', methods=['GET'])
 def api_mobile_month():
     user_id = session.get('mobile_employee_id')
