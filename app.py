@@ -4000,13 +4000,11 @@ def api_debug_audit_fnk():
         oct16 = [dict(r) for r in cur.fetchall()]
         cur.execute("SELECT a.id, a.user_id, a.timestamp, u.name, a.organization_id FROM attendance a LEFT JOIN users u ON a.user_id = u.id WHERE a.timestamp >= '2026-10-15' AND a.timestamp <= '2026-10-17 23:59:59' ORDER BY a.id DESC LIMIT 50")
         att_oct16 = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT id, name, organization_id, branch_id, active, created_at FROM users ORDER BY id DESC LIMIT 20")
-        recent = [dict(r) for r in cur.fetchall()]
+        cur.execute("SELECT id, name, organization_id, branch_id, active, created_at, email FROM users WHERE id BETWEEN 15 AND 40")
+        range_users = [dict(r) for r in cur.fetchall()]
     return jsonify({
         'matching_fnk': matching,
-        'oct16_users': oct16,
-        'oct16_attendance': att_oct16,
-        'recent_users': recent
+        'range_users': range_users
     })
 
 
