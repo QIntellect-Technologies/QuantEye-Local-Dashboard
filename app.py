@@ -3988,6 +3988,28 @@ def api_mobile_latest_punch():
     return jsonify({'success': True, 'punch': punch})
 
 
+@app.route('/api/debug/audit-fnk-users', methods=['GET'])
+def api_debug_audit_fnk():
+    import sqlite3
+    with sqlite3.connect(db.DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, organization_id, branch_id, active, created_at, email FROM users WHERE name LIKE '%fnk%' OR name LIKE '%fork%' OR name LIKE '%siddique%' OR name LIKE '%salman%' OR name LIKE '%shahid%' OR name LIKE '%sikander%' OR name LIKE '%shoaib%' OR organization_id = 'ORG-816975'")
+        matching = [dict(r) for r in cur.fetchall()]
+        cur.execute("SELECT id, name, organization_id, branch_id, active, created_at, email FROM users WHERE created_at >= '2026-10-15' AND created_at <= '2026-10-17 23:59:59'")
+        oct16 = [dict(r) for r in cur.fetchall()]
+        cur.execute("SELECT a.id, a.user_id, a.timestamp, u.name, a.organization_id FROM attendance a LEFT JOIN users u ON a.user_id = u.id WHERE a.timestamp >= '2026-10-15' AND a.timestamp <= '2026-10-17 23:59:59' ORDER BY a.id DESC LIMIT 50")
+        att_oct16 = [dict(r) for r in cur.fetchall()]
+        cur.execute("SELECT id, name, organization_id, branch_id, active, created_at FROM users ORDER BY id DESC LIMIT 20")
+        recent = [dict(r) for r in cur.fetchall()]
+    return jsonify({
+        'matching_fnk': matching,
+        'oct16_users': oct16,
+        'oct16_attendance': att_oct16,
+        'recent_users': recent
+    })
+
+
 @app.route('/api/mobile/month', methods=['GET'])
 def api_mobile_month():
     user_id = session.get('mobile_employee_id')
