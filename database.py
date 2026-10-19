@@ -806,6 +806,8 @@ def init_db():
                 ("proration_days_paid", "INTEGER NOT NULL DEFAULT 0"),
                 ("proration_method_days", "INTEGER NOT NULL DEFAULT 0"),
                 ("proration_explanation", "TEXT DEFAULT ''"),
+                ("days_paid", "REAL DEFAULT NULL"),
+                ("missed_day_details", "TEXT DEFAULT ''"),
             ]:
                 if column not in payroll_record_columns:
                     cursor.execute(f"ALTER TABLE payroll_records ADD COLUMN {column} {column_type}")
@@ -3052,6 +3054,14 @@ def delete_shift(shift_id: int, organization_id: Optional[str] = None) -> bool:
             if organization_id and organization_id != 'all':
                 cursor.execute("SELECT organization_id FROM shifts WHERE id = ?", (shift_id,))
                 s_row = cursor.fetchone()
+                if not s_row and postgres_is_configured():
+                    try:
+                        import postgres_mirror as cloud_pg
+                        cloud_pg.fetch_pg_shift(shift_id, organization_id)
+                        cursor.execute("SELECT organization_id FROM shifts WHERE id = ?", (shift_id,))
+                        s_row = cursor.fetchone()
+                    except Exception:
+                        pass
                 if not s_row or (s_row[0] or '') != organization_id:
                     return False
                 cursor.execute(
@@ -3079,6 +3089,12 @@ def delete_shift(shift_id: int, organization_id: Optional[str] = None) -> bool:
             deleted = cursor.rowcount > 0
             conn.commit()
             if deleted:
+                try:
+                    if postgres_is_configured():
+                        import postgres_mirror as cloud_pg
+                        cloud_pg.delete_shift(shift_id, organization_id=organization_id, fallback_shift_id=fallback_id)
+                except Exception as pg_err:
+                    logger.warning("Failed to mirror shift deletion to cloud: %s", pg_err)
                 logger.info(f"✓ Shift ID {shift_id} deleted successfully.")
             return deleted
     except Exception as e:
@@ -3106,6 +3122,14 @@ def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str]
                 return False
             cursor.execute("SELECT organization_id FROM shifts WHERE id = ?", (shift_id,))
             shift_row = cursor.fetchone()
+            if not shift_row and postgres_is_configured() and current_shift[1]:
+                try:
+                    import postgres_mirror as cloud_pg
+                    cloud_pg.fetch_pg_shift(shift_id, current_shift[1])
+                    cursor.execute("SELECT organization_id FROM shifts WHERE id = ?", (shift_id,))
+                    shift_row = cursor.fetchone()
+                except Exception:
+                    pass
             if not shift_row or (shift_row[0] or '') != (current_shift[1] or ''):
                 logger.warning(
                     "Blocked assigning shift %s to user %s (shift is not owned by their organization)",
@@ -3138,6 +3162,12 @@ def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str]
                 _record_employee_shift_history(cursor, user_id, shift_id, effective_date)
             conn.commit()
             if updated:
+                try:
+                    if postgres_is_configured():
+                        import postgres_mirror as cloud_pg
+                        cloud_pg.update_employees_shift_pg([user_id], shift_id, organization_id=current_shift[1])
+                except Exception as pg_err:
+                    logger.warning("Failed to mirror shift assignment to cloud: %s", pg_err)
                 logger.info(f"✓ Shift ID {shift_id} assigned to User ID {user_id}")
             return updated
     except ValueError:
@@ -3163,7 +3193,18 @@ def bulk_assign_shifts(
                     (shift_id, organization_id),
                 )
                 if not cursor.fetchone():
-                    return False, 0
+                    if postgres_is_configured():
+                        try:
+                            import postgres_mirror as cloud_pg
+                            cloud_pg.fetch_pg_shift(shift_id, organization_id)
+                            cursor.execute(
+                                "SELECT id FROM shifts WHERE id = ? AND organization_id = ?",
+                                (shift_id, organization_id),
+                            )
+                        except Exception:
+                            pass
+                    if not cursor.fetchone():
+                        return False, 0
             effective_date = _normalize_shift_effective_date(effective_from)
             org_filter = ""
             org_params: List[Any] = []
@@ -3198,6 +3239,14 @@ def bulk_assign_shifts(
                 if effective_date > datetime.now().date().isoformat() or current_shift_id != shift_id or effective_from is not None:
                     _record_employee_shift_history(cursor, user_id, shift_id, effective_date)
             conn.commit()
+            if count > 0:
+                try:
+                    if postgres_is_configured():
+                        import postgres_mirror as cloud_pg
+                        assigned_uids = [u[0] for u in selected_users]
+                        cloud_pg.update_employees_shift_pg(assigned_uids, shift_id, organization_id=organization_id)
+                except Exception as pg_err:
+                    logger.warning("Failed to mirror bulk shift assignment to cloud: %s", pg_err)
             logger.info(f"✓ Bulk shift ID {shift_id} assigned to {count} staff members")
             return True, count
     except Exception as e:
@@ -3220,10 +3269,14 @@ def _record_automatic_checkout_overtime(
     checkout_time: Union[datetime, str],
 ) -> float:
     if isinstance(checkout_time, str):
+        cleaned_str = checkout_time.strip().replace('T', ' ').split('.')[0]
         try:
-            checkout_dt = datetime.strptime(checkout_time.split('.')[0], '%Y-%m-%d %H:%M:%S')
+            checkout_dt = datetime.strptime(cleaned_str, '%Y-%m-%d %H:%M:%S')
         except ValueError:
-            checkout_dt = datetime.strptime(checkout_time.split('T')[0], '%Y-%m-%d')
+            try:
+                checkout_dt = datetime.strptime(cleaned_str[:16], '%Y-%m-%d %H:%M')
+            except ValueError:
+                checkout_dt = datetime.strptime(cleaned_str[:10], '%Y-%m-%d')
     else:
         checkout_dt = checkout_time
     actual_date = checkout_dt.strftime('%Y-%m-%d')
@@ -3285,6 +3338,9 @@ def _record_automatic_checkout_overtime(
         "INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, status, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
         (user_id, user_name, actual_date, overtime_hours, reason, u_ot_org, u_ot_branch),
     )
+    return overtime_hours
+
+
 def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> bool:
     """
     LV-05: When an employee with approved leave is subsequently recorded as present on that date,
@@ -3323,6 +3379,9 @@ def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> 
                 lr_status = lr['status']
                 lr_restored_dates = lr['restored_dates']
                 lr_reason = lr['reason']
+
+            if str(lr_duration).lower() == 'half':
+                continue
 
             restored = [d.strip() for d in str(lr_restored_dates or '').split(',') if d.strip()]
             if log_date not in restored:
@@ -3876,6 +3935,14 @@ def get_detailed_attendance_report(
             except Exception:
                 pass
 
+            if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+                if postgres_is_configured():
+                    try:
+                        import postgres_mirror as cloud_pg
+                        cloud_pg.fetch_pg_attendance_logs(organization_id, branch_id, limit=500)
+                    except Exception as error:
+                        logger.warning("Postgres unreachable for attendance logs in report: %s", error)
+
             # Determine query date parameters
             if target_date == 'today' or (not target_date and not start_date):
                 cursor.execute("SELECT date('now', 'localtime')")
@@ -4032,8 +4099,16 @@ def get_detailed_attendance_report(
                 user_query += " AND LOWER(TRIM(u.department)) = LOWER(TRIM(?))"
                 user_params.append(department.strip())
             if shift_id and str(shift_id).strip() and str(shift_id).lower() != 'all':
-                user_query += " AND (u.shift_id = ? OR LOWER(TRIM(s.name)) = LOWER(TRIM(?)))"
-                user_params.extend([str(shift_id).strip(), str(shift_id).strip()])
+                s_val = str(shift_id).strip()
+                user_query += """ AND (
+                    u.shift_id = ? OR LOWER(TRIM(s.name)) = LOWER(TRIM(?))
+                    OR EXISTS (
+                        SELECT 1 FROM employee_shift_history esh
+                        JOIN shifts eshs ON esh.shift_id = eshs.id
+                        WHERE esh.user_id = u.id AND (esh.shift_id = ? OR LOWER(TRIM(eshs.name)) = LOWER(TRIM(?)))
+                    )
+                )"""
+                user_params.extend([s_val, s_val, s_val, s_val])
             if user_id is not None:
                 user_query += " AND u.id = ?"
                 user_params.append(int(user_id))
@@ -4183,6 +4258,7 @@ def get_detailed_attendance_report(
             ''', (*user_ids, start_date, end_date))
             leave_rows = cursor.fetchall()
             leave_map = {}
+            approved_leave_dates = set()
             for lr in leave_rows:
                 l_uid, l_start, l_end, l_type = lr['user_id'], lr['start_date'], lr['end_date'], lr['leave_type']
                 is_half_leave = lr['leave_duration'] == 'half'
@@ -4199,14 +4275,21 @@ def get_detailed_attendance_report(
                 restored_dates_raw = lr['restored_dates'] if 'restored_dates' in lr.keys() else ''
                 restored_set = set(d.strip() for d in (restored_dates_raw or '').split(',') if d.strip())
 
-                p_status = (lr['paid_status'] or ('approved' if lr['status'] == 'approved' else 'pending')).lower()
-                up_status = (lr['unpaid_status'] or ('approved' if lr['status'] == 'approved' else 'pending')).lower()
+                is_overall_approved = (str(lr['status']).lower() == 'approved')
+                p_status = (lr['paid_status'] or ('approved' if is_overall_approved else 'pending')).lower()
+                if is_overall_approved and p_status == 'pending':
+                    p_status = 'approved'
+                up_status = (lr['unpaid_status'] or ('approved' if is_overall_approved else 'pending')).lower()
+                if is_overall_approved and up_status == 'pending':
+                    up_status = 'approved'
 
                 try:
                     cur_l = datetime.strptime(l_start, "%Y-%m-%d")
                     end_l = datetime.strptime(l_end, "%Y-%m-%d")
                     while cur_l <= end_l:
                         current_date = cur_l.strftime("%Y-%m-%d")
+                        if is_overall_approved or p_status == 'approved' or up_status == 'approved':
+                            approved_leave_dates.add((l_uid, current_date))
                         if current_date in restored_set:
                             cur_l += timedelta(days=1)
                             continue
@@ -4385,7 +4468,8 @@ def get_detailed_attendance_report(
                     # Priority order: Actual Face Attendance > Approved Leave > Manual Absent override only when no attendance exists > Unexcused Absence
                     if att:
                         # LV-05: If employee actually worked on an approved leave day, ensure entitlement is restored
-                        if leave_info:
+                        # Do NOT restore half-day leave when employee works, as half-day leave expects them to work the other half (QA-45)
+                        if leave_info and not leave_info.get('is_half_leave'):
                             _restore_worked_leave_if_applicable(cursor, uid, cur_date)
                         first_seen = att['first_seen']
                         raw_last_seen = att['last_seen']
@@ -4443,11 +4527,26 @@ def get_detailed_attendance_report(
                         except Exception:
                             status = 'present'
 
-                        emp_present_days += 1
+                        if leave_info and leave_info.get('is_half_leave'):
+                            emp_present_days += 0.5
+                            if leave_info.get('is_paid'):
+                                emp_leave_days += 0.5
+                            else:
+                                emp_unpaid_leave_days += 0.5
+                        else:
+                            emp_present_days += 1
                         if is_scheduled_workday:
                             emp_working_days += 1
                     elif is_scheduled_workday and leave_info:
-                        if leave_info['is_paid']:
+                        if leave_info.get('is_half_leave'):
+                            if leave_info.get('is_paid'):
+                                emp_leave_days += 0.5
+                                status = 'on_leave'
+                            else:
+                                emp_unpaid_leave_days += 0.5
+                                status = 'on_leave_unpaid'
+                            emp_absent_days += 0.5
+                        elif leave_info['is_paid']:
                             status = 'on_leave'
                             emp_leave_days += 1
                         else:
@@ -4496,31 +4595,46 @@ def get_detailed_attendance_report(
                             emp_absent_days += 1
                             emp_working_days += 1
 
-                    # ATT-04: Determine Day Type from existing sources
+                    # ATT-05: Determine Day Type from existing sources and structured labels
                     day_type = None
                     if override_type == 'holiday':
                         day_type = 'Public Holiday'
-                    elif (uid, cur_date) in leave_map:
+                    elif (uid, cur_date) in leave_map or (uid, cur_date) in approved_leave_dates:
                         day_type = 'Leave Day'
                     elif not is_scheduled_workday or override_type == 'off_day':
                         day_type = 'Rest Day'
                     else:
                         day_type = 'Regular Working Day'
 
-                    # Presentation status display (ATT-04: Present — Public Holiday / Leave Day / Rest Day)
+                    normalized_day_type = (
+                        'public_holiday' if day_type == 'Public Holiday' else
+                        'leave_day' if day_type == 'Leave Day' else
+                        'rest_day' if day_type == 'Rest Day' else
+                        'regular_working_day'
+                    )
+
+                    # Presentation status display (ATT-05: Present — Public Holiday / Leave Day / Rest Day)
                     if att:
                         base_st = 'Present' if status == 'present' else ('Late' if status == 'late' else 'Checked Out')
                         if day_type in ('Public Holiday', 'Leave Day', 'Rest Day'):
                             status_display_val = f"{base_st} — {day_type}"
                         elif half_leave_active or (leave_info and leave_info.get('is_half_leave')):
-                            status_display_val = f"{base_st.upper()} + HALF LEAVE"
+                            status_display_val = f"{base_st} + Half Leave"
                         else:
-                            status_display_val = base_st.upper()
+                            status_display_val = base_st
                     else:
                         if half_leave_active or (leave_info and leave_info.get('is_half_leave')):
-                            status_display_val = f"{status.upper().replace('_', ' ')} + HALF LEAVE"
+                            status_display_val = f"{status.replace('_', ' ').title()} + Half Leave"
+                        elif status == 'on_leave':
+                            status_display_val = 'On Leave'
+                        elif status == 'on_leave_unpaid':
+                            status_display_val = 'Unpaid Leave'
+                        elif status == 'holiday':
+                            status_display_val = 'Holiday'
+                        elif status in ('weekend', 'off_day'):
+                            status_display_val = 'Weekend / Off'
                         else:
-                            status_display_val = status.upper().replace('_', ' ')
+                            status_display_val = 'Absent'
 
                     day_source = att.get('source', 'manual' if is_manual_absent else 'auto') if att is not None else ('manual' if is_manual_absent else 'auto')
                     day_marked_by = (att.get('marked_by', 'Admin') if att and att.get('source') == 'manual' else ('Admin' if is_manual_absent else 'System')) if att is not None or is_manual_absent else 'System'
@@ -4535,7 +4649,10 @@ def get_detailed_attendance_report(
                         'date_formatted': dt_obj.strftime("%d %b %Y"),
                         'day': day_name,
                         'status': status,
-                        'day_type': day_type,
+                        'attendance_status': status,
+                        'day_type': normalized_day_type,
+                        'day_type_raw': day_type,
+                        'day_type_label': status_display_val,
                         'scheduled_workday': is_scheduled_workday,
                         'shift_history_missing': not schedule_known,
                         'calendar_override': override_type,
@@ -4595,15 +4712,47 @@ def get_detailed_attendance_report(
                         continue
 
                 if status_filter and status_filter.lower() != 'all':
-                    sf = status_filter.lower()
-                    if sf == 'present' and emp_present_days == 0:
-                        continue
-                    elif sf == 'absent' and emp_present_days > 0:
-                        continue
-                    elif sf == 'late' and emp_late_days == 0:
-                        continue
-                    elif sf == 'checked_out' and not any(d.get('status') == 'checked_out' for d in emp_daily_records):
-                        continue
+                    sf = status_filter.lower().strip()
+                    if not is_multi_day:
+                        st_today = emp_daily_records[0].get('status', 'absent') if emp_daily_records else 'absent'
+                        dt_today = (emp_daily_records[0].get('day_type') or '') if emp_daily_records else ''
+                        if sf == 'present' and st_today not in ('present', 'checked_out'):
+                            continue
+                        elif sf == 'absent' and st_today != 'absent':
+                            continue
+                        elif sf == 'late' and st_today != 'late':
+                            continue
+                        elif sf == 'checked_out' and st_today != 'checked_out':
+                            continue
+                        elif sf in ('leave', 'on_leave') and st_today not in ('on_leave', 'on_leave_unpaid'):
+                            continue
+                        elif sf == 'paid_leave' and st_today != 'on_leave':
+                            continue
+                        elif sf == 'unpaid_leave' and st_today != 'on_leave_unpaid':
+                            continue
+                        elif sf in ('holiday', 'public_holiday') and dt_today != 'public_holiday':
+                            continue
+                        elif sf in ('rest_day', 'off_day') and dt_today != 'rest_day':
+                            continue
+                    else:
+                        if sf == 'present' and emp_present_days == 0:
+                            continue
+                        elif sf == 'absent' and emp_absent_days == 0:
+                            continue
+                        elif sf == 'late' and emp_late_days == 0:
+                            continue
+                        elif sf == 'checked_out' and not any(d.get('status') == 'checked_out' for d in emp_daily_records):
+                            continue
+                        elif sf in ('leave', 'on_leave') and (emp_leave_days + emp_unpaid_leave_days) == 0:
+                            continue
+                        elif sf == 'paid_leave' and emp_leave_days == 0:
+                            continue
+                        elif sf == 'unpaid_leave' and emp_unpaid_leave_days == 0:
+                            continue
+                        elif sf in ('holiday', 'public_holiday') and not any(d.get('day_type') == 'public_holiday' for d in emp_daily_records):
+                            continue
+                        elif sf in ('rest_day', 'off_day') and not any(d.get('day_type') == 'rest_day' for d in emp_daily_records):
+                            continue
 
                 # Camera filtering
                 if checkin_camera and checkin_camera.strip() and checkin_camera.lower() != 'all':
@@ -4679,7 +4828,10 @@ def get_detailed_attendance_report(
                         'checkin_cameras': u['checkin_cameras'],
                         'checkout_cameras': u['checkout_cameras'],
                         'status': st_val,
+                        'attendance_status': st_val,
                         'day_type': day_entry.get('day_type'),
+                        'day_type_raw': day_entry.get('day_type_raw') or day_entry.get('day_type'),
+                        'day_type_label': day_entry.get('day_type_label') or day_entry.get('status_display'),
                         'status_display': day_entry.get('status_display'),
                         'shift_id': day_entry.get('shift_id') or u['shift_id'],
                         'first_seen': day_entry.get('first_seen'),
@@ -4934,8 +5086,8 @@ def mark_user_absent_today(user_id: int, target_date: Optional[str] = None, orga
             # ATT-02: Re-apply leave deduction if this date was previously restored when employee was marked Present
             _unrestore_worked_leave_if_applicable(cursor, user_id, actual_date)
 
-            # OT-01: When attendance becomes Absent, remove pending automatically generated overtime
-            # Manual overtime requests and approved overtime records are preserved untouched
+            # OT-02: When attendance becomes Absent, remove/cancel all associated overtime
+            now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             cursor.execute("""
                 SELECT id, status, reason
                 FROM overtime
@@ -4951,7 +5103,18 @@ def mark_user_absent_today(user_id: int, target_date: Optional[str] = None, orga
                 )
                 if is_auto and ot_st == 'pending':
                     cursor.execute("DELETE FROM overtime WHERE id = ?", (ot_id,))
-                    logger.info(f"OT-01: Removed automatic pending overtime ID #{ot_id} for user #{user_id} on {actual_date} due to absent status")
+                    logger.info(f"OT-02: Removed automatic pending overtime ID #{ot_id} for user #{user_id} on {actual_date} due to absent status")
+                elif ot_st in ('pending', 'approved'):
+                    cursor.execute("""
+                        UPDATE overtime
+                        SET status = 'cancelled_absent',
+                            rejection_reason = 'Attendance marked absent',
+                            rejected_by = 'System',
+                            rejected_at = COALESCE(rejected_at, ?),
+                            audit_trail = COALESCE(audit_trail || CHAR(10), '') || ?
+                        WHERE id = ?
+                    """, (now_ts, f"[{now_ts}] Status changed from '{ot_st}' to 'cancelled_absent' by System (attendance marked absent).", ot_id))
+                    logger.info(f"OT-02: Cancelled overtime ID #{ot_id} ({ot_st}) for user #{user_id} on {actual_date} due to absent status")
 
             conn.commit()
         logger.info(f"✓ Manually marked user ID {user_id} absent for {target_date or 'today'} (removed {deleted_count} logs, recorded manual_absent)")
@@ -6687,19 +6850,12 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
                     actual_used += external_half_quota_charges
                     used_val = float(actual_used)
 
-                    half_cycle_start, half_cycle_end = _leave_allowance_cycle_window(
-                        datetime(year, reference_month, 1),
-                        'custom',
-                        lt.get('half_leave_allowance_months', 12),
+                    half_rule_res = resolve_half_leave_rule(
+                        cursor, u['id'], lt, datetime(year, reference_month, 1)
                     )
-                    cursor.execute("""
-                        SELECT COUNT(*) FROM leave_requests
-                        WHERE user_id = ? AND status = 'approved' AND leave_type = ?
-                          AND leave_duration = 'half' AND end_date >= ? AND start_date <= ?
-                    """, (u['id'], lt['code'], half_cycle_start, half_cycle_end))
-                    half_leave_count = int(cursor.fetchone()[0] or 0)
-                    half_allowance = int(lt.get('half_leave_allowance_count') or 0)
-                    half_leave_remaining = max(0, half_allowance - half_leave_count) if lt.get('half_leave_mode') == 'separate' else None
+                    half_leave_count = half_rule_res['used_count']
+                    half_leave_remaining = half_rule_res['remaining_count']
+                    half_allowance = half_rule_res['allowance']
 
                     # LV-08: Distinguish standard entitlement from employee-specific and request-specific quota overrides
                     standard_quota = float(lt.get('yearly_allowance') or 0.0)
@@ -6742,10 +6898,14 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
                         'remaining': max(0.0, alloc - used_val),
                         'half_leave_count': half_leave_count,
                         'half_leave_remaining': half_leave_remaining,
-                        'half_leave_enabled': bool(lt.get('half_leave_enabled')),
-                        'half_leave_mode': lt.get('half_leave_mode', 'separate'),
+                        'half_leave_enabled': half_rule_res['half_leave_enabled'],
+                        'half_leave_mode': half_rule_res.get('half_leave_mode', lt.get('half_leave_mode', 'separate')),
                         'half_leave_allowance_count': half_allowance,
-                        'half_leave_allowance_months': int(lt.get('half_leave_allowance_months') or 12),
+                        'half_leave_allowance_months': half_rule_res.get('months', int(lt.get('half_leave_allowance_months') or 12)),
+                        'half_leave_period': half_rule_res.get('period', 'monthly'),
+                        'half_leave_period_text': half_rule_res.get('period_text', 'this month'),
+                        'half_leave_winning_source': half_rule_res.get('winning_source'),
+                        'half_leave_quota_text': f"Half leave: {half_leave_count} used, {half_leave_remaining} remaining {half_rule_res.get('period_text', 'this month')}" if half_rule_res['half_leave_enabled'] else f"Half leave is not allowed for {lt['name']}.",
                         'is_paid': lt['is_paid'],
                         'allowance_period': lt.get('allowance_period', 'yearly'),
                         'allowance_months': lt.get('allowance_months', 12)
@@ -6811,6 +6971,282 @@ def _count_scheduled_leave_days(cursor, user_id: int, start_date: str, end_date:
         elif curr_date.weekday() in working_days:
             days += 1
     return days
+
+
+def resolve_half_leave_rule(
+    cursor: sqlite3.Cursor,
+    user_id: int,
+    leave_type: Union[Dict[str, Any], str, int],
+    reference_date: Union[datetime, date, str],
+) -> Dict[str, Any]:
+    """
+    Authoritative half-leave rule resolution implementing strict precedence:
+    PERSON -> DEPARTMENT -> COMPANY -> LEAVE TYPE DEFAULT.
+    A higher-level rule replaces lower-level rules without mixing.
+    QA-39 & QA-40 Authoritative Function.
+    """
+    if isinstance(reference_date, str):
+        try:
+            ref_dt = datetime.strptime(reference_date[:10], '%Y-%m-%d')
+        except Exception:
+            ref_dt = datetime.now()
+    elif isinstance(reference_date, date) and not isinstance(reference_date, datetime):
+        ref_dt = datetime(reference_date.year, reference_date.month, reference_date.day)
+    elif isinstance(reference_date, datetime):
+        ref_dt = reference_date
+    else:
+        ref_dt = datetime.now()
+
+    org_id, branch_id = _user_tenant(cursor, user_id)
+    ensure_payroll_settings_row(cursor, org_id, branch_id)
+
+    # Fetch user details
+    cursor.execute("SELECT department FROM users WHERE id = ?", (user_id,))
+    u_row = cursor.fetchone()
+    department_name = (u_row['department'] if hasattr(u_row, 'keys') else u_row[0]) if u_row else ''
+    department_name = str(department_name or '').strip()
+    department_id = None
+    if department_name:
+        cursor.execute(
+            """SELECT id FROM departments
+               WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+                 AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR COALESCE(organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG')
+               ORDER BY CASE WHEN COALESCE(organization_id, 'DEFAULT_ORG') = ? THEN 0 ELSE 1 END
+               LIMIT 1""",
+            (department_name, org_id, org_id),
+        )
+        d_row = cursor.fetchone()
+        if d_row:
+            department_id = int(d_row['id'] if hasattr(d_row, 'keys') else d_row[0])
+
+    # Resolve leave type dict
+    lt_dict = None
+    if isinstance(leave_type, dict):
+        lt_dict = dict(leave_type)
+    elif isinstance(leave_type, int):
+        cursor.execute("SELECT * FROM leave_types WHERE id = ?", (leave_type,))
+        r = cursor.fetchone()
+        if r: lt_dict = dict(r)
+    else:
+        cursor.execute(
+            "SELECT * FROM leave_types WHERE (code = ? OR name = ?) AND COALESCE(organization_id, 'DEFAULT_ORG') = ? LIMIT 1",
+            (str(leave_type), str(leave_type), org_id)
+        )
+        r = cursor.fetchone()
+        if r: lt_dict = dict(r)
+
+    if not lt_dict:
+        return {
+            'allowed': False,
+            'reason_code': 'invalid_leave_type',
+            'message': 'Leave type not found.',
+            'winning_source': None,
+            'half_leave_enabled': False,
+            'allowance': 0,
+            'used_count': 0,
+            'remaining_count': 0,
+            'period': 'monthly',
+            'period_text': 'this month',
+            'leave_type_name': str(leave_type or 'Leave'),
+            'is_paid': 1,
+        }
+
+    leave_name = lt_dict['name']
+    lt_code = lt_dict['code']
+    is_paid = int(lt_dict.get('is_paid', 1))
+
+    # Precedence: PERSON -> DEPARTMENT -> COMPANY -> LEAVE TYPE DEFAULT
+    winning_rule = None
+
+    # 1. PERSON
+    cursor.execute("""
+        SELECT * FROM payroll_scoped_rules
+        WHERE policy_type = 'half_leave_quota' AND scope_type = 'employee' AND scope_id = ? AND active = 1
+          AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR COALESCE(organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG')
+        ORDER BY CASE WHEN COALESCE(organization_id, 'DEFAULT_ORG') = ? THEN 0 ELSE 1 END LIMIT 1
+    """, (user_id, org_id, org_id))
+    p_row = cursor.fetchone()
+    if p_row:
+        p_dict = dict(p_row)
+        winning_rule = {
+            'source': 'person',
+            'allowance': max(1, int(p_dict.get('half_leaves_per_quota_day') or 2)),
+            'mode': str(p_dict.get('half_leave_quota_mode') or 'category').lower(),
+            'period': 'monthly',
+            'period_text': 'this month',
+            'months': 1,
+            'target_name': 'Employee',
+        }
+
+    # 2. DEPARTMENT (if no person rule)
+    if not winning_rule and department_id is not None:
+        cursor.execute("""
+            SELECT * FROM payroll_scoped_rules
+            WHERE policy_type = 'half_leave_quota' AND scope_type = 'department' AND scope_id = ? AND active = 1
+              AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR COALESCE(organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG')
+            ORDER BY CASE WHEN COALESCE(organization_id, 'DEFAULT_ORG') = ? THEN 0 ELSE 1 END LIMIT 1
+        """, (department_id, org_id, org_id))
+        d_row = cursor.fetchone()
+        if d_row:
+            d_dict = dict(d_row)
+            winning_rule = {
+                'source': 'department',
+                'allowance': max(1, int(d_dict.get('half_leaves_per_quota_day') or 2)),
+                'mode': str(d_dict.get('half_leave_quota_mode') or 'category').lower(),
+                'period': 'monthly',
+                'period_text': 'this month',
+                'months': 1,
+                'target_name': 'Department',
+            }
+
+    # 3. COMPANY (if no person or department rule)
+    if not winning_rule:
+        cursor.execute("""
+            SELECT * FROM payroll_scoped_rules
+            WHERE policy_type = 'half_leave_quota' AND scope_type IN ('company', 'org') AND active = 1
+              AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR COALESCE(organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG')
+            ORDER BY CASE WHEN COALESCE(organization_id, 'DEFAULT_ORG') = ? THEN 0 ELSE 1 END LIMIT 1
+        """, (org_id, org_id))
+        c_row = cursor.fetchone()
+        if c_row:
+            c_dict = dict(c_row)
+            winning_rule = {
+                'source': 'company',
+                'allowance': max(1, int(c_dict.get('half_leaves_per_quota_day') or 2)),
+                'mode': str(c_dict.get('half_leave_quota_mode') or 'category').lower(),
+                'period': 'monthly',
+                'period_text': 'this month',
+                'months': 1,
+                'target_name': 'Company',
+            }
+        else:
+            cursor.execute(
+                "SELECT half_leave_quota_mode, half_leaves_per_quota_day FROM payroll_settings WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ? AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?",
+                (org_id, branch_id)
+            )
+            s_row = cursor.fetchone()
+            if s_row and s_row[0] in ('monthly_cap', 'monthly_convert', 'company'):
+                winning_rule = {
+                    'source': 'company',
+                    'allowance': max(1, int(s_row[1] or 2)),
+                    'mode': str(s_row[0]).lower(),
+                    'period': 'monthly',
+                    'period_text': 'this month',
+                    'months': 1,
+                    'target_name': 'Company',
+                }
+
+    # 4. LEAVE TYPE DEFAULT (if no person, department, or company rule)
+    if not winning_rule:
+        half_enabled = bool(lt_dict.get('half_leave_enabled'))
+        half_allowance = int(lt_dict.get('half_leave_allowance_count') or 0)
+        half_mode = str(lt_dict.get('half_leave_mode') or 'separate').lower()
+        half_months = max(1, min(12, int(lt_dict.get('half_leave_allowance_months') or 12)))
+        if half_enabled and (half_allowance > 0 or half_mode == 'convert'):
+            period_str = 'monthly' if half_months == 1 else f"{half_months}-month cycle"
+            period_text = 'this month' if half_months == 1 else f"in this {half_months}-month cycle"
+            winning_rule = {
+                'source': 'leave_type',
+                'allowance': half_allowance,
+                'mode': half_mode,
+                'period': period_str,
+                'period_text': period_text,
+                'months': half_months,
+                'target_name': 'Leave Type',
+            }
+
+    # If NO winning rule exists or half leave is disabled
+    if not winning_rule:
+        msg = "Half leave is not set up for this department yet." if (department_id or department_name) else f"Half leave is not allowed for {leave_name}."
+        return {
+            'allowed': False,
+            'reason_code': 'half_leave_not_allowed',
+            'message': msg,
+            'winning_source': None,
+            'half_leave_enabled': False,
+            'allowance': 0,
+            'used_count': 0,
+            'remaining_count': 0,
+            'period': 'monthly',
+            'period_text': 'this month',
+            'leave_type_name': leave_name,
+            'is_paid': is_paid,
+        }
+
+    # Winning rule exists: compute cycle window and usage
+    if winning_rule['period'] == 'monthly':
+        month_start = ref_dt.date().replace(day=1)
+        if month_start.month == 12:
+            next_month = month_start.replace(year=month_start.year + 1, month=1)
+        else:
+            next_month = month_start.replace(month=month_start.month + 1)
+        cycle_start = month_start.isoformat()
+        cycle_end = (next_month - timedelta(days=1)).isoformat()
+    else:
+        cycle_start, cycle_end = _leave_allowance_cycle_window(
+            ref_dt, 'custom', winning_rule.get('months', 12)
+        )
+
+    if winning_rule['mode'] == 'monthly_cap':
+        cursor.execute("""
+            SELECT COUNT(*) FROM leave_requests
+            WHERE user_id = ? AND leave_duration = 'half' AND LOWER(status) IN ('pending', 'approved')
+              AND end_date >= ? AND start_date <= ?
+        """, (user_id, cycle_start, cycle_end))
+    else:
+        cursor.execute("""
+            SELECT COUNT(*) FROM leave_requests
+            WHERE user_id = ? AND (leave_type = ? OR leave_type = ?)
+              AND leave_duration = 'half' AND LOWER(status) IN ('pending', 'approved')
+              AND end_date >= ? AND start_date <= ?
+        """, (user_id, lt_code, leave_name, cycle_start, cycle_end))
+
+    used_count = int(cursor.fetchone()[0] or 0)
+    allowance = winning_rule['allowance']
+    remaining_count = max(0, allowance - used_count)
+    is_exhausted = (used_count >= allowance)
+    period_str = 'month' if winning_rule['period'] == 'monthly' else winning_rule['period']
+
+    return {
+        'allowed': not is_exhausted,
+        'reason_code': 'half_leave_allowance_reached' if is_exhausted else 'ok',
+        'message': f"{leave_name} half-leave allowance reached ({allowance} occurrence(s) per {period_str})." if is_exhausted else 'OK',
+        'winning_source': winning_rule['source'],
+        'half_leave_enabled': True,
+        'half_leave_mode': winning_rule['mode'],
+        'allowance': allowance,
+        'used_count': used_count,
+        'remaining_count': remaining_count,
+        'period': winning_rule['period'],
+        'period_text': winning_rule['period_text'],
+        'cycle_start': cycle_start,
+        'cycle_end': cycle_end,
+        'leave_type_name': leave_name,
+        'is_paid': is_paid,
+        'months': winning_rule.get('months', 1),
+        'target_id': lt_dict.get('half_leave_quota_type_id'),
+        'conversion_ratio': max(1, int(lt_dict.get('half_leaves_per_quota_day') or 2)),
+    }
+
+
+def get_half_leave_rule(
+    user_id: int,
+    leave_type_id_or_code: Any,
+    reference_date: Optional[Union[datetime, date, str]] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Convenience wrapper for resolve_half_leave_rule."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        return resolve_half_leave_rule(
+            cursor,
+            user_id,
+            leave_type_id_or_code,
+            reference_date or datetime.now(),
+        )
+
 
 def check_leave_quota(
     user_id: Optional[int] = None,
@@ -6922,240 +7358,97 @@ def check_leave_quota(
             is_paid = int(lt_dict.get('is_paid', 1))
 
             if duration == 'half':
-                org_id, branch_id = _user_tenant(cursor, user_id)
-                ensure_payroll_settings_row(cursor, org_id, branch_id)
-                org_policy_row = cursor.execute(
-                    """SELECT half_leave_quota_mode, half_leaves_per_quota_day FROM payroll_settings
-                       WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                         AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
-                    (org_id, branch_id),
-                ).fetchone()
-                org_policy = dict(org_policy_row) if org_policy_row else {}
-                scoped_policy = _get_scoped_payroll_rule(cursor, 'half_leave_quota', user_id)
-                policy_mode = str(
-                    scoped_policy.get('half_leave_quota_mode') if scoped_policy and isinstance(scoped_policy, dict)
-                    else org_policy.get('half_leave_quota_mode') if org_policy
-                    else 'category'
-                ).lower()
-
-                # If department or employee scoped rule exists, it defines the monthly half-leave allowance
-                if scoped_policy:
-                    rule_allowance = max(1, int(scoped_policy.get('half_leaves_per_quota_day') or 2))
-                    month_start = reference_date.date().replace(day=1)
-                    if month_start.month == 12:
-                        next_month = month_start.replace(year=month_start.year + 1, month=1)
-                    else:
-                        next_month = month_start.replace(month=month_start.month + 1)
-                    month_start_str = month_start.isoformat()
-                    month_end_str = (next_month - timedelta(days=1)).isoformat()
-                    
-                    cursor.execute("""
-                        SELECT COUNT(*) FROM leave_requests
-                        WHERE user_id = ? AND (leave_type = ? OR leave_type = ?)
-                          AND leave_duration = 'half' AND LOWER(status) IN ('pending', 'approved')
-                          AND end_date >= ? AND start_date <= ?
-                    """, (user_id, lt_dict['code'], leave_name, month_start_str, month_end_str))
-                    existing_half_count = int(cursor.fetchone()[0] or 0)
-
-                    # Check if employee still has full-day quota
-                    allocated = float(lt_dict.get('yearly_allowance', 10.0))
-                    if user_id:
-                        cursor.execute(
-                            "SELECT allocated_days FROM employee_leave_balances WHERE user_id = ? AND leave_type_id = ? AND year = ?",
-                            (user_id, lt_dict['id'], reference_date.year)
-                        )
-                        bal_row = cursor.fetchone()
-                        if bal_row:
-                            allocated = float(bal_row['allocated_days'])
-                    
-                    allowance_period = lt_dict.get('allowance_period', 'yearly')
-                    cycle_start, cycle_end = _leave_allowance_cycle_window(
-                        reference_date, allowance_period, lt_dict.get('allowance_months')
-                    )
-                    cursor.execute("""
-                        SELECT id, start_date, end_date, quota_days, quota_through_date, leave_duration,
-                               half_leave_quota_type_id, half_leave_quota_charge, restored_dates FROM leave_requests
-                        WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved') AND (leave_type = ? OR leave_type = ?)
-                          AND end_date >= ? AND start_date <= ?
-                    """, (user_id, lt_dict['code'], leave_name, cycle_start, cycle_end))
-                    already_used = 0.0
-                    for req in cursor.fetchall():
-                        if exclude_id and req['id'] == exclude_id:
-                            continue
-                        if req['leave_duration'] == 'half':
-                            already_used += 0.5
-                        else:
-                            try:
-                                clipped_start = max(req['start_date'], cycle_start)
-                                clipped_end = min(req['end_date'], cycle_end)
-                                already_used += max(0.0, _count_scheduled_leave_days(cursor, user_id, clipped_start, clipped_end))
-                            except Exception:
-                                already_used += 1.0
-
-                    remaining_full = max(0.0, allocated - already_used)
-                    if is_paid == 1 and remaining_full <= 0:
-                        rem_str = int(remaining_full) if remaining_full.is_integer() else remaining_full
-                        return {
-                            'allowed': False,
-                            'reason_code': 'quota_exceeded',
-                            'message': f"{leave_name} only has {rem_str} allowed paid days for this employee. You cannot request half-day leave. Please adjust the dates or file under Unpaid Leave (LWP).",
-                            'requested_days': 1,
-                            'quota_days_requested': 1,
-                            'remaining_days': 0,
-                            'allocated_days': allocated,
-                            'used_days': already_used,
-                            'leave_type_name': leave_name,
-                            'is_paid': 1,
-                        }
-
-                    if existing_half_count >= rule_allowance:
-                        return {
-                            'allowed': False,
-                            'reason_code': 'half_leave_allowance_reached',
-                            'message': f'{leave_name} half-leave allowance reached ({rule_allowance} occurrence(s) per month).',
-                            'requested_days': 1,
-                            'quota_days_requested': 0,
-                            'remaining_days': 0,
-                            'leave_type_name': leave_name,
-                            'half_leave_enabled': True,
-                            'half_leave_mode': policy_mode,
-                            'half_leave_count': existing_half_count,
-                            'half_leave_allowance_count': rule_allowance,
-                        }
-
-                    remaining_half = max(0, rule_allowance - existing_half_count)
+                rule_res = resolve_half_leave_rule(cursor, user_id, lt_dict, reference_date)
+                if not rule_res['allowed']:
                     return {
-                        'allowed': True,
-                        'message': 'OK',
+                        'allowed': False,
+                        'reason_code': rule_res['reason_code'],
+                        'message': rule_res['message'],
                         'requested_days': 1,
                         'quota_days_requested': 0,
-                        'remaining_days': remaining_half,
+                        'remaining_days': rule_res['remaining_count'],
                         'leave_type_name': leave_name,
-                        'is_paid': is_paid,
-                        'half_leave_enabled': True,
-                        'half_leave_mode': policy_mode,
-                        'half_leave_count': existing_half_count + 1,
-                        'half_leave_allowance_count': rule_allowance,
-                        'half_leaves_per_month': rule_allowance,
+                        'half_leave_enabled': rule_res['half_leave_enabled'],
+                        'half_leave_mode': rule_res.get('half_leave_mode'),
+                        'half_leave_count': rule_res['used_count'],
+                        'half_leave_allowance_count': rule_res['allowance'],
                     }
 
-                # No scoped policy for department or employee
-                if policy_mode in ('monthly_cap', 'monthly_convert'):
-                    monthly_threshold = max(1, int(
-                        org_policy['half_leaves_per_quota_day'] if org_policy
-                        else 2
-                    ))
-                    month_start = reference_date.date().replace(day=1)
-                    if month_start.month == 12:
-                        next_month = month_start.replace(year=month_start.year + 1, month=1)
-                    else:
-                        next_month = month_start.replace(month=month_start.month + 1)
-                    month_start_str = month_start.isoformat()
-                    month_end_str = (next_month - timedelta(days=1)).isoformat()
-                    type_filter = "" if policy_mode == 'monthly_cap' else "AND (leave_type = ? OR leave_type = ?)"
-                    params = [user_id]
-                    if policy_mode == 'monthly_convert':
-                        params.extend([lt_dict['code'], leave_name])
-                    cursor.execute(f"""
-                        SELECT COUNT(*) FROM leave_requests
-                        WHERE user_id = ? {type_filter}
-                          AND leave_duration = 'half' AND LOWER(status) IN ('pending', 'approved')
-                          AND end_date >= ? AND start_date <= ?
-                    """, (*params, month_start_str, month_end_str))
-                    existing_half_count = int(cursor.fetchone()[0] or 0)
-                    if policy_mode == 'monthly_cap':
-                        if existing_half_count >= monthly_threshold:
-                            return {
-                                'allowed': False,
-                                'reason_code': 'half_leave_monthly_cap',
-                                'message': f'Monthly half-leave limit reached ({monthly_threshold} occurrence(s) per calendar month).',
-                                'requested_days': 1,
-                                'quota_days_requested': 0,
-                                'remaining_days': 0,
-                                'leave_type_name': leave_name,
-                                'half_leave_enabled': True,
-                                'half_leave_mode': policy_mode,
-                                'half_leave_count': existing_half_count,
-                            }
-                        return {
-                            'allowed': True,
-                            'message': 'OK',
-                            'requested_days': 1,
-                            'quota_days_requested': 0,
-                            'remaining_days': max(0, monthly_threshold - existing_half_count),
-                            'leave_type_name': leave_name,
-                            'is_paid': is_paid,
-                            'half_leave_enabled': True,
-                            'half_leave_mode': policy_mode,
-                            'half_leave_count': existing_half_count + 1,
-                            'half_leaves_per_month': monthly_threshold,
-                        }
-                    half_mode = 'convert'
-                    half_months = 1
-                    conversion_ratio = monthly_threshold
-                else:
-                    # Category mode without scoped policy
-                    half_allowance = int(lt_dict.get('half_leave_allowance_count') or 0)
-                    half_mode = str(lt_dict.get('half_leave_mode') or 'separate').lower()
-                    half_enabled = bool(lt_dict.get('half_leave_enabled'))
-
-                    # QA-39: Clear message when half leave is not set up
-                    if not half_enabled or (half_allowance <= 0 and half_mode != 'convert'):
-                        return {
-                            'allowed': False,
-                            'reason_code': 'half_leave_not_configured',
-                            'message': 'Half leave is not set up for this department yet.',
-                            'requested_days': 1,
-                            'quota_days_requested': 0,
-                            'remaining_days': 0,
-                            'leave_type_name': leave_name,
-                            'half_leave_enabled': False,
-                        }
-
-                    half_months = max(1, min(12, int(lt_dict.get('half_leave_allowance_months') or 12)))
-                    half_cycle_start, half_cycle_end = _leave_allowance_cycle_window(
-                        reference_date, 'custom', half_months
+                # Check if employee still has full-day quota for paid leave
+                allocated = float(lt_dict.get('yearly_allowance', 10.0))
+                if user_id:
+                    cursor.execute(
+                        "SELECT allocated_days FROM employee_leave_balances WHERE user_id = ? AND leave_type_id = ? AND year = ?",
+                        (user_id, lt_dict['id'], reference_date.year)
                     )
-                    cursor.execute("""
-                        SELECT COUNT(*) FROM leave_requests
-                        WHERE user_id = ? AND (leave_type = ? OR leave_type = ?)
-                          AND leave_duration = 'half' AND LOWER(status) IN ('pending', 'approved')
-                          AND end_date >= ? AND start_date <= ?
-                    """, (user_id, lt_dict['code'], leave_name, half_cycle_start, half_cycle_end))
-                    existing_half_count = int(cursor.fetchone()[0] or 0)
-                    conversion_ratio = max(1, int(lt_dict.get('half_leaves_per_quota_day') or 2))
+                    bal_row = cursor.fetchone()
+                    if bal_row:
+                        allocated = float(bal_row['allocated_days'])
 
-                if half_mode == 'separate':
-                    if existing_half_count >= half_allowance:
-                        return {
-                            'allowed': False,
-                            'message': f'{leave_name} half-leave allowance reached ({half_allowance} occurrence(s) per {half_months}-month cycle).',
-                            'requested_days': 1,
-                            'quota_days_requested': 0,
-                            'remaining_days': max(0, half_allowance - existing_half_count),
-                            'leave_type_name': leave_name,
-                            'half_leave_enabled': True,
-                            'half_leave_mode': half_mode,
-                            'half_leave_count': existing_half_count,
-                            'half_leave_allowance_count': half_allowance,
-                            'half_leave_allowance_months': half_months,
-                        }
+                allowance_period = lt_dict.get('allowance_period', 'yearly')
+                cycle_start, cycle_end = _leave_allowance_cycle_window(
+                    reference_date, allowance_period, lt_dict.get('allowance_months')
+                )
+                cursor.execute("""
+                    SELECT id, start_date, end_date, quota_days, quota_through_date, leave_duration,
+                           half_leave_quota_type_id, half_leave_quota_charge, restored_dates FROM leave_requests
+                    WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved') AND (leave_type = ? OR leave_type = ?)
+                      AND end_date >= ? AND start_date <= ?
+                """, (user_id, lt_dict['code'], leave_name, cycle_start, cycle_end))
+                already_used = 0.0
+                for req in cursor.fetchall():
+                    if exclude_id and req['id'] == exclude_id:
+                        continue
+                    if req['leave_duration'] == 'half':
+                        already_used += 0.5
+                    else:
+                        try:
+                            clipped_start = max(req['start_date'], cycle_start)
+                            clipped_end = min(req['end_date'], cycle_end)
+                            already_used += max(0.0, _count_scheduled_leave_days(cursor, user_id, clipped_start, clipped_end))
+                        except Exception:
+                            already_used += 1.0
+
+                remaining_full = max(0.0, allocated - already_used)
+                if is_paid == 1 and remaining_full <= 0:
+                    rem_str = int(remaining_full) if remaining_full.is_integer() else remaining_full
+                    return {
+                        'allowed': False,
+                        'reason_code': 'quota_exceeded',
+                        'message': f"{leave_name} only has {rem_str} allowed paid days for this employee. You cannot request half-day leave. Please adjust the dates or file under Unpaid Leave (LWP).",
+                        'requested_days': 1,
+                        'quota_days_requested': 1,
+                        'remaining_days': 0,
+                        'allocated_days': allocated,
+                        'used_days': already_used,
+                        'leave_type_name': leave_name,
+                        'is_paid': 1,
+                    }
+
+                existing_half_count = rule_res['used_count']
+                conversion_ratio = rule_res.get('conversion_ratio', 2)
+                half_mode = rule_res.get('half_leave_mode', 'category')
+                half_months = rule_res.get('months', 1)
+
+                if half_mode != 'convert':
                     return {
                         'allowed': True,
                         'message': 'OK',
                         'requested_days': 1,
                         'quota_days_requested': 0,
-                        'remaining_days': max(0, half_allowance - existing_half_count),
+                        'remaining_days': rule_res['remaining_count'],
                         'leave_type_name': leave_name,
                         'is_paid': is_paid,
                         'half_leave_enabled': True,
                         'half_leave_mode': half_mode,
                         'half_leave_count': existing_half_count + 1,
-                        'half_leave_allowance_count': half_allowance,
+                        'half_leave_allowance_count': rule_res['allowance'],
+                        'half_leaves_per_month': rule_res['allowance'] if rule_res['period'] == 'monthly' else None,
                         'half_leave_allowance_months': half_months,
                     }
 
-                target_id = lt_dict.get('half_leave_quota_type_id')
+                # Mode is convert
+                target_id = rule_res.get('target_id') or lt_dict.get('half_leave_quota_type_id')
                 if not target_id:
                     return {
                         'allowed': False,
@@ -7679,6 +7972,8 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                 d['ot_premium_percent'] = premium
                 d['ot_rate'] = effective_rate
                 d['ot_amount'] = round(hours * effective_rate, 2)
+                d['date'] = str(d.get('ot_date') or '')
+                d['overtime_date'] = str(d.get('ot_date') or '')
                 records.append(d)
             return records
     except Exception as e:
@@ -7720,7 +8015,12 @@ def get_overtime_by_id(
                 params.extend([branch_id, branch_id])
             cursor.execute(query, params)
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            res_dict = dict(row)
+            res_dict['date'] = str(res_dict.get('ot_date') or '')
+            res_dict['overtime_date'] = str(res_dict.get('ot_date') or '')
+            return res_dict
     except Exception as e:
         logger.error(f"Error fetching overtime record {ot_id}: {e}")
         return None
@@ -8545,30 +8845,92 @@ def _resolve_scoped_target_id(cursor, org: str, branch: str, scope: str, scope_i
         return int(row[0]) if row else None
 
 
+class ScopedRuleSaveResult(dict):
+    """Result dictionary that evaluates to True if success is True, False otherwise."""
+    def __bool__(self):
+        return bool(self.get('success'))
+
+
 def save_scoped_half_leave_rule(
     scope_type: str,
-    scope_id: int,
+    scope_id: Any,
     quota_mode: str,
-    monthly_count: int,
+    monthly_count: Optional[int] = None,
+    half_leaves_per_quota_day: Optional[int] = None,
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
-) -> bool:
+) -> ScopedRuleSaveResult:
     scope = str(scope_type or '').strip().lower()
     mode = str(quota_mode or '').strip().lower()
-    if scope not in ('department', 'employee') or mode not in ('category', 'monthly_cap', 'monthly_convert'):
-        return False
+    if scope not in ('department', 'employee', 'company', 'org') or mode not in ('category', 'monthly_cap', 'monthly_convert'):
+        return ScopedRuleSaveResult({'success': False, 'error': 'Invalid rule values. Scope must be department, employee, or company.'})
+    
+    val = monthly_count if monthly_count is not None else half_leaves_per_quota_day
     try:
-        count = int(monthly_count)
+        count = int(val)
     except (TypeError, ValueError, OverflowError):
-        return False
+        return ScopedRuleSaveResult({'success': False, 'error': 'Monthly count must be a valid integer.'})
     if count < 1:
-        return False
+        return ScopedRuleSaveResult({'success': False, 'error': 'Monthly count must be at least 1.'})
     try:
         with sqlite3.connect(DB_PATH) as conn:
             org, branch = _tenant_ids(organization_id, branch_id)
+            if scope in ('company', 'org'):
+                save_mode = 'company' if mode == 'category' else mode
+                ensure_payroll_settings_row(conn.cursor(), org, branch)
+                existing = conn.execute('''
+                    SELECT half_leave_quota_mode, half_leaves_per_quota_day FROM payroll_settings
+                    WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ? AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                ''', (org, branch)).fetchone()
+                if existing and existing[0] in (save_mode, mode) and existing[1] == count:
+                    return ScopedRuleSaveResult({
+                        'success': False,
+                        'duplicate': True,
+                        'target_name': 'Company',
+                        'error': f'A half-day rule already exists for Company ({count} occurrence(s) per month).'
+                    })
+                conn.execute('''
+                    UPDATE payroll_settings
+                    SET half_leave_quota_mode = ?, half_leaves_per_quota_day = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ? AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                ''', (save_mode, count, org, branch))
+                conn.commit()
+                return ScopedRuleSaveResult({
+                    'success': True,
+                    'target_name': 'Company',
+                    'message': 'Half-day rule added for Company.',
+                    'id': None
+                })
+
             target_id = _resolve_scoped_target_id(conn, org, branch, scope, scope_id)
             if not target_id:
-                return False
+                return ScopedRuleSaveResult({'success': False, 'error': f'{scope.capitalize()} target not found.'})
+
+            # Resolve target name for clear confirmation message (QA-43)
+            target_name = None
+            if scope == 'employee':
+                u_row = conn.execute("SELECT name FROM users WHERE id = ?", (target_id,)).fetchone()
+                target_name = u_row[0] if u_row and u_row[0] else f"Employee #{target_id}"
+            elif scope in ('company', 'org'):
+                target_name = "Company"
+            else:
+                d_row = conn.execute("SELECT name FROM departments WHERE id = ?", (target_id,)).fetchone()
+                target_name = d_row[0] if d_row and d_row[0] else f"Department #{target_id}"
+
+            # Check for identical duplicate rule (QA-43)
+            existing = conn.execute('''
+                SELECT id, half_leave_quota_mode, half_leaves_per_quota_day FROM payroll_scoped_rules
+                WHERE policy_type = 'half_leave_quota' AND scope_type = ? AND scope_id = ?
+                  AND active = 1 AND COALESCE(organization_id, 'DEFAULT_ORG') = ? AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+            ''', (scope, target_id, org, branch)).fetchone()
+            if existing and existing[1] == mode and existing[2] == count:
+                return ScopedRuleSaveResult({
+                    'success': False,
+                    'duplicate': True,
+                    'target_name': target_name,
+                    'error': f'A half-day rule already exists for {target_name} ({count} occurrence(s) per month).'
+                })
+
             conn.execute('''
                 INSERT INTO payroll_scoped_rules (
                     policy_type, scope_type, scope_id, day_type, half_leave_quota_mode,
@@ -8581,10 +8943,14 @@ def save_scoped_half_leave_rule(
                     updated_at = CURRENT_TIMESTAMP
             ''', (scope, target_id, mode, count, org, branch))
             conn.commit()
-        return True
+            return ScopedRuleSaveResult({
+                'success': True,
+                'target_name': target_name,
+                'message': f'Half-day rule added for {target_name}.'
+            })
     except Exception as e:
         logger.error(f"Failed to save scoped half-leave rule: {e}")
-        return False
+        return ScopedRuleSaveResult({'success': False, 'error': f'Failed to save scoped half-leave rule: {e}'})
 
 def save_scoped_overtime_limit_rule(
     scope_type: str,
@@ -9569,10 +9935,24 @@ def save_employee_component(
         if min_amount > max_amount:
             raise ValueError('Lowest amount limit cannot be greater than highest amount limit')
 
+    try:
+        amt_val = float(amount or 0)
+        if amt_val < 0:
+            raise ValueError('Amount cannot be negative')
+        amount = amt_val
+    except (TypeError, ValueError, OverflowError) as exc:
+        if 'negative' in str(exc): raise
+        raise ValueError('Amount must be numeric') from exc
+
     if calc_mode in ('percent_basic', 'percent_gross'):
         pct = float(percent or 0)
         if pct < 0 or pct > 100:
             raise ValueError('Percentage must be between 0 and 100')
+    else:
+        if min_amount is not None and amount < min_amount:
+            raise ValueError(f'Amount cannot be less than lowest amount limit ({min_amount:g})')
+        if max_amount is not None and amount > max_amount:
+            raise ValueError(f'Amount cannot be greater than highest amount limit ({max_amount:g})')
 
     start = str(effective_from or '').strip()[:10]
     if not start:
@@ -10594,6 +10974,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 user_revisions, fallback_pkg, eligible_start, schedule_end,
                 month_start, month_end, decimal_places, True,
             )
+            unrounded_basic_salary = basic_salary
             if revision_ot > 0:
                 employee['ot_rate'] = revision_ot
         else:
@@ -10602,7 +10983,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             scale = proration_factor
             if attendance_mode == 'payable_days' and proration_basis == 'working_days':
                 scale = 1.0
-            basic_salary = _m(max(0.0, float(employee['basic_salary'] or 0)) * scale)
+            unrounded_basic_salary = max(0.0, float(employee['basic_salary'] or 0)) * scale
+            basic_salary = _m(unrounded_basic_salary)
             lump_allowances = round(max(0.0, float(employee.get('allowances') or 0.0)) * scale, 2)
             lump_deductions = round(max(0.0, float(employee.get('custom_deductions') or 0.0)) * scale, 2)
 
@@ -10761,10 +11143,18 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         deduction_type = matched_rule['deduction_type'] if matched_rule else 'percentage'
         deduction_percent = float(matched_rule['deduction_percent']) if matched_rule and deduction_type == 'percentage' else None
         fixed_amount = float(matched_rule['fixed_amount']) if matched_rule and deduction_type == 'fixed' else 0.0
-        absence_rule_deduction = 0.0 if unexcused_absent_days == 0 else round(
-            basic_salary * deduction_percent / 100 if deduction_type == 'percentage' and deduction_percent is not None else fixed_amount,
-            2,
-        )
+        
+        # QA-48: Compute absence rule deduction using unrounded basic internally and round once at final monetary step
+        unrounded_absence_deduction = 0.0
+        if unexcused_absent_days > 0 and matched_rule:
+            if deduction_type == 'percentage' and deduction_percent is not None:
+                unrounded_absence_deduction = unrounded_basic_salary * (deduction_percent / 100.0)
+                absence_rule_deduction = round(unrounded_absence_deduction, 2)
+            else:
+                unrounded_absence_deduction = fixed_amount
+                absence_rule_deduction = round(fixed_amount, 2)
+        else:
+            absence_rule_deduction = 0.0
         matching_half_leave_rules = [rule for rule in active_rules
                                      if rule.get('rule_basis', 'absence') == 'half_leave'
                                      and half_leave_count >= rule['min_absent_days']
@@ -10834,6 +11224,52 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         proj_val = min(float(month_scheduled_workdays or 0), float(payable_days or 0) + remaining_days)
         projected_payable = int(proj_val) if float(proj_val).is_integer() else round(proj_val, 1)
         projected_month_end = _m(package * (float(projected_payable) / earn_div) if earn_div else 0.0)
+
+        # QA-48: Explicit missed-day rule metadata
+        missed_day_details = None
+        if matched_rule and unexcused_absent_days > 0:
+            min_d = matched_rule['min_absent_days']
+            max_d = matched_rule['max_absent_days']
+            if max_d is None:
+                bracket_str = f"{min_d}+ days"
+            elif max_d == min_d:
+                bracket_str = f"{min_d} days"
+            else:
+                bracket_str = f"{min_d}–{max_d} days"
+
+            base_name = 'prorated basic' if is_prorated else 'basic'
+            pct_label = f"{int(deduction_percent)}%" if deduction_percent is not None and deduction_percent.is_integer() else f"{deduction_percent}%"
+            explanation = (
+                f"Missed-day rule: {bracket_str} = {pct_label} of {base_name}"
+                if deduction_type == 'percentage' else
+                f"Missed-day rule: {bracket_str} = fixed {fixed_amount}"
+            )
+            missed_day_details = {
+                'rule_label': bracket_str,
+                'min_absent_days': min_d,
+                'max_absent_days': max_d,
+                'method': deduction_type,
+                'percentage': deduction_percent,
+                'fixed_amount': fixed_amount,
+                'missed_days': unexcused_absent_days,
+                'base_type': base_name,
+                'base_amount': basic_salary,
+                'unrounded_base': unrounded_basic_salary,
+                'full_basic': full_basic,
+                'unrounded_deduction': unrounded_absence_deduction,
+                'final_deduction': absence_rule_deduction,
+                'rounding_policy': 'Round half to even at final monetary step (2 decimal places)',
+                'explanation': explanation,
+            }
+
+        # QA-47: Authoritative days_paid calculation for payslip header
+        if attendance_mode == 'payable_days':
+            days_paid = payable_days
+        elif is_prorated:
+            days_paid = proration_days_paid
+        else:
+            days_paid = proration_method_days if proration_method_days else (month_scheduled_workdays or scheduled_workdays)
+
         rows.append({
             'employee_id': employee_id,
             'user_id': employee_id,
@@ -10848,6 +11284,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'proration_days_paid': proration_days_paid,
             'proration_method_days': proration_method_days,
             'proration_explanation': proration_explanation,
+            'days_paid': days_paid,
+            'missed_day_details': missed_day_details,
             'allowances': allowances,
             'custom_deductions': custom_deductions,
             'overtime_hours': ot_hours,
@@ -10897,11 +11335,13 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'absence_deduction': absence_rule_deduction,
             'attendance_deduction': attendance_deduction,
             'deduction_amount': deduction_amount,
+            'deduction': deduction_amount,
             'rule_missing': rule_missing,
             'issues_remarks': issues_remarks,
             'earned_so_far': earned_so_far,
             'projected_month_end': projected_month_end,
             'net_salary': net_salary,
+            'net_payable': net_salary,
             'status': 'Missing shift history' if shift_history_missing else (
                 'Missing salary' if basic_salary <= 0 else ('Missing payroll rule' if rule_missing else 'Draft')
             ),
@@ -11012,6 +11452,8 @@ def _insert_payroll_records(cursor: sqlite3.Cursor, run_id: int, rows: List[Dict
         ("proration_days_paid", "INTEGER NOT NULL DEFAULT 0"),
         ("proration_method_days", "INTEGER NOT NULL DEFAULT 0"),
         ("proration_explanation", "TEXT DEFAULT ''"),
+        ("days_paid", "REAL DEFAULT NULL"),
+        ("missed_day_details", "TEXT DEFAULT ''"),
     ]:
         if col_name not in payroll_record_columns:
             cursor.execute(f"ALTER TABLE payroll_records ADD COLUMN {col_name} {col_def}")
@@ -11028,8 +11470,9 @@ def _insert_payroll_records(cursor: sqlite3.Cursor, run_id: int, rows: List[Dict
             payable_days, applied_rule_id, matched_rule,
             shift_details, calendar_details, deduction_type, deduction_percent,
             fixed_amount, deduction_amount, net_salary, status, organization_id, branch_id,
-            is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation,
+            days_paid, missed_day_details
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', [(
         run_id, row['employee_id'], row['employee_name'], row['department'], row['designation'],
         row.get('basic_salary', 0.0), row.get('allowances', 0.0), row.get('custom_deductions', 0.0),
@@ -11051,7 +11494,9 @@ def _insert_payroll_records(cursor: sqlite3.Cursor, run_id: int, rows: List[Dict
         organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH',
         row.get('is_prorated', 0), row.get('unprorated_basic_salary', 0.0),
         row.get('proration_days_paid', 0), row.get('proration_method_days', 0),
-        row.get('proration_explanation', '')
+        row.get('proration_explanation', ''),
+        row.get('days_paid'),
+        json.dumps(row.get('missed_day_details') or {})
     ) for row in rows])
 
 
@@ -11215,6 +11660,10 @@ def get_monthly_payroll(
             record['paid_leave_days'] = int(record.get('paid_leave_days') or record.get('approved_leave_days') or 0)
             record['unpaid_leave_days'] = int(record.get('unpaid_leave_days') or 0)
             record['total_leave_days'] = int(record.get('total_leave_days') or (record['paid_leave_days'] + record['unpaid_leave_days']))
+            try:
+                record['missed_day_details'] = json.loads(record.get('missed_day_details') or '{}')
+            except (TypeError, ValueError):
+                record['missed_day_details'] = {}
             result['records'].append(record)
         raw_snap = result.get('snapshot_json')
         if raw_snap:

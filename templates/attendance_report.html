@@ -894,6 +894,9 @@
                 <p id="reportDateSubtitle" aria-live="polite" style="margin:4px 0 0; color:#64748b; font-size:0.82rem;"></p>
             </div>
             <div class="header-actions">
+                <button class="btn-action btn-primary" onclick="exportExcel()" title="Export filtered records to Excel (.xlsx)" style="background: linear-gradient(135deg, #10b981, #059669); font-weight: 600;">
+                    <i class="fa-solid fa-file-excel"></i> Export Excel
+                </button>
                 <button class="btn-action btn-primary" onclick="exportPDF()" title="Export filtered records to PDF" style="background: linear-gradient(135deg, #e11d48, #be123c); font-weight: 600;">
                     <i class="fa-solid fa-file-pdf"></i> Export PDF
                 </button>
@@ -1541,6 +1544,11 @@
 
             clearAllSelections();
             fetchReport();
+        }
+
+        function exportExcel() {
+            const query = buildFilterQuery();
+            window.location.href = `/api/reports/export/excel?${query}`;
         }
 
         function exportCSV() {

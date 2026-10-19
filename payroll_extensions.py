@@ -688,7 +688,25 @@ def _pdf_rows_from_payslip(payslip: Dict[str, Any]) -> Tuple[List[Tuple[str, str
     absence_cut = float(deductions.get("absence") or 0)
     if absence_cut > 0:
         absent_days = float(emp.get("absent_days") or 0)
-        if absent_days > 0:
+        m_details = emp.get("missed_day_details")
+        ded_type = emp.get("deduction_type")
+        ded_pct = emp.get("deduction_percent")
+        if isinstance(m_details, str) and m_details:
+            try:
+                m_details = json.loads(m_details)
+            except Exception:
+                m_details = None
+
+        if isinstance(m_details, dict) and m_details.get("explanation"):
+            desc = m_details["explanation"]
+            cuts.append((desc, _pdf_money(absence_cut, currency, places)))
+        elif ded_type == "percentage" and ded_pct is not None and float(ded_pct) > 0:
+            pct_val = float(ded_pct)
+            pct_str = f"{int(pct_val)}%" if pct_val.is_integer() else f"{pct_val}%"
+            matched = emp.get("matched_rule") or ""
+            desc = f"Missed-day rule ({pct_str} of basic)" if not matched else f"Missed-day rule: {matched}"
+            cuts.append((desc, _pdf_money(absence_cut, currency, places)))
+        elif absent_days > 0:
             daily_rate = absence_cut / absent_days
             days_str = int(absent_days) if absent_days.is_integer() else f"{absent_days:.1f}"
             rate_str = _pdf_money(daily_rate, currency, places)
@@ -812,7 +830,25 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
     absence_cut = float(deductions.get("absence") or 0)
     if absence_cut > 0:
         absent_days = float(emp.get("absent_days") or 0)
-        if absent_days > 0:
+        m_details = emp.get("missed_day_details")
+        ded_type = emp.get("deduction_type")
+        ded_pct = emp.get("deduction_percent")
+        if isinstance(m_details, str) and m_details:
+            try:
+                m_details = json.loads(m_details)
+            except Exception:
+                m_details = None
+
+        if isinstance(m_details, dict) and m_details.get("explanation"):
+            desc = m_details["explanation"]
+            add(desc, absence_cut, 1, True)
+        elif ded_type == "percentage" and ded_pct is not None and float(ded_pct) > 0:
+            pct_val = float(ded_pct)
+            pct_str = f"{int(pct_val)}%" if pct_val.is_integer() else f"{pct_val}%"
+            matched = emp.get("matched_rule") or ""
+            desc = f"Missed-day rule ({pct_str} of basic)" if not matched else f"Missed-day rule: {matched}"
+            add(desc, absence_cut, 1, True)
+        elif absent_days > 0:
             daily_rate = absence_cut / absent_days
             days_str = int(absent_days) if absent_days.is_integer() else f"{absent_days:.1f}"
             rate_str = _pdf_money(daily_rate, currency, places)
@@ -906,8 +942,21 @@ def payslip_invoice_html(payslip: Dict[str, Any]) -> str:
         dept=esc(emp.get("department") or "General"),
         role=esc(emp.get("designation") or "Staff"),
         period=esc("{} to {}".format(payslip.get("period_start") or "", payslip.get("period_end") or "")),
-        work=esc(emp.get("month_scheduled_workdays") or emp.get("scheduled_workdays") or 0),
-        paid=esc(emp.get("payable_days") or 0),
+        work=esc(
+            emp.get("month_scheduled_workdays")
+            or emp.get("scheduled_workdays")
+            or (emp.get("proration_method_days") if emp.get("is_prorated") else 0)
+            or 0
+        ),
+        paid=esc(
+            emp.get("days_paid")
+            if emp.get("days_paid") is not None
+            else (
+                emp.get("proration_days_paid")
+                if emp.get("is_prorated") and emp.get("proration_days_paid") is not None
+                else (emp.get("payable_days") or 0)
+            )
+        ),
         rows="".join(rows),
         gross=money_text(payslip.get("gross_salary")),
         cuts=money_text(deductions.get("total")),
@@ -969,9 +1018,24 @@ def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
     ), 9, False, (0.384, 0.502, 0.584))
     text_at(320, 708, "PAY PERIOD", 8, True, (0.384, 0.502, 0.584))
     text_at(320, 692, "{} to {}".format(payslip.get("period_start") or "", payslip.get("period_end") or ""), 11, True)
+    days_paid_val = (
+        emp.get("days_paid")
+        if emp.get("days_paid") is not None
+        else (
+            emp.get("proration_days_paid")
+            if emp.get("is_prorated") and emp.get("proration_days_paid") is not None
+            else (emp.get("payable_days") or 0)
+        )
+    )
+    work_days_val = (
+        emp.get("month_scheduled_workdays")
+        or emp.get("scheduled_workdays")
+        or (emp.get("proration_method_days") if emp.get("is_prorated") else 0)
+        or 0
+    )
     text_at(320, 676, "Work days: {}   Days paid: {}".format(
-        emp.get("month_scheduled_workdays") or emp.get("scheduled_workdays") or 0,
-        emp.get("payable_days") or 0,
+        work_days_val,
+        days_paid_val,
     ), 9, False, (0.384, 0.502, 0.584))
     rgb_stroke(0.863, 0.925, 0.957, 36, 664, 523, 0.8)
 
@@ -1144,7 +1208,7 @@ def attendance_report_pdf_bytes(report: Dict[str, Any], filter_info: Optional[Di
                 text_at(ops, 465, y + 6, abs_disp[:8], 8, False, (0.85, 0.19, 0.15))
                 text_at(ops, 510, y + 6, late_disp[:6], 8, False, (0.69, 0.38, 0.0))
             else:
-                st = str(rec.get('status_display') or rec.get('status') or 'Absent')
+                st = str(rec.get('day_type_label') or rec.get('status_display') or rec.get('status') or 'Absent')
                 first_seen = str(rec.get('first_seen') or '-')
                 if ' ' in first_seen:
                     first_seen = first_seen.split(' ')[-1][:5]

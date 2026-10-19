@@ -2754,7 +2754,13 @@ def api_assign_user_shift(user_id):
             return jsonify({'error': 'Shift ID is required'}), 400
         effective_from = data.get('effective_from')
         confirm_shift_reclassify = bool(data.get('confirm_shift_reclassify'))
-        success = db.assign_user_shift(user_id, int(shift_id), effective_from, confirm_shift_reclassify=confirm_shift_reclassify)
+        success = db.assign_user_shift(
+            user_id,
+            int(shift_id),
+            effective_from,
+            confirm_shift_reclassify=confirm_shift_reclassify,
+            organization_id=get_current_tenant_id(),
+        )
         if success:
             return jsonify({'success': True, 'message': f'Shift assigned to User #{user_id}', 'effective_from': effective_from}), 200
         return jsonify({'error': 'User not found or shift assignment failed'}), 400
@@ -4673,22 +4679,27 @@ def generate_excel_attendance_report(report_data: dict, filter_info: dict = None
         is_alt = (i % 2 == 1)
         base_fill = alt_row_fill if is_alt else white_fill
 
-        # Status normalization
+        # Status normalization (ATT-05: preserve day type label)
         raw_status = (r.get('status') or 'absent').strip().upper()
-        if raw_status == 'PRESENT':
-            status_display = 'PRESENT'
-        elif raw_status == 'CHECKED_IN':
-            status_display = 'CHECKED_IN'
-        elif raw_status == 'CHECKED_OUT':
-            status_display = 'CHECKED_OUT'
-        elif raw_status == 'LATE':
-            status_display = 'LATE'
-        elif raw_status in ('LEAVE', 'ON_LEAVE', 'ON LEAVE'):
-            status_display = 'ON_LEAVE'
+        day_type_lbl = r.get('day_type_label')
+        if day_type_lbl and '—' in str(day_type_lbl):
+            status_display = str(day_type_lbl)
+            style_key = 'PRESENT' if 'present' in status_display.lower() else ('LATE' if 'late' in status_display.lower() else 'ABSENT')
+            style_cfg = status_styles.get(style_key, status_styles['PRESENT'])
         else:
-            status_display = 'ABSENT'
-
-        style_cfg = status_styles.get(status_display, status_styles['ABSENT'])
+            if raw_status == 'PRESENT':
+                status_display = 'PRESENT'
+            elif raw_status == 'CHECKED_IN':
+                status_display = 'CHECKED_IN'
+            elif raw_status == 'CHECKED_OUT':
+                status_display = 'CHECKED_OUT'
+            elif raw_status == 'LATE':
+                status_display = 'LATE'
+            elif raw_status in ('LEAVE', 'ON_LEAVE', 'ON LEAVE'):
+                status_display = 'ON_LEAVE'
+            else:
+                status_display = 'ABSENT'
+            style_cfg = status_styles.get(status_display, status_styles['ABSENT'])
         
         # Formatted fields
         emp_id = str(r.get('user_id', ''))
@@ -4801,6 +4812,7 @@ def api_reports_attendance():
     user_id = request.args.get('user_id', type=int)
 
     current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
     report = db.get_detailed_attendance_report(
         target_date=target_date,
         start_date=start_date,
@@ -4814,6 +4826,7 @@ def api_reports_attendance():
         camera_id=camera_id,
         user_id=user_id,
         organization_id=current_tenant,
+        branch_id=current_branch,
     )
     return jsonify(report), 200
 
@@ -4861,6 +4874,7 @@ def api_reports_export_excel():
         camera_id=camera_id,
         user_id=user_id,
         organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
     )
 
     filter_info = {
@@ -4911,6 +4925,7 @@ def api_reports_export_pdf():
         camera_id=camera_id,
         user_id=user_id,
         organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
     )
     date_label = report.get('date_label', 'Today')
     branch_cfg = db.get_branch_settings()
@@ -4967,6 +4982,7 @@ def api_reports_export_csv():
         camera_id=camera_id,
         user_id=user_id,
         organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
     )
 
     records = report.get('records', [])
@@ -5062,7 +5078,10 @@ def api_reports_export_csv():
             shift_disp = f"{shift_name} ({shift_start}-{shift_end})" if shift_start and shift_end else shift_name
 
             raw_status = (r.get('status') or 'absent').strip().upper()
-            if raw_status == 'PRESENT':
+            day_type_lbl = r.get('day_type_label')
+            if day_type_lbl and '—' in str(day_type_lbl):
+                status_display = str(day_type_lbl)
+            elif raw_status == 'PRESENT':
                 status_display = 'PRESENT'
             elif raw_status == 'CHECKED_IN':
                 status_display = 'CHECKED_IN'
@@ -6489,7 +6508,9 @@ def api_save_employee_component():
         message = str(exc)
         field = 'effective_from' if 'effective_from' in message else (
             'user_id' if 'Employee' in message else (
-                'component_type_id' if 'Pay line' in message else 'scope_type'
+                'component_type_id' if 'Pay line' in message else (
+                    'amount' if any(w in message.lower() for w in ('amount', 'lowest', 'highest', 'limit')) else 'scope_type'
+                )
             )
         )
         return jsonify({'error': message, 'field': field}), 400
@@ -6629,9 +6650,15 @@ def api_save_scoped_half_leave_rule():
         return jsonify({'error': 'Missing required fields'}), 400
         
     try:
-        success = db.save_scoped_half_leave_rule(scope_type, scope_id, quota_mode, monthly_count, **payroll_tenant())
-        if success:
-            return jsonify({'success': True})
+        res = db.save_scoped_half_leave_rule(scope_type, scope_id, quota_mode, monthly_count, **payroll_tenant())
+        if isinstance(res, dict) or hasattr(res, 'get'):
+            if res.get('duplicate'):
+                return jsonify({'error': res.get('error'), 'duplicate': True, 'target_name': res.get('target_name')}), 409
+            if res.get('success'):
+                return jsonify({'success': True, 'message': res.get('message'), 'target_name': res.get('target_name')})
+            return jsonify({'error': res.get('error') or 'Failed to save rule. Ensure target exists and values are valid.'}), 400
+        if res:
+            return jsonify({'success': True, 'message': 'Half-day rule added.'})
         return jsonify({'error': 'Failed to save rule. Ensure target exists and values are valid.'}), 400
     except Exception as e:
         logger.exception("Failed to save scoped half-leave rule")

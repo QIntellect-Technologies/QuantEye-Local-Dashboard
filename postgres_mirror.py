@@ -11,7 +11,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
 
 from logger_config import get_logger
@@ -216,8 +216,19 @@ def mirror_shift(shift: Dict[str, Any]) -> None:
     return _with_cursor(_write)
 
 
-def delete_shift(shift_id: int, organization_id: Optional[str] = None) -> None:
+def delete_shift(shift_id: int, organization_id: Optional[str] = None, fallback_shift_id: Optional[int] = None) -> None:
     def _write(cur):
+        if fallback_shift_id is not None:
+            if organization_id and _real_tenant(organization_id):
+                cur.execute(
+                    "UPDATE employees SET shift_id = %s WHERE organization_id = %s AND shift_id = %s",
+                    (str(fallback_shift_id), organization_id, str(shift_id)),
+                )
+            else:
+                cur.execute(
+                    "UPDATE employees SET shift_id = %s WHERE shift_id = %s",
+                    (str(fallback_shift_id), str(shift_id)),
+                )
         if organization_id and _real_tenant(organization_id):
             cur.execute(
                 "DELETE FROM shifts WHERE organization_id = %s AND id = %s",
@@ -226,6 +237,33 @@ def delete_shift(shift_id: int, organization_id: Optional[str] = None) -> None:
         else:
             cur.execute("DELETE FROM shifts WHERE id = %s", (str(shift_id),))
 
+    _with_cursor(_write)
+
+
+def update_employees_shift_pg(user_ids: List[int], shift_id: int, organization_id: Optional[str] = None) -> None:
+    if not user_ids:
+        return
+    def _write(cur):
+        str_uids = [str(uid) for uid in user_ids]
+        if organization_id and _real_tenant(organization_id):
+            cur.execute(
+                """
+                UPDATE employees
+                   SET shift_id = %s, updated_at = CURRENT_TIMESTAMP
+                 WHERE (id = ANY(%s) OR employee_code = ANY(%s))
+                   AND organization_id = %s
+                """,
+                (str(shift_id), str_uids, str_uids, organization_id),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE employees
+                   SET shift_id = %s, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ANY(%s) OR employee_code = ANY(%s)
+                """,
+                (str(shift_id), str_uids, str_uids),
+            )
     _with_cursor(_write)
 
 
@@ -572,8 +610,8 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                 except (ValueError, TypeError):
                     emp_shift_id = None
                 exists = sqlite_cur.execute(
-                    "SELECT 1 FROM users WHERE id = ? AND organization_id = ? AND branch_id = ?",
-                    (user_id, org_id, br_id),
+                    "SELECT 1 FROM users WHERE id = ?",
+                    (user_id,),
                 ).fetchone()
                 if exists:
                     sqlite_cur.execute(
@@ -584,12 +622,14 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             phone = COALESCE(?, phone),
                             active = ?,
                             shift_id = COALESCE(?, shift_id),
+                            organization_id = ?,
+                            branch_id = ?,
                             password_hash = COALESCE(?, password_hash),
                             mobile_login = MAX(?, COALESCE(mobile_login, 0)),
                             created_at = COALESCE(?, created_at),
                             join_date = CASE WHEN join_date IS NULL OR join_date = '' OR (join_date > ? AND ? IS NOT NULL) THEN COALESCE(?, join_date) ELSE join_date END,
                             enrollment_date = CASE WHEN enrollment_date IS NULL OR enrollment_date = '' OR (enrollment_date > ? AND ? IS NOT NULL) THEN COALESCE(?, enrollment_date) ELSE enrollment_date END
-                        WHERE id = ? AND organization_id = ?
+                        WHERE id = ?
                         """,
                         (
                             row.get("name"),
@@ -597,6 +637,8 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             row.get("phone"),
                             1 if row.get("is_active", True) else 0,
                             emp_shift_id,
+                            org_id,
+                            br_id,
                             pw_hash,
                             mob_login,
                             row_created,
@@ -607,7 +649,6 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             row_created,
                             row_created,
                             user_id,
-                            org_id,
                         ),
                     )
                     continue
@@ -1710,21 +1751,29 @@ def fetch_pg_attendance_logs(organization_id: str, branch_id: Optional[str] = No
         with sqlite3.connect(_sqlite_path()) as sqlite_conn:
             sqlite_cur = sqlite_conn.cursor()
             for r in rows:
-                try:
-                    aid = int(str(r.get("id") or "").strip())
-                except (ValueError, TypeError):
+                raw_id = str(r.get("id") or "").strip()
+                if raw_id.startswith("EVT-"):
                     continue
-                pg_ids.add(aid)
                 try:
                     uid = int(str(r.get("employee_id") or "").strip())
                 except (ValueError, TypeError):
                     uid = 0
+                if not uid:
+                    continue
                 user_name = "Employee"
                 u_row = sqlite_cur.execute("SELECT name FROM users WHERE id = ?", (uid,)).fetchone()
                 if u_row and u_row[0]:
                     user_name = u_row[0]
-                exists = sqlite_cur.execute("SELECT 1 FROM attendance WHERE id = ?", (aid,)).fetchone()
+                ts_raw = str(r.get("timestamp") or "")
+                ts_clean = ts_raw.replace("T", " ").split("+")[0].split(".")[0]
+                
+                exists = sqlite_cur.execute(
+                    "SELECT id FROM attendance WHERE user_id = ? AND timestamp LIKE ?",
+                    (uid, f"{ts_clean}%"),
+                ).fetchone()
                 if exists:
+                    aid = exists[0]
+                    pg_ids.add(aid)
                     sqlite_cur.execute(
                         """
                         UPDATE attendance SET
@@ -1738,7 +1787,7 @@ def fetch_pg_attendance_logs(organization_id: str, branch_id: Optional[str] = No
                         """,
                         (
                             float(r.get("confidence") or 1.0),
-                            r.get("timestamp"),
+                            ts_clean,
                             r.get("camera_id") or "CAM-01",
                             r.get("camera_id") or "Entrance",
                             organization_id,
@@ -1749,26 +1798,23 @@ def fetch_pg_attendance_logs(organization_id: str, branch_id: Optional[str] = No
                 else:
                     sqlite_cur.execute(
                         """
-                        INSERT INTO attendance (id, user_id, detected_name, confidence, timestamp, source, location, device_id, organization_id, branch_id)
-                        VALUES (?, ?, ?, ?, ?, 'camera', ?, ?, ?, ?)
+                        INSERT INTO attendance (user_id, detected_name, confidence, timestamp, source, location, device_id, organization_id, branch_id)
+                        VALUES (?, ?, ?, ?, 'camera', ?, ?, ?, ?)
                         """,
                         (
-                            aid,
                             uid,
                             user_name,
                             float(r.get("confidence") or 1.0),
-                            r.get("timestamp"),
+                            ts_clean,
                             r.get("camera_id") or "Entrance",
                             r.get("camera_id") or "CAM-01",
                             organization_id,
                             r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
                         ),
                     )
-            sqlite_cur.execute("SELECT id FROM attendance WHERE organization_id = ? ORDER BY timestamp DESC LIMIT ?", (organization_id, limit))
-            cached_ids = [row[0] for row in sqlite_cur.fetchall()]
-            for cid in cached_ids:
-                if cid not in pg_ids:
-                    sqlite_cur.execute("DELETE FROM attendance WHERE id = ? AND organization_id = ?", (cid, organization_id))
+                    aid = sqlite_cur.lastrowid
+                    if aid:
+                        pg_ids.add(aid)
             sqlite_conn.commit()
         return len(rows)
     except Exception as error:
