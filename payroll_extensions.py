@@ -239,16 +239,26 @@ def _refresh_duplicate_component_report(cursor) -> None:
         for right in rows[i + 1 :]:
             if int(left.get("component_type_id") or 0) != int(right.get("component_type_id") or 0):
                 continue
-            if str(left.get("organization_id")) != str(right.get("organization_id")):
+            org_l = str(left.get("organization_id") or "DEFAULT_ORG")
+            org_r = str(right.get("organization_id") or "DEFAULT_ORG")
+            if org_l != org_r:
                 continue
-            if str(left.get("branch_id")) != str(right.get("branch_id")):
+            br_l = str(left.get("branch_id") or "DEFAULT_BRANCH")
+            br_r = str(right.get("branch_id") or "DEFAULT_BRANCH")
+            if br_l != br_r:
                 continue
-            if str(left.get("scope_type") or "employee") != str(right.get("scope_type") or "employee"):
+            scope_l = str(left.get("scope_type") or "employee").strip().lower()
+            scope_r = str(right.get("scope_type") or "employee").strip().lower()
+            if scope_l != scope_r:
                 continue
-            if int(left.get("user_id") or 0) != int(right.get("user_id") or 0):
-                continue
-            if str(left.get("scope_id") or "") != str(right.get("scope_id") or ""):
-                continue
+            if scope_l == "employee":
+                uid_l = int(left.get("user_id") or 0) or (int(left.get("scope_id")) if str(left.get("scope_id") or "").isdigit() else 0)
+                uid_r = int(right.get("user_id") or 0) or (int(right.get("scope_id")) if str(right.get("scope_id") or "").isdigit() else 0)
+                if uid_l <= 0 or uid_r <= 0 or uid_l != uid_r:
+                    continue
+            elif scope_l != "org":
+                if str(left.get("scope_id") or "").strip().lower() != str(right.get("scope_id") or "").strip().lower():
+                    continue
             if int(left.get("excluded") or 0) or int(right.get("excluded") or 0):
                 continue
             if not _dates_overlap(left.get("effective_from"), left.get("effective_to"), right.get("effective_from"), right.get("effective_to")):
@@ -750,6 +760,13 @@ def _payslip_letterhead(payslip: Dict[str, Any]) -> Dict[str, str]:
     return out
 
 
+def _format_missed_day_explanation(absent_days: float, bracket_str: str, pct: float, base_amount: float, deduction: float) -> str:
+    """Format hand-verifiable missed-day cut explanation for payslips (QA-48)."""
+    cnt_str = f"{int(absent_days)}" if absent_days.is_integer() else f"{absent_days:.1f}"
+    pct_str = f"{int(pct)}%" if pct.is_integer() else f"{pct:.1f}%"
+    return f"Absent {cnt_str} days ({bracket_str}: {pct_str} of {base_amount:,.2f}) = {deduction:,.2f}"
+
+
 def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
     emp = payslip.get("employee") or {}
     deductions = payslip.get("deductions") or {}
@@ -763,6 +780,7 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
         if not force and value == 0:
             return
         items.append({
+            "name": description,
             "description": description,
             "qty": quantity,
             "unit": value / quantity if quantity else value,
@@ -817,6 +835,7 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
     add("Arrears", emp.get("arrears_amount"))
     if float(emp.get("off_day_extra_pay") or 0):
         add("Rest-day extra", emp.get("off_day_extra_pay"))
+    has_named_allowance = False
     for item in pay_lines or []:
         amount = float(item.get("amount") or 0)
         if not amount:
@@ -826,8 +845,15 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
         if kind in ("deduction", "tax", "loan", "advance", "provident", "insurance"):
             add(name, amount, 1, True)
         elif kind in ("earning", "allowance", "bonus") and name.lower() not in ("basic", "basic pay"):
+            has_named_allowance = True
             add(name, amount, 1, True)
-    absence_cut = float(deductions.get("absence") or 0)
+
+    # QA-54: When salary package has monthly allowance and no custom named allowance line overrides it, show it
+    pkg_allowance = float(emp.get("allowances") or 0)
+    if pkg_allowance > 0 and not has_named_allowance:
+        add("Monthly Allowance", pkg_allowance, 1, True)
+
+    absence_cut = float(deductions.get("absence") or emp.get("attendance_deduction") or 0)
     if absence_cut > 0:
         absent_days = float(emp.get("absent_days") or 0)
         m_details = emp.get("missed_day_details")
@@ -858,7 +884,17 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
     else:
         add("Missed-day cut", deductions.get("absence"))
     add("Unpaid leave", deductions.get("unpaid_leave"))
-    add("Half-day leave cut", deductions.get("half_leave"))
+
+    # QA-53: Report half-day leave occurrences and deduction rule
+    hl_cut = float(deductions.get("half_leave") or emp.get("half_leave_cut") or 0)
+    hl_count = float(emp.get("half_leave_count") or 0)
+    if hl_cut > 0:
+        rule_desc = emp.get("matched_half_leave_rule") or ""
+        cnt_str = int(hl_count) if hl_count.is_integer() else f"{hl_count:g}"
+        rule_str = f" ({rule_desc})" if rule_desc and rule_desc != "No half-leave deduction" else ""
+        add(f"Half-day leave cut ({cnt_str} occurrence{'s' if cnt_str != '1' else ''}{rule_str})", hl_cut, 1, True)
+    else:
+        add("Half-day leave cut", deductions.get("half_leave"))
     add("Days not present", deductions.get("attendance_shortfall"))
     if not items:
         add("Basic pay", 0, 1, True)
@@ -915,17 +951,17 @@ def payslip_invoice_html(payslip: Dict[str, Any]) -> str:
         '<div class="invoice-meta"><div><small>Pay to</small><strong>{staff}</strong>'
         "<div>#{emp_id} · {dept} · {role}</div></div>"
         "<div><small>Pay period</small><strong>{period}</strong>"
-        "<div>Work days: {work} · Days paid: {paid}</div></div></div>"
+        "<div>Scheduled work days: {work} · Days paid: {paid} ({paid_basis})</div></div></div>"
         "<table><thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead>"
         "<tbody>{rows}</tbody></table>"
         '<div class="total"><div>Gross pay: {gross}</div><div>Total cuts: {cuts}</div><hr>'
-        "<strong>Take-home pay: {net}</strong></div>"
+        "<strong>Take-home pay: {net}</strong>{shortfall_html}</div>"
         '<div class="bank-details"><small>Payment details</small>'
         "<strong>Account Title:</strong> {bank_title}<br>"
         "<strong>Bank Name:</strong> {bank_name}<br>"
         "<strong>IBAN:</strong> {iban}</div>"
         '<p style="margin-top:22px;color:#628095">{note} Present {present} · Absent {absent} · Late {late} · '
-        "Paid leave {leave} · Unpaid leave {unpaid}</p>"
+        "Half-day leaves {half_leave} · Paid leave {leave} · Unpaid leave {unpaid}</p>"
         '<div class="app-preview-footer">{footer}<br><strong>{powered}</strong></div></div>'
     ).format(
         name=esc(lh["payslip_company_name"]),
@@ -957,10 +993,19 @@ def payslip_invoice_html(payslip: Dict[str, Any]) -> str:
                 else (emp.get("payable_days") or 0)
             )
         ),
+        paid_basis=esc(
+            "Payable days mode" if emp.get("attendance_pay_mode") == "payable_days"
+            else ("Calendar proration" if emp.get("is_prorated") else "Full salary basis")
+        ),
         rows="".join(rows),
         gross=money_text(payslip.get("gross_salary")),
         cuts=money_text(deductions.get("total")),
         net=money_text(payslip.get("net_salary")),
+        shortfall_html=(
+            f'<div style="color:#d9534f;font-weight:700;margin-top:6px">Shortfall / Unrecovered: {money_text(emp.get("shortfall") or payslip.get("shortfall") or round(max(0.0, float(deductions.get("total") or 0) - float(payslip.get("gross_salary") or 0)), 2))}</div>'
+            if (float(emp.get("shortfall") or payslip.get("shortfall") or 0) > 0 or float(deductions.get("total") or 0) > float(payslip.get("gross_salary") or 0))
+            else ""
+        ),
         bank_title=esc(lh["payslip_bank_title"]),
         bank_name=esc(lh["payslip_bank_name"]),
         iban=esc(lh["payslip_bank_iban"]),
@@ -968,6 +1013,7 @@ def payslip_invoice_html(payslip: Dict[str, Any]) -> str:
         present=esc(emp.get("present_days") or 0),
         absent=esc(emp.get("absent_days") or 0),
         late=esc(emp.get("late_days") or 0),
+        half_leave=esc(emp.get("half_leave_count") or 0),
         leave=esc(paid_leave or 0),
         unpaid=esc(emp.get("unpaid_leave_days") or 0),
         footer=esc(lh["payslip_footer"]),
@@ -1033,10 +1079,15 @@ def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
         or (emp.get("proration_method_days") if emp.get("is_prorated") else 0)
         or 0
     )
-    text_at(320, 676, "Work days: {}   Days paid: {}".format(
+    paid_basis = (
+        "Payable days mode" if emp.get("attendance_pay_mode") == "payable_days"
+        else ("Calendar proration" if emp.get("is_prorated") else "Full salary")
+    )
+    text_at(320, 676, "Scheduled: {}  ·  Paid: {} ({})".format(
         work_days_val,
         days_paid_val,
-    ), 9, False, (0.384, 0.502, 0.584))
+        paid_basis,
+    )[:50], 8, False, (0.384, 0.502, 0.584))
     rgb_stroke(0.863, 0.925, 0.957, 36, 664, 523, 0.8)
 
     y = 640
@@ -1058,14 +1109,24 @@ def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
             break
 
     y = min(y - 10, 300)
-    rgb_fill(0.961, 0.984, 1.0, 300, y - 70, 259, 86)
-    rgb_stroke(0.812, 0.910, 0.969, 300, y - 70, 259, 86)
+    shortfall_amt = float(emp.get("shortfall") or payslip.get("shortfall") or 0)
+    if shortfall_amt <= 0:
+        cuts_v = float(deductions.get("total") or 0)
+        gross_v = float(payslip.get("gross_salary") or 0)
+        if cuts_v > gross_v:
+            shortfall_amt = round(cuts_v - gross_v, 2)
+    box_h = 100 if shortfall_amt > 0 else 86
+    rgb_fill(0.961, 0.984, 1.0, 300, y - box_h + 16, 259, box_h)
+    rgb_stroke(0.812, 0.910, 0.969, 300, y - box_h + 16, 259, box_h)
     text_at(314, y, "Gross pay", 9, False, (0.384, 0.502, 0.584))
     text_at(400, y, _pdf_money(payslip.get("gross_salary"), currency, places), 10, True)
     text_at(314, y - 16, "Total cuts", 9, False, (0.384, 0.502, 0.584))
     text_at(400, y - 16, _pdf_money(deductions.get("total"), currency, places), 10, True)
     text_at(314, y - 40, "Take-home pay", 11, True)
     text_at(390, y - 40, _pdf_money(payslip.get("net_salary"), currency, places), 12, True, (0.09, 0.19, 0.26))
+    if shortfall_amt > 0:
+        text_at(314, y - 58, "Shortfall", 9, True, (0.85, 0.2, 0.2))
+        text_at(390, y - 58, _pdf_money(shortfall_amt, currency, places), 9, True, (0.85, 0.2, 0.2))
 
     rgb_fill(0.961, 0.984, 1.0, 36, 86, 250, 110)
     rgb_stroke(0.812, 0.910, 0.969, 36, 86, 250, 110)
@@ -1073,10 +1134,11 @@ def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:
     text_at(48, 160, "Account Title: {}".format(lh["payslip_bank_title"])[:42], 9)
     text_at(48, 146, "Bank Name: {}".format(lh["payslip_bank_name"])[:42], 9)
     text_at(48, 132, "IBAN: {}".format(lh["payslip_bank_iban"])[:36], 9)
-    text_at(48, 114, "Present {} · Absent {} · Late {}".format(
+    text_at(48, 114, "Present {} · Absent {} · Late {} · Half-leave {}".format(
         emp.get("present_days") or 0,
         emp.get("absent_days") or 0,
         emp.get("late_days") or 0,
+        emp.get("half_leave_count") or 0,
     ), 8, False, (0.384, 0.502, 0.584))
 
     rgb_fill(0.09, 0.19, 0.26, 36, 36, 523, 40)

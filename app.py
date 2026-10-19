@@ -5386,6 +5386,39 @@ def api_add_leave():
         if end_time <= start_time:
             return jsonify({'success': False, 'message': 'Leave end time must be later than start time.', 'error': 'Leave end time must be later than start time.'}), 400
 
+        # QA-52: A half-day leave can cover only up to half of the scheduled shift duration
+        try:
+            with sqlite3.connect(db.DB_PATH) as conn_shift:
+                cur_s = conn_shift.cursor()
+                cur_s.execute("""
+                    SELECT s.start_time, s.end_time 
+                    FROM shifts s
+                    JOIN users u ON u.shift_id = s.id
+                    WHERE u.id = ?
+                """, (int(user_id),))
+                s_row = cur_s.fetchone()
+                if not s_row:
+                    cur_s.execute("SELECT start_time, end_time FROM shifts WHERE id = 1")
+                    s_row = cur_s.fetchone()
+                if s_row:
+                    def _t_to_m(t_val):
+                        parts = str(t_val).strip().split(':')
+                        return int(parts[0]) * 60 + int(parts[1])
+                    req_duration = _t_to_m(end_time) - _t_to_m(start_time)
+                    if req_duration < 0:
+                        req_duration += 24 * 60
+                    shift_duration = _t_to_m(s_row[1]) - _t_to_m(s_row[0])
+                    if shift_duration <= 0:
+                        shift_duration += 24 * 60
+                    max_allowed_mins = shift_duration / 2.0
+                    if req_duration > max_allowed_mins:
+                        max_hrs = max_allowed_mins / 60.0
+                        hrs_str = f"{int(max_hrs)}h" if max_hrs.is_integer() else f"{max_hrs:.1f}h"
+                        msg = f"A half-day leave can only cover up to half of the scheduled shift duration ({hrs_str} max). For longer absences, please file a full-day leave."
+                        return jsonify({'success': False, 'message': msg, 'error': msg}), 400
+        except Exception as shift_val_err:
+            logger.warning("Could not validate half-day leave against shift: %s", shift_val_err)
+
     user = db.get_user_by_id(int(user_id))
     try:
         lid = db.add_leave_request(
@@ -6428,17 +6461,22 @@ def api_list_payroll_component_types():
 @app.route('/api/payroll/component-types', methods=['POST'])
 def api_save_payroll_component_type():
     data = request.get_json(silent=True) or {}
-    saved_id = db.save_payroll_component_type(
-        name=str(data.get('name') or '').strip(),
-        code=str(data.get('code') or '').strip(),
-        kind=str(data.get('kind') or 'earning'),
-        category=str(data.get('category') or 'allowance'),
-        calc_mode=str(data.get('calc_mode') or 'fixed'),
-        default_amount=float(data.get('default_amount') or 0),
-        active=bool(data.get('active', True)),
-        component_id=data.get('id'),
-        **payroll_tenant(),
-    )
+    try:
+        saved_id = db.save_payroll_component_type(
+            name=str(data.get('name') or '').strip(),
+            code=str(data.get('code') or '').strip(),
+            kind=str(data.get('kind') or 'earning'),
+            category=str(data.get('category') or 'allowance'),
+            calc_mode=str(data.get('calc_mode') or 'fixed'),
+            default_amount=float(data.get('default_amount') or 0),
+            active=bool(data.get('active', True)),
+            component_id=data.get('id'),
+            **payroll_tenant(),
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        field = 'name' if 'name' in msg.lower() else ('code' if 'code' in msg.lower() else 'form')
+        return jsonify({'error': msg, 'message': msg, 'field': field}), 400
     if not saved_id:
         return jsonify({'error': 'Enter a valid pay-line name, code, earning/deduction kind, and category.'}), 400
     current = db.get_payroll_settings(**payroll_tenant())

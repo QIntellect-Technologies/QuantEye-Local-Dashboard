@@ -2965,6 +2965,41 @@ def get_shift_by_id(shift_id: int, organization_id: Optional[str] = None) -> Opt
     return None
 
 
+def is_shift_ended_for_time(shift_end_str: str, current_time: Any = None) -> bool:
+    """Helper to determine whether a shift has ended given its end time string."""
+    try:
+        from datetime import datetime, time
+        if current_time is None:
+            current_time = datetime.now().time()
+        elif isinstance(current_time, datetime):
+            current_time = current_time.time()
+        elif isinstance(current_time, str):
+            parts = [int(p) for p in current_time.split(":")[:2]]
+            current_time = time(parts[0], parts[1])
+        parts = [int(p) for p in shift_end_str.split(":")[:2]]
+        shift_end = time(parts[0], parts[1])
+        return current_time > shift_end
+    except Exception:
+        return True
+
+
+def validate_half_day_leave_duration(leave_start: str, leave_end: str, shift_start: str, shift_end: str) -> bool:
+    """Validate that half-day leave duration is <= 50% of the shift duration."""
+    try:
+        def to_mins(t_str: str) -> int:
+            parts = [int(p) for p in t_str.split(":")[:2]]
+            return parts[0] * 60 + parts[1]
+        s_start = to_mins(shift_start)
+        s_end = to_mins(shift_end)
+        shift_dur = (s_end - s_start) if s_end >= s_start else (s_end + 1440 - s_start)
+        l_start = to_mins(leave_start)
+        l_end = to_mins(leave_end)
+        leave_dur = (l_end - l_start) if l_end >= l_start else (l_end + 1440 - l_start)
+        return leave_dur <= (shift_dur / 2.0)
+    except Exception:
+        return True
+
+
 def add_shift(name: str, start_time: str, end_time: str, grace_period_minutes: int = 15, checkout_grace_period_minutes: int = 0, working_days: Any = None, organization_id: Optional[str] = 'DEFAULT_ORG', branch_id: Optional[str] = 'DEFAULT_BRANCH') -> Optional[int]:
     """Add a new custom shift with tenant organization_id and branch_id."""
     if not name or not name.strip():
@@ -4585,14 +4620,33 @@ def get_detailed_attendance_report(
                             checkin_cam = '-'
                             checkout_cam = '-'
                         else:
-                            status = 'absent'
+                            # QA-50 & Section C #3: Today is NOT counted as absent before the shift ends
+                            is_cur_today = (cur_date == datetime.now().strftime('%Y-%m-%d'))
+                            shift_ended = True
+                            if is_cur_today:
+                                now_dt = datetime.now()
+                                now_mins = now_dt.hour * 60 + now_dt.minute
+                                try:
+                                    s_end_m = parse_time_to_minutes(shift_end)
+                                    s_start_m = parse_time_to_minutes(shift_start)
+                                    if s_end_m < s_start_m:  # overnight
+                                        shift_ended = (now_mins >= s_end_m and now_mins < s_start_m)
+                                    else:
+                                        shift_ended = (now_mins >= s_end_m)
+                                except Exception:
+                                    shift_ended = True
+
+                            if is_cur_today and not shift_ended:
+                                status = 'not_checked_in'
+                            else:
+                                status = 'absent'
+                                emp_absent_days += 1
                             first_seen = None
                             last_seen = None
                             loc = '-'
                             dev = '-'
                             checkin_cam = '-'
                             checkout_cam = '-'
-                            emp_absent_days += 1
                             emp_working_days += 1
 
                     # ATT-05: Determine Day Type from existing sources and structured labels
@@ -5413,6 +5467,14 @@ def mark_user_present_today(
                 )
 
             conn.commit()
+
+        if postgres_is_configured():
+            try:
+                import postgres_mirror as cloud_pg
+                cloud_pg.delete_pg_manual_absent(user_id, actual_date, organization_id=user_org)
+                cloud_pg.mirror_manual_attendance(user_id, actual_date, ci_clean, co_clean, shift_db_id, notes, marked_by, user_org, user_branch)
+            except Exception as pg_err:
+                logger.warning("Failed to sync manual attendance to cloud: %s", pg_err)
 
         logger.info(f"✓ Manually marked user ID {user_id} present for {actual_date} (shift={shift_db_id}, in={ci_clean}, out={co_clean})")
         return True
@@ -9812,23 +9874,40 @@ def save_payroll_component_type(
         return None
     org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
-        if component_id:
-            conn.execute(
-                """UPDATE payroll_component_types
-                   SET name=?, code=?, kind=?, category=?, calc_mode=?, default_amount=?, active=?
-                   WHERE id=? AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
-                (name.strip(), code.strip().lower(), kind_n, cat, mode, float(default_amount or 0), int(bool(active)), int(component_id), org, branch),
+        # QA-42: Check duplicate name or code within tenant
+        dup_row = conn.execute(
+            """SELECT id, name, code FROM payroll_component_types
+               WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+                 AND (LOWER(TRIM(name)) = LOWER(TRIM(?)) OR LOWER(TRIM(code)) = LOWER(TRIM(?)))
+                 AND (? IS NULL OR id != ?)""",
+            (org, branch, name.strip(), code.strip(), component_id, component_id)
+        ).fetchone()
+        if dup_row:
+            if str(dup_row[1]).strip().lower() == name.strip().lower():
+                raise ValueError(f"An item with this name already exists: '{name.strip()}'.")
+            else:
+                raise ValueError(f"An item with this code already exists: '{code.strip()}'.")
+
+        try:
+            if component_id:
+                conn.execute(
+                    """UPDATE payroll_component_types
+                       SET name=?, code=?, kind=?, category=?, calc_mode=?, default_amount=?, active=?
+                       WHERE id=? AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+                    (name.strip(), code.strip().lower(), kind_n, cat, mode, float(default_amount or 0), int(bool(active)), int(component_id), org, branch),
+                )
+                conn.commit()
+                return int(component_id)
+            cursor = conn.execute(
+                """INSERT INTO payroll_component_types (
+                       organization_id, branch_id, name, code, kind, category, calc_mode, default_amount, active
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (org, branch, name.strip(), code.strip().lower(), kind_n, cat, mode, float(default_amount or 0), int(bool(active))),
             )
             conn.commit()
-            return int(component_id)
-        cursor = conn.execute(
-            """INSERT INTO payroll_component_types (
-                   organization_id, branch_id, name, code, kind, category, calc_mode, default_amount, active
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (org, branch, name.strip(), code.strip().lower(), kind_n, cat, mode, float(default_amount or 0), int(bool(active))),
-        )
-        conn.commit()
-        return cursor.lastrowid
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            raise ValueError("An item with this name or code already exists.")
 
 
 def delete_payroll_component_type(component_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> bool:
@@ -9850,12 +9929,17 @@ def list_payroll_component_duplicates(organization_id: Optional[str] = None, bra
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         ensure_payroll_extension_tables(cursor)
+        from payroll_extensions import _refresh_duplicate_component_report
+        _refresh_duplicate_component_report(cursor)
         conn.commit()
         rows = cursor.execute(
-            """SELECT * FROM payroll_duplicate_component_report
-               WHERE COALESCE(organization_id,'DEFAULT_ORG')=?
-                 AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
-               ORDER BY id""",
+            """SELECT d.*, t.name as component_name, t.code as component_code, u.name as employee_name
+               FROM payroll_duplicate_component_report d
+               LEFT JOIN payroll_component_types t ON t.id = d.component_type_id
+               LEFT JOIN users u ON u.id = d.user_id
+               WHERE COALESCE(d.organization_id,'DEFAULT_ORG')=?
+                 AND COALESCE(d.branch_id,'DEFAULT_BRANCH')=?
+               ORDER BY d.id""",
             (org, branch),
         ).fetchall()
         return [dict(row) for row in rows]
@@ -9900,6 +9984,8 @@ def save_employee_component(
     from payroll_extensions import VALID_SCOPES, _dates_overlap, _refresh_duplicate_component_report
     org, branch = _tenant_ids(organization_id, branch_id)
     scope = str(scope_type or 'employee').strip().lower()
+    if scope in ('company', 'all'):
+        scope = 'org'
     if scope not in VALID_SCOPES:
         raise ValueError('scope_type must be one of: org, branch, shift, department, designation, employee')
     try:
@@ -9950,14 +10036,21 @@ def save_employee_component(
         if 'negative' in str(exc): raise
         raise ValueError('Amount must be numeric') from exc
 
+    check_amt = amount
+    if check_amt == 0 and type_id:
+        with sqlite3.connect(DB_PATH) as conn_type:
+            t_row = conn_type.execute("SELECT default_amount, calc_mode FROM payroll_component_types WHERE id = ?", (type_id,)).fetchone()
+            if t_row and t_row[0] is not None and (not calc_mode or calc_mode == 'fixed'):
+                check_amt = float(t_row[0])
+
     if calc_mode in ('percent_basic', 'percent_gross'):
         pct = float(percent or 0)
         if pct < 0 or pct > 100:
             raise ValueError('Percentage must be between 0 and 100')
     else:
-        if min_amount is not None and amount < min_amount:
+        if min_amount is not None and check_amt < min_amount:
             raise ValueError(f'Amount cannot be less than lowest amount limit ({min_amount:g})')
-        if max_amount is not None and amount > max_amount:
+        if max_amount is not None and check_amt > max_amount:
             raise ValueError(f'Amount cannot be greater than highest amount limit ({max_amount:g})')
 
     start = str(effective_from or '').strip()[:10]
@@ -9983,14 +10076,18 @@ def save_employee_component(
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         ensure_payroll_extension_tables(cursor)
+        # QA-51: Robust duplicate check matching by employee user_id or group scope_id
         existing = [dict(r) for r in cursor.execute(
             """SELECT * FROM payroll_employee_components
                WHERE COALESCE(organization_id,'DEFAULT_ORG')=?
                  AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
                  AND component_type_id=?
                  AND COALESCE(scope_type,'employee')=?
-                 AND COALESCE(user_id,0)=?
-                 AND COALESCE(scope_id,'')=?
+                 AND (
+                     (COALESCE(scope_type,'employee') = 'employee' AND COALESCE(user_id,0)=?)
+                     OR (COALESCE(scope_type,'employee') = 'org')
+                     OR (COALESCE(scope_type,'employee') NOT IN ('employee', 'org') AND COALESCE(scope_id,'')=?)
+                 )
                  AND excluded=0
                  AND active=1""",
             (org, branch, type_id, scope, uid, str(scope_id or '')),
@@ -11199,14 +11296,16 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             rule_missing = False
             issues_remarks = 'Rule not applied (pay method: payable days)'
         attendance_deduction = round(absence_rule_deduction + unpaid_leave_deduction + half_leave_deduction + attendance_shortfall, 2)
-        deduction_amount = attendance_deduction
-        total_emp_deductions = round(deduction_amount + custom_deductions, 2)
+        total_emp_deductions = round(attendance_deduction + custom_deductions, 2)
+        deduction_amount = total_emp_deductions
 
         # Gross = Basic + Allowances + Approved Overtime + Excel bonus + rest-day extra + adjustments/arrears
         gross_salary = _m(
             basic_salary + allowances + overtime_amount + bonus_amount + off_day_extra_pay + adjustment_amount
         )
-        net_salary = round(max(0.0, gross_salary - total_emp_deductions), 2)
+        # QA-49: Preserve exact net and keep shortfall visible when cuts exceed pay
+        shortfall = round(max(0.0, total_emp_deductions - gross_salary), 2)
+        net_salary = round(gross_salary - total_emp_deductions, 2)
 
         if attendance_mode == 'payable_days':
             p_label = int(payable_days) if float(payable_days).is_integer() else round(payable_days, 1)
@@ -11241,15 +11340,16 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             elif max_d == min_d:
                 bracket_str = f"{min_d} days"
             else:
-                bracket_str = f"{min_d}–{max_d} days"
+                bracket_str = f"{min_d} to {max_d} days"
 
             base_name = 'prorated basic' if is_prorated else 'basic'
             pct_label = f"{int(deduction_percent)}%" if deduction_percent is not None and deduction_percent.is_integer() else f"{deduction_percent}%"
-            explanation = (
-                f"Missed-day rule: {bracket_str} = {pct_label} of {base_name}"
-                if deduction_type == 'percentage' else
-                f"Missed-day rule: {bracket_str} = fixed {fixed_amount}"
-            )
+            # QA-48: Name the rule, absent-day count, and percent so hand-verifiable:
+            # Example: "Absent 14 days (6 to 31 days: 30% of 58,064.52) = 17,419.36"
+            if deduction_type == 'percentage':
+                explanation = f"Absent {int(unexcused_absent_days)} days ({bracket_str}: {pct_label} of {basic_salary:,.2f}) = {absence_rule_deduction:,.2f}"
+            else:
+                explanation = f"Absent {int(unexcused_absent_days)} days ({bracket_str}: fixed {fixed_amount:,.2f}) = {absence_rule_deduction:,.2f}"
             missed_day_details = {
                 'rule_label': bracket_str,
                 'min_absent_days': min_d,
@@ -11274,7 +11374,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         elif is_prorated:
             days_paid = proration_days_paid
         else:
-            days_paid = proration_method_days if proration_method_days else (month_scheduled_workdays or scheduled_workdays)
+            days_paid = month_scheduled_workdays or scheduled_workdays or proration_method_days
 
         rows.append({
             'employee_id': employee_id,
@@ -11342,6 +11442,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'attendance_deduction': attendance_deduction,
             'deduction_amount': deduction_amount,
             'deduction': deduction_amount,
+            'total_deductions': total_emp_deductions,
+            'shortfall': shortfall,
+            'unrecovered_deductions': shortfall,
             'rule_missing': rule_missing,
             'issues_remarks': issues_remarks,
             'earned_so_far': earned_so_far,

@@ -295,6 +295,49 @@ def delete_pg_attendance_events(user_id: int, date_str: str, organization_id: Op
     _with_cursor(_write)
 
 
+def delete_pg_manual_absent(user_id: int, date_str: str, organization_id: Optional[str] = None) -> None:
+    if not user_id or not date_str:
+        return
+    def _write(cur):
+        str_uid = str(user_id).strip()
+        d_str = str(date_str)[:10]
+        cur.execute(
+            """
+            DELETE FROM manual_absent
+             WHERE (user_id = %s OR user_id = %s)
+               AND date = %s
+            """,
+            (str_uid, f"EMP-{str_uid}", d_str),
+        )
+    _with_cursor(_write)
+
+
+def mirror_manual_attendance(user_id: int, date_str: str, check_in_time: str, check_out_time: Optional[str] = None, shift_id: int = 1, notes: str = "", marked_by: str = "Admin", organization_id: str = "DEFAULT_ORG", branch_id: str = "DEFAULT_BRANCH") -> None:
+    if not user_id or not date_str or not check_in_time:
+        return
+    def _write(cur):
+        str_uid = str(user_id).strip()
+        d_str = str(date_str)[:10]
+        ts_in = f"{d_str} {check_in_time}:00"
+        cur.execute(
+            """
+            INSERT INTO attendance_events (organization_id, branch_id, employee_id, event_type, timestamp, confidence, source)
+            VALUES (%s, %s, %s, 'CHECK_IN', %s, 1.0, 'manual')
+            """,
+            (organization_id, branch_id, str_uid, ts_in),
+        )
+        if check_out_time:
+            ts_out = f"{d_str} {check_out_time}:00"
+            cur.execute(
+                """
+                INSERT INTO attendance_events (organization_id, branch_id, employee_id, event_type, timestamp, confidence, source)
+                VALUES (%s, %s, %s, 'CHECK_OUT', %s, 1.0, 'manual')
+                """,
+                (organization_id, branch_id, str_uid, ts_out),
+            )
+    _with_cursor(_write)
+
+
 def mirror_camera(camera: Dict[str, Any]) -> None:
     org_id = str(camera.get("organization_id") or "").strip()
     branch_id = str(camera.get("branch_id") or "BR-01").strip() or "BR-01"
@@ -1802,13 +1845,26 @@ def fetch_pg_attendance_logs(organization_id: str, branch_id: Optional[str] = No
                 ).fetchone()
                 if is_manual_absent:
                     continue
-                
+
+                # QA-50: Do not overwrite or revert manual attendance records
+                has_manual = sqlite_cur.execute(
+                    "SELECT id FROM attendance WHERE user_id = ? AND date(timestamp) = ? AND source = 'manual'",
+                    (uid, ts_clean[:10]),
+                ).fetchall()
+                if has_manual:
+                    for m_row in has_manual:
+                        pg_ids.add(m_row[0])
+                    continue
+
                 exists = sqlite_cur.execute(
-                    "SELECT id FROM attendance WHERE user_id = ? AND timestamp LIKE ?",
+                    "SELECT id, source FROM attendance WHERE user_id = ? AND timestamp LIKE ?",
                     (uid, f"{ts_clean}%"),
                 ).fetchone()
                 if exists:
                     aid = exists[0]
+                    if exists[1] == 'manual':
+                        pg_ids.add(aid)
+                        continue
                     pg_ids.add(aid)
                     sqlite_cur.execute(
                         """
