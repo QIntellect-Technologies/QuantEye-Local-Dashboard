@@ -9949,6 +9949,13 @@ def list_employee_components(user_id: int, organization_id: Optional[str] = None
     org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
+        # QA-56: Fetch employee basic salary to calculate estimated/resulting amount for percentage lines
+        u_row = conn.execute("SELECT basic_salary FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        basic_sal = float(u_row[0]) if (u_row and u_row[0] is not None) else 0.0
+        s_row = conn.execute("SELECT basic_salary FROM salary_configs WHERE user_id = ?", (int(user_id),)).fetchone()
+        if s_row and s_row[0] is not None:
+            basic_sal = float(s_row[0])
+
         rows = conn.execute(
             """SELECT c.*, t.name, t.code, t.kind, t.category, t.calc_mode
                FROM payroll_employee_components c
@@ -9959,7 +9966,18 @@ def list_employee_components(user_id: int, organization_id: Optional[str] = None
                ORDER BY t.kind, t.name""",
             (int(user_id), org, branch),
         ).fetchall()
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            d = dict(row)
+            d['basic_salary'] = basic_sal
+            pct = float(d.get('percent') or 0)
+            cm = str(d.get('calc_mode') or '')
+            if pct > 0 or cm.startswith('percent'):
+                d['calculated_amount'] = round(basic_sal * (pct / 100.0), 2)
+            else:
+                d['calculated_amount'] = float(d.get('amount') or 0)
+            result.append(d)
+        return result
 
 
 def save_employee_component(
@@ -10035,6 +10053,11 @@ def save_employee_component(
     except (TypeError, ValueError, OverflowError) as exc:
         if 'negative' in str(exc): raise
         raise ValueError('Amount must be numeric') from exc
+
+    # QA-57: Rule precedence: If both amount and percent are provided, percent wins
+    pct_val = float(percent or 0)
+    if pct_val > 0 and (not calc_mode or calc_mode == 'fixed'):
+        calc_mode = 'percent_basic'
 
     check_amt = amount
     if check_amt == 0 and type_id:
@@ -11340,16 +11363,16 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             elif max_d == min_d:
                 bracket_str = f"{min_d} days"
             else:
-                bracket_str = f"{min_d} to {max_d} days"
+                bracket_str = f"{min_d}–{max_d} days"
 
             base_name = 'prorated basic' if is_prorated else 'basic'
             pct_label = f"{int(deduction_percent)}%" if deduction_percent is not None and deduction_percent.is_integer() else f"{deduction_percent}%"
             # QA-48: Name the rule, absent-day count, and percent so hand-verifiable:
             # Example: "Absent 14 days (6 to 31 days: 30% of 58,064.52) = 17,419.36"
             if deduction_type == 'percentage':
-                explanation = f"Absent {int(unexcused_absent_days)} days ({bracket_str}: {pct_label} of {basic_salary:,.2f}) = {absence_rule_deduction:,.2f}"
+                explanation = f"Missed-day rule: {bracket_str} = {pct_label} of {base_name} (Absent {int(unexcused_absent_days)} days: {absence_rule_deduction:,.2f})"
             else:
-                explanation = f"Absent {int(unexcused_absent_days)} days ({bracket_str}: fixed {fixed_amount:,.2f}) = {absence_rule_deduction:,.2f}"
+                explanation = f"Missed-day rule: {bracket_str} = fixed {fixed_amount:,.2f} (Absent {int(unexcused_absent_days)} days)"
             missed_day_details = {
                 'rule_label': bracket_str,
                 'min_absent_days': min_d,

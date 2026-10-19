@@ -762,9 +762,13 @@ def _payslip_letterhead(payslip: Dict[str, Any]) -> Dict[str, str]:
 
 def _format_missed_day_explanation(absent_days: float, bracket_str: str, pct: float, base_amount: float, deduction: float) -> str:
     """Format hand-verifiable missed-day cut explanation for payslips (QA-48)."""
-    cnt_str = f"{int(absent_days)}" if absent_days.is_integer() else f"{absent_days:.1f}"
-    pct_str = f"{int(pct)}%" if pct.is_integer() else f"{pct:.1f}%"
-    return f"Absent {cnt_str} days ({bracket_str}: {pct_str} of {base_amount:,.2f}) = {deduction:,.2f}"
+    f_days = float(absent_days or 0)
+    f_pct = float(pct or 0)
+    f_base = float(base_amount or 0)
+    f_ded = float(deduction or 0)
+    cnt_str = f"{int(f_days)}" if f_days.is_integer() else f"{f_days:.1f}"
+    pct_str = f"{int(f_pct)}%" if f_pct.is_integer() else f"{f_pct:.1f}%"
+    return f"Absent {cnt_str} days ({bracket_str}: {pct_str} of {f_base:,.2f}) = {f_ded:,.2f}"
 
 
 def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:

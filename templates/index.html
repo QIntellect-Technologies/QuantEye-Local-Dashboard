@@ -8266,6 +8266,7 @@ async function fetchMultiLiveDetections() {
               </label>
               <button type="button" class="btn btn-outline-primary btn-sm" onclick="assignEmployeePayLine()">Assign</button>
             </div>
+            <div style="font-size:0.75em; color:#0d9488; margin-top:4px; font-weight:600;"><i class="fa-solid fa-circle-info me-1"></i>Precedence: If both Amount and Percent of basic are entered, Percent of basic wins and calculates from basic salary (fixed Amount is ignored).</div>
             <div class="log-table-wrapper" style="margin-top:8px;">
               <table class="log-table" style="width:100%;">
                 <thead><tr><th>Line</th><th>Kind</th><th>Amount / %</th><th></th></tr></thead>
@@ -15633,7 +15634,7 @@ async function fetchMultiLiveDetections() {
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save pay line');
           const namedFlag = document.getElementById('flag_enable_named_components');
           if (namedFlag) namedFlag.checked = true;
-          showAppToast('Pay line saved. Assign it by scope below or on Salary packages. The catalog default is used only when the assignment amount/% is blank.', 'success');
+          showAppToast(`"${payload.name || 'Pay line'}" added successfully.`, 'success');
           await loadPayrollComponentTypes();
         } catch (error) {
           showAppToast(error.message, 'error');
@@ -15778,7 +15779,8 @@ async function fetchMultiLiveDetections() {
             return;
           }
           if (message) message.textContent = 'Assignment saved.';
-          showAppToast('Pay line assignment saved.', 'success');
+          const assignedName = currentType?.name || 'Pay line';
+          showAppToast(`"${assignedName}" assigned successfully.`, 'success');
           await loadPayLineDuplicates();
         } catch (error) {
           showAppToast(error.message, 'error');
@@ -15887,13 +15889,27 @@ async function fetchMultiLiveDetections() {
           const response = await fetch(`${API_BASE}/payroll/employee-components/${userId}`);
           const result = await response.json();
           const rows = result.components || [];
-          tbody.innerHTML = rows.length ? rows.map((row) => `
+          tbody.innerHTML = rows.length ? rows.map((row) => {
+            const isPercent = (row.calc_mode && String(row.calc_mode).startsWith('percent')) || Number(row.percent || 0) > 0;
+            let valStr = '';
+            if (isPercent) {
+              const pct = Number(row.percent || 0);
+              const basic = Number(document.getElementById('modalSalaryBasic')?.value || row.basic_salary || 0);
+              const estAmt = row.calculated_amount != null && row.calculated_amount > 0 ? row.calculated_amount : (basic > 0 ? (basic * pct / 100) : Number(row.amount || 0));
+              const modeLabel = row.calc_mode === 'percent_gross' ? 'gross' : 'basic';
+              const amtStr = estAmt > 0 ? ` (${payrollMoney(estAmt)})` : '';
+              valStr = `${pct}% of ${modeLabel}${amtStr}`;
+            } else {
+              valStr = payrollMoney(row.amount);
+            }
+            return `
             <tr>
               <td>${payrollEscape(row.name)}</td>
               <td>${payrollEscape(row.kind)}</td>
-              <td>${row.calc_mode === 'percent_basic' ? (row.percent + '%') : payrollMoney(row.amount)}</td>
+              <td><strong>${valStr}</strong></td>
               <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteEmployeePayLine(${row.id}, ${userId})">Remove</button></td>
-            </tr>`).join('') : '<tr><td colspan="4" class="text-muted text-center p-2">No named lines.</td></tr>';
+            </tr>`;
+          }).join('') : '<tr><td colspan="4" class="text-muted text-center p-2">No named lines.</td></tr>';
         } catch (error) {
           tbody.innerHTML = `<tr><td colspan="4" class="text-danger text-center p-2">${payrollEscape(error.message)}</td></tr>`;
         }
@@ -15934,6 +15950,17 @@ async function fetchMultiLiveDetections() {
           showAppToast(result.error || 'Could not assign pay line', 'error');
           return;
         }
+        // QA-57: Reset amount and percent of basic fields after successful assign
+        const amtInput = document.getElementById('modalSalaryComponentAmount');
+        if (amtInput) amtInput.value = '0';
+        const pctInput = document.getElementById('modalSalaryComponentPercent');
+        if (pctInput) pctInput.value = '0';
+
+        // QA-58: Short success message naming the item
+        const compSelect = document.getElementById('modalSalaryComponentType');
+        const compName = compSelect?.options[compSelect.selectedIndex]?.text?.split(' (')[0] || 'Pay line';
+        showAppToast(`"${compName}" added to salary package.`, 'success');
+
         await loadEmployeePayLines(uid);
       }
 
@@ -16322,7 +16349,13 @@ async function fetchMultiLiveDetections() {
           message.innerHTML = '';
           resetPayrollRuleForm();
           await loadPayrollRules();
-          showAppToast(id ? 'Payroll rule updated' : 'Payroll rule added', 'success');
+          const ruleBasisLabel = {
+            missed_day: 'Missed-day deduction rule',
+            late_arrival: 'Late arrival deduction rule',
+            half_day: 'Half-day leave deduction rule',
+            payable_day: 'Attendance payment rule'
+          }[data.rule_basis] || 'Payroll rule';
+          showAppToast(id ? `${ruleBasisLabel} updated.` : `${ruleBasisLabel} added.`, 'success');
         } catch (error) {
           message.innerHTML = `<div class="alert alert-danger py-2 mb-0">${payrollEscape(error.message)}</div>`;
         }
@@ -16381,7 +16414,16 @@ async function fetchMultiLiveDetections() {
             updateSalarySummaryCards(cachedSalarySummary);
           }
           populateSalaryDeptDropdown();
-          renderSalaryTable(cachedSalaryConfigs);
+          const hasActiveFilter = Boolean(
+            (document.getElementById('salarySearchInput')?.value || '').trim() ||
+            (document.getElementById('salaryDeptFilter')?.value && document.getElementById('salaryDeptFilter')?.value !== 'all') ||
+            (document.getElementById('salaryStatusFilter')?.value && document.getElementById('salaryStatusFilter')?.value !== 'all')
+          );
+          if (hasActiveFilter) {
+            filterSalaryTable();
+          } else {
+            renderSalaryTable(cachedSalaryConfigs);
+          }
         } catch (error) {
           console.error("Failed to load salary configs:", error);
           if (tbody) {
