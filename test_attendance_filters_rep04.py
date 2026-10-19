@@ -4,6 +4,12 @@ import uuid
 import unittest
 from datetime import datetime, date
 
+from unittest.mock import MagicMock
+
+for mod_name in ['cv2', 'insightface', 'torch', 'ultralytics', 'face_processor']:
+    if mod_name not in sys.modules:
+        sys.modules[mod_name] = MagicMock()
+
 import database as db
 import app as flask_app
 
@@ -16,8 +22,11 @@ class TestRep04AttendanceReportFilters(unittest.TestCase):
         cls.client = flask_app.app.test_client()
 
     def setUp(self):
-        # Configure app session for tenant isolation
+        # Configure app session for tenant isolation and auth
         with self.client.session_transaction() as sess:
+            sess["user_id"] = 1
+            sess["role"] = "Admin"
+            sess["admin_unlocked"] = True
             sess["organization_id"] = self.org_id
             sess["branch_id"] = self.branch_id
 
@@ -39,8 +48,10 @@ class TestRep04AttendanceReportFilters(unittest.TestCase):
 
     def test_01_individual_filters_department_shift_status(self):
         """1. Individual filters work accurately: department, shift, and status."""
-        shift1 = db.add_shift("Morning Shift", "08:00", "16:00", organization_id=self.org_id, branch_id=self.branch_id)
-        shift2 = db.add_shift("Evening Shift", "16:00", "00:00", organization_id=self.org_id, branch_id=self.branch_id)
+        sname1 = f"Morning Shift {uuid.uuid4().hex[:6]}"
+        sname2 = f"Evening Shift {uuid.uuid4().hex[:6]}"
+        shift1 = db.add_shift(sname1, "08:00", "16:00", organization_id=self.org_id, branch_id=self.branch_id)
+        shift2 = db.add_shift(sname2, "16:00", "00:00", organization_id=self.org_id, branch_id=self.branch_id)
 
         u1, n1 = self._create_employee(dept="Engineering", shift_id=shift1)
         u2, n2 = self._create_employee(dept="Marketing", shift_id=shift2)
