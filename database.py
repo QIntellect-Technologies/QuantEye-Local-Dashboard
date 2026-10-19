@@ -4465,8 +4465,18 @@ def get_detailed_attendance_report(
                         except (TypeError, ValueError):
                             half_leave_active = False
 
-                    # Priority order: Actual Face Attendance > Approved Leave > Manual Absent override only when no attendance exists > Unexcused Absence
-                    if att:
+                    # Priority order: Explicit Admin Manual Absent > Actual Face Attendance > Approved Leave > Unexcused Absence
+                    if is_manual_absent and is_scheduled_workday:
+                        status = 'absent'
+                        first_seen = None
+                        last_seen = None
+                        loc = '-'
+                        dev = '-'
+                        checkin_cam = '-'
+                        checkout_cam = '-'
+                        emp_absent_days += 1
+                        emp_working_days += 1
+                    elif att:
                         # LV-05: If employee actually worked on an approved leave day, ensure entitlement is restored
                         # Do NOT restore half-day leave when employee works, as half-day leave expects them to work the other half (QA-45)
                         if leave_info and not leave_info.get('is_half_leave'):
@@ -4558,16 +4568,6 @@ def get_detailed_attendance_report(
                         dev = '-'
                         checkin_cam = '-'
                         checkout_cam = '-'
-                        emp_working_days += 1
-                    elif is_manual_absent and is_scheduled_workday:
-                        status = 'absent'
-                        first_seen = None
-                        last_seen = None
-                        loc = '-'
-                        dev = '-'
-                        checkin_cam = '-'
-                        checkout_cam = '-'
-                        emp_absent_days += 1
                         emp_working_days += 1
                     else:
                         # No attendance record
@@ -5117,6 +5117,12 @@ def mark_user_absent_today(user_id: int, target_date: Optional[str] = None, orga
                     logger.info(f"OT-02: Cancelled overtime ID #{ot_id} ({ot_st}) for user #{user_id} on {actual_date} due to absent status")
 
             conn.commit()
+        if postgres_is_configured():
+            try:
+                import postgres_mirror as cloud_pg
+                cloud_pg.delete_pg_attendance_events(user_id, actual_date, organization_id=user_org)
+            except Exception as pg_err:
+                logger.warning("Failed to delete attendance events from cloud: %s", pg_err)
         logger.info(f"✓ Manually marked user ID {user_id} absent for {target_date or 'today'} (removed {deleted_count} logs, recorded manual_absent)")
         return True
     except ValueError:

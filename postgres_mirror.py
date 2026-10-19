@@ -267,6 +267,34 @@ def update_employees_shift_pg(user_ids: List[int], shift_id: int, organization_i
     _with_cursor(_write)
 
 
+def delete_pg_attendance_events(user_id: int, date_str: str, organization_id: Optional[str] = None) -> None:
+    if not user_id or not date_str:
+        return
+    def _write(cur):
+        str_uid = str(user_id).strip()
+        d_str = str(date_str)[:10]
+        if organization_id and _real_tenant(organization_id):
+            cur.execute(
+                """
+                DELETE FROM attendance_events
+                 WHERE organization_id = %s
+                   AND (employee_id = %s OR employee_id = %s)
+                   AND date(timestamp) = %s
+                """,
+                (organization_id, str_uid, f"EMP-{str_uid}", d_str),
+            )
+        else:
+            cur.execute(
+                """
+                DELETE FROM attendance_events
+                 WHERE (employee_id = %s OR employee_id = %s)
+                   AND date(timestamp) = %s
+                """,
+                (str_uid, f"EMP-{str_uid}", d_str),
+            )
+    _with_cursor(_write)
+
+
 def mirror_camera(camera: Dict[str, Any]) -> None:
     org_id = str(camera.get("organization_id") or "").strip()
     branch_id = str(camera.get("branch_id") or "BR-01").strip() or "BR-01"
@@ -1766,6 +1794,14 @@ def fetch_pg_attendance_logs(organization_id: str, branch_id: Optional[str] = No
                     user_name = u_row[0]
                 ts_raw = str(r.get("timestamp") or "")
                 ts_clean = ts_raw.replace("T", " ").split("+")[0].split(".")[0]
+                
+                # If marked manual_absent, do not re-insert attendance logs
+                is_manual_absent = sqlite_cur.execute(
+                    "SELECT 1 FROM manual_absent WHERE user_id = ? AND date = ?",
+                    (uid, ts_clean[:10]),
+                ).fetchone()
+                if is_manual_absent:
+                    continue
                 
                 exists = sqlite_cur.execute(
                     "SELECT id FROM attendance WHERE user_id = ? AND timestamp LIKE ?",

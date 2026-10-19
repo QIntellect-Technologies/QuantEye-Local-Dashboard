@@ -2850,7 +2850,11 @@ def api_mark_user_absent(user_id):
             return jsonify({'error': 'User not found or unauthorized'}), 404
         data = request.get_json(silent=True) or {}
         target_date = data.get('date')
-        success = db.mark_user_absent_today(user_id, target_date=target_date)
+        success = db.mark_user_absent_today(
+            user_id,
+            target_date=target_date,
+            organization_id=get_current_tenant_id(),
+        )
         if success:
             remove_live_detection_for_user(user_id)
             return jsonify({'success': True, 'message': f'User ID {user_id} marked absent'}), 200
@@ -5221,7 +5225,11 @@ def api_mark_absent():
         return jsonify({'success': False}), 400
     user_id = int(user_id)
     target_date = data.get('date') or data.get('target_date')
-    success = db.mark_user_absent_today(user_id, target_date=target_date)
+    success = db.mark_user_absent_today(
+        user_id,
+        target_date=target_date,
+        organization_id=get_current_tenant_id(),
+    )
     if success:
         remove_live_detection_for_user(user_id)
     return jsonify({'success': success})
