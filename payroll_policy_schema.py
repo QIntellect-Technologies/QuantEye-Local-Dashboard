@@ -14,7 +14,7 @@ DEFAULT_ORG = "DEFAULT_ORG"
 DEFAULT_BRANCH = "DEFAULT_BRANCH"
 DEFAULT_OT_DIVISOR = 208.0
 # New organizations. Existing payroll_settings rows keep calendar_days / round_rate_first.
-DEFAULT_PRORATION_BASIS = "working_days"
+DEFAULT_PRORATION_BASIS = "calendar_days"
 LEGACY_PRORATION_BASIS = "calendar_days"
 DEFAULT_OT_ROUNDING = "round_at_end"
 LEGACY_OT_ROUNDING = "round_rate_first"
@@ -23,7 +23,7 @@ DEFAULT_CURRENCY = "PKR"
 DEFAULT_DECIMAL_PLACES = 2
 VALID_PRORATION_BASES = ("calendar_days", "working_days", "30_day")
 VALID_ATTENDANCE_PAY_MODES = ("full_salary", "payable_days")
-DEFAULT_ATTENDANCE_PAY_MODE = "payable_days"
+DEFAULT_ATTENDANCE_PAY_MODE = "full_salary"
 VALID_OT_PAY_MODES = ("percent", "multiplier", "fixed_hour")
 VALID_OFF_DAY_ATTENDANCE_MODES = ("multiplier", "fixed_day")
 DEFAULT_EXAMPLE_MULTIPLIER = 1.5
@@ -172,12 +172,12 @@ def overtime_entry_pay(
         return _percent(cfg.get("holiday_ot_premium_percent") or 0.0)
 
     if day_type == "non_working_day":
-        mode = str(cfg.get("non_working_day_ot_pay_mode") or "multiplier").strip().lower()
-        factor = float(cfg.get("non_working_day_ot_multiplier") or 1.5)
-        if mode == "multiplier" or factor > 1.0:
-            return _line(rate * factor, (factor - 1.0) * 100.0)
         if not cfg.get("non_working_day_ot_premium_active"):
             return _line(rate, 0.0)
+        mode = str(cfg.get("non_working_day_ot_pay_mode") or "percent").strip().lower()
+        if mode == "multiplier":
+            factor = float(cfg.get("non_working_day_ot_multiplier") or 1.0)
+            return _line(rate * factor, (factor - 1.0) * 100.0)
         if mode == "fixed_hour":
             extra = float(cfg.get("non_working_day_ot_fixed_amount") or 0.0)
             equiv = (extra / rate * 100.0) if rate else 0.0

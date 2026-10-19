@@ -6310,7 +6310,12 @@ def api_upload_payroll_bonuses():
     file_month = str(request.form.get('file_month') or request.args.get('file_month') or '').strip()
     if file_month and file_month != payroll_month:
         return jsonify({'error': f'File month {file_month} does not match payroll month {payroll_month}.', 'field': 'month'}), 400
-    commit = str(request.form.get('confirm') or request.args.get('confirm') or '').lower() in ('1', 'true', 'yes')
+    preview_mode = str(request.form.get('preview') or request.args.get('preview') or '').lower() in ('1', 'true', 'yes')
+    confirm_param = request.form.get('confirm') or request.args.get('confirm')
+    if confirm_param is not None:
+        commit = str(confirm_param).lower() in ('1', 'true', 'yes')
+    else:
+        commit = not preview_mode
     try:
         rows = _bonus_rows_from_workbook(uploaded)
         if not rows:

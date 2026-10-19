@@ -15016,7 +15016,7 @@ async function fetchMultiLiveDetections() {
         const form = new FormData();
         form.append('file', file);
         try {
-          const previewResp = await fetch(`${API_BASE}/payroll/bonuses/upload?month=${encodeURIComponent(month)}`, {
+          const previewResp = await fetch(`${API_BASE}/payroll/bonuses/upload?month=${encodeURIComponent(month)}&preview=1`, {
             method: 'POST',
             body: form
           });

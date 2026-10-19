@@ -1735,11 +1735,16 @@ def heal_deleted_camera_assignments(organization_id: Optional[str] = None, branc
 
 def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict]:
     """Get all active users with today's attendance status, shift details, and camera assignments via optimized join, strictly scoped by organization and branch."""
-    if organization_id and organization_id not in ('all', 'DEFAULT_ORG') and branch_id and branch_id not in ('all', 'DEFAULT_BRANCH'):
-        try:
-            _cloud_mirror("hydrate_branch_employees", organization_id, branch_id)
-        except Exception as error:
-            logger.warning("Could not hydrate staff cache from Postgres: %s", error)
+    pg_ids = None
+    if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+        if postgres_is_configured():
+            try:
+                import postgres_mirror as cloud_pg
+                if branch_id and branch_id not in ('all', 'DEFAULT_BRANCH'):
+                    cloud_pg.hydrate_branch_employees(organization_id, branch_id)
+                pg_ids = cloud_pg.fetch_pg_branch_employee_ids(organization_id, branch_id)
+            except Exception as error:
+                logger.warning("Could not hydrate staff cache from Postgres: %s", error)
     if organization_id and organization_id != 'all':
         heal_deleted_camera_assignments(organization_id, branch_id)
     try:
@@ -1801,7 +1806,7 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
             cursor.execute(query, params)
             rows = cursor.fetchall()
             
-        return [{
+        user_list = [{
             'id': r[0], 'name': r[1], 'email': r[2], 'phone': r[3],
             'department': r[4], 'enrollment_date': r[5], 'created_at': r[6],
             'active': r[7], 'notes': r[8], 'photo_path': r[9], 'status_today': r[10],
@@ -1814,6 +1819,9 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
             'embedding_count': r[25] if len(r) > 25 else 0,
             'has_embedding': (r[25] > 0) if len(r) > 25 else False
         } for r in rows]
+        if pg_ids is not None:
+            user_list = [u for u in user_list if u['id'] in pg_ids]
+        return user_list
     except Exception as e:
         logger.error(f"Failed to get all users: {e}")
         return []
@@ -1909,6 +1917,54 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
         return False
 
 
+def get_employee_employment_start_date(employee_or_user: Union[Dict[str, Any], sqlite3.Row, Tuple, List, None]) -> Optional[str]:
+    """
+    LAYER 5: Standardized business employment start date precedence rule.
+    Do NOT blindly use min(created_at, enrollment_date, join_date).
+    
+    Precedence:
+    1. Valid join_date (legitimate business hire date, YYYY-MM-DD)
+    2. Validated employment/enrollment date (if join_date is missing/NULL)
+    3. created_at as final fallback (when no explicit employment date was recorded)
+    
+    Ensures:
+    - Legitimate historical join_date is respected.
+    - Future join_date is respected (employee not treated as active before joining).
+    - Newly created employees without join_date are not treated as employed months earlier.
+    - Consistent across attendance reports, payroll, leave, overtime, and staff reports.
+    """
+    if not employee_or_user:
+        return None
+
+    def _parse_date_candidate(cand: Any) -> Optional[str]:
+        if not cand:
+            return None
+        clean = str(cand).split(' ')[0].split('T')[0].strip()
+        if len(clean) >= 10:
+            try:
+                datetime.strptime(clean[:10], '%Y-%m-%d')
+                return clean[:10]
+            except ValueError:
+                pass
+        return None
+
+    if isinstance(employee_or_user, (dict, sqlite3.Row)):
+        jd = _parse_date_candidate(employee_or_user.get('join_date'))
+        if jd:
+            return jd
+        ed = _parse_date_candidate(employee_or_user.get('enrollment_date'))
+        if ed:
+            return ed
+        ca = _parse_date_candidate(employee_or_user.get('created_at'))
+        if ca:
+            return ca
+        ef = _parse_date_candidate(employee_or_user.get('employed_from'))
+        if ef:
+            return ef
+        return None
+    return None
+
+
 def validate_employment_dates(cursor_or_conn, user_id: int, start_date: str, end_date: Optional[str] = None, activity_name: str = 'Activity') -> None:
     """Validate that an activity date does not fall before join_date or after exit_date (QA-20)."""
     if not user_id or not start_date:
@@ -1943,12 +1999,20 @@ def deactivate_user(user_id: int, exit_date: Optional[str] = None, organization_
         raise ValueError('exit_date must use YYYY-MM-DD') from exc
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
+        if organization_id and organization_id != 'all':
+            cursor.execute("SELECT organization_id FROM users WHERE id = ?", (user_id,))
+            urow = cursor.fetchone()
+            if not urow or urow[0] != organization_id:
+                logger.warning(f"Tenant mismatch on deactivate_user {user_id}: belongs to {urow[0] if urow else None}, not {organization_id}")
+                return False
         cursor.execute(
             "UPDATE users SET active = 0, exit_date = ? WHERE id = ?",
             (str(exit_date)[:10], user_id),
         )
         updated = cursor.rowcount > 0
         conn.commit()
+        if updated:
+            _cloud_mirror("mirror_user_id", user_id)
         return updated
 
 
@@ -1958,7 +2022,17 @@ def reactivate_user(user_id: int) -> bool:
         cursor.execute("UPDATE users SET active = 1 WHERE id = ?", (user_id,))
         updated = cursor.rowcount > 0
         conn.commit()
+        if updated:
+            _cloud_mirror("mirror_user_id", user_id)
         return updated
+
+
+def set_user_active(user_id: int, active: bool, organization_id: Optional[str] = None) -> bool:
+    """Set employee active/inactive status across local and cloud databases."""
+    if not active:
+        today = datetime.now().date().isoformat()
+        return deactivate_user(user_id, exit_date=today, organization_id=organization_id)
+    return reactivate_user(user_id)
 
 
 def bulk_assign_cameras(user_ids: List[int] | str, checkin_cameras: str = 'all', checkout_cameras: str = 'all') -> Tuple[bool, int]:
@@ -2053,7 +2127,7 @@ def check_user_camera_allowed(user_id: int, camera_id: str, action: str = 'check
         return False, f"Camera validation error: {e}"
 
 
-def delete_user(user_id: int) -> bool:
+def delete_user(user_id: int, organization_id: Optional[str] = None) -> bool:
     """Delete a user. If the employee has attendance or payroll history, soft-delete via deactivation to preserve audit and payroll integrity (QA-14)."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -2064,6 +2138,11 @@ def delete_user(user_id: int) -> bool:
             if not org_row:
                 return False
             org_id = org_row[0] if org_row else None
+            if organization_id and org_id != organization_id:
+                logger.warning(
+                    f"Blocked delete_user {user_id}: belongs to {org_id}, not requested tenant {organization_id}"
+                )
+                return False
 
             # Check if user has historical records
             has_history = cursor.execute("""
@@ -2402,10 +2481,11 @@ def _get_overtime_premium_percent(
                 return float(s_map.get('holiday_ot_premium_percent') or 0.0)
     elif day_type == 'non_working_day' and settings:
         s_map = dict(settings) if hasattr(settings, 'keys') else (settings if isinstance(settings, dict) else {})
-        mode = str(s_map.get('non_working_day_ot_pay_mode') or 'multiplier').strip().lower()
-        mult = float(s_map.get('non_working_day_ot_multiplier') or 1.5)
-        if mode == 'multiplier' or mult > 1.0:
-            return round((mult - 1.0) * 100.0, 4)
+        mode = str(s_map.get('non_working_day_ot_pay_mode') or 'percent').strip().lower()
+        if mode == 'multiplier':
+            mult = float(s_map.get('non_working_day_ot_multiplier') or 1.0)
+            if mult > 1.0:
+                return round((mult - 1.0) * 100.0, 4)
         if s_map.get('non_working_day_ot_premium_active'):
             return float(s_map.get('non_working_day_ot_premium_percent') or 0.0)
     return 0.0
@@ -2607,6 +2687,22 @@ def _ensure_organization_default_shift(cursor: sqlite3.Cursor, organization_id: 
     )
     if cursor.fetchone()[0] > 0:
         return
+
+    # Check if PostgreSQL has shifts for this tenant before creating a default
+    if postgres_is_configured():
+        try:
+            import postgres_mirror as cloud_pg
+            pg_shifts = cloud_pg.fetch_pg_all_shifts(organization_id, branch_id)
+            if pg_shifts:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM shifts WHERE organization_id = ? AND COALESCE(active, 1) = 1",
+                    (organization_id,),
+                )
+                if cursor.fetchone()[0] > 0:
+                    return
+        except Exception as err:
+            logger.warning("Could not check PG shifts: %s", err)
+
     s_name = 'Morning Shift'
     existing = cursor.execute("SELECT 1 FROM shifts WHERE name = ?", (s_name,)).fetchone()
     if existing:
@@ -2631,16 +2727,14 @@ def _ensure_organization_default_shift(cursor: sqlite3.Cursor, organization_id: 
     except sqlite3.IntegrityError:
         return
     new_id = cursor.lastrowid
+    # LAYER 3 PROTECTION: Only assign default shift to users who genuinely have NO shift assignment (shift_id IS NULL)
+    # NEVER overwrite an employee's existing valid custom shift!
     cursor.execute(
         """
         UPDATE users SET shift_id = ?
-        WHERE organization_id = ? AND active = 1
-          AND (
-            COALESCE(shift_id, 1) = 1
-            OR shift_id NOT IN (SELECT id FROM shifts WHERE organization_id = ?)
-          )
+        WHERE organization_id = ? AND active = 1 AND shift_id IS NULL
         """,
-        (new_id, organization_id, organization_id),
+        (new_id, organization_id),
     )
 
 
@@ -2650,16 +2744,26 @@ def _rehome_users_on_foreign_shifts(cursor: sqlite3.Cursor, organization_id: str
         return
     cursor.execute(
         """
-        SELECT u.id, COALESCE(u.shift_id, 1)
+        SELECT u.id, u.shift_id
         FROM users u
-        LEFT JOIN shifts s ON s.id = COALESCE(u.shift_id, 1)
+        LEFT JOIN shifts s ON s.id = u.shift_id
         WHERE u.active = 1 AND u.organization_id = ?
+          AND u.shift_id IS NOT NULL
           AND (s.id IS NULL OR COALESCE(s.organization_id, '') != ?)
         """,
         (organization_id, organization_id),
     )
     stuck_users = cursor.fetchall()
     for user_id, source_shift_id in stuck_users:
+        # Check if source_shift_id exists authoritatively in PostgreSQL for this org first
+        if postgres_is_configured() and source_shift_id:
+            try:
+                import postgres_mirror as cloud_pg
+                pg_s = cloud_pg.fetch_pg_shift(source_shift_id, organization_id)
+                if pg_s:
+                    continue  # Shift exists in PG for this org and was hydrated; no need to rehome
+            except Exception:
+                pass
         cursor.execute(
             "SELECT name FROM shifts WHERE id = ?",
             (source_shift_id,),
@@ -2691,12 +2795,14 @@ def get_all_shifts(
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
 ) -> List[Dict]:
-    """Retrieve shifts with employee counts scoped to the requested organization and branch."""
+    pg_shift_ids = None
     if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
         if postgres_is_configured():
             try:
                 import postgres_mirror as cloud_pg
-                cloud_pg.fetch_pg_all_shifts(organization_id, branch_id, active_only)
+                pg_shifts = cloud_pg.fetch_pg_all_shifts(organization_id, branch_id, active_only)
+                if pg_shifts is not None:
+                    pg_shift_ids = {int(str(s.get("id"))) for s in pg_shifts if s.get("id") is not None}
             except Exception as error:
                 logger.warning("Postgres unreachable for shifts; falling back to SQLite cache: %s", error)
     try:
@@ -2745,7 +2851,7 @@ def get_all_shifts(
             ''', join_params + params)
             rows = cursor.fetchall()
 
-        return [{
+        shift_list = [{
             'id': r[0],
             'name': r[1],
             'start_time': r[2],
@@ -2759,6 +2865,9 @@ def get_all_shifts(
             'checkout_grace_period_minutes': r[10] or 0,
             'organization_id': r[11]
         } for r in rows]
+        if pg_shift_ids is not None:
+            shift_list = [s for s in shift_list if s['id'] in pg_shift_ids]
+        return shift_list
     except Exception as e:
         logger.error(f"Failed to fetch shifts: {e}")
         return []
@@ -2977,7 +3086,7 @@ def delete_shift(shift_id: int, organization_id: Optional[str] = None) -> bool:
         return False
 
 
-def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str] = None, confirm_shift_reclassify: bool = False) -> bool:
+def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str] = None, confirm_shift_reclassify: bool = False, organization_id: Optional[str] = None) -> bool:
     """Assign a shift to an individual user immediately in the database, verifying reclassification impact."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -2989,6 +3098,11 @@ def assign_user_shift(user_id: int, shift_id: int, effective_from: Optional[str]
             )
             current_shift = cursor.fetchone()
             if not current_shift:
+                return False
+            if organization_id and (current_shift[1] or '') != organization_id:
+                logger.warning(
+                    f"Blocked assigning shift to user {user_id}: belongs to {current_shift[1]}, not requested {organization_id}"
+                )
                 return False
             cursor.execute("SELECT organization_id FROM shifts WHERE id = ?", (shift_id,))
             shift_row = cursor.fetchone()
@@ -4229,13 +4343,8 @@ def get_detailed_attendance_report(
                         dt_obj, shift_working_days, override_type
                     )
 
-                    # TICKET 18/19: Joiner/Exit Pro-Rata
-                    cand_employed_dates = []
-                    for d_raw in (u.get('join_date'), u.get('enrollment_date'), u.get('created_at')):
-                        d_clean = str(d_raw or '').split(' ')[0].split('T')[0].strip()
-                        if d_clean and len(d_clean) >= 10:
-                            cand_employed_dates.append(d_clean[:10])
-                    employed_from = min(cand_employed_dates) if cand_employed_dates else ''
+                    # LAYER 5: Standardized business employment start date precedence
+                    employed_from = get_employee_employment_start_date(u) or ''
                     exit_date_str = (u.get('exit_date') or '').strip()
                     is_employed_on_date = True
                     if employed_from and cur_date < employed_from:
@@ -7238,7 +7347,7 @@ def check_leave_quota(
 
 
 
-def _get_following_workday_attendance_status(cursor: sqlite3.Cursor, user_id: int, ot_date: str) -> Optional[str]:
+def _get_following_workday_attendance_status(cursor: sqlite3.Cursor, user_id: int, ot_date: str, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> Optional[str]:
     """If the following scheduled workday has already elapsed, return its attendance status (QA-05)."""
     try:
         ot_dt = datetime.strptime(ot_date, '%Y-%m-%d').date()
@@ -7250,7 +7359,7 @@ def _get_following_workday_attendance_status(cursor: sqlite3.Cursor, user_id: in
             next_d_str = next_d.isoformat()
             day_type = _get_overtime_day_type(cursor, user_id, next_d_str)
             if day_type == 'regular':
-                return get_user_attendance_status(user_id, next_d_str)
+                return get_user_attendance_status(user_id, next_d_str, organization_id=organization_id, branch_id=branch_id)
         return None
     except Exception:
         return None
@@ -7281,7 +7390,7 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
             organization_id = organization_id or 'DEFAULT_ORG'
             branch_id = branch_id or 'DEFAULT_BRANCH'
             validate_employment_dates(cursor, user_id, ot_date, activity_name='Overtime')
-            next_day_att = _get_following_workday_attendance_status(cursor, user_id, ot_date)
+            next_day_att = _get_following_workday_attendance_status(cursor, user_id, ot_date, organization_id=organization_id, branch_id=branch_id)
             if next_day_att == 'absent':
                 raise ValueError('Overtime cannot be applied because the employee was absent on the following workday.')
             raise_if_payroll_month_locked(ot_date, organization_id, branch_id)
@@ -7617,11 +7726,17 @@ def get_overtime_by_id(
         return None
 
 
-def get_user_attendance_status(user_id: int, target_date: str) -> Optional[str]:
-    """Get an employee's resolved attendance status for one date."""
+def get_user_attendance_status(user_id: int, target_date: str, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> Optional[str]:
+    """Get an employee's resolved attendance status for one date with tenant scoping."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            if not organization_id or not branch_id:
+                cursor.execute("SELECT organization_id, branch_id FROM users WHERE id = ?", (user_id,))
+                urow = cursor.fetchone()
+                if urow:
+                    organization_id = organization_id or urow[0]
+                    branch_id = branch_id or urow[1]
             cursor.execute(
                 "SELECT 1 FROM manual_absent WHERE user_id = ? AND date = ? LIMIT 1",
                 (user_id, target_date)
@@ -7629,7 +7744,12 @@ def get_user_attendance_status(user_id: int, target_date: str) -> Optional[str]:
             if cursor.fetchone():
                 return 'absent'
 
-        report = get_detailed_attendance_report(target_date=target_date, user_id=user_id)
+        report = get_detailed_attendance_report(
+            target_date=target_date,
+            user_id=user_id,
+            organization_id=organization_id,
+            branch_id=branch_id,
+        )
         record = next(
             (row for row in report.get('records', []) if int(row.get('user_id', 0)) == int(user_id)),
             None
@@ -9123,7 +9243,7 @@ def replace_payroll_bonuses(
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
     source: str = 'excel',
-    commit: bool = False,
+    commit: bool = True,
     bonus_limit: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Validate bonus rows. Duplicate employees are rejected (never silently summed). Commit only when commit=True."""
@@ -9233,7 +9353,7 @@ def replace_payroll_bonuses(
 
         if commit and not errors:
             cursor = conn.cursor()
-            if source != 'excel':
+            if source != 'excel' or not preview:
                 cursor.execute(
                     """DELETE FROM payroll_bonuses
                        WHERE year = ? AND month = ?
@@ -10326,9 +10446,10 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
     rows = []
     for employee in employees:
         employee_id = employee['employee_id']
-        cand_emp = [str(d)[:10] for d in [employee.get('join_date'), employee.get('enrollment_date'), employee.get('created_at'), employee.get('employed_from')] if d and len(str(d).strip()) >= 10]
+        # LAYER 5: Standardized business employment start date precedence
+        emp_start_str = get_employee_employment_start_date(employee)
         try:
-            employed_from = datetime.strptime(min(cand_emp), "%Y-%m-%d").date() if cand_emp else month_start
+            employed_from = datetime.strptime(emp_start_str, "%Y-%m-%d").date() if emp_start_str else month_start
         except (TypeError, ValueError):
             employed_from = month_start
             
@@ -10446,7 +10567,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 approved_leave_days += 0.5
 
         half_leave_count = sum(int(day.get('half_leave_count') or 0) for day in eligible_records)
-        absent_days = unexcused_absent_days
+        absent_days = unexcused_absent_days + unpaid_leave_days
         payable_days = min(float(scheduled_workdays), round(present_days + late_days + approved_leave_days_period, 2))
         
         proration_factor = _payroll_proration_factor(
@@ -10538,8 +10659,6 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             ot_rate = 0.0
         overtime_breakdown = []
         overtime_amount = 0.0
-        ot_rest_day_extra_total = 0.0
-        ot_rest_day_dates = set()
         for overtime_entry in overtime_entries:
             entry_hours = float(overtime_entry['hours'] or 0.0)
             if entry_hours <= 0:
@@ -10553,15 +10672,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 holiday=overtime_entry.get('holiday'),
                 decimal_places=decimal_places,
             )
-            base_entry_amount = _m(entry_hours * ot_rate)
-            if day_type == 'non_working_day':
-                rest_day_extra_component = _m(max(0.0, category_amount - base_entry_amount))
-                normal_ot_component = _m(category_amount - rest_day_extra_component)
-                overtime_amount += normal_ot_component
-                ot_rest_day_extra_total += rest_day_extra_component
-                ot_rest_day_dates.add(str(overtime_entry['ot_date']))
-            else:
-                overtime_amount += category_amount
+            overtime_amount += category_amount
 
             breakdown_entry = {
                 'day_type': day_type,
@@ -10602,8 +10713,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         attendance_off_day_extra = _off_day_attendance_extra(
             daily_rate, attendance_off_days_worked, payroll_settings, decimal_places
         )
-        off_day_extra_pay = _m(attendance_off_day_extra + ot_rest_day_extra_total)
-        off_days_worked = attendance_off_days_worked + len(ot_rest_day_dates)
+        off_day_extra_pay = _m(attendance_off_day_extra)
+        off_days_worked = attendance_off_days_worked
         bonus_amount = _m(bonus_amounts.get(int(employee_id), 0.0)) if _payroll_flag_on(payroll_settings, 'enable_bonuses') else 0.0
 
         allowances = lump_allowances
@@ -10692,13 +10803,13 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             rule_missing = False
             issues_remarks = 'Rule not applied (pay method: payable days)'
         attendance_deduction = round(absence_rule_deduction + unpaid_leave_deduction + half_leave_deduction + attendance_shortfall, 2)
-        deduction_amount = round(attendance_deduction + custom_deductions, 2)
+        deduction_amount = attendance_deduction
+        total_emp_deductions = round(deduction_amount + custom_deductions, 2)
 
         # Gross = Basic + Allowances + Approved Overtime + Excel bonus + rest-day extra + adjustments/arrears
         gross_salary = _m(
             basic_salary + allowances + overtime_amount + bonus_amount + off_day_extra_pay + adjustment_amount
         )
-        total_emp_deductions = deduction_amount
         net_salary = round(max(0.0, gross_salary - total_emp_deductions), 2)
 
         if attendance_mode == 'payable_days':
@@ -10764,6 +10875,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 if matched_half_leave_rule else 'No half-leave deduction'
             ),
             'absent_days': absent_days,
+            'unexcused_absent_days': unexcused_absent_days,
             'late_days': late_days,
             'approved_leave_days': approved_leave_days_period,
             'paid_leave_days': paid_leave_days,
@@ -10783,6 +10895,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'deduction_percent': deduction_percent,
             'fixed_amount': fixed_amount,
             'absence_deduction': absence_rule_deduction,
+            'attendance_deduction': attendance_deduction,
             'deduction_amount': deduction_amount,
             'rule_missing': rule_missing,
             'issues_remarks': issues_remarks,
@@ -10811,7 +10924,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         'total_off_day_extra': round(sum(row.get('off_day_extra_pay', 0) for row in rows), 2),
         'total_adjustments': round(sum(row.get('adjustment_amount', 0) for row in rows), 2),
         'total_arrears': round(sum(row.get('arrears_amount', 0) for row in rows), 2),
-        'total_deduction': round(sum(row['deduction_amount'] for row in rows), 2),
+        'total_deduction': round(sum(row['deduction_amount'] + row['custom_deductions'] for row in rows), 2),
         'total_net_salary': round(sum(row['net_salary'] for row in rows), 2),
         'absence_rules_configured': absence_rules_configured,
         'notices': payroll_notices,
@@ -11110,12 +11223,13 @@ def get_monthly_payroll(
             except (TypeError, ValueError):
                 result['snapshot'] = None
     result['is_finalized'] = True
-    result['total_allowances'] = round(sum(float(row.get('allowances') or 0) for row in result['records']), 2)
-    result['total_overtime'] = round(sum(float(row.get('overtime_amount') or 0) for row in result['records']), 2)
-    result['total_bonus'] = round(sum(float(row.get('bonus_amount') or 0) for row in result['records']), 2)
-    result['total_off_day_extra'] = round(sum(float(row.get('off_day_extra_pay') or 0) for row in result['records']), 2)
-    result['total_deduction'] = round(sum(float(row.get('deduction_amount') or 0) for row in result['records']), 2)
-    result['total_net_salary'] = round(sum(float(row.get('net_salary') or 0) for row in result['records']), 2)
+    if result['records']:
+        result['total_allowances'] = round(sum(float(row.get('allowances') or 0) for row in result['records']), 2)
+        result['total_overtime'] = round(sum(float(row.get('overtime_amount') or 0) for row in result['records']), 2)
+        result['total_bonus'] = round(sum(float(row.get('bonus_amount') or 0) for row in result['records']), 2)
+        result['total_off_day_extra'] = round(sum(float(row.get('off_day_extra_pay') or 0) for row in result['records']), 2)
+        result['total_deduction'] = round(sum(float(row.get('deduction_amount') or 0) + float(row.get('custom_deductions') or 0) for row in result['records']), 2)
+        result['total_net_salary'] = round(sum(float(row.get('net_salary') or 0) for row in result['records']), 2)
     return result
 
 
@@ -11744,6 +11858,8 @@ def get_all_cameras(active_only: bool = False, organization_id: Optional[str] = 
     except Exception as e:
         logger.error(f"Failed to fetch cameras: {e}")
         return []
+
+get_cameras = get_all_cameras
 
 def get_camera_by_id(camera_id: str, organization_id: Optional[str] = None) -> Optional[Dict]:
     """Get single camera by camera_id string or integer DB id, with optional tenant check."""
