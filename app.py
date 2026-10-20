@@ -7465,6 +7465,10 @@ def reload_all_camera_streams():
     - Starts readers for every active camera (new or URL-changed).
     - Stops readers for cameras that were deleted or disabled.
     """
+    if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('DISABLE_CAMERA_STREAMS', '').lower() in {'true', '1'}:
+        logger.info("[*] Cloud environment detected: Camera RTSP streaming is handled by Local Client Node. Skipping background readers.")
+        return
+
     try:
         cameras = db.get_all_cameras(active_only=True)
         if MAX_ACTIVE_CAMERAS > 0 and len(cameras) > MAX_ACTIVE_CAMERAS:
@@ -7767,14 +7771,24 @@ if __name__ == '__main__':
         logger.info("✓ Database initialized")
         refresh_embedding_cache()
         
-        logger.info("[*] Warming up AI models (InsightFace)...")
-        fp.get_insightface_model()
-        logger.info("✓ AI models loaded and warmed up successfully")
+        is_cloud_env = bool(
+            os.environ.get('RAILWAY_ENVIRONMENT')
+            or os.environ.get('DISABLE_CAMERA_STREAMS', '').lower() in {'true', '1'}
+        )
+        
+        if not is_cloud_env:
+            logger.info("[*] Warming up AI models (InsightFace)...")
+            fp.get_insightface_model()
+            logger.info("✓ AI models loaded and warmed up successfully")
+        else:
+            logger.info("[*] Running on Railway Cloud: AI Face Recognition is handled by Local Client Node. Skipping Buffalo_l startup download.")
         
         import os
-        if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
+        if not is_cloud_env and (os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug):
             logger.info("[*] Proactively initializing background camera stream readers from DB (non-blocking)...")
             threading.Thread(target=reload_all_camera_streams, daemon=True).start()
+        elif is_cloud_env:
+            logger.info("[*] Running on Railway Cloud: CCTV streaming is handled by Local Client Node. Background RTSP readers disabled.")
     except Exception as e:
         logger.error(f"✗ Startup initialization failed: {e}")
     
