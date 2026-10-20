@@ -237,6 +237,209 @@
       background: var(--teal-light);
     }
 
+    /* Leaves View Styling */
+    #leavesCard {
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .leaves-tabs-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .leave-subtab {
+      flex: 1;
+      padding: 9px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #f8fafc;
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 0.82rem;
+      cursor: pointer;
+      text-align: center;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .leave-subtab.active {
+      background: var(--teal);
+      color: #ffffff;
+      border-color: var(--teal);
+      box-shadow: 0 2px 8px rgba(15,118,110,0.2);
+    }
+    .badge-count {
+      display: inline-block;
+      background: #b54708;
+      color: #ffffff;
+      font-size: 0.68rem;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-weight: 800;
+    }
+    .leave-subtab.active .badge-count {
+      background: #ffffff;
+      color: var(--teal-dark);
+    }
+    .leave-subview {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-right: 2px;
+    }
+    .mobile-select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #f8fbfc;
+      border-radius: 12px;
+      padding: 11px 13px;
+      font-size: 0.95rem;
+      color: var(--ink);
+      font-family: inherit;
+    }
+    .mobile-select:focus {
+      outline: 2px solid rgba(15, 118, 110, 0.25);
+      border-color: var(--teal);
+    }
+    .mobile-input {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #f8fbfc;
+      border-radius: 12px;
+      padding: 11px 13px;
+      font-size: 0.95rem;
+      color: var(--ink);
+      font-family: inherit;
+    }
+    .mobile-input:focus {
+      outline: 2px solid rgba(15, 118, 110, 0.25);
+      border-color: var(--teal);
+    }
+    .mobile-textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #f8fbfc;
+      border-radius: 12px;
+      padding: 11px 13px;
+      font-size: 0.92rem;
+      color: var(--ink);
+      font-family: inherit;
+      resize: none;
+    }
+    .mobile-textarea:focus {
+      outline: 2px solid rgba(15, 118, 110, 0.25);
+      border-color: var(--teal);
+    }
+    .form-row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .leave-alert {
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-top: 10px;
+      line-height: 1.35;
+    }
+    .leave-alert.success {
+      background: #e8f7ee;
+      color: #157a3b;
+      border: 1px solid #a6e3be;
+    }
+    .leave-alert.error {
+      background: #fdecec;
+      color: #b42318;
+      border: 1px solid #f9b5b5;
+    }
+    .leave-history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+    .btn-text-action {
+      background: transparent;
+      border: 0;
+      color: var(--teal);
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 2px 6px;
+      width: auto;
+      margin: 0;
+    }
+    .leave-history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding-bottom: 8px;
+    }
+    .leave-history-item {
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .leave-history-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .leave-history-title {
+      font-weight: 700;
+      font-size: 0.92rem;
+      color: var(--ink);
+    }
+    .leave-history-dates {
+      font-size: 0.8rem;
+      color: #475569;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .leave-history-dates strong {
+      color: var(--ink);
+    }
+    .leave-history-reason {
+      font-size: 0.78rem;
+      color: var(--muted);
+      background: #f8fafc;
+      padding: 6px 8px;
+      border-radius: 8px;
+      margin-top: 2px;
+      font-style: italic;
+    }
+    .leave-history-rejection {
+      font-size: 0.75rem;
+      color: #b42318;
+      background: #fdecec;
+      padding: 6px 8px;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+
     .footer {
       padding: 10px 18px calc(14px + env(safe-area-inset-bottom));
       text-align: center;
@@ -601,7 +804,81 @@
         </div>
       </section>
 
-      <!-- Tab 3: My Profile Card -->
+      <!-- Tab 3: Leaves Card (Apply Leave & My Leave Requests) -->
+      <section id="leavesCard" class="card" hidden>
+        <!-- Sub-tabs: Apply Leave vs My Requests -->
+        <div class="leaves-tabs-row">
+          <button type="button" class="leave-subtab active" id="subtabApply" onclick="switchLeaveSubtab('apply')">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            Apply Leave
+          </button>
+          <button type="button" class="leave-subtab" id="subtabHistory" onclick="switchLeaveSubtab('history')">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+            My Requests <span class="badge-count" id="pendingLeaveCount" style="display:none;">0</span>
+          </button>
+        </div>
+
+        <!-- Apply Leave Form View -->
+        <div id="leaveApplyView" class="leave-subview">
+          <form id="leaveRequestForm" onsubmit="submitMobileLeave(event)" style="padding-bottom: 8px;">
+            <label for="leaveTypeSelect">Leave Type (Organization Policy)</label>
+            <select id="leaveTypeSelect" class="mobile-select" required>
+              <option value="" disabled selected>Loading organization leave types...</option>
+            </select>
+
+            <div class="form-row-2">
+              <div>
+                <label for="leaveStartDate">From Date</label>
+                <input type="date" id="leaveStartDate" class="mobile-input" required onchange="onLeaveDateChange()">
+              </div>
+              <div>
+                <label for="leaveEndDate">To Date</label>
+                <input type="date" id="leaveEndDate" class="mobile-input" required onchange="onLeaveDateChange()">
+              </div>
+            </div>
+
+            <div class="form-row-2">
+              <div>
+                <label for="leaveDurationSelect">Duration</label>
+                <select id="leaveDurationSelect" class="mobile-select" onchange="onLeaveDurationChange()">
+                  <option value="full">Full Day</option>
+                  <option value="half">Half Day</option>
+                </select>
+              </div>
+              <div id="leaveDaysCountBox" style="display:flex; flex-direction:column; justify-content:center; padding-top:10px;">
+                <span style="font-size:0.72rem; color:var(--muted); font-weight:700; text-transform:uppercase;">Calculated Days</span>
+                <strong id="leaveDaysCalculated" style="font-size:1rem; color:var(--teal);">1 Day</strong>
+              </div>
+            </div>
+
+            <label for="leaveReason">Reason / Notes</label>
+            <textarea id="leaveReason" class="mobile-textarea" rows="3" placeholder="Brief reason for your leave request..." required></textarea>
+
+            <div id="leaveFormAlert" class="leave-alert" style="display:none;"></div>
+
+            <button type="submit" class="primary" id="btnSubmitLeave" style="margin-top:14px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              Submit Leave Request
+            </button>
+          </form>
+        </div>
+
+        <!-- My Requests History View -->
+        <div id="leaveHistoryView" class="leave-subview" style="display:none;">
+          <div class="leave-history-header">
+            <span style="font-size:0.8rem; font-weight:700; color:var(--muted);">Previous Submissions</span>
+            <button type="button" class="btn-text-action" onclick="loadLeavesData(true)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;margin-right:2px;"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+              Refresh
+            </button>
+          </div>
+          <div id="leaveHistoryList" class="leave-history-list">
+            <div style="text-align:center; padding:24px 0; color:var(--muted); font-size:0.9rem;">Loading leave requests...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 4: My Profile Card -->
       <section id="profileCard" class="card" hidden>
         <div class="profile-hero">
           <div class="profile-avatar" id="pAvatar">Q</div>
@@ -635,6 +912,10 @@
         <svg viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5z"/></svg>
         This Month
       </button>
+      <button type="button" class="nav-tab" id="tabLeaves" onclick="switchTab('leaves')">
+        <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V9h14v10zm-7-2l5-5-1.41-1.41L12 14.17l-1.59-1.59L9 14l3 3z"/></svg>
+        Leaves
+      </button>
       <button type="button" class="nav-tab" id="tabProfile" onclick="switchTab('profile')">
         <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
         My Profile
@@ -652,6 +933,7 @@
     const loginForm = document.getElementById('loginForm');
     const todayCard = document.getElementById('todayCard');
     const monthCard = document.getElementById('monthCard');
+    const leavesCard = document.getElementById('leavesCard');
     const profileCard = document.getElementById('profileCard');
     const mobileNavBar = document.getElementById('mobileNavBar');
     const loginError = document.getElementById('loginError');
@@ -660,6 +942,9 @@
     let cachedToday = null;
     let cachedMonth = null;
     let cachedProfile = null;
+    let cachedLeaves = null;
+    let cachedLeaveTypes = null;
+    let currentLeaveSubtab = 'apply';
 
     function showText(id, value) {
       const el = document.getElementById(id);
@@ -686,6 +971,7 @@
       loginForm.hidden = false;
       todayCard.hidden = true;
       monthCard.hidden = true;
+      leavesCard.hidden = true;
       profileCard.hidden = true;
       mobileNavBar.hidden = true;
       document.getElementById('companyName').textContent = 'Attendance';
@@ -700,6 +986,7 @@
 
       todayCard.hidden = (tab !== 'today');
       monthCard.hidden = (tab !== 'month');
+      leavesCard.hidden = (tab !== 'leaves');
       profileCard.hidden = (tab !== 'profile');
 
       if (tab === 'today') {
@@ -707,6 +994,9 @@
       } else if (tab === 'month') {
         document.getElementById('intro').textContent = 'Attendance log for this month.';
         loadMonthData();
+      } else if (tab === 'leaves') {
+        document.getElementById('intro').textContent = 'Apply or view your leave requests.';
+        loadLeavesData();
       } else if (tab === 'profile') {
         document.getElementById('intro').textContent = 'Your employee profile & shift details.';
         loadProfileData();
@@ -1104,6 +1394,222 @@
       } catch (err) {}
     }
 
+    function switchLeaveSubtab(sub) {
+      currentLeaveSubtab = sub;
+      document.getElementById('subtabApply').classList.toggle('active', sub === 'apply');
+      document.getElementById('subtabHistory').classList.toggle('active', sub === 'history');
+      document.getElementById('leaveApplyView').style.display = (sub === 'apply') ? 'flex' : 'none';
+      document.getElementById('leaveHistoryView').style.display = (sub === 'history') ? 'flex' : 'none';
+      if (sub === 'history') {
+        loadLeavesData();
+      }
+    }
+
+    function onLeaveDateChange() {
+      const sEl = document.getElementById('leaveStartDate');
+      const eEl = document.getElementById('leaveEndDate');
+      const dSel = document.getElementById('leaveDurationSelect');
+      const countEl = document.getElementById('leaveDaysCalculated');
+      if (!sEl.value) return;
+      if (!eEl.value || eEl.value < sEl.value) {
+        eEl.value = sEl.value;
+      }
+      if (dSel.value === 'half') {
+        eEl.value = sEl.value;
+        countEl.textContent = '0.5 Day (Half Day)';
+        return;
+      }
+      const d1 = new Date(sEl.value + 'T00:00:00');
+      const d2 = new Date(eEl.value + 'T00:00:00');
+      const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
+      countEl.textContent = diffDays === 1 ? '1 Day' : `${diffDays} Days`;
+    }
+
+    function onLeaveDurationChange() {
+      const sEl = document.getElementById('leaveStartDate');
+      const eEl = document.getElementById('leaveEndDate');
+      const dSel = document.getElementById('leaveDurationSelect');
+      if (dSel.value === 'half' && sEl.value) {
+        eEl.value = sEl.value;
+      }
+      onLeaveDateChange();
+    }
+
+    async function loadLeavesData(force = false) {
+      // 1. Load dynamic leave types for current organization
+      if (!cachedLeaveTypes || force) {
+        try {
+          const resp = await fetch('/api/mobile/leave-types', { credentials: 'same-origin' });
+          const data = await resp.json().catch(() => ({}));
+          if (resp.ok && data.success) {
+            cachedLeaveTypes = data.leave_types || [];
+            const selectEl = document.getElementById('leaveTypeSelect');
+            if (cachedLeaveTypes.length === 0) {
+              selectEl.innerHTML = '<option value="" disabled selected>No leave types configured for your organization</option>';
+            } else {
+              selectEl.innerHTML = '<option value="" disabled selected>-- Select Leave Type --</option>' +
+                cachedLeaveTypes.map(lt => {
+                  const remText = lt.remaining !== undefined ? ` (${lt.remaining} days left)` : '';
+                  const paidText = lt.is_paid ? '' : ' [Unpaid]';
+                  return `<option value="${lt.code}">${lt.name}${remText}${paidText}</option>`;
+                }).join('');
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to load leave types', e);
+        }
+      }
+
+      // Set default dates if empty
+      const sEl = document.getElementById('leaveStartDate');
+      const eEl = document.getElementById('leaveEndDate');
+      if (!sEl.value) {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        sEl.value = todayStr;
+        eEl.value = todayStr;
+        onLeaveDateChange();
+      }
+
+      // 2. Load leave requests history
+      if (!cachedLeaves || force) {
+        const listContainer = document.getElementById('leaveHistoryList');
+        const countBadge = document.getElementById('pendingLeaveCount');
+        try {
+          const resp = await fetch('/api/mobile/leave-requests', { credentials: 'same-origin' });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.success) {
+            listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#b42318;">Failed to load leave requests.</div>';
+            return;
+          }
+          const requests = data.requests || [];
+          cachedLeaves = requests;
+
+          // Update pending count badge
+          const pendingCount = requests.filter(r => (r.status || '').toLowerCase() === 'pending').length;
+          if (pendingCount > 0) {
+            countBadge.textContent = pendingCount;
+            countBadge.style.display = 'inline-block';
+          } else {
+            countBadge.style.display = 'none';
+          }
+
+          if (requests.length === 0) {
+            listContainer.innerHTML = '<div style="text-align:center; padding:24px 0; color:var(--muted); font-size:0.9rem;">No leave requests submitted yet.</div>';
+            return;
+          }
+
+          listContainer.innerHTML = requests.map(r => {
+            const st = (r.status || 'pending').toLowerCase();
+            let stClass = 'pill leave';
+            let stLabel = 'Pending';
+            if (st === 'approved') {
+              stClass = 'pill present';
+              stLabel = 'Approved';
+            } else if (st === 'rejected') {
+              stClass = 'pill absent';
+              stLabel = 'Rejected';
+            }
+
+            const typeName = r.type_name || r.leave_type || 'Leave';
+            const durationText = (r.leave_duration === 'half') ? 'Half Day' : (r.start_date === r.end_date ? '1 Day' : `${r.start_date} to ${r.end_date}`);
+            const rejectionHtml = r.rejection_reason ? `<div class="leave-history-rejection">Declined: ${r.rejection_reason}</div>` : '';
+            const reasonHtml = r.reason ? `<div class="leave-history-reason">"${r.reason}"</div>` : '';
+
+            return `
+              <div class="leave-history-item">
+                <div class="leave-history-top">
+                  <span class="leave-history-title">${typeName}</span>
+                  <span class="${stClass}">${stLabel}</span>
+                </div>
+                <div class="leave-history-dates">
+                  <span>${r.start_date}${r.end_date !== r.start_date ? ' &rarr; ' + r.end_date : ''}</span>
+                  <small>(${durationText})</small>
+                </div>
+                ${reasonHtml}
+                ${rejectionHtml}
+              </div>
+            `;
+          }).join('');
+        } catch (e) {
+          listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#b42318;">Network error loading requests.</div>';
+        }
+      }
+    }
+
+    async function submitMobileLeave(event) {
+      event.preventDefault();
+      const alertEl = document.getElementById('leaveFormAlert');
+      const submitBtn = document.getElementById('btnSubmitLeave');
+      alertEl.style.display = 'none';
+      alertEl.className = 'leave-alert';
+
+      const leaveType = document.getElementById('leaveTypeSelect').value;
+      const startDate = document.getElementById('leaveStartDate').value;
+      const endDate = document.getElementById('leaveEndDate').value;
+      const duration = document.getElementById('leaveDurationSelect').value;
+      const reason = document.getElementById('leaveReason').value.trim();
+
+      if (!leaveType) {
+        alertEl.textContent = 'Please choose a leave type.';
+        alertEl.classList.add('error');
+        alertEl.style.display = 'block';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.style.opacity = '0.7';
+      submitBtn.textContent = 'Submitting...';
+
+      try {
+        const resp = await fetch('/api/mobile/leave-requests', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leave_type: leaveType,
+            start_date: startDate,
+            end_date: endDate,
+            leave_duration: duration,
+            reason: reason
+          })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.success) {
+          alertEl.textContent = data.message || 'Could not submit leave request. Please check dates and try again.';
+          alertEl.classList.add('error');
+          alertEl.style.display = 'block';
+          submitBtn.disabled = false;
+          submitBtn.style.opacity = '1';
+          submitBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg> Submit Leave Request';
+          return;
+        }
+
+        // Reset form
+        document.getElementById('leaveReason').value = '';
+        alertEl.textContent = 'Leave request submitted successfully! Your manager will review it.';
+        alertEl.classList.add('success');
+        alertEl.style.display = 'block';
+
+        // Reload leave history and balances
+        await loadLeavesData(true);
+
+        // Switch to history tab after 1.2s so user sees their submission
+        setTimeout(() => {
+          alertEl.style.display = 'none';
+          switchLeaveSubtab('history');
+        }, 1200);
+
+      } catch (e) {
+        alertEl.textContent = 'Network error. Please try again.';
+        alertEl.classList.add('error');
+        alertEl.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg> Submit Leave Request';
+      }
+    }
+
     loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       loginError.textContent = '';
@@ -1125,6 +1631,8 @@
       cachedToday = null;
       cachedMonth = null;
       cachedProfile = null;
+      cachedLeaves = null;
+      cachedLeaveTypes = null;
       
       // Request push notification permission on sign in
       if ('Notification' in window && Notification.permission === 'default') {
@@ -1137,6 +1645,7 @@
     document.getElementById('refreshButton').addEventListener('click', () => {
       showAttendance();
       if (currentTab === 'month') loadMonthData(true);
+      if (currentTab === 'leaves') loadLeavesData(true);
       if (currentTab === 'profile') loadProfileData(true);
     });
 
@@ -1151,6 +1660,8 @@
       cachedToday = null;
       cachedMonth = null;
       cachedProfile = null;
+      cachedLeaves = null;
+      cachedLeaveTypes = null;
       showLogin();
     });
 

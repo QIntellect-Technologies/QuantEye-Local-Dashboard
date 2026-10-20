@@ -258,6 +258,7 @@ def check_module_entitlement_for_request():
                 '/.well-known/assetlinks.json',
                 '/api/mobile/login', '/api/mobile/logout', '/api/mobile/today',
                 '/api/mobile/month', '/api/mobile/profile',
+                '/api/mobile/leave-types', '/api/mobile/leave-requests',
                 '/api/enrollment/unlock', '/api/enrollment/lock'}:
         return None
     # Branch profile, departments, and designations stay available for licensed ops.
@@ -383,6 +384,8 @@ def require_admin_session_for_app_data():
         '/api/mobile/today',
         '/api/mobile/month',
         '/api/mobile/profile',
+        '/api/mobile/leave-types',
+        '/api/mobile/leave-requests',
     }
 
     if request.method == 'OPTIONS' or request.path.startswith('/static/'):
@@ -4100,6 +4103,145 @@ def api_mobile_profile():
         company_name=company_name,
     )
     return jsonify({'success': True, 'profile': profile_data})
+
+
+@app.route('/api/mobile/leave-types', methods=['GET'])
+def api_mobile_leave_types():
+    user_id = session.get('mobile_employee_id')
+    organization_id = session.get('mobile_organization_id')
+    if not user_id or not organization_id:
+        return jsonify({'success': False, 'message': 'Please log in.'}), 401
+
+    branch_id = session.get('mobile_branch_id') or 'DEFAULT_BRANCH'
+    raw_types = db.get_leave_types(organization_id=str(organization_id), branch_id=str(branch_id))
+
+    user_bal_map = {}
+    try:
+        year = datetime.now().year
+        balances_data = db.get_leave_balances(year=year, user_id=int(user_id), organization_id=str(organization_id))
+        if balances_data and len(balances_data) > 0:
+            user_bal_map = balances_data[0].get('balances', {})
+    except Exception as e:
+        logger.warning("Could not calculate leave balances for mobile: %s", e)
+
+    leave_types = []
+    for lt in raw_types:
+        if not lt.get('active', 1):
+            continue
+        code = lt.get('code', '')
+        name = lt.get('name', '')
+        bal_info = user_bal_map.get(code, {})
+        remaining = bal_info.get('remaining', float(lt.get('yearly_allowance', 0.0)))
+        leave_types.append({
+            'id': lt.get('id'),
+            'code': code,
+            'name': name,
+            'is_paid': bool(lt.get('is_paid', 1)),
+            'yearly_allowance': float(lt.get('yearly_allowance', 0.0)),
+            'remaining': round(float(remaining), 1),
+            'half_leave_enabled': bool(lt.get('half_leave_enabled', False)),
+        })
+    return jsonify({'success': True, 'leave_types': leave_types})
+
+
+@app.route('/api/mobile/leave-requests', methods=['GET'])
+def api_mobile_leave_requests():
+    user_id = session.get('mobile_employee_id')
+    organization_id = session.get('mobile_organization_id')
+    if not user_id or not organization_id:
+        return jsonify({'success': False, 'message': 'Please log in.'}), 401
+
+    branch_id = session.get('mobile_branch_id') or 'DEFAULT_BRANCH'
+    raw_types = db.get_leave_types(organization_id=str(organization_id), branch_id=str(branch_id))
+    name_map = {lt.get('code'): lt.get('name') for lt in raw_types}
+    name_map.update({lt.get('name'): lt.get('name') for lt in raw_types})
+
+    requests = db.get_leave_requests(
+        user_id=int(user_id),
+        organization_id=str(organization_id),
+        branch_id=str(branch_id),
+    )
+    enriched = []
+    for r in requests:
+        item = dict(r)
+        code = item.get('leave_type')
+        item['type_name'] = name_map.get(code, code)
+        enriched.append(item)
+    enriched.sort(key=lambda x: (x.get('start_date') or '', x.get('id') or 0), reverse=True)
+    return jsonify({'success': True, 'requests': enriched})
+
+
+@app.route('/api/mobile/leave-requests', methods=['POST'])
+def api_mobile_add_leave_request():
+    user_id = session.get('mobile_employee_id')
+    organization_id = session.get('mobile_organization_id')
+    user_name = session.get('mobile_employee_name') or 'Employee'
+    if not user_id or not organization_id:
+        return jsonify({'success': False, 'message': 'Please log in.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    leave_type = str(data.get('leave_type', '')).strip()
+    start_date = str(data.get('start_date', '')).strip()
+    end_date = str(data.get('end_date', '')).strip()
+    leave_duration = str(data.get('leave_duration', 'full')).strip().lower()
+    reason = str(data.get('reason', '')).strip()
+
+    if not leave_type:
+        return jsonify({'success': False, 'message': 'Please select a leave type.'}), 400
+    if not start_date or not end_date:
+        return jsonify({'success': False, 'message': 'Start date and end date are required.'}), 400
+    if leave_duration not in ('full', 'half'):
+        leave_duration = 'full'
+    if leave_duration == 'half' and start_date != end_date:
+        return jsonify({'success': False, 'message': 'Half-day leave must be for a single date.'}), 400
+
+    try:
+        d1 = datetime.strptime(start_date, '%Y-%m-%d')
+        d2 = datetime.strptime(end_date, '%Y-%m-%d')
+        if d2 < d1:
+            return jsonify({'success': False, 'message': 'End date cannot be earlier than start date.'}), 400
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+
+    branch_id = session.get('mobile_branch_id') or 'DEFAULT_BRANCH'
+
+    holiday = db.get_company_holiday_in_range(
+        start_date,
+        end_date,
+        organization_id=str(organization_id),
+        branch_id=str(branch_id),
+    )
+    if holiday:
+        h_name = holiday.get('name') or 'Company holiday'
+        h_date = holiday.get('matched_date') or start_date
+        return jsonify({'success': False, 'message': f'{h_name} is a holiday on {h_date}. Leave cannot be requested on a holiday.'}), 400
+
+    try:
+        req_id = db.add_leave_request(
+            user_id=int(user_id),
+            user_name=user_name,
+            leave_type=leave_type,
+            start_date=start_date,
+            end_date=end_date,
+            reason=reason,
+            leave_duration=leave_duration,
+            status='pending',
+            organization_id=str(organization_id),
+            branch_id=str(branch_id),
+        )
+        if not req_id:
+            return jsonify({
+                'success': False,
+                'message': 'Cannot submit request. The requested dates may overlap with an existing active leave.'
+            }), 400
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
+
+    return jsonify({
+        'success': True,
+        'message': 'Leave request submitted successfully.',
+        'request_id': req_id,
+    })
 
 
 @app.route('/api/mobile/credentials', methods=['GET'])
