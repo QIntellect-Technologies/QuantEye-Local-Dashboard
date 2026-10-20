@@ -485,7 +485,8 @@ def _db_writer_worker():
                     device_id=payload.get('device_id'),
                     bypass_shift_check=True,
                     checkout_camera_id=payload.get('checkout_camera_id'),
-                    checkout_location=payload.get('checkout_location')
+                    checkout_location=payload.get('checkout_location'),
+                    attendance_time=payload.get('attendance_time')
                 )
                 if not success:
                     clear_logged_today_in_memory(payload['user_id'])
@@ -648,8 +649,23 @@ def process_user_attendance_event(user_id: int, name: str, confidence: float, so
             return "REJECTED_CAMERA_UNAUTHORIZED", cam_msg
 
         last_checkout_log = user_state.get('last_checkout_log')
-        # Check-Out is recorded ONCE per day (first detection after shift end) and never updated again
+        # Check-Out Event: Record initial check-out after shift end, and dynamically update check-out when employee continues working late / overtime
+        should_log_checkout = False
         if last_checkout_log is None:
+            should_log_checkout = True
+        else:
+            try:
+                if isinstance(last_checkout_log, datetime):
+                    sec_since = (now - last_checkout_log).total_seconds()
+                else:
+                    sec_since = 999
+            except Exception:
+                sec_since = 999
+            # Debounce: update check-out punch if at least 30 seconds have passed since last check-out detection
+            if sec_since >= 30:
+                should_log_checkout = True
+
+        if should_log_checkout:
             user_state['last_checkout_log'] = now
             try:
                 DB_TASK_QUEUE.put_nowait(('log_attendance', {
@@ -660,9 +676,10 @@ def process_user_attendance_event(user_id: int, name: str, confidence: float, so
                     'location': location,
                     'device_id': camera_id,
                     'checkout_camera_id': camera_id,
-                    'checkout_location': location
+                    'checkout_location': location,
+                    'attendance_time': now
                 }))
-                logger.info(f"✓ [CHECK-OUT LOGGED] Staff '{name}' (ID #{user_id}) Check-Out on Camera '{camera_id}' ({location}) updated to {now.strftime('%I:%M:%S %p')} (Check-In was {checkin_time.strftime('%I:%M:%S %p')})")
+                logger.info(f"✓ [CHECK-OUT LOGGED] Staff '{name}' (ID #{user_id}) Check-Out on Camera '{camera_id}' ({location}) at {now.strftime('%I:%M:%S %p')} (Check-In was {checkin_time.strftime('%I:%M:%S %p')})")
             except queue.Full:
                 pass
             return "CHECKOUT", f"Check-Out recorded at {now.strftime('%I:%M %p')} on {location}"

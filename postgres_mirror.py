@@ -1766,6 +1766,26 @@ def fetch_pg_overtime_records(
                 cached_ids = [row[0] for row in sqlite_cur.fetchall()]
                 for cid in cached_ids:
                     if cid not in pg_ids:
+                        cur_row = sqlite_cur.execute(
+                            "SELECT id, user_id, user_name, ot_date, hours, reason, status, organization_id, branch_id FROM overtime WHERE id = ?",
+                            (cid,)
+                        ).fetchone()
+                        if cur_row and str(cur_row[6] or "").lower() == "pending":
+                            try:
+                                mirror_overtime({
+                                    "id": cur_row[0],
+                                    "user_id": cur_row[1],
+                                    "user_name": cur_row[2],
+                                    "ot_date": cur_row[3],
+                                    "hours": cur_row[4],
+                                    "reason": cur_row[5],
+                                    "status": cur_row[6],
+                                    "organization_id": cur_row[7] or organization_id,
+                                    "branch_id": cur_row[8] or branch_id,
+                                })
+                                continue
+                            except Exception:
+                                pass
                         sqlite_cur.execute("DELETE FROM overtime WHERE id = ? AND organization_id = ?", (cid, organization_id))
             sqlite_conn.commit()
         return len(rows)

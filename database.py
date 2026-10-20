@@ -3532,7 +3532,8 @@ def _record_automatic_checkout_overtime(
     actual_date = checkout_dt.strftime('%Y-%m-%d')
     if _overtime_date_is_future(actual_date):
         return 0.0
-    actual_time = checkout_dt.strftime('%H:%M')
+    actual_time = checkout_dt.strftime('%H:%M:%S')
+    actual_time_display = checkout_dt.strftime('%I:%M:%S %p')
     if not user_name or not str(user_name).strip():
         cursor.execute("SELECT name FROM users WHERE id = ?", (user_id,))
         u_name_row = cursor.fetchone()
@@ -3562,18 +3563,23 @@ def _record_automatic_checkout_overtime(
             (user_id, actual_date),
         )
         min_att = cursor.fetchone()
-        in_time_str = str(min_att[0])[11:16] if min_att and min_att[0] else shift_start
-        in_m = parse_time_to_minutes(in_time_str)
-        out_m = parse_time_to_minutes(actual_time)
-        if out_m < in_m:
-            out_m += 24 * 60
-        worked_mins = max(0, out_m - in_m)
-        overtime_hours = round(worked_mins / 60.0, 2)
+        in_time_str = str(min_att[0])[11:] if min_att and min_att[0] else shift_start
+        def _parse_secs(t_val):
+            p = str(t_val).strip().split(':')
+            return int(p[0]) * 3600 + int(p[1]) * 60 + (int(float(p[2])) if len(p) > 2 else 0)
+        in_s = _parse_secs(in_time_str)
+        out_s = _parse_secs(actual_time)
+        if out_s < in_s:
+            out_s += 24 * 3600
+        worked_secs = max(0, out_s - in_s)
+        overtime_hours = round(worked_secs / 3600.0, 2)
+        if worked_secs > 0 and overtime_hours <= 0:
+            overtime_hours = 0.01
         day_label = "Public holiday" if day_type == 'holiday' else "Scheduled rest-day"
-        reason = f"{day_label} camera checkout at {actual_time}"
+        reason = f"{day_label} camera checkout at {actual_time_display} ({actual_time})"
     else:
         overtime_hours = calculate_eligible_overtime(shift_start, shift_end, actual_time, grace_minutes)
-        reason = f"Automatic camera checkout at {actual_time}"
+        reason = f"Automatic camera checkout at {actual_time_display} ({actual_time}) [Shift: {shift_start} - {shift_end}, Grace: {grace_minutes}m]"
 
     if overtime_hours <= 0:
         return 0.0
@@ -3595,6 +3601,21 @@ def _record_automatic_checkout_overtime(
                 "UPDATE overtime SET hours = ?, reason = ? WHERE id = ?",
                 (overtime_hours, reason, ex_id),
             )
+            cursor.execute("SELECT organization_id, branch_id FROM overtime WHERE id = ?", (ex_id,))
+            ot_t_row = cursor.fetchone()
+            ot_org = (ot_t_row[0] if ot_t_row else None) or 'DEFAULT_ORG'
+            ot_branch = (ot_t_row[1] if ot_t_row else None) or 'DEFAULT_BRANCH'
+            _cloud_mirror("mirror_overtime", {
+                "id": ex_id,
+                "user_id": user_id,
+                "user_name": user_name,
+                "hours": overtime_hours,
+                "ot_date": actual_date,
+                "reason": reason,
+                "status": "pending",
+                "organization_id": ot_org,
+                "branch_id": ot_branch,
+            })
         return overtime_hours
 
     cursor.execute("SELECT organization_id, branch_id FROM users WHERE id = ?", (user_id,))
@@ -3605,6 +3626,18 @@ def _record_automatic_checkout_overtime(
         "INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, status, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
         (user_id, user_name, actual_date, overtime_hours, reason, u_ot_org, u_ot_branch),
     )
+    new_ot_id = cursor.lastrowid
+    _cloud_mirror("mirror_overtime", {
+        "id": new_ot_id,
+        "user_id": user_id,
+        "user_name": user_name,
+        "hours": overtime_hours,
+        "ot_date": actual_date,
+        "reason": reason,
+        "status": "pending",
+        "organization_id": u_ot_org,
+        "branch_id": u_ot_branch,
+    })
     return overtime_hours
 
 
@@ -3730,7 +3763,7 @@ def log_attendance(user_id: int, detected_name: str, confidence: float, source: 
     """Log attendance detection with room location, device ID, and shift grace period verification."""
     if attendance_time is None:
         attendance_time = datetime.now()
-    if not bypass_shift_check:
+    if not bypass_shift_check and not checkout_camera_id:
         allowed, reason, shift_info = check_user_shift_allowed(user_id, dt=attendance_time)
         if not allowed:
             logger.info(f"Skipped attendance log for '{detected_name}' (User ID {user_id}): {reason}")
@@ -5454,33 +5487,39 @@ def calculate_eligible_overtime(shift_start: str, shift_end: str, actual_checkou
     Calculate eligible overtime duration in hours:
     OT duration = max(0, actual checkout - (applicable shift end + checkout grace period))
     Handles standard daytime shifts as well as overnight shifts.
+    Provides second-level precision so that extending checkout time past shift end (or grace threshold)
+    by even 1 second or 1 minute calculates real-time overtime (minimum 0.01 hours).
     """
     try:
-        def to_mins(t_str: str) -> int:
+        def to_secs(t_str: str) -> int:
             t = str(t_str).strip()
             if ' ' in t:
                 t = t.split(' ')[-1]
             if 'T' in t:
                 t = t.split('T')[-1]
             parts = t.split(':')
-            return int(parts[0]) * 60 + int(parts[1])
+            hrs = int(parts[0])
+            mins = int(parts[1]) if len(parts) > 1 else 0
+            secs = int(float(parts[2])) if len(parts) > 2 else 0
+            return hrs * 3600 + mins * 60 + secs
 
-        start_m = to_mins(shift_start)
-        end_m = to_mins(shift_end)
-        co_m = to_mins(actual_checkout)
+        start_s = to_secs(shift_start)
+        end_s = to_secs(shift_end)
+        co_s = to_secs(actual_checkout)
 
-        is_overnight = end_m < start_m
+        is_overnight = end_s < start_s
         if is_overnight:
-            end_m += 24 * 60
-            if co_m < start_m:
-                co_m += 24 * 60
-        elif co_m < start_m and (co_m + 24 * 60 - end_m) <= 16 * 60:
-            co_m += 24 * 60
+            end_s += 24 * 3600
+            if co_s < start_s:
+                co_s += 24 * 3600
+        elif co_s < start_s and (co_s + 24 * 3600 - end_s) <= 16 * 3600:
+            co_s += 24 * 3600
 
-        grace_threshold = end_m + max(0, int(checkout_grace_period_minutes or 0))
-        if co_m > grace_threshold:
-            ot_mins = co_m - grace_threshold
-            return round(ot_mins / 60.0, 2)
+        grace_threshold_s = end_s + max(0, int(checkout_grace_period_minutes or 0)) * 60
+        if co_s > grace_threshold_s:
+            ot_secs = co_s - grace_threshold_s
+            ot_hours = round(ot_secs / 3600.0, 2)
+            return max(0.01, ot_hours)
         return 0.0
     except Exception as e:
         logger.error(f"Error calculating eligible overtime: {e}")
@@ -5679,18 +5718,43 @@ def mark_user_present_today(
                         if cur_status == 'pending':
                             cursor.execute("UPDATE overtime SET hours = ?, reason = ? WHERE id = ?", 
                                            (ot_hours, ot_reason, ot_id))
+                            _cloud_mirror("mirror_overtime", {
+                                "id": ot_id,
+                                "user_id": user_id,
+                                "user_name": name,
+                                "hours": ot_hours,
+                                "ot_date": actual_date,
+                                "reason": ot_reason,
+                                "status": "pending",
+                                "organization_id": user_org,
+                                "branch_id": user_branch,
+                            })
                     else:
                         cursor.execute("INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, status, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
                                        (user_id, name, actual_date, ot_hours, ot_reason, user_org, user_branch))
+                        new_ot_id = cursor.lastrowid
+                        _cloud_mirror("mirror_overtime", {
+                            "id": new_ot_id,
+                            "user_id": user_id,
+                            "user_name": name,
+                            "hours": ot_hours,
+                            "ot_date": actual_date,
+                            "reason": ot_reason,
+                            "status": "pending",
+                            "organization_id": user_org,
+                            "branch_id": user_branch,
+                        })
                 else:
                     if ot_existing and (ot_existing[1] or 'pending').lower() == 'pending':
                         cursor.execute("DELETE FROM overtime WHERE id = ?", (ot_existing[0],))
+                        _cloud_mirror("delete_pg_overtime", ot_existing[0], user_org)
             else:
                 # If no checkout provided, remove any pending OT for this date
                 cursor.execute("SELECT id, status FROM overtime WHERE user_id = ? AND ot_date = ?", (user_id, actual_date))
                 ot_existing = cursor.fetchone()
                 if ot_existing and (ot_existing[1] or 'pending').lower() == 'pending':
                     cursor.execute("DELETE FROM overtime WHERE id = ?", (ot_existing[0],))
+                    _cloud_mirror("delete_pg_overtime", ot_existing[0], user_org)
 
             # PHASE 2.3: Enqueue manual attendance into sync_outbox_queue
             ev_in = f"ATT-{user_org}-{user_branch}-MAN-{user_id}-{actual_date}-IN"
