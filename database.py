@@ -367,6 +367,46 @@ def enqueue_sync_outbox(
     return ev_id
 
 
+def _migrate_departments_table_tenant_scope(cursor: sqlite3.Cursor):
+    """
+    Ensure departments table has tenant-scoped uniqueness (organization_id, branch_id, name)
+    instead of global UNIQUE(name).
+    """
+    try:
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='departments'")
+        row = cursor.fetchone()
+        if not row or not row[0]:
+            return
+        schema_sql = row[0]
+        if "name TEXT NOT NULL UNIQUE" in schema_sql or "name TEXT UNIQUE" in schema_sql:
+            logger.info("Migrating departments table from global UNIQUE(name) to tenant-scoped UNIQUE(organization_id, branch_id, name)...")
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            cursor.execute("""
+                CREATE TABLE departments_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    code TEXT DEFAULT '',
+                    description TEXT DEFAULT '',
+                    active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    organization_id TEXT DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT DEFAULT 'DEFAULT_BRANCH',
+                    UNIQUE(organization_id, branch_id, name)
+                )
+            """)
+            cursor.execute("""
+                INSERT OR IGNORE INTO departments_new (id, name, code, description, active, created_at, organization_id, branch_id)
+                SELECT id, name, code, description, active, created_at, COALESCE(organization_id, 'DEFAULT_ORG'), COALESCE(branch_id, 'DEFAULT_BRANCH')
+                FROM departments
+            """)
+            cursor.execute("DROP TABLE departments")
+            cursor.execute("ALTER TABLE departments_new RENAME TO departments")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_departments_org ON departments(organization_id, active)")
+            logger.info("✓ departments table migrated successfully to tenant-scoped uniqueness.")
+    except Exception as e:
+        logger.warning(f"Department tenant uniqueness migration warning: {e}")
+
+
 def init_db():
     """Initialize SQLite database with proper schema, columns, and indexes."""
     try:
@@ -1139,11 +1179,14 @@ def init_db():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS departments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
                     code TEXT DEFAULT '',
                     description TEXT DEFAULT '',
                     active INTEGER DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    organization_id TEXT DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT DEFAULT 'DEFAULT_BRANCH',
+                    UNIQUE(organization_id, branch_id, name)
                 )
             ''')
             cursor.execute("SELECT COUNT(*) FROM departments")
@@ -1338,6 +1381,7 @@ def init_db():
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_payroll_records_org ON payroll_records(organization_id)')
 
             cursor.execute("PRAGMA foreign_keys = OFF")
+            _migrate_departments_table_tenant_scope(cursor)
             migrate_payroll_policy_tenant_scope(cursor)
             ensure_payroll_settings_row(cursor, 'DEFAULT_ORG', 'DEFAULT_BRANCH')
             seed_leave_types_if_empty(cursor, 'DEFAULT_ORG', 'DEFAULT_BRANCH')
@@ -12247,16 +12291,38 @@ def add_department(name: str, code: str = '', description: str = '', organizatio
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            org = organization_id or 'DEFAULT_ORG'
+            br = branch_id or 'DEFAULT_BRANCH'
+
+            # Check if department with same name already exists in this organization
+            cursor.execute(
+                "SELECT id, active FROM departments WHERE LOWER(name) = LOWER(?) AND (organization_id = ? OR (? = 'DEFAULT_ORG' AND (organization_id IS NULL OR organization_id = '')))",
+                (name.strip(), org, org)
+            )
+            existing = cursor.fetchone()
+            if existing:
+                dept_id, active = existing[0], existing[1]
+                if active == 0:
+                    cursor.execute(
+                        "UPDATE departments SET active = 1, code = ?, description = ? WHERE id = ?",
+                        (code.strip(), description.strip(), dept_id)
+                    )
+                    conn.commit()
+                    logger.info(f"✓ Re-activated existing Department '{name}' for org '{org}' (ID: {dept_id})")
+                    return dept_id
+                logger.warning(f"Department '{name}' already exists in org '{org}'")
+                return None
+
             cursor.execute(
                 "INSERT INTO departments (name, code, description, organization_id, branch_id) VALUES (?, ?, ?, ?, ?)",
-                (name.strip(), code.strip(), description.strip(), organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH')
+                (name.strip(), code.strip(), description.strip(), org, br)
             )
             conn.commit()
             dept_id = cursor.lastrowid
-            logger.info(f"✓ Department '{name}' created for org '{organization_id}' (ID: {dept_id})")
+            logger.info(f"✓ Department '{name}' created for org '{org}' (ID: {dept_id})")
             return dept_id
     except sqlite3.IntegrityError:
-        logger.warning(f"Department '{name}' already exists")
+        logger.warning(f"Department '{name}' already exists in org '{organization_id}'")
         return None
     except Exception as e:
         logger.error(f"Failed to add department: {e}")
