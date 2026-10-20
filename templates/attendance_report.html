@@ -1765,9 +1765,20 @@
                     // SINGLE DAY VIEW
                     let statusBadge = '';
                     const st = (r.status || 'absent').toLowerCase();
-                    const dayType = r.day_type;
+                    const dayType = r.day_type_raw || r.day_type;
+                    const holidayName = r.holiday_name || ((r.day_classification === 'holiday' || r.calendar_override === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday') ? (dayType && dayType !== 'Public Holiday' && dayType !== 'public_holiday' ? dayType : '') : (dayType && !['Leave Day', 'Rest Day', 'Regular Working Day', 'leave_day', 'rest_day', 'regular_working_day'].includes(dayType) ? dayType : ''));
                     const isPresentType = ['present', 'late', 'checked_out'].includes(st);
-                    const dayTypeSuffix = (isPresentType && dayType && ['Public Holiday', 'Leave Day', 'Rest Day'].includes(dayType)) ? ` — ${dayType}` : '';
+
+                    let dayTypeSuffix = '';
+                    if (isPresentType) {
+                        if (holidayName) {
+                            dayTypeSuffix = ` — ${holidayName}`;
+                        } else if (dayType === 'Public Holiday' || dayType === 'public_holiday') {
+                            dayTypeSuffix = ` — Public Holiday`;
+                        } else if (dayType && ['Leave Day', 'Rest Day'].includes(dayType)) {
+                            dayTypeSuffix = ` — ${dayType}`;
+                        }
+                    }
 
                     if (st === 'present') {
                         statusBadge = `<span class="status-pill present"><i class="fa-solid fa-circle-check"></i> Present${dayTypeSuffix}</span>`;
@@ -1779,8 +1790,9 @@
                         statusBadge = `<span class="status-pill" style="background:rgba(20,184,166,0.15); color:#2dd4bf; border:1px solid rgba(20,184,166,0.3);"><i class="fa-solid fa-envelope-open-text"></i> On Leave</span>`;
                     } else if (st === 'on_leave_unpaid') {
                         statusBadge = `<span class="status-pill" style="background:rgba(244,63,94,0.15); color:#fb7185; border:1px solid rgba(244,63,94,0.3);"><i class="fa-solid fa-envelope-open-text"></i> Unpaid Leave</span>`;
-                    } else if (st === 'holiday') {
-                        statusBadge = `<span class="status-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-umbrella-beach"></i> Holiday</span>`;
+                    } else if (st === 'holiday' || Boolean(holidayName)) {
+                        const hLabel = holidayName || 'Holiday';
+                        statusBadge = `<span class="status-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-umbrella-beach"></i> ${hLabel}</span>`;
                     } else if (st === 'weekend' || st === 'off_day') {
                         statusBadge = `<span class="status-pill" style="background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3);"><i class="fa-solid fa-bed"></i> Weekend / Off</span>`;
                     } else {
@@ -1880,9 +1892,20 @@
                 dailyRecords.forEach(d => {
                     const tr = document.createElement('tr');
                     const st = (d.status || 'absent').toLowerCase();
-                    const dayType = d.day_type;
+                    const dayType = d.day_type_raw || d.day_type;
+                    const holidayName = d.holiday_name || ((d.day_classification === 'holiday' || d.calendar_override === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday') ? (dayType && dayType !== 'Public Holiday' && dayType !== 'public_holiday' ? dayType : '') : (dayType && !['Leave Day', 'Rest Day', 'Regular Working Day', 'leave_day', 'rest_day', 'regular_working_day'].includes(dayType) ? dayType : ''));
                     const isPresentType = ['present', 'late', 'checked_out'].includes(st);
-                    const dayTypeSuffix = (isPresentType && dayType && ['Public Holiday', 'Leave Day', 'Rest Day'].includes(dayType)) ? ` — ${dayType}` : '';
+
+                    let dayTypeSuffix = '';
+                    if (isPresentType) {
+                        if (holidayName) {
+                            dayTypeSuffix = ` — ${holidayName}`;
+                        } else if (dayType === 'Public Holiday' || dayType === 'public_holiday') {
+                            dayTypeSuffix = ` — Public Holiday`;
+                        } else if (dayType && ['Leave Day', 'Rest Day'].includes(dayType)) {
+                            dayTypeSuffix = ` — ${dayType}`;
+                        }
+                    }
                     let stBadge = '';
 
                     if (st === 'present') {
@@ -1893,8 +1916,9 @@
                         stBadge = `<span class="status-pill present" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3);"><i class="fa-solid fa-arrow-right-from-bracket"></i> Checked Out${dayTypeSuffix}</span>`;
                     } else if (st === 'weekend' || st === 'off_day') {
                         stBadge = `<span class="status-pill" style="background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3);"><i class="fa-solid fa-bed"></i> Weekend / Off</span>`;
-                    } else if (st === 'holiday') {
-                        stBadge = `<span class="status-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-umbrella-beach"></i> Holiday</span>`;
+                    } else if (st === 'holiday' || Boolean(holidayName)) {
+                        const hLabel = holidayName || 'Holiday';
+                        stBadge = `<span class="status-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-umbrella-beach"></i> ${hLabel}</span>`;
                     } else if (st === 'on_leave') {
                         stBadge = `<span class="status-pill" style="background:rgba(20,184,166,0.15); color:#2dd4bf; border:1px solid rgba(20,184,166,0.3);"><i class="fa-solid fa-envelope-open-text"></i> On Leave</span>`;
                     } else if (st === 'on_leave_unpaid') {

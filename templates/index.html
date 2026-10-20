@@ -12047,16 +12047,27 @@ async function fetchMultiLiveDetections() {
             };
             const hasAttendance = realPunch(r.first_seen) || ['present', 'late', 'checked_out'].includes(st);
             const isLeaveToday = ['on_leave', 'on_leave_unpaid'].includes(st) && !hasAttendance;
-            const dayType = r.day_type;
+            const dayType = r.day_type_raw || r.day_type;
+            const holidayName = r.holiday_name || ((r.day_classification === 'holiday' || r.calendar_override === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday') ? (dayType && dayType !== 'Public Holiday' && dayType !== 'public_holiday' ? dayType : '') : (dayType && !['Leave Day', 'Rest Day', 'Regular Working Day', 'leave_day', 'rest_day', 'regular_working_day'].includes(dayType) ? dayType : ''));
             const isPresentType = ['present', 'late', 'checked_out'].includes(st) || hasAttendance;
-            const dayTypeSuffix = (isPresentType && dayType && ['Public Holiday', 'Leave Day', 'Rest Day'].includes(dayType)) ? ` — ${dayType}` : '';
-            const isHolidayToday = (st === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday') && !hasAttendance;
+            let dayTypeSuffix = '';
+            if (isPresentType) {
+              if (holidayName) {
+                dayTypeSuffix = ` — ${holidayName}`;
+              } else if (dayType === 'Public Holiday' || dayType === 'public_holiday') {
+                dayTypeSuffix = ` — Public Holiday`;
+              } else if (dayType && ['Leave Day', 'Rest Day'].includes(dayType)) {
+                dayTypeSuffix = ` — ${dayType}`;
+              }
+            }
+            const isHolidayToday = (st === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday' || Boolean(holidayName)) && !hasAttendance;
             const isRestDayToday = (st === 'weekend' || st === 'off_day' || dayType === 'Rest Day' || dayType === 'rest_day') && !hasAttendance;
             if (isLeaveToday) {
               const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
               statusBadge = `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
             } else if (isHolidayToday) {
-              statusBadge = '<span class="badge" style="background:#f0fdf4; color:#0d9488; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-gifts"></i> Public Holiday</span>';
+              const hLabel = holidayName || 'Public Holiday';
+              statusBadge = `<span class="badge" style="background:#f0fdf4; color:#0d9488; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-gifts"></i> ${hLabel}</span>`;
             } else if (isRestDayToday) {
               statusBadge = '<span class="badge" style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-bed"></i> Weekend / Off</span>';
             } else if (st === 'late') {
@@ -12503,11 +12514,18 @@ async function fetchMultiLiveDetections() {
 
                 const st = (d.status || 'absent').toLowerCase();
                 const dayType = d.day_type_raw || d.day_type;
+                const holidayName = d.holiday_name || ((d.day_classification === 'holiday' || d.calendar_override === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday') ? (dayType && dayType !== 'Public Holiday' && dayType !== 'public_holiday' ? dayType : '') : (dayType && !['Leave Day', 'Rest Day', 'Regular Working Day', 'leave_day', 'rest_day', 'regular_working_day'].includes(dayType) ? dayType : ''));
                 const isPresentType = ['present', 'late', 'checked_out'].includes(st);
-                const dayTypeLabel = (dayType === 'public_holiday' || dayType === 'Public Holiday') ? 'Public Holiday' :
-                                     (dayType === 'leave_day' || dayType === 'Leave Day') ? 'Leave Day' :
-                                     (dayType === 'rest_day' || dayType === 'Rest Day') ? 'Rest Day' : '';
-                const dayTypeSuffix = (isPresentType && dayTypeLabel) ? ` — ${dayTypeLabel}` : '';
+                let dayTypeSuffix = '';
+                if (isPresentType) {
+                  if (holidayName) {
+                    dayTypeSuffix = ` — ${holidayName}`;
+                  } else if (dayType === 'Public Holiday' || dayType === 'public_holiday') {
+                    dayTypeSuffix = ` — Public Holiday`;
+                  } else if (dayType && ['Leave Day', 'Rest Day'].includes(dayType)) {
+                    dayTypeSuffix = ` — ${dayType}`;
+                  }
+                }
                 let stBadge = '';
                 if (st === 'present') {
                   stBadge = `<span class="badge" style="background:#e6f4ea; color:#1e8e3e; border:1px solid #a8dab5; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-check"></i> Present${dayTypeSuffix}</span>`;
@@ -12515,9 +12533,10 @@ async function fetchMultiLiveDetections() {
                   stBadge = `<span class="badge" style="background:#fef7e0; color:#b06000; border:1px solid #f9e29c; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-clock"></i> Late${dayTypeSuffix}</span>`;
                 } else if (st === 'checked_out') {
                   stBadge = `<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-right-from-bracket"></i> Checked Out${dayTypeSuffix}</span>`;
-                } else if (st === 'holiday' || dayTypeLabel === 'Public Holiday') {
-                  stBadge = '<span class="badge" style="background:#f0fdf4; color:#0d9488; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-gifts"></i> Public Holiday</span>';
-                } else if (st === 'weekend' || st === 'off_day' || dayTypeLabel === 'Rest Day') {
+                } else if (st === 'holiday' || Boolean(holidayName)) {
+                  const hLabel = holidayName || 'Public Holiday';
+                  stBadge = `<span class="badge" style="background:#f0fdf4; color:#0d9488; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-gifts"></i> ${hLabel}</span>`;
+                } else if (st === 'weekend' || st === 'off_day') {
                   stBadge = '<span class="badge" style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-bed"></i> Weekend / Off</span>';
                 } else if (st === 'on_leave') {
                   stBadge = '<span class="badge" style="background:#ccfbf1; color:#0f766e; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-envelope-open-text"></i> On Leave</span>';

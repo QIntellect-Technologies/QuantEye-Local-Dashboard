@@ -4299,12 +4299,14 @@ def get_detailed_attendance_report(
 
             # Automatically include company public holidays for all staff
             cursor.execute(
-                """SELECT holiday_date, end_date, is_recurring FROM company_holidays
+                """SELECT name, holiday_date, end_date, is_recurring FROM company_holidays
                    WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
                      AND (? IS NULL OR COALESCE(branch_id, 'DEFAULT_BRANCH') = ?)""",
                 (report_org, branch_id, report_branch),
             )
+            holiday_names = {}
             for h_row in cursor.fetchall():
+                h_name = str(h_row['name'] or '').strip()
                 h_date = h_row['holiday_date']
                 e_date = h_row['end_date'] or h_date
                 is_rec = h_row['is_recurring']
@@ -4318,13 +4320,18 @@ def get_detailed_attendance_report(
                     if start_date <= curr_h_str <= end_date:
                         if (curr_h_str, 'all', 0) not in calendar_overrides:
                             calendar_overrides[(curr_h_str, 'all', 0)] = 'holiday'
+                        if curr_h_str not in holiday_names and h_name:
+                            holiday_names[curr_h_str] = h_name
                     elif is_rec:
                         try:
                             h_md = curr_h_str[5:]  # "MM-DD"
                             for y in range(d1_date.year, d2_date.year + 1):
                                 occ = f"{y:04d}-{h_md}"
-                                if start_date <= occ <= end_date and (occ, 'all', 0) not in calendar_overrides:
-                                    calendar_overrides[(occ, 'all', 0)] = 'holiday'
+                                if start_date <= occ <= end_date:
+                                    if (occ, 'all', 0) not in calendar_overrides:
+                                        calendar_overrides[(occ, 'all', 0)] = 'holiday'
+                                    if occ not in holiday_names and h_name:
+                                        holiday_names[occ] = h_name
                         except Exception:
                             pass
                     curr_h += timedelta(days=1)
@@ -4868,9 +4875,10 @@ def get_detailed_attendance_report(
                             emp_working_days += 1
 
                     # ATT-05: Determine Day Type from existing sources and structured labels
+                    cur_holiday_name = holiday_names.get(cur_date) or ''
                     day_type = None
-                    if override_type == 'holiday':
-                        day_type = 'Public Holiday'
+                    if override_type == 'holiday' or cur_holiday_name:
+                        day_type = cur_holiday_name if cur_holiday_name else 'Public Holiday'
                     elif (uid, cur_date) in leave_map or (uid, cur_date) in approved_leave_dates:
                         day_type = 'Leave Day'
                     elif not is_scheduled_workday or override_type == 'off_day':
@@ -4879,7 +4887,7 @@ def get_detailed_attendance_report(
                         day_type = 'Regular Working Day'
 
                     normalized_day_type = (
-                        'public_holiday' if day_type == 'Public Holiday' else
+                        'public_holiday' if (override_type == 'holiday' or cur_holiday_name or day_type == 'Public Holiday') else
                         'leave_day' if day_type == 'Leave Day' else
                         'rest_day' if day_type == 'Rest Day' else
                         'regular_working_day'
@@ -4888,7 +4896,9 @@ def get_detailed_attendance_report(
                     # Presentation status display (ATT-05: Present — Public Holiday / Leave Day / Rest Day)
                     if att:
                         base_st = 'Present' if status == 'present' else ('Late' if status == 'late' else 'Checked Out')
-                        if day_type in ('Public Holiday', 'Leave Day', 'Rest Day'):
+                        if override_type == 'holiday' or cur_holiday_name:
+                            status_display_val = f"{base_st} — {cur_holiday_name or 'Public Holiday'}"
+                        elif day_type in ('Public Holiday', 'Leave Day', 'Rest Day'):
                             status_display_val = f"{base_st} — {day_type}"
                         elif half_leave_active or (leave_info and leave_info.get('is_half_leave')):
                             status_display_val = f"{base_st} + Half Leave"
@@ -4901,8 +4911,8 @@ def get_detailed_attendance_report(
                             status_display_val = 'On Leave'
                         elif status == 'on_leave_unpaid':
                             status_display_val = 'Unpaid Leave'
-                        elif status == 'holiday':
-                            status_display_val = 'Holiday'
+                        elif status == 'holiday' or override_type == 'holiday' or cur_holiday_name:
+                            status_display_val = cur_holiday_name or 'Holiday'
                         elif status in ('weekend', 'off_day'):
                             status_display_val = 'Weekend / Off'
                         else:
@@ -4922,8 +4932,10 @@ def get_detailed_attendance_report(
                         'day': day_name,
                         'status': status,
                         'attendance_status': status,
-                        'day_type': normalized_day_type,
+                        'holiday_name': cur_holiday_name,
+                        'day_type': day_type,
                         'day_type_raw': day_type,
+                        'day_type_normalized': normalized_day_type,
                         'day_type_label': status_display_val,
                         'scheduled_workday': is_scheduled_workday,
                         'shift_history_missing': not schedule_known,
@@ -4931,12 +4943,11 @@ def get_detailed_attendance_report(
                         'day_classification': (
                             'special_working_day' if override_type == 'working_day' else
                             'special_off_day' if override_type == 'off_day' else
-                            'holiday' if override_type == 'holiday' else
+                            'holiday' if (override_type == 'holiday' or cur_holiday_name) else
                             'scheduled_working_day' if is_scheduled_workday else
                             'non_working_day' if schedule_known else 'schedule_unknown'
                         ),
                         'status_display': status_display_val,
-                        'day_type': day_type,
                         'half_leave_count': 1 if (half_leave_active or (leave_info and leave_info.get('is_half_leave'))) else 0,
                         'half_leave_type': leave_info.get('leave_type') if (leave_info and leave_info.get('is_half_leave')) else None,
                         'is_half_leave': bool(half_leave_active or (leave_info and leave_info.get('is_half_leave'))),
@@ -5003,7 +5014,7 @@ def get_detailed_attendance_report(
                             continue
                         elif sf == 'unpaid_leave' and st_today != 'on_leave_unpaid':
                             continue
-                        elif sf in ('holiday', 'public_holiday') and dt_today != 'public_holiday':
+                        elif sf in ('holiday', 'public_holiday') and dt_today != 'public_holiday' and not (emp_daily_records and emp_daily_records[0].get('holiday_name')):
                             continue
                         elif sf in ('rest_day', 'off_day') and dt_today != 'rest_day':
                             continue
@@ -5022,7 +5033,7 @@ def get_detailed_attendance_report(
                             continue
                         elif sf == 'unpaid_leave' and emp_unpaid_leave_days == 0:
                             continue
-                        elif sf in ('holiday', 'public_holiday') and not any(d.get('day_type') == 'public_holiday' for d in emp_daily_records):
+                        elif sf in ('holiday', 'public_holiday') and not any(d.get('day_type') == 'public_holiday' or d.get('day_type_normalized') == 'public_holiday' or d.get('calendar_override') == 'holiday' or d.get('holiday_name') for d in emp_daily_records):
                             continue
                         elif sf in ('rest_day', 'off_day') and not any(d.get('day_type') == 'rest_day' for d in emp_daily_records):
                             continue
@@ -5102,8 +5113,10 @@ def get_detailed_attendance_report(
                         'checkout_cameras': u['checkout_cameras'],
                         'status': st_val,
                         'attendance_status': st_val,
+                        'holiday_name': day_entry.get('holiday_name'),
                         'day_type': day_entry.get('day_type'),
                         'day_type_raw': day_entry.get('day_type_raw') or day_entry.get('day_type'),
+                        'day_type_normalized': day_entry.get('day_type_normalized'),
                         'day_type_label': day_entry.get('day_type_label') or day_entry.get('status_display'),
                         'status_display': day_entry.get('status_display'),
                         'shift_id': day_entry.get('shift_id') or u['shift_id'],
