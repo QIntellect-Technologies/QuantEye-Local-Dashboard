@@ -4718,6 +4718,7 @@ def get_detailed_attendance_report(
                             'non_working_day' if schedule_known else 'schedule_unknown'
                         ),
                         'status_display': status_display_val,
+                        'day_type': day_type,
                         'half_leave_count': 1 if (half_leave_active or (leave_info and leave_info.get('is_half_leave'))) else 0,
                         'half_leave_type': leave_info.get('leave_type') if (leave_info and leave_info.get('is_half_leave')) else None,
                         'is_half_leave': bool(half_leave_active or (leave_info and leave_info.get('is_half_leave'))),
