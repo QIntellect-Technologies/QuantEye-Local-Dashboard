@@ -2438,8 +2438,9 @@ def _get_company_holiday_for_date(
         params.append(branch_id)
     query += " ORDER BY holiday_date, id"
     cursor.execute(query, params)
+    col_names = [d[0] for d in cursor.description] if cursor.description else []
     for row in cursor.fetchall():
-        holiday = dict(row)
+        holiday = dict(row) if isinstance(row, (dict, sqlite3.Row)) else dict(zip(col_names, row))
         holiday_start = str(holiday.get('holiday_date') or '')
         holiday_end = str(holiday.get('end_date') or holiday_start)
         if holiday_start <= overtime_date <= holiday_end:
@@ -3340,11 +3341,28 @@ def _record_automatic_checkout_overtime(
         return 0.0
 
     shift_start, shift_end, grace_minutes = shift[0], shift[1], shift[2] or 0
-    overtime_hours = calculate_eligible_overtime(shift_start, shift_end, actual_time, grace_minutes)
+    day_type = _get_overtime_day_type(cursor, user_id, actual_date)
+    if day_type in ('holiday', 'non_working_day'):
+        cursor.execute(
+            "SELECT MIN(timestamp) FROM attendance WHERE user_id = ? AND date(timestamp) = ?",
+            (user_id, actual_date),
+        )
+        min_att = cursor.fetchone()
+        in_time_str = str(min_att[0])[11:16] if min_att and min_att[0] else shift_start
+        in_m = parse_time_to_minutes(in_time_str)
+        out_m = parse_time_to_minutes(actual_time)
+        if out_m < in_m:
+            out_m += 24 * 60
+        worked_mins = max(0, out_m - in_m)
+        overtime_hours = round(worked_mins / 60.0, 2)
+        day_label = "Public holiday" if day_type == 'holiday' else "Scheduled rest-day"
+        reason = f"{day_label} camera checkout at {actual_time}"
+    else:
+        overtime_hours = calculate_eligible_overtime(shift_start, shift_end, actual_time, grace_minutes)
+        reason = f"Automatic camera checkout at {actual_time}"
+
     if overtime_hours <= 0:
         return 0.0
-
-    reason = f"Automatic camera checkout at {actual_time}"
     cursor.execute(
         "SELECT id, status, reason FROM overtime WHERE user_id = ? AND ot_date = ? ORDER BY id LIMIT 1",
         (user_id, actual_date),
@@ -4103,7 +4121,7 @@ def get_detailed_attendance_report(
                     elif is_rec:
                         try:
                             h_md = curr_h_str[5:]  # "MM-DD"
-                            for y in range(dt_start.year, dt_end.year + 1):
+                            for y in range(d1_date.year, d2_date.year + 1):
                                 occ = f"{y:04d}-{h_md}"
                                 if start_date <= occ <= end_date and (occ, 'all', 0) not in calendar_overrides:
                                     calendar_overrides[(occ, 'all', 0)] = 'holiday'
@@ -5401,19 +5419,42 @@ def mark_user_present_today(
                 )
 
                 # Calculate OT
-                ot_hours = 0.0 if _overtime_date_is_future(actual_date) else calculate_eligible_overtime(shift_start, shift_end, co_clean, checkout_grace)
+                day_type = _get_overtime_day_type(cursor, user_id, actual_date)
+                if _overtime_date_is_future(actual_date):
+                    ot_hours = 0.0
+                    ot_reason = f"Manual attendance checkout {co_clean}"
+                elif day_type in ('holiday', 'non_working_day'):
+                    in_m = parse_time_to_minutes(ci_clean)
+                    out_m = parse_time_to_minutes(co_clean)
+                    if out_m < in_m:
+                        out_m += 24 * 60
+                    worked_mins = max(0, out_m - in_m)
+                    ot_hours = round(worked_mins / 60.0, 2)
+                    day_label = "Public holiday" if day_type == 'holiday' else "Scheduled rest-day"
+                    ot_reason = f"{day_label} attendance ({ci_clean} - {co_clean})"
+                else:
+                    ot_hours = calculate_eligible_overtime(shift_start, shift_end, co_clean, checkout_grace)
+                    ot_reason = f"Manual attendance checkout {co_clean}"
+
                 cursor.execute("SELECT id, status FROM overtime WHERE user_id = ? AND ot_date = ?", (user_id, actual_date))
                 ot_existing = cursor.fetchone()
 
                 if ot_hours > 0:
+                    limit_status = _get_overtime_limit_status_for_cursor(
+                        cursor, user_id, actual_date, ot_hours,
+                        exclude_id=ot_existing[0] if ot_existing else None,
+                    )
+                    if limit_status.get('exceeded'):
+                        ot_reason += limit_status.get('review_note', '')
+
                     if ot_existing:
                         ot_id, cur_status = ot_existing[0], (ot_existing[1] or 'pending').lower()
                         if cur_status == 'pending':
                             cursor.execute("UPDATE overtime SET hours = ?, reason = ? WHERE id = ?", 
-                                           (ot_hours, f"Manual attendance checkout {co_clean}", ot_id))
+                                           (ot_hours, ot_reason, ot_id))
                     else:
                         cursor.execute("INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, status, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
-                                       (user_id, name, actual_date, ot_hours, f"Manual attendance checkout {co_clean}", user_org, user_branch))
+                                       (user_id, name, actual_date, ot_hours, ot_reason, user_org, user_branch))
                 else:
                     if ot_existing and (ot_existing[1] or 'pending').lower() == 'pending':
                         cursor.execute("DELETE FROM overtime WHERE id = ?", (ot_existing[0],))

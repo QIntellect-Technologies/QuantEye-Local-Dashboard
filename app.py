@@ -3084,7 +3084,7 @@ def get_user_attendance(user_id):
 
 _stats_cache = {}
 _stats_cache_lock = threading.Lock()
-_STATS_CACHE_TTL = 5.0  # In-memory cache protects DB from rapid polling
+_STATS_CACHE_TTL = 30.0  # In-memory cache protects DB from rapid polling (shields PostgreSQL)
 
 
 @app.route('/api/stats', methods=['GET'])

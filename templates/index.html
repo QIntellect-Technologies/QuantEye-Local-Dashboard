@@ -12050,15 +12050,25 @@ async function fetchMultiLiveDetections() {
             const dayType = r.day_type;
             const isPresentType = ['present', 'late', 'checked_out'].includes(st) || hasAttendance;
             const dayTypeSuffix = (isPresentType && dayType && ['Public Holiday', 'Leave Day', 'Rest Day'].includes(dayType)) ? ` — ${dayType}` : '';
+            const isHolidayToday = (st === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday') && !hasAttendance;
+            const isRestDayToday = (st === 'weekend' || st === 'off_day' || dayType === 'Rest Day' || dayType === 'rest_day') && !hasAttendance;
             if (isLeaveToday) {
               const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
               statusBadge = `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
+            } else if (isHolidayToday) {
+              statusBadge = '<span class="badge" style="background:#f0fdf4; color:#0d9488; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-gifts"></i> Public Holiday</span>';
+            } else if (isRestDayToday) {
+              statusBadge = '<span class="badge" style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-bed"></i> Weekend / Off</span>';
             } else if (st === 'late') {
               statusBadge = `<span class="badge" style="background:#fef7e0; color:#b06000; border:1px solid #f9e29c; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-clock"></i> Late${dayTypeSuffix}</span>`;
             } else if (st === 'checked_out' || (realPunch(r.last_seen) && st !== 'present')) {
               statusBadge = `<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-right-from-bracket"></i> Checked Out${dayTypeSuffix}</span>`;
             } else if (st === 'present' || hasAttendance) {
               statusBadge = `<span class="badge" style="background:#e6f4ea; color:#1e8e3e; border:1px solid #a8dab5; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-check"></i> Present${dayTypeSuffix}</span>`;
+            } else if (st === 'not_employed') {
+              statusBadge = '<span class="badge" style="background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-user-slash"></i> Not Employed</span>';
+            } else if (st === 'not_checked_in') {
+              statusBadge = '<span class="badge" style="background:#fefce8; color:#a16207; border:1px solid #fde047; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-hourglass-start"></i> Not Checked In</span>';
             } else {
               statusBadge = '<span class="badge" style="background:#fce8e6; color:#d93025; border:1px solid #f5b4b0; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-xmark"></i> Absent</span>';
             }
@@ -12492,17 +12502,31 @@ async function fetchMultiLiveDetections() {
                 tr.style.borderBottom = '1px solid #f1f5f9';
 
                 const st = (d.status || 'absent').toLowerCase();
+                const dayType = d.day_type_raw || d.day_type;
+                const isPresentType = ['present', 'late', 'checked_out'].includes(st);
+                const dayTypeLabel = (dayType === 'public_holiday' || dayType === 'Public Holiday') ? 'Public Holiday' :
+                                     (dayType === 'leave_day' || dayType === 'Leave Day') ? 'Leave Day' :
+                                     (dayType === 'rest_day' || dayType === 'Rest Day') ? 'Rest Day' : '';
+                const dayTypeSuffix = (isPresentType && dayTypeLabel) ? ` — ${dayTypeLabel}` : '';
                 let stBadge = '';
                 if (st === 'present') {
-                  stBadge = '<span class="badge" style="background:#e6f4ea; color:#1e8e3e; border:1px solid #a8dab5; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-check"></i> Present</span>';
+                  stBadge = `<span class="badge" style="background:#e6f4ea; color:#1e8e3e; border:1px solid #a8dab5; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-check"></i> Present${dayTypeSuffix}</span>`;
                 } else if (st === 'late') {
-                  stBadge = '<span class="badge" style="background:#fef7e0; color:#b06000; border:1px solid #f9e29c; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-clock"></i> Late</span>';
+                  stBadge = `<span class="badge" style="background:#fef7e0; color:#b06000; border:1px solid #f9e29c; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-clock"></i> Late${dayTypeSuffix}</span>`;
                 } else if (st === 'checked_out') {
-                  stBadge = '<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-right-from-bracket"></i> Checked Out</span>';
-                } else if (st === 'weekend') {
+                  stBadge = `<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-right-from-bracket"></i> Checked Out${dayTypeSuffix}</span>`;
+                } else if (st === 'holiday' || dayTypeLabel === 'Public Holiday') {
+                  stBadge = '<span class="badge" style="background:#f0fdf4; color:#0d9488; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-gifts"></i> Public Holiday</span>';
+                } else if (st === 'weekend' || st === 'off_day' || dayTypeLabel === 'Rest Day') {
                   stBadge = '<span class="badge" style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-bed"></i> Weekend / Off</span>';
                 } else if (st === 'on_leave') {
                   stBadge = '<span class="badge" style="background:#ccfbf1; color:#0f766e; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-envelope-open-text"></i> On Leave</span>';
+                } else if (st === 'on_leave_unpaid') {
+                  stBadge = '<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-plane-slash"></i> Unpaid Leave</span>';
+                } else if (st === 'not_employed') {
+                  stBadge = '<span class="badge" style="background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-user-slash"></i> Not Employed</span>';
+                } else if (st === 'not_checked_in') {
+                  stBadge = '<span class="badge" style="background:#fefce8; color:#a16207; border:1px solid #fde047; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-hourglass-start"></i> Not Checked In</span>';
                 } else {
                   stBadge = '<span class="badge" style="background:#fce8e6; color:#d93025; border:1px solid #f5b4b0; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-xmark"></i> Absent</span>';
                 }

@@ -1456,6 +1456,7 @@
       }
 
       async function fetchStats() {
+        if (document.hidden) return;
         try {
           const r = await fetch(`${API}/stats`);
           const d = await r.json();
@@ -1507,9 +1508,9 @@
           await fetch(`${API}/init`, { method: "POST" });
         } catch (e) {}
         fetchStats();
-        statsTimer = setInterval(fetchStats, 10000);
+        statsTimer = setInterval(fetchStats, 60000);
         checkLiveHealth();
-        setInterval(checkLiveHealth, 15000);
+        setInterval(checkLiveHealth, 60000);
       })();
     </script>
   </body>
