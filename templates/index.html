@@ -4140,6 +4140,7 @@ function stopAllStreams() {
     }
 
 async function fetchMultiLiveDetections() {
+    if (document.hidden) return;
     try {
         const resp = await fetch(`${API_BASE}/live-detections`);
         const data = await resp.json();
@@ -8508,18 +8509,15 @@ async function fetchMultiLiveDetections() {
 
         window.triggerCentralDataSync = function() {
           try { if (typeof loadStats === 'function') loadStats(); } catch(e) {}
-          try { if (document.getElementById("reports-view")?.classList.contains("active") && typeof fetchMainReport === 'function') fetchMainReport(); } catch(e) {}
-          try { if (document.getElementById("staff-view")?.classList.contains("active") && typeof loadTabStaffDirectory === 'function') loadTabStaffDirectory(); } catch(e) {}
-          try { if (document.getElementById("shifts-view")?.classList.contains("active") && typeof loadShiftsList === 'function') loadShiftsList(); } catch(e) {}
-          try { if (document.getElementById("enroll-view")?.classList.contains("active") && typeof loadStaffDirectory === 'function') loadStaffDirectory(); } catch(e) {}
-          try { if (document.getElementById("locator-view")?.classList.contains("active") && typeof loadRoomsOccupancy === 'function') loadRoomsOccupancy(); } catch(e) {}
         };
 
-        // Keep dashboard data synchronized with the database while the page is open
+        // Relaxed periodic background data sync (every 60s, only if tab is visible)
         if (!logSyncTimer) {
           logSyncTimer = setInterval(() => {
-            triggerCentralDataSync();
-          }, 2000);
+            if (!document.hidden) {
+              triggerCentralDataSync();
+            }
+          }, 60000);
         }
 
         // Initialize real backend connection health monitoring
@@ -10262,6 +10260,7 @@ async function fetchMultiLiveDetections() {
         if (tickerInterval) clearInterval(tickerInterval);
 
         tickerInterval = setInterval(async () => {
+          if (document.hidden) return;
           try {
             const resp = await fetch(`${API_BASE}/live-detections`);
             const data = await resp.json();
