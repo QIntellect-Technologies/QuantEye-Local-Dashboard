@@ -193,7 +193,7 @@ def mirror_shift(shift: Dict[str, Any]) -> None:
     start_time = str(shift.get("start_time") or "09:00").strip()[:8]
     end_time = str(shift.get("end_time") or "17:00").strip()[:8]
     try:
-        grace = int(shift.get("grace_period_minutes") or 15)
+        grace = int(shift.get("grace_period_minutes") or shift.get("grace_minutes") or 15)
     except (ValueError, TypeError):
         grace = 15
 
@@ -202,15 +202,32 @@ def mirror_shift(shift: Dict[str, Any]) -> None:
         cur.execute(
             """
             INSERT INTO shifts (
-                id, organization_id, branch_id, name, start_time, end_time, grace_minutes
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                id, organization_id, branch_id, name, start_time, end_time, grace_minutes,
+                working_days, checkout_grace_period_minutes, is_default, active
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (organization_id, id) DO UPDATE SET
                 name = EXCLUDED.name,
                 start_time = EXCLUDED.start_time,
                 end_time = EXCLUDED.end_time,
-                grace_minutes = EXCLUDED.grace_minutes
+                grace_minutes = EXCLUDED.grace_minutes,
+                working_days = EXCLUDED.working_days,
+                checkout_grace_period_minutes = EXCLUDED.checkout_grace_period_minutes,
+                is_default = EXCLUDED.is_default,
+                active = EXCLUDED.active
             """,
-            (shift_id, org_id, branch_id, name, start_time, end_time, grace),
+            (
+                shift_id,
+                org_id,
+                branch_id,
+                name,
+                start_time,
+                end_time,
+                grace,
+                str(shift.get("working_days") or '[0,1,2,3,4,5]'),
+                int(shift.get("checkout_grace_period_minutes") or 0),
+                int(shift.get("is_default") or 0),
+                int(shift.get("active") if shift.get("active") is not None else 1),
+            ),
         )
 
     return _with_cursor(_write)
@@ -493,11 +510,21 @@ def mirror_leave(row: Dict[str, Any]) -> None:
             """
             INSERT INTO leave_requests (
                 id, organization_id, branch_id, employee_id, leave_type,
-                start_date, end_date, status, reason
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                start_date, end_date, status, reason, paid_days, unpaid_days,
+                start_time, end_time, leave_duration, rejection_reason
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (organization_id, id) DO UPDATE SET
                 status = EXCLUDED.status,
-                reason = EXCLUDED.reason
+                reason = EXCLUDED.reason,
+                leave_type = EXCLUDED.leave_type,
+                start_date = EXCLUDED.start_date,
+                end_date = EXCLUDED.end_date,
+                paid_days = EXCLUDED.paid_days,
+                unpaid_days = EXCLUDED.unpaid_days,
+                start_time = EXCLUDED.start_time,
+                end_time = EXCLUDED.end_time,
+                leave_duration = EXCLUDED.leave_duration,
+                rejection_reason = EXCLUDED.rejection_reason
             """,
             (
                 leave_id,
@@ -509,10 +536,31 @@ def mirror_leave(row: Dict[str, Any]) -> None:
                 row.get("end_date"),
                 status,
                 row.get("reason") or "",
+                float(row.get("paid_days") or 0.0),
+                float(row.get("unpaid_days") or 0.0),
+                str(row.get("start_time") or ""),
+                str(row.get("end_time") or ""),
+                str(row.get("leave_duration") or "full"),
+                str(row.get("rejection_reason") or ""),
             ),
         )
 
     return _with_cursor(_write)
+
+
+def delete_pg_leave(leave_id: int, organization_id: Optional[str] = None) -> None:
+    if not leave_id:
+        return
+    def _write(cur):
+        str_id = str(leave_id).strip()
+        if organization_id and _real_tenant(organization_id):
+            cur.execute(
+                "DELETE FROM leave_requests WHERE id = %s AND organization_id = %s",
+                (str_id, organization_id),
+            )
+        else:
+            cur.execute("DELETE FROM leave_requests WHERE id = %s", (str_id,))
+    _with_cursor(_write)
 
 
 def mirror_overtime(row: Dict[str, Any]) -> None:
@@ -542,12 +590,15 @@ def mirror_overtime(row: Dict[str, Any]) -> None:
         cur.execute(
             """
             INSERT INTO overtime_records (
-                id, organization_id, branch_id, employee_id, work_date, hours, reason, status
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                id, organization_id, branch_id, employee_id, work_date, hours, reason, status,
+                rejection_reason, rejected_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (organization_id, id) DO UPDATE SET
                 hours = EXCLUDED.hours,
                 status = EXCLUDED.status,
-                reason = EXCLUDED.reason
+                reason = EXCLUDED.reason,
+                rejection_reason = EXCLUDED.rejection_reason,
+                rejected_by = EXCLUDED.rejected_by
             """,
             (
                 ot_id,
@@ -558,46 +609,141 @@ def mirror_overtime(row: Dict[str, Any]) -> None:
                 hours,
                 row.get("reason") or "",
                 status,
+                str(row.get("rejection_reason") or ""),
+                str(row.get("rejected_by") or ""),
             ),
         )
 
     return _with_cursor(_write)
 
 
-def mirror_shift(row: Dict[str, Any]) -> None:
-    org_id = str(row.get("organization_id") or "").strip()
-    branch_id = str(row.get("branch_id") or "BR-01").strip() or "BR-01"
+def delete_pg_overtime(ot_id: int, organization_id: Optional[str] = None) -> None:
+    if not ot_id:
+        return
+    def _write(cur):
+        str_id = str(ot_id).strip()
+        if organization_id and _real_tenant(organization_id):
+            cur.execute(
+                "DELETE FROM overtime_records WHERE id = %s AND organization_id = %s",
+                (str_id, organization_id),
+            )
+        else:
+            cur.execute("DELETE FROM overtime_records WHERE id = %s", (str_id,))
+    _with_cursor(_write)
+
+
+def mirror_company_holiday(holiday: Dict[str, Any]) -> None:
+    org_id = str(holiday.get("organization_id") or "").strip()
+    branch_id = str(holiday.get("branch_id") or "DEFAULT_BRANCH").strip() or "DEFAULT_BRANCH"
     if not _real_tenant(org_id, branch_id):
         return
-    shift_id = str(row.get("id") or "").strip()
-    if not shift_id:
+    hid = str(holiday.get("id") or "").strip()
+    if not hid:
         return
+    h_date = str(holiday.get("holiday_date") or "").strip()
+    if not h_date:
+        return
+    name = str(holiday.get("name") or "Holiday").strip()
+    end_date = str(holiday.get("end_date") or h_date).strip()
+    desc = str(holiday.get("description") or "").strip()
+    is_rec = int(holiday.get("is_recurring") or 0)
+    ot_prem = float(holiday.get("overtime_premium_percent") or 0.0)
 
     def _write(cur):
         _ensure_tenant(cur, org_id, branch_id)
         cur.execute(
             """
-            INSERT INTO shifts (
-                id, organization_id, branch_id, name, start_time, end_time, grace_minutes
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO company_holidays (
+                id, organization_id, branch_id, name, holiday_date, end_date, description, is_recurring, overtime_premium_percent
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (organization_id, id) DO UPDATE SET
                 name = EXCLUDED.name,
-                start_time = EXCLUDED.start_time,
-                end_time = EXCLUDED.end_time,
-                grace_minutes = EXCLUDED.grace_minutes
+                holiday_date = EXCLUDED.holiday_date,
+                end_date = EXCLUDED.end_date,
+                description = EXCLUDED.description,
+                is_recurring = EXCLUDED.is_recurring,
+                overtime_premium_percent = EXCLUDED.overtime_premium_percent
             """,
-            (
-                shift_id,
-                org_id,
-                branch_id,
-                row.get("name") or f"Shift {shift_id}",
-                row.get("start_time") or "09:00",
-                row.get("end_time") or "18:00",
-                int(row.get("grace_period_minutes") or row.get("grace_minutes") or 15),
-            ),
+            (hid, org_id, branch_id, name, h_date, end_date, desc, is_rec, ot_prem),
         )
 
     return _with_cursor(_write)
+
+
+def delete_pg_company_holiday(holiday_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> None:
+    def _write(cur):
+        if organization_id and _real_tenant(organization_id):
+            cur.execute(
+                "DELETE FROM company_holidays WHERE organization_id = %s AND id = %s",
+                (organization_id, str(holiday_id)),
+            )
+        else:
+            cur.execute("DELETE FROM company_holidays WHERE id = %s", (str(holiday_id),))
+
+    _with_cursor(_write)
+
+
+def fetch_pg_company_holidays(organization_id: str, branch_id: Optional[str] = None) -> Optional[int]:
+    """Authoritatively fetch company holidays for a tenant from PostgreSQL into SQLite cache."""
+    if not postgres_is_configured() or not _real_tenant(organization_id):
+        return None
+    conn = _connect()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            query = """
+                SELECT id, organization_id, branch_id, name, holiday_date::text,
+                       COALESCE(end_date::text, holiday_date::text) as end_date,
+                       description, is_recurring, overtime_premium_percent
+                FROM company_holidays
+                WHERE organization_id = %s
+            """
+            params = [organization_id]
+            if branch_id and branch_id != 'all':
+                query += " AND (branch_id = %s OR branch_id = 'DEFAULT_BRANCH')"
+                params.append(branch_id)
+            cur.execute(query, params)
+            rows = list(cur.fetchall() or [])
+
+        with sqlite3.connect(_sqlite_path()) as sqlite_conn:
+            sqlite_cur = sqlite_conn.cursor()
+            for r in rows:
+                try:
+                    hid = int(str(r.get("id") or "").strip())
+                except (ValueError, TypeError):
+                    continue
+                sqlite_cur.execute(
+                    """
+                    INSERT INTO company_holidays (
+                        id, organization_id, branch_id, name, holiday_date, end_date, description, is_recurring, overtime_premium_percent
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(organization_id, branch_id, holiday_date) DO UPDATE SET
+                        name = excluded.name,
+                        end_date = excluded.end_date,
+                        description = excluded.description,
+                        is_recurring = excluded.is_recurring,
+                        overtime_premium_percent = excluded.overtime_premium_percent
+                    """,
+                    (
+                        hid,
+                        organization_id,
+                        r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
+                        r.get("name") or "Holiday",
+                        r.get("holiday_date"),
+                        r.get("end_date"),
+                        r.get("description") or "",
+                        int(r.get("is_recurring") or 0),
+                        float(r.get("overtime_premium_percent") or 0.0),
+                    ),
+                )
+            sqlite_conn.commit()
+        return len(rows)
+    except Exception as error:
+        logger.warning("Could not fetch company holidays from Postgres: %s", error)
+        return None
+    finally:
+        conn.close()
 
 
 def mirror_mobile_credentials(user_id: int, organization_id: str, password_hash: str) -> None:
@@ -1404,17 +1550,18 @@ def fetch_pg_leave_requests(organization_id: str, branch_id: Optional[str] = Non
                             r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
                         ),
                     )
-            # Prune phantom leave requests in SQLite that do not exist in PostgreSQL for this tenant
-            sqlite_query = "SELECT id FROM leave_requests WHERE organization_id = ?"
-            sq_params = [organization_id]
-            if user_id:
-                sqlite_query += " AND user_id = ?"
-                sq_params.append(user_id)
-            sqlite_cur.execute(sqlite_query, sq_params)
-            cached_ids = [row[0] for row in sqlite_cur.fetchall()]
-            for cid in cached_ids:
-                if cid not in pg_ids:
-                    sqlite_cur.execute("DELETE FROM leave_requests WHERE id = ? AND organization_id = ?", (cid, organization_id))
+            # Prune phantom leave requests in SQLite only during an UNFILTERED fetch for the tenant
+            if not user_id and not status:
+                sqlite_query = "SELECT id FROM leave_requests WHERE organization_id = ?"
+                sq_params = [organization_id]
+                if branch_id and branch_id != 'all':
+                    sqlite_query += " AND branch_id = ?"
+                    sq_params.append(branch_id)
+                sqlite_cur.execute(sqlite_query, sq_params)
+                cached_ids = [row[0] for row in sqlite_cur.fetchall()]
+                for cid in cached_ids:
+                    if cid not in pg_ids:
+                        sqlite_cur.execute("DELETE FROM leave_requests WHERE id = ? AND organization_id = ?", (cid, organization_id))
             sqlite_conn.commit()
         return len(rows)
     except Exception as error:
@@ -1608,17 +1755,18 @@ def fetch_pg_overtime_records(
                             r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
                         ),
                     )
-            # Prune phantom overtime in SQLite that do not exist in PostgreSQL for this tenant
-            sqlite_query = "SELECT id FROM overtime WHERE organization_id = ?"
-            sq_params = [organization_id]
-            if user_id:
-                sqlite_query += " AND user_id = ?"
-                sq_params.append(user_id)
-            sqlite_cur.execute(sqlite_query, sq_params)
-            cached_ids = [row[0] for row in sqlite_cur.fetchall()]
-            for cid in cached_ids:
-                if cid not in pg_ids:
-                    sqlite_cur.execute("DELETE FROM overtime WHERE id = ? AND organization_id = ?", (cid, organization_id))
+            # Prune phantom overtime in SQLite only during an UNFILTERED fetch for the tenant
+            if not user_id and not status and not start_date and not end_date:
+                sqlite_query = "SELECT id FROM overtime WHERE organization_id = ?"
+                sq_params = [organization_id]
+                if branch_id and branch_id != 'all':
+                    sqlite_query += " AND branch_id = ?"
+                    sq_params.append(branch_id)
+                sqlite_cur.execute(sqlite_query, sq_params)
+                cached_ids = [row[0] for row in sqlite_cur.fetchall()]
+                for cid in cached_ids:
+                    if cid not in pg_ids:
+                        sqlite_cur.execute("DELETE FROM overtime WHERE id = ? AND organization_id = ?", (cid, organization_id))
             sqlite_conn.commit()
         return len(rows)
     except Exception as error:
@@ -1663,7 +1811,19 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                        basic_salary, allowances, deductions, net_salary,
                        scheduled_workdays, present_days, absent_days, late_days,
                        approved_leave_days, payable_days,
-                       is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation
+                       is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation,
+                       COALESCE(gross_salary, 0.0) as gross_salary,
+                       COALESCE(overtime_amount, 0.0) as overtime_amount,
+                       COALESCE(overtime_hours, 0.0) as overtime_hours,
+                       COALESCE(bonus_amount, 0.0) as bonus_amount,
+                       COALESCE(arrears_amount, 0.0) as arrears_amount,
+                       COALESCE(adjustment_amount, 0.0) as adjustment_amount,
+                       COALESCE(unpaid_leave_deduction, 0.0) as unpaid_leave_deduction,
+                       COALESCE(off_day_extra_pay, 0.0) as off_day_extra_pay,
+                       COALESCE(custom_deductions, 0.0) as custom_deductions,
+                       COALESCE(paid_leave_days, 0) as paid_leave_days,
+                       COALESCE(unpaid_leave_days, 0) as unpaid_leave_days,
+                       COALESCE(total_leave_days, 0) as total_leave_days
                 FROM payroll_records
                 WHERE organization_id = %s AND payroll_run_id = %s
                 """,
@@ -1745,8 +1905,10 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                         basic_salary, allowances, deductions, deduction_amount, net_salary,
                         scheduled_workdays, present_days, absent_days, late_days,
                         approved_leave_days, payable_days,
-                        is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation,
+                        gross_salary, overtime_amount, overtime_hours, bonus_amount, arrears_amount, adjustment_amount,
+                        unpaid_leave_deduction, off_day_extra_pay, custom_deductions, paid_leave_days, unpaid_leave_days, total_leave_days
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(payroll_run_id, employee_id) DO UPDATE SET
                         basic_salary = excluded.basic_salary,
                         allowances = excluded.allowances,
@@ -1758,7 +1920,19 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                         unprorated_basic_salary = excluded.unprorated_basic_salary,
                         proration_days_paid = excluded.proration_days_paid,
                         proration_method_days = excluded.proration_method_days,
-                        proration_explanation = excluded.proration_explanation
+                        proration_explanation = excluded.proration_explanation,
+                        gross_salary = excluded.gross_salary,
+                        overtime_amount = excluded.overtime_amount,
+                        overtime_hours = excluded.overtime_hours,
+                        bonus_amount = excluded.bonus_amount,
+                        arrears_amount = excluded.arrears_amount,
+                        adjustment_amount = excluded.adjustment_amount,
+                        unpaid_leave_deduction = excluded.unpaid_leave_deduction,
+                        off_day_extra_pay = excluded.off_day_extra_pay,
+                        custom_deductions = excluded.custom_deductions,
+                        paid_leave_days = excluded.paid_leave_days,
+                        unpaid_leave_days = excluded.unpaid_leave_days,
+                        total_leave_days = excluded.total_leave_days
                     """,
                     (
                         target_run_id,
@@ -1780,6 +1954,18 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                         int(rec.get("proration_days_paid") or 0),
                         int(rec.get("proration_method_days") or 0),
                         str(rec.get("proration_explanation") or ""),
+                        float(rec.get("gross_salary") or 0.0),
+                        float(rec.get("overtime_amount") or 0.0),
+                        float(rec.get("overtime_hours") or 0.0),
+                        float(rec.get("bonus_amount") or 0.0),
+                        float(rec.get("arrears_amount") or 0.0),
+                        float(rec.get("adjustment_amount") or 0.0),
+                        float(rec.get("unpaid_leave_deduction") or 0.0),
+                        float(rec.get("off_day_extra_pay") or 0.0),
+                        float(rec.get("custom_deductions") or 0.0),
+                        int(rec.get("paid_leave_days") or 0),
+                        int(rec.get("unpaid_leave_days") or 0),
+                        int(rec.get("total_leave_days") or 0),
                     ),
                 )
             if target_run_id:
@@ -2081,6 +2267,21 @@ def mirror_payroll_run(run: Dict[str, Any], records: Optional[List[Dict[str, Any
                     int(r.get("proration_days_paid") or 0),
                     int(r.get("proration_method_days") or 0),
                     str(r.get("proration_explanation") or ""),
+                    float(r.get("gross_salary") or 0.0),
+                    float(r.get("overtime_amount") or 0.0),
+                    float(r.get("overtime_hours") or 0.0),
+                    float(r.get("overtime_rate") or 0.0),
+                    float(r.get("bonus_amount") or 0.0),
+                    float(r.get("arrears_amount") or 0.0),
+                    float(r.get("adjustment_amount") or 0.0),
+                    float(r.get("unpaid_leave_deduction") or 0.0),
+                    float(r.get("off_day_extra_pay") or 0.0),
+                    float(r.get("custom_deductions") or 0.0),
+                    int(r.get("paid_leave_days") or 0),
+                    int(r.get("unpaid_leave_days") or 0),
+                    int(r.get("total_leave_days") or 0),
+                    float(r.get("days_paid")) if r.get("days_paid") is not None else None,
+                    str(r.get("status") or "Finalized"),
                 ))
             if rec_tuples:
                 eids = list({t[4] for t in rec_tuples if t[4]})
@@ -2107,9 +2308,25 @@ def mirror_payroll_run(run: Dict[str, Any], records: Optional[List[Dict[str, Any
                         basic_salary, allowances, deductions, net_salary,
                         scheduled_workdays, present_days, absent_days, late_days,
                         approved_leave_days, payable_days,
-                        is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation
+                        is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation,
+                        gross_salary, overtime_amount, overtime_hours, overtime_rate,
+                        bonus_amount, arrears_amount, adjustment_amount, unpaid_leave_deduction,
+                        off_day_extra_pay, custom_deductions, paid_leave_days, unpaid_leave_days,
+                        total_leave_days, days_paid, status
                     ) VALUES %s
-                    ON CONFLICT (organization_id, id) DO NOTHING
+                    ON CONFLICT (organization_id, id) DO UPDATE SET
+                        basic_salary = EXCLUDED.basic_salary,
+                        allowances = EXCLUDED.allowances,
+                        deductions = EXCLUDED.deductions,
+                        net_salary = EXCLUDED.net_salary,
+                        gross_salary = EXCLUDED.gross_salary,
+                        overtime_amount = EXCLUDED.overtime_amount,
+                        bonus_amount = EXCLUDED.bonus_amount,
+                        arrears_amount = EXCLUDED.arrears_amount,
+                        adjustment_amount = EXCLUDED.adjustment_amount,
+                        unpaid_leave_deduction = EXCLUDED.unpaid_leave_deduction,
+                        off_day_extra_pay = EXCLUDED.off_day_extra_pay,
+                        custom_deductions = EXCLUDED.custom_deductions
                     """,
                     rec_tuples,
                     page_size=500,

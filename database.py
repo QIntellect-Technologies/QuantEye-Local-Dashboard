@@ -6762,7 +6762,10 @@ def delete_leave_request(leave_id: int, organization_id: Optional[str] = None) -
                     return False
             cursor.execute("DELETE FROM leave_requests WHERE id = ?", (leave_id,))
             conn.commit()
-            return cursor.rowcount > 0
+            deleted = cursor.rowcount > 0
+            if deleted:
+                _cloud_mirror("delete_pg_leave", leave_id, organization_id)
+            return deleted
     except Exception as e:
         logger.error(f"Delete leave request error: {e}")
         return False
@@ -6896,6 +6899,13 @@ def get_company_holidays(
     branch_id: Optional[str] = None,
 ) -> List[Dict]:
     """Get holidays scoped to the requested organization and branch."""
+    if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+        if postgres_is_configured():
+            try:
+                import postgres_mirror as cloud_pg
+                cloud_pg.fetch_pg_company_holidays(organization_id, branch_id)
+            except Exception as error:
+                logger.warning("Postgres unreachable for company holidays; falling back to SQLite cache: %s", error)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -6974,7 +6984,18 @@ def add_company_holiday(name: str, holiday_date: str, end_date: str = None, desc
                 (name, holiday_date, end_date, description, is_recurring, organization_id, branch_id)
             )
             conn.commit()
-            return cursor.lastrowid
+            holiday_id = cursor.lastrowid
+            _cloud_mirror("mirror_company_holiday", {
+                "id": holiday_id,
+                "name": name,
+                "holiday_date": holiday_date,
+                "end_date": end_date,
+                "description": description,
+                "is_recurring": is_recurring,
+                "organization_id": organization_id,
+                "branch_id": branch_id,
+            })
+            return holiday_id
     except Exception as e:
         logger.error(f"Add company holiday error: {e}")
         return None
@@ -6999,7 +7020,10 @@ def delete_company_holiday(
                 params.append(branch_id)
             cursor.execute(query, params)
             conn.commit()
-            return cursor.rowcount > 0
+            deleted = cursor.rowcount > 0
+            if deleted:
+                _cloud_mirror("delete_pg_company_holiday", holiday_id, organization_id, branch_id)
+            return deleted
     except Exception as e:
         logger.error(f"Delete company holiday error: {e}")
         return False
@@ -7035,7 +7059,19 @@ def update_company_holiday(
                 params.append(branch_id)
             cursor.execute(query, params)
             conn.commit()
-            return cursor.rowcount > 0
+            updated = cursor.rowcount > 0
+            if updated:
+                _cloud_mirror("mirror_company_holiday", {
+                    "id": holiday_id,
+                    "name": name,
+                    "holiday_date": holiday_date,
+                    "end_date": end_date,
+                    "description": description,
+                    "is_recurring": is_recurring,
+                    "organization_id": organization_id,
+                    "branch_id": branch_id,
+                })
+            return updated
     except Exception as e:
         logger.error(f"Update company holiday error: {e}")
         return False
@@ -8497,7 +8533,10 @@ def delete_overtime(
                 params.extend([branch_id, branch_id])
             cursor.execute(query, params)
             conn.commit()
-            return cursor.rowcount > 0
+            deleted = cursor.rowcount > 0
+            if deleted:
+                _cloud_mirror("delete_pg_overtime", ot_id, organization_id)
+            return deleted
     except Exception as e:
         logger.error(f"Delete overtime error: {e}")
         return False
