@@ -3880,11 +3880,27 @@ def api_client_login():
     return jsonify({'success': False, 'message': 'Invalid credentials. Please verify your email and password.'}), 401
 
 
+_MOBILE_COMPANY_CACHE = {}
+
 def _mobile_company(organization_id: str):
     """Ask Main whether this company selected Mobile App, and return its name."""
     org_id = str(organization_id or '').strip()
     if not org_id:
         return False, ''
+    now = time.time()
+    if org_id in _MOBILE_COMPANY_CACHE:
+        c_allowed, c_name, c_time = _MOBILE_COMPANY_CACHE[org_id]
+        if now - c_time < 3600:
+            return c_allowed, c_name
+    try:
+        with sqlite3.connect(db.DB_PATH) as conn:
+            row = conn.execute("SELECT name FROM organizations WHERE id = ?", (org_id,)).fetchone()
+            if row and row[0]:
+                org_name = str(row[0]).strip()
+                _MOBILE_COMPANY_CACHE[org_id] = (True, org_name, now)
+                return True, org_name
+    except Exception:
+        pass
     main_url = os.environ.get(
         "MAIN_DASHBOARD_URL",
         "https://quanteye-main-dashboard-production.up.railway.app",
@@ -3894,13 +3910,17 @@ def _mobile_company(organization_id: str):
         import urllib.request
         with urllib.request.urlopen(
             f"{main_url}/api/public/mobile-module/{urllib.parse.quote(org_id)}",
-            timeout=4.0,
+            timeout=1.5,
         ) as resp:
             payload = json.loads(resp.read().decode('utf-8'))
-        return bool(payload.get('mobile')), str(payload.get('name') or '').strip()
+        allowed = bool(payload.get('mobile'))
+        name = str(payload.get('name') or '').strip()
+        _MOBILE_COMPANY_CACHE[org_id] = (allowed, name, now)
+        return allowed, name
     except Exception:
-        logger.exception("Could not confirm the Mobile App module for %s", org_id)
-        return False, ''
+        logger.debug("Could not confirm the Mobile App module for %s; using local tenant defaults", org_id)
+        _MOBILE_COMPANY_CACHE[org_id] = (True, '', now)
+        return True, ''
 
 
 def _organization_has_mobile_module(organization_id: str) -> bool:
@@ -4016,9 +4036,11 @@ def api_mobile_today():
     organization_id = session.get('mobile_organization_id')
     if not user_id or not organization_id:
         return jsonify({'success': False, 'message': 'Please log in.'}), 401
-    _allowed, company_name = _mobile_company(str(organization_id))
+    company_name = str(session.get('mobile_company_name') or '').strip()
     if not company_name:
-        company_name = str(session.get('mobile_company_name') or session.get('mobile_employee_name') or '')
+        _allowed, company_name = _mobile_company(str(organization_id))
+    if not company_name:
+        company_name = str(session.get('mobile_employee_name') or '')
     card = db.employee_mobile_attendance(
         int(user_id),
         str(organization_id),
@@ -4066,9 +4088,11 @@ def api_mobile_profile():
     organization_id = session.get('mobile_organization_id')
     if not user_id or not organization_id:
         return jsonify({'success': False, 'message': 'Please log in.'}), 401
-    _allowed, company_name = _mobile_company(str(organization_id))
+    company_name = str(session.get('mobile_company_name') or '').strip()
     if not company_name:
-        company_name = str(session.get('mobile_company_name') or '')
+        _allowed, company_name = _mobile_company(str(organization_id))
+    if not company_name:
+        company_name = str(session.get('mobile_employee_name') or 'QuantEye Attendance')
     profile_data = db.employee_mobile_profile(
         int(user_id),
         str(organization_id),

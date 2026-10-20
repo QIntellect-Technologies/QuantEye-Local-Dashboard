@@ -56,6 +56,7 @@
     
     main {
       flex: 1;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       padding: 12px 18px 16px;
@@ -116,14 +117,23 @@
     .row span { color: var(--muted); }
     .row strong { text-align: right; color: var(--ink); font-weight: 600; }
     
-    /* Month View Styling */
+    /* Month View Styling - Pinned Summary with Inner Scroll (Option A) */
+    #monthCard {
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
     .month-header {
       display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+      margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
     }
     .month-header h3 { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--ink); }
     .month-stats {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px;
+      flex-shrink: 0;
     }
     .m-stat {
       background: #f8fafc; border: 1px solid var(--line); border-radius: 10px;
@@ -136,7 +146,36 @@
     .m-stat.amber strong { color: #b54708; }
     .m-stat.slate strong { color: #0f766e; }
     
-    .days-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+    .days-list-wrapper {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .days-list {
+      flex: 1;
+      min-height: 0;
+      max-height: calc(100dvh - 300px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 2px 4px 6px 0;
+      scroll-behavior: smooth;
+    }
+    .days-list::-webkit-scrollbar {
+      width: 5px;
+    }
+    .days-list::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 999px;
+    }
+    .days-list::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 999px;
+    }
     .day-item {
       display: flex; align-items: center; justify-content: space-between;
       padding: 10px 12px; background: #ffffff; border: 1px solid var(--line);
@@ -543,11 +582,11 @@
         </button>
       </section>
 
-      <!-- Tab 2: This Month Attendance Card -->
+      <!-- Tab 2: This Month Attendance Card (Option A: Pinned Header & Summary, Scrollable List) -->
       <section id="monthCard" class="card" hidden>
         <div class="month-header">
           <h3 id="monthTitle">This Month</h3>
-          <span id="monthSub" style="font-size:0.8rem; color:var(--muted); font-weight:600;">Daily Log</span>
+          <span id="monthSub" style="font-size:0.75rem; color:var(--muted); font-weight:600; background:#f1f5f9; padding:3px 8px; border-radius:999px;">Scroll to view all days</span>
         </div>
         <div class="month-stats">
           <div class="m-stat green"><span>Present</span><strong id="mStatPresent">0</strong></div>
@@ -555,8 +594,10 @@
           <div class="m-stat amber"><span>Leaves</span><strong id="mStatLeave">0</strong></div>
           <div class="m-stat slate"><span>Working</span><strong id="mStatWorking">0</strong></div>
         </div>
-        <div id="daysContainer" class="days-list">
-          <div style="text-align:center; padding:24px 0; color:var(--muted); font-size:0.9rem;">Loading monthly attendance...</div>
+        <div class="days-list-wrapper">
+          <div id="daysContainer" class="days-list">
+            <div style="text-align:center; padding:24px 0; color:var(--muted); font-size:0.9rem;">Loading monthly attendance...</div>
+          </div>
         </div>
       </section>
 
@@ -963,6 +1004,9 @@
       if (!punchPollingInterval) {
         punchPollingInterval = setInterval(checkLivePunch, 5000);
       }
+
+      // Preload profile in background for instant 0ms tab switching
+      loadProfileData();
 
       switchTab(currentTab);
     }
