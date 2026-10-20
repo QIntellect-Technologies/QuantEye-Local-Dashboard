@@ -414,6 +414,17 @@ def require_admin_session_for_app_data():
 
     return None
 
+
+@app.after_request
+def add_no_cache_headers(response):
+    """Ensure browsers do not hold stale HTML templates or rapid API polling responses."""
+    ct = response.headers.get('Content-Type', '')
+    if 'text/html' in ct or ct.startswith('application/json'):
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 # Ensure CUDA DLLs are discoverable for ONNX Runtime on Windows before any model is created.
 try:
     add_dll_fn = getattr(os, 'add_dll_directory', None)
@@ -3071,16 +3082,29 @@ def get_user_attendance(user_id):
     return jsonify({'user_id': user_id, 'logs': logs, 'days': days}), 200
 
 
+_stats_cache = {}
+_stats_cache_lock = threading.Lock()
+_STATS_CACHE_TTL = 5.0  # In-memory cache protects DB from rapid polling
+
+
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     try:
         current_tenant = get_current_tenant_id()
         current_branch = get_current_branch_id()
+        cache_key = (current_tenant, current_branch)
+        now_ts = time.time()
+
+        with _stats_cache_lock:
+            cached = _stats_cache.get(cache_key)
+            if cached and (now_ts - cached['time']) < _STATS_CACHE_TTL:
+                return jsonify(cached['data']), 200
+
         stats = db.get_attendance_statistics(organization_id=current_tenant, branch_id=current_branch)
         users = db.get_all_users(organization_id=current_tenant)
         total_users = len(users)
         present_users = stats.get('unique_users_today', 0)
-        return jsonify({
+        data = {
             'total_users': total_users,
             'present_users': present_users,
             'absent_users': max(total_users - present_users, 0),
@@ -3090,7 +3114,12 @@ def get_stats():
             'avg_confidence': stats.get('avg_confidence', 0),
             'recent_entries': stats.get('recent_entries', []),
             'timestamp': datetime.now().isoformat()
-        }), 200
+        }
+
+        with _stats_cache_lock:
+            _stats_cache[cache_key] = {'time': now_ts, 'data': data}
+
+        return jsonify(data), 200
     except Exception as e:
         logger.error(f"Stats endpoint error: {e}")
         return jsonify({'error': str(e)}), 500
