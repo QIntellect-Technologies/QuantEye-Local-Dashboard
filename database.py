@@ -2021,11 +2021,20 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COALESCE(shift_id, 1) FROM users WHERE id = ?", (user_id,))
-            current_shift_row = cursor.fetchone()
-            if not current_shift_row:
+            cursor.execute("SELECT COALESCE(shift_id, 1), join_date FROM users WHERE id = ?", (user_id,))
+            current_user_row = cursor.fetchone()
+            if not current_user_row:
                 return False
-            previous_shift_id = current_shift_row[0]
+            previous_shift_id = current_user_row[0]
+            existing_join_date = current_user_row[1]
+
+            effective_join = str(join_date).strip()[:10] if (join_date is not None and str(join_date).strip()) else (str(existing_join_date).strip()[:10] if existing_join_date else None)
+            norm_exit = str(exit_date).strip()[:10] if (exit_date is not None and str(exit_date).strip()) else (None if exit_date is not None else '__KEEP__')
+
+            if norm_exit and norm_exit != '__KEEP__' and effective_join:
+                if norm_exit < effective_join:
+                    raise ValueError("Exit date cannot be before joining date")
+
             effective_date = _normalize_shift_effective_date(shift_effective_from)
             persisted_shift_id = shift_id if effective_date <= datetime.now().date().isoformat() else None
             if shift_id is not None and (shift_id != previous_shift_id or shift_effective_from is not None):
@@ -2047,7 +2056,6 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                         "Changing this shift effective date reclassifies processed attendance. "
                         "Confirm to continue."
                     )
-            norm_exit = str(exit_date).strip()[:10] if (exit_date is not None and str(exit_date).strip()) else (None if exit_date is not None else '__KEEP__')
             cursor.execute('''
                 UPDATE users 
                 SET name = ?, email = ?, phone = ?, department = ?, notes = ?,
@@ -2174,12 +2182,18 @@ def deactivate_user(user_id: int, exit_date: Optional[str] = None, organization_
         raise ValueError('exit_date must use YYYY-MM-DD') from exc
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
-        if organization_id and organization_id != 'all':
-            cursor.execute("SELECT organization_id FROM users WHERE id = ?", (user_id,))
-            urow = cursor.fetchone()
-            if not urow or urow[0] != organization_id:
-                logger.warning(f"Tenant mismatch on deactivate_user {user_id}: belongs to {urow[0] if urow else None}, not {organization_id}")
-                return False
+        cursor.execute("SELECT organization_id, join_date FROM users WHERE id = ?", (user_id,))
+        urow = cursor.fetchone()
+        if not urow:
+            return False
+        if organization_id and organization_id != 'all' and urow[0] != organization_id:
+            logger.warning(f"Tenant mismatch on deactivate_user {user_id}: belongs to {urow[0]}, not {organization_id}")
+            return False
+        if urow[1]:
+            join_d = str(urow[1]).strip()[:10]
+            exit_d = str(exit_date).strip()[:10]
+            if exit_d < join_d:
+                raise ValueError("Exit date cannot be before joining date")
         cursor.execute(
             "UPDATE users SET active = 0, exit_date = ? WHERE id = ?",
             (str(exit_date)[:10], user_id),
@@ -8591,7 +8605,15 @@ def get_all_salary_configs(active_only: bool = True, department: Optional[str] =
                     COALESCE(s.ot_rate, 0.0) as ot_rate,
                     ROUND(COALESCE(s.basic_salary, u.salary, 0.0) + COALESCE(s.allowances, 0.0) - COALESCE(s.deductions, 0.0), 2) as net_estimated,
                     CASE WHEN s.user_id IS NOT NULL THEN 1 ELSE 0 END as is_configured,
-                    s.updated_at
+                    s.updated_at,
+                    COALESCE(
+                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c WHERE c.user_id = u.id AND c.active = 1),
+                        (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
+                        substr(s.updated_at, 1, 10),
+                        u.join_date,
+                        '2026-01-01'
+                    ) as effective_from,
+                    (SELECT COUNT(*) FROM payroll_employee_components c WHERE c.user_id = u.id AND c.active = 1) as named_lines_count
                 FROM users u
                 LEFT JOIN salary_configs s ON u.id = s.user_id
                 {where_clause}
@@ -8628,7 +8650,15 @@ def get_salary_config(user_id: int) -> Optional[Dict]:
                     COALESCE(s.ot_rate, 0.0) as ot_rate,
                     ROUND(COALESCE(s.basic_salary, u.salary, 0.0) + COALESCE(s.allowances, 0.0) - COALESCE(s.deductions, 0.0), 2) as net_estimated,
                     CASE WHEN s.user_id IS NOT NULL THEN 1 ELSE 0 END as is_configured,
-                    s.updated_at
+                    s.updated_at,
+                    COALESCE(
+                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c WHERE c.user_id = u.id AND c.active = 1),
+                        (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
+                        substr(s.updated_at, 1, 10),
+                        u.join_date,
+                        '2026-01-01'
+                    ) as effective_from,
+                    (SELECT COUNT(*) FROM payroll_employee_components c WHERE c.user_id = u.id AND c.active = 1) as named_lines_count
                 FROM users u
                 LEFT JOIN salary_configs s ON u.id = s.user_id
                 WHERE u.id = ?
@@ -9144,11 +9174,12 @@ def get_payroll_scoped_rules(
             conn.row_factory = sqlite3.Row
             rows = conn.execute('''
                 SELECT r.*,
-                       d.name AS department_name,
+                       COALESCE(d.name, d2.name, (SELECT name FROM departments WHERE CAST(id AS TEXT) = CAST(r.scope_id AS TEXT) OR name = r.scope_id LIMIT 1), r.scope_id) AS department_name,
                        u.name AS employee_name
                 FROM payroll_scoped_rules r
-                LEFT JOIN departments d ON r.scope_type = 'department' AND d.id = r.scope_id
-                LEFT JOIN users u ON r.scope_type = 'employee' AND u.id = r.scope_id
+                LEFT JOIN departments d ON r.scope_type = 'department' AND (CAST(d.id AS TEXT) = CAST(r.scope_id AS TEXT) OR d.name = r.scope_id)
+                LEFT JOIN departments d2 ON r.scope_type = 'department' AND d2.name COLLATE NOCASE = r.scope_id COLLATE NOCASE
+                LEFT JOIN users u ON r.scope_type = 'employee' AND (CAST(u.id AS TEXT) = CAST(r.scope_id AS TEXT))
                 WHERE r.active = 1
                   AND COALESCE(r.organization_id, 'DEFAULT_ORG') = ?
                   AND COALESCE(r.branch_id, 'DEFAULT_BRANCH') = ?
@@ -10244,8 +10275,10 @@ def list_employee_components(user_id: int, organization_id: Optional[str] = None
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         # QA-56: Fetch employee basic salary to calculate estimated/resulting amount for percentage lines
-        u_row = conn.execute("SELECT basic_salary FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        u_row = conn.execute("SELECT salary, organization_id, branch_id FROM users WHERE id = ?", (int(user_id),)).fetchone()
         basic_sal = float(u_row[0]) if (u_row and u_row[0] is not None) else 0.0
+        u_org = u_row[1] if u_row and u_row[1] else org
+
         s_row = conn.execute("SELECT basic_salary FROM salary_configs WHERE user_id = ?", (int(user_id),)).fetchone()
         if s_row and s_row[0] is not None:
             basic_sal = float(s_row[0])
@@ -10255,10 +10288,13 @@ def list_employee_components(user_id: int, organization_id: Optional[str] = None
                FROM payroll_employee_components c
                JOIN payroll_component_types t ON t.id = c.component_type_id
                WHERE c.user_id=?
-                 AND COALESCE(c.organization_id,'DEFAULT_ORG')=?
-                 AND COALESCE(c.branch_id,'DEFAULT_BRANCH')=?
-               ORDER BY t.kind, t.name""",
-            (int(user_id), org, branch),
+                 AND (
+                     c.organization_id IS NULL OR c.organization_id = ''
+                     OR COALESCE(c.organization_id,'DEFAULT_ORG') = ?
+                     OR c.organization_id = ?
+                 )
+               ORDER BY c.effective_from ASC, t.kind, t.name""",
+            (int(user_id), org, u_org),
         ).fetchall()
         result = []
         for row in rows:
@@ -11261,7 +11297,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         eligible_start = max(month_start, employed_from)
         eligible_end = min(period_end, exited_on) if exited_on else period_end
 
-        if eligible_start > month_end or (exited_on and exited_on < month_start):
+        if (exited_on and exited_on < employed_from) or eligible_start > month_end or (exited_on and exited_on < month_start) or eligible_start > eligible_end:
             continue
 
         daily_records = report_records[employee_id].get('daily_records', [])

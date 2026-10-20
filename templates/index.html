@@ -6370,7 +6370,7 @@ async function fetchMultiLiveDetections() {
                 </select>
               </label>
               <label class="payroll-rule-field">Which item
-                <select id="payLineAssignType" class="form-select"></select>
+                <select id="payLineAssignType" class="form-select" onchange="updatePayLineAssignInputs()"></select>
               </label>
               <label class="payroll-rule-field">Start date
                 <input id="payLineEffectiveFrom" class="form-control" type="date" required>
@@ -6378,8 +6378,11 @@ async function fetchMultiLiveDetections() {
               <label class="payroll-rule-field">Stop date (optional)
                 <input id="payLineEffectiveTo" class="form-control" type="date">
               </label>
-              <label class="payroll-rule-field">Amount (PKR, optional)
+              <label class="payroll-rule-field" id="payLineAmountWrap">Amount (PKR, optional)
                 <input id="payLineAmount" class="form-control" type="number" min="0" step="0.01" placeholder="Catalog default">
+              </label>
+              <label class="payroll-rule-field" id="payLinePercentWrap" style="display:none;">Percent (%, optional)
+                <input id="payLinePercent" class="form-control" type="number" min="0" max="100" step="0.01" placeholder="Catalog default">
               </label>
               <label class="payroll-rule-field">Lowest amount (PKR floor, optional)
                 <input id="payLineMinAmount" class="form-control" type="number" min="0" step="0.01" placeholder="No minimum">
@@ -8253,24 +8256,24 @@ async function fetchMultiLiveDetections() {
             <div style="font-weight:800; color:#173042; font-size:0.9em; margin-bottom:8px;">Named pay lines for this employee</div>
             <div class="payroll-rule-form">
               <label class="payroll-rule-field">Pay line
-                <select id="modalSalaryComponentType" class="form-select"></select>
+                <select id="modalSalaryComponentType" class="form-select" onchange="updateModalSalaryComponentInputs()"></select>
               </label>
-              <label class="payroll-rule-field">Amount
+              <label class="payroll-rule-field" id="modalSalaryComponentAmountWrap">Amount
                 <input id="modalSalaryComponentAmount" class="form-control" type="number" min="0" step="0.01" value="0">
               </label>
-              <label class="payroll-rule-field">Percent of basic
-                <input id="modalSalaryComponentPercent" class="form-control" type="number" min="0" step="0.01" value="0">
+              <label class="payroll-rule-field" id="modalSalaryComponentPercentWrap" style="display:none;">Percent of basic
+                <input id="modalSalaryComponentPercent" class="form-control" type="number" min="0" max="100" step="0.01" value="0">
               </label>
               <label class="payroll-rule-field">Effective from
                 <input id="modalSalaryComponentFrom" class="form-control" type="date" required>
               </label>
               <button type="button" class="btn btn-outline-primary btn-sm" onclick="assignEmployeePayLine()">Assign</button>
             </div>
-            <div style="font-size:0.75em; color:#0d9488; margin-top:4px; font-weight:600;"><i class="fa-solid fa-circle-info me-1"></i>Precedence: If both Amount and Percent of basic are entered, Percent of basic wins and calculates from basic salary (fixed Amount is ignored).</div>
+            <div id="modalSalaryPrecedenceHelp" style="font-size:0.75em; color:#0d9488; margin-top:4px; font-weight:600;"><i class="fa-solid fa-circle-info me-1"></i>Precedence: If both Amount and Percent of basic are entered, Percent of basic is used and calculated from basic salary (fixed Amount is ignored).</div>
             <div class="log-table-wrapper" style="margin-top:8px;">
               <table class="log-table" style="width:100%;">
-                <thead><tr><th>Line</th><th>Kind</th><th>Amount / %</th><th></th></tr></thead>
-                <tbody id="modalSalaryComponentBody"><tr><td colspan="4" class="text-muted text-center p-2">No named lines.</td></tr></tbody>
+                <thead><tr><th>Line</th><th>Kind</th><th>Amount / %</th><th>Effective</th><th></th></tr></thead>
+                <tbody id="modalSalaryComponentBody"><tr><td colspan="5" class="text-muted text-center p-2">No named lines.</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -11081,6 +11084,12 @@ async function fetchMultiLiveDetections() {
 
         if (!name) {
           showMessage("editModalMessage", "Name is required", "error");
+          return;
+        }
+
+        if (exit_date && join_date && exit_date < join_date) {
+          showMessage("editModalMessage", "Exit date cannot be before joining date", "error");
+          showAppToast("Exit date cannot be before joining date", "error");
           return;
         }
 
@@ -14347,11 +14356,13 @@ async function fetchMultiLiveDetections() {
             return;
           }
           tbody.innerHTML = rules.map(rule => {
-            const targetName = rule.scope_type === 'department' ? rule.department_name : rule.employee_name;
+            const targetName = rule.scope_type === 'department'
+              ? (rule.department_name || rule.scope_id || 'All Departments')
+              : (rule.employee_name || ('Employee #' + rule.scope_id));
             const modeLabel = rule.half_leave_quota_mode === 'monthly_cap' ? 'Cap: ' : (rule.half_leave_quota_mode === 'monthly_convert' ? 'Convert: ' : 'Category: ');
             return `<tr>
-              <td><span class="badge bg-secondary">${rule.scope_type}</span></td>
-              <td>${escapeHtml(targetName || '')}</td>
+              <td><span class="badge bg-secondary" style="text-transform:capitalize;">${escapeHtml(rule.scope_type)}</span></td>
+              <td><span style="font-weight:600; color:#173042;">${escapeHtml(targetName || '')}</span></td>
               <td>${modeLabel} ${rule.half_leaves_per_quota_day} half-leaves</td>
               <td class="text-end"><button class="btn btn-sm btn-outline-danger" onclick="deleteHalfLeaveSpecificRule(${rule.id})"><i class="fa-solid fa-trash"></i></button></td>
             </tr>`;
@@ -15679,6 +15690,16 @@ async function fetchMultiLiveDetections() {
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save pay line');
           const namedFlag = document.getElementById('flag_enable_named_components');
           if (namedFlag) namedFlag.checked = true;
+
+          // QA-57: Clear every field after a successful Add item
+          if (document.getElementById('payrollComponentName')) document.getElementById('payrollComponentName').value = '';
+          if (document.getElementById('payrollComponentCode')) document.getElementById('payrollComponentCode').value = '';
+          if (document.getElementById('payrollComponentKind')) document.getElementById('payrollComponentKind').value = 'earning';
+          if (document.getElementById('payrollComponentCategory')) document.getElementById('payrollComponentCategory').value = 'allowance';
+          if (document.getElementById('payrollComponentMode')) document.getElementById('payrollComponentMode').value = 'fixed';
+          if (document.getElementById('payrollComponentDefault')) document.getElementById('payrollComponentDefault').value = '0';
+          if (typeof updatePayrollComponentFieldLabels === 'function') updatePayrollComponentFieldLabels();
+
           showAppToast(`"${payload.name || 'Pay line'}" added successfully.`, 'success');
           await loadPayrollComponentTypes();
         } catch (error) {
@@ -15690,12 +15711,23 @@ async function fetchMultiLiveDetections() {
         }
       }
 
+      window.updatePayLineAssignInputs = function() {
+        const typeId = Number(document.getElementById('payLineAssignType')?.value);
+        const comp = (window._payrollComponentTypes || []).find(t => Number(t.id) === typeId);
+        const isPercent = comp && (comp.calc_mode === 'percent_basic' || comp.calc_mode === 'percent_gross');
+        const amtWrap = document.getElementById('payLineAmountWrap');
+        const pctWrap = document.getElementById('payLinePercentWrap');
+        if (amtWrap) amtWrap.style.display = isPercent ? 'none' : '';
+        if (pctWrap) pctWrap.style.display = isPercent ? '' : 'none';
+      };
+
       async function loadPayLineDuplicates() {
         const tbody = document.getElementById('payLineDuplicateBody');
         const typeSelect = document.getElementById('payLineAssignType');
         if (typeSelect && window._payrollComponentTypes) {
           typeSelect.innerHTML = (window._payrollComponentTypes || []).map((row) =>
             `<option value="${row.id}">${payrollEscape(row.name)}</option>`).join('');
+          updatePayLineAssignInputs();
         }
         if (!tbody) return;
         try {
@@ -15733,25 +15765,26 @@ async function fetchMultiLiveDetections() {
         const compTypeId = Number(document.getElementById('payLineAssignType')?.value);
         const currentType = (window._payrollComponentTypes || []).find(t => Number(t.id) === compTypeId);
         const calcMode = currentType?.calc_mode || document.getElementById('payrollComponentMode')?.value || 'fixed';
-
-        let customAmt = document.getElementById('payLineAmount')?.value;
-        let rawVal = 0;
-        let hasCustom = (customAmt !== '' && customAmt !== null && customAmt !== undefined);
-        if (hasCustom) {
-          rawVal = Number(customAmt);
-        } else {
-          rawVal = Number(currentType?.default_amount || document.getElementById('payrollComponentDefault')?.value || 0);
-        }
+        const isPercentMode = calcMode === 'percent_basic' || calcMode === 'percent_gross';
 
         let sendPercent = null;
         let sendAmount = null;
-        if (calcMode === 'percent_basic' || calcMode === 'percent_gross') {
-          if (rawVal < 0 || rawVal > 100) {
+
+        if (isPercentMode) {
+          let customPct = document.getElementById('payLinePercent')?.value;
+          let rawPct = (customPct !== '' && customPct !== null && customPct !== undefined)
+            ? Number(customPct)
+            : (document.getElementById('payLineAmount')?.value !== '' ? Number(document.getElementById('payLineAmount')?.value) : Number(currentType?.default_amount || 0));
+          if (rawPct < 0 || rawPct > 100) {
             showAppToast('Percentage must be between 0 and 100%', 'error');
             return;
           }
-          sendPercent = rawVal;
+          sendPercent = rawPct;
         } else {
+          let customAmt = document.getElementById('payLineAmount')?.value;
+          let rawVal = (customAmt !== '' && customAmt !== null && customAmt !== undefined)
+            ? Number(customAmt)
+            : Number(currentType?.default_amount || document.getElementById('payrollComponentDefault')?.value || 0);
           if (rawVal < 0) {
             showAppToast('Amount cannot be negative', 'error');
             return;
@@ -15776,7 +15809,7 @@ async function fetchMultiLiveDetections() {
             if (message) message.textContent = errStr;
             return;
           }
-          sendAmount = hasCustom ? rawVal : (currentType?.default_amount != null ? currentType.default_amount : rawVal);
+          sendAmount = (customAmt !== '' && customAmt !== null && customAmt !== undefined) ? rawVal : (currentType?.default_amount != null ? currentType.default_amount : rawVal);
         }
 
         const payload = {
@@ -15826,6 +15859,18 @@ async function fetchMultiLiveDetections() {
           if (message) message.textContent = 'Assignment saved.';
           const assignedName = currentType?.name || 'Pay line';
           showAppToast(`"${assignedName}" assigned successfully.`, 'success');
+
+          // QA-57: Clear every field after a successful assignment
+          if (document.getElementById('payLineScopeType')) document.getElementById('payLineScopeType').value = 'org';
+          if (typeof fillPayLineScopeOptions === 'function') fillPayLineScopeOptions();
+          if (document.getElementById('payLineEffectiveFrom')) document.getElementById('payLineEffectiveFrom').value = '';
+          if (document.getElementById('payLineEffectiveTo')) document.getElementById('payLineEffectiveTo').value = '';
+          if (document.getElementById('payLineAmount')) document.getElementById('payLineAmount').value = '';
+          if (document.getElementById('payLinePercent')) document.getElementById('payLinePercent').value = '';
+          if (document.getElementById('payLineMinAmount')) document.getElementById('payLineMinAmount').value = '';
+          if (document.getElementById('payLineMaxAmount')) document.getElementById('payLineMaxAmount').value = '';
+          if (document.getElementById('payLineExcluded')) document.getElementById('payLineExcluded').checked = false;
+
           await loadPayLineDuplicates();
         } catch (error) {
           showAppToast(error.message, 'error');
@@ -15922,6 +15967,22 @@ async function fetchMultiLiveDetections() {
         }
       }
 
+      window.updateModalSalaryComponentInputs = function() {
+        const typeId = Number(document.getElementById('modalSalaryComponentType')?.value);
+        const comp = (window._payrollComponentTypes || []).find(t => Number(t.id) === typeId);
+        const isPercent = comp && (comp.calc_mode === 'percent_basic' || comp.calc_mode === 'percent_gross');
+        const amtWrap = document.getElementById('modalSalaryComponentAmountWrap');
+        const pctWrap = document.getElementById('modalSalaryComponentPercentWrap');
+        if (amtWrap) amtWrap.style.display = isPercent ? 'none' : '';
+        if (pctWrap) pctWrap.style.display = isPercent ? '' : 'none';
+        const help = document.getElementById('modalSalaryPrecedenceHelp');
+        if (help) {
+          help.textContent = isPercent
+            ? 'ℹ️ Percentage item: Set the percentage of basic. The monthly PKR amount will be calculated from basic salary.'
+            : 'ℹ️ Fixed item: Set the fixed monthly PKR amount.';
+        }
+      };
+
       async function loadEmployeePayLines(userId) {
         const tbody = document.getElementById('modalSalaryComponentBody');
         const select = document.getElementById('modalSalaryComponentType');
@@ -15930,6 +15991,7 @@ async function fetchMultiLiveDetections() {
           if (!window._payrollComponentTypes) await loadPayrollComponentTypes();
           if (select) {
             select.innerHTML = (window._payrollComponentTypes || []).map((row) => `<option value="${row.id}">${payrollEscape(row.name)} (${payrollEscape(row.kind)})</option>`).join('');
+            updateModalSalaryComponentInputs();
           }
           const response = await fetch(`${API_BASE}/payroll/employee-components/${userId}`);
           const result = await response.json();
@@ -15947,28 +16009,34 @@ async function fetchMultiLiveDetections() {
             } else {
               valStr = payrollMoney(row.amount);
             }
+            const effFrom = row.effective_from || '2026-01-01';
+            const effTo = row.effective_to ? `<br><small class="text-muted">to ${escapeSalaryHtml(row.effective_to)}</small>` : '<br><small class="text-success font-weight-bold">Ongoing</small>';
             return `
             <tr>
-              <td>${payrollEscape(row.name)}</td>
-              <td>${payrollEscape(row.kind)}</td>
+              <td><strong>${payrollEscape(row.name)}</strong></td>
+              <td><span class="badge ${row.kind === 'deduction' ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'}">${payrollEscape(row.kind === 'deduction' ? 'Takes from pay' : 'Adds to pay')}</span></td>
               <td><strong>${valStr}</strong></td>
+              <td><span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd;">From ${escapeSalaryHtml(effFrom)}</span>${effTo}</td>
               <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteEmployeePayLine(${row.id}, ${userId})">Remove</button></td>
             </tr>`;
-          }).join('') : '<tr><td colspan="4" class="text-muted text-center p-2">No named lines.</td></tr>';
+          }).join('') : '<tr><td colspan="5" class="text-muted text-center p-2">No named lines.</td></tr>';
         } catch (error) {
-          tbody.innerHTML = `<tr><td colspan="4" class="text-danger text-center p-2">${payrollEscape(error.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center p-2">${payrollEscape(error.message)}</td></tr>`;
         }
       }
 
       async function assignEmployeePayLine() {
         const uid = document.getElementById('modalSalaryUserId')?.value;
         if (!uid) return;
+        const typeId = Number(document.getElementById('modalSalaryComponentType')?.value);
+        const comp = (window._payrollComponentTypes || []).find(t => Number(t.id) === typeId);
+        const isPercent = comp && (comp.calc_mode === 'percent_basic' || comp.calc_mode === 'percent_gross');
         const payload = {
           user_id: Number(uid),
           scope: 'employee',
-          component_type_id: Number(document.getElementById('modalSalaryComponentType')?.value),
-          amount: Number(document.getElementById('modalSalaryComponentAmount')?.value || 0),
-          percent: Number(document.getElementById('modalSalaryComponentPercent')?.value || 0),
+          component_type_id: typeId,
+          amount: isPercent ? 0 : Number(document.getElementById('modalSalaryComponentAmount')?.value || 0),
+          percent: isPercent ? Number(document.getElementById('modalSalaryComponentPercent')?.value || 0) : 0,
           effective_from: document.getElementById('modalSalaryComponentFrom')?.value || undefined
         };
         let response = await fetch(`${API_BASE}/payroll/employee-components`, {
@@ -15995,11 +16063,13 @@ async function fetchMultiLiveDetections() {
           showAppToast(result.error || 'Could not assign pay line', 'error');
           return;
         }
-        // QA-57: Reset amount and percent of basic fields after successful assign
+        // QA-57: Reset amount, percent, and effective date fields after successful assign
         const amtInput = document.getElementById('modalSalaryComponentAmount');
         if (amtInput) amtInput.value = '0';
         const pctInput = document.getElementById('modalSalaryComponentPercent');
         if (pctInput) pctInput.value = '0';
+        const fromInput = document.getElementById('modalSalaryComponentFrom');
+        if (fromInput) fromInput.value = '';
 
         // QA-58: Short success message naming the item
         const compSelect = document.getElementById('modalSalaryComponentType');
@@ -16546,6 +16616,9 @@ async function fetchMultiLiveDetections() {
               <td style="padding: 12px 14px;">
                 <div style="font-weight:600; color:#334155; font-size:0.85em;">${escapeSalaryHtml(dept)}</div>
                 <div style="font-size:0.75em; color:#64748b;">${escapeSalaryHtml(desig)}</div>
+                <div style="font-size:0.73em; color:#0369a1; font-weight:600; margin-top:3px;">
+                  <i class="fa-solid fa-calendar-check me-1"></i>From ${escapeSalaryHtml(item.effective_from || '1 Jan 2026')}${item.named_lines_count ? ` · <span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:0.9em; font-weight:700;">${item.named_lines_count} lines</span>` : ''}
+                </div>
               </td>
               <td style="padding: 12px 14px; text-align:right; font-weight:700; color:#0f172a; font-size:0.88em;">
                 ${formatSalaryCurrency(item.basic_salary)}
@@ -16656,7 +16729,7 @@ async function fetchMultiLiveDetections() {
         document.getElementById('modalSalaryDeductions').value = parseFloat(item.deductions) || 0;
         document.getElementById('modalSalaryOtRate').value = parseFloat(item.ot_rate) || 0;
         const effective = document.getElementById('modalSalaryEffectiveFrom');
-        if (effective && !effective.value) effective.value = new Date().toISOString().slice(0, 10);
+        if (effective) effective.value = item.effective_from || '2026-01-01';
 
         window._currentSalaryWorkingHours = Number(item.applicable_working_hours || item.ot_hour_divisor || 208);
         const otBtn = document.getElementById('modalSalaryCalcOtBtn');
@@ -18358,251 +18431,262 @@ async function fetchMultiLiveDetections() {
 
       tbody.innerHTML = pagedGroups.map((group, gIdx) => {
         const uid = String(group.user_id || gIdx);
-        const headerRow = `
-          <tr class="table-light leave-employee-group-header" style="background:#f1f5f9; border-top:2px solid #cbd5e1; cursor:pointer;" onclick="toggleLeaveEmployeeGroup('${uid}')">
-            <td colspan="7" style="padding:10px 14px; font-weight:700; color:#1e293b;">
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <i id="chevron-emp-${uid}" class="fa-solid fa-chevron-down" style="font-size:0.85em; color:#64748b; transition:transform 0.2s;"></i>
-                  <span style="font-size:1.02em; color:#0f172a;">${escapeHtml(group.user_name)}</span>
-                  ${group.department ? `<span class="badge bg-secondary-subtle text-secondary" style="font-size:0.75em;">${escapeHtml(group.department)}</span>` : ''}
-                  <span class="badge bg-primary-subtle text-primary" style="font-size:0.75em;">${group.requests.length} leave request${group.requests.length === 1 ? '' : 's'}</span>
+        const reqs = group.requests || [];
+        const types = Array.from(new Set(reqs.map(r => r.leave_type || 'annual'))).map(t => escapeHtml(String(t).replace(/_/g, ' '))).join(', ');
+        const totalDays = reqs.reduce((sum, r) => sum + (Number(r.requested_days) || 1), 0);
+        const totalPaid = reqs.reduce((sum, r) => sum + (Number(r.paid_days != null ? r.paid_days : (r.leave_type === 'unpaid' ? 0 : r.requested_days)) || 0), 0);
+        const totalUnpaid = reqs.reduce((sum, r) => sum + (Number(r.unpaid_days != null ? r.unpaid_days : (r.leave_type === 'unpaid' ? r.requested_days : 0)) || 0), 0);
+
+        const starts = reqs.map(r => r.start_date).filter(Boolean).sort();
+        const ends = reqs.map(r => r.end_date || r.start_date).filter(Boolean).sort();
+        const dateSpanStr = (starts[0] && ends[ends.length - 1])
+          ? (starts[0] === ends[ends.length - 1] ? starts[0] : `${starts[0]} &rarr; ${ends[ends.length - 1]}`)
+          : '--';
+
+        const pendingCount = reqs.filter(r => r.status === 'pending' || r.paid_status === 'pending' || r.unpaid_status === 'pending').length;
+        const approvedCount = reqs.filter(r => r.status === 'approved').length;
+        const partialCount = reqs.filter(r => r.status === 'partially_approved').length;
+        const rejectedCount = reqs.filter(r => r.status === 'rejected').length;
+
+        let statusBadges = [];
+        if (pendingCount) statusBadges.push(`<span class="badge bg-warning-subtle text-warning-emphasis">${pendingCount} Pending</span>`);
+        if (approvedCount) statusBadges.push(`<span class="badge bg-success-subtle text-success">${approvedCount} Approved</span>`);
+        if (partialCount) statusBadges.push(`<span class="badge bg-info-subtle text-info">${partialCount} Partial</span>`);
+        if (rejectedCount) statusBadges.push(`<span class="badge bg-danger-subtle text-danger">${rejectedCount} Rejected</span>`);
+        if (!statusBadges.length) statusBadges.push(`<span class="badge bg-secondary-subtle text-secondary">Done</span>`);
+
+        const reasons = reqs.map(r => r.reason).filter(Boolean);
+        const reasonStr = reasons.length ? reasons.join('; ') : '--';
+
+        return `
+          <tr style="border-bottom:1px solid #f1f5f9; transition:background 0.15s ease;">
+            <td style="padding:12px 14px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:34px; height:34px; border-radius:50%; background:#0284c7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.85em; flex-shrink:0;">
+                  ${String(group.user_name || 'U').charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <small style="color:#64748b; font-weight:500;">Click to collapse/expand</small>
+                  <div style="font-weight:700; color:#0f172a; font-size:0.92em;">${escapeHtml(group.user_name)}</div>
+                  <div style="font-size:0.75em; color:#64748b;">
+                    ${group.department ? `<span class="badge bg-secondary-subtle text-secondary me-1">${escapeHtml(group.department)}</span>` : ''}
+                    <span class="badge bg-primary-subtle text-primary">${reqs.length} leave request${reqs.length === 1 ? '' : 's'}</span>
+                  </div>
                 </div>
               </div>
             </td>
+            <td style="padding:12px 14px; text-transform:capitalize; font-weight:600; color:#334155; font-size:0.85em;">
+              ${types}
+            </td>
+            <td style="padding:12px 14px;">
+              <div style="font-weight:600; color:#475569; font-size:0.85em; font-family:'JetBrains Mono', monospace;">${dateSpanStr}</div>
+              <span class="badge bg-teal-subtle text-teal" style="font-size:0.75em; color:#0d9488; background:#ccfbf1; padding:2px 6px; border-radius:4px;">${totalDays} day(s) total</span>
+            </td>
+            <td style="padding:12px 14px;">
+              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                <span class="badge bg-success-subtle text-success">${totalPaid} paid</span>
+                ${totalUnpaid ? `<span class="badge bg-warning-subtle text-warning-emphasis">${totalUnpaid} unpaid</span>` : ''}
+              </div>
+            </td>
+            <td style="padding:12px 14px; max-width:200px; font-size:0.82em; color:#64748b;" title="${escapeHtml(reasonStr)}">
+              <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(reasonStr)}</div>
+            </td>
+            <td style="padding:12px 14px;">
+              <div style="display:flex; flex-direction:column; gap:2px;">${statusBadges.join(' ')}</div>
+            </td>
+            <td style="padding:12px 14px; text-align:right;">
+              <button type="button" class="btn btn-sm btn-primary" onclick="openEmployeeCompleteView('${uid}')" style="background:#3d9fd4; border:none; font-weight:700; border-radius:6px; padding:5px 12px; font-size:0.82em;" title="View all leaves for ${escapeHtml(group.user_name)}">
+                <i class="fa-solid fa-eye me-1"></i> Complete View
+              </button>
+            </td>
           </tr>
         `;
-        const requestRows = group.requests.map(req => {
-          const start = req.start_date || '--';
-          const end = req.end_date || '--';
-          let numDays = Number(req.requested_days);
-          let isInvalidRange = false;
-          if (!Number.isFinite(numDays)) numDays = 1;
-          try {
-            if (req.start_date && req.end_date) {
-              const d1 = new Date(req.start_date);
-              const d2 = new Date(req.end_date);
-              if (d2 < d1) {
-                isInvalidRange = true;
-                numDays = 0;
-              } else if (req.requested_days == null) {
-                numDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
-              }
-            }
-          } catch (e) {}
-
-          let statusBadge = '<span class="badge bg-warning-subtle text-warning-emphasis">Pending</span>';
-          if (req.status === 'approved') statusBadge = '<span class="badge bg-success-subtle text-success">Approved</span>';
-          else if (req.status === 'partially_approved') {
-            const apprDays = Number(req.approved_days != null ? req.approved_days : (req.paid_status === 'approved' ? (req.paid_days || 0) : 0));
-            const pendDays = Number(req.pending_days != null ? req.pending_days : (req.unpaid_status === 'pending' ? (req.unpaid_days || 0) : 0));
-            const rejDays = Number(req.rejected_days != null ? req.rejected_days : 0);
-            const paidAppr = Number(req.paid_approved_days != null ? req.paid_approved_days : (req.paid_status === 'approved' ? (req.paid_days || 0) : 0));
-            const unpaidAppr = Number(req.unpaid_approved_days != null ? req.unpaid_approved_days : (req.unpaid_status === 'approved' ? (req.unpaid_days || 0) : 0));
-            statusBadge = `<div style="display:flex; flex-direction:column; gap:2px;">
-              <span class="badge bg-info-subtle text-info">Partially Approved</span>
-              <div style="display:flex; flex-wrap:wrap; gap:2px; font-size:0.7em;">
-                <span class="badge bg-success-subtle text-success" title="Approved Days">${apprDays} Approved</span>
-                ${pendDays ? `<span class="badge bg-warning-subtle text-warning-emphasis" title="Pending Days">${pendDays} Pending</span>` : ''}
-                ${rejDays ? `<span class="badge bg-danger-subtle text-danger" title="Rejected Days">${rejDays} Rejected</span>` : ''}
-                <span class="badge" style="background:#e0f2fe; color:#0369a1;" title="Paid Approved Days">${paidAppr} Paid</span>
-                ${unpaidAppr ? `<span class="badge" style="background:#fef3c7; color:#92400e;" title="Unpaid Approved Days">${unpaidAppr} Unpaid</span>` : ''}
-              </div>
-            </div>`;
-          } else if (req.status === 'rejected') statusBadge = '<span class="badge bg-danger-subtle text-danger">Rejected</span>';
-          else if (req.status === 'cancelled_worked') statusBadge = '<span class="badge bg-secondary text-white">Restored (Worked)</span>';
-
-          const leaveType = String(req.leave_type || 'annual').toLowerCase();
-          const paidDays = Number(req.paid_days != null ? req.paid_days : (leaveType === 'unpaid' ? 0 : numDays));
-          const unpaidDays = Number(req.unpaid_days != null ? req.unpaid_days : (leaveType === 'unpaid' ? numDays : 0));
-          let actionBtns = `<button class="btn btn-sm btn-outline-primary py-0 px-2" onclick="openLeaveCompleteView(${req.id})" title="View complete leave request"><i class="fa-solid fa-eye"></i> Complete View</button>`;
-          if (req.status === 'pending' || req.paid_status === 'pending' || req.unpaid_status === 'pending') {
-            actionBtns += ` <button class="btn btn-sm btn-outline-danger py-0 px-2 ms-1" onclick="promptRejectLeave(${req.id})" title="Reject leave request"><i class="fa-solid fa-xmark"></i> Reject</button>`;
-          } else if (req.status === 'rejected') {
-            actionBtns += ` <button class="btn btn-sm btn-outline-success py-0 px-2 ms-1" onclick="updateLeaveStatus(${req.id}, 'approved')" title="Approve leave request"><i class="fa-solid fa-check"></i> Approve</button>`;
-          }
-
-          const halfLeaveCount = Number(req.half_leave_count || (req.leave_duration === 'half' ? 1 : 0));
-          const fullDayCount = Math.max(0, numDays - halfLeaveCount);
-          const isHalfDay = req.leave_duration === 'half' || (halfLeaveCount === 1 && fullDayCount === 0);
-          const timeSpan = (isHalfDay && req.start_time) ? ` (${req.start_time}${req.end_time ? ' - ' + req.end_time : ''})` : '';
-          const durationLabel = isHalfDay
-            ? `Half Day${timeSpan}`
-            : (halfLeaveCount || fullDayCount
-              ? `${fullDayCount ? `${fullDayCount} day(s)` : ''}${fullDayCount && halfLeaveCount ? ' + ' : ''}${halfLeaveCount ? `${halfLeaveCount} half leave(s)` : ''}`
-              : `${numDays} day(s)`);
-          const daysBadge = isInvalidRange
-            ? `<span class="badge bg-danger text-white" style="font-size:0.75em; padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-triangle-exclamation"></i> Invalid range</span>`
-            : `<span class="badge bg-teal-subtle text-teal" style="font-size:0.75em; color:#0d9488; background:#ccfbf1; padding:2px 6px; border-radius:4px;">${durationLabel}</span>`;
-          const halfLeaveBadge = halfLeaveCount ? `<span class="badge bg-info-subtle text-info">${isHalfDay ? `Half Day${timeSpan}` : `${halfLeaveCount} half leave(s)`}</span>` : '';
-          const fullDaySplit = fullDayCount
-            ? `<span class="badge bg-success-subtle text-success">${paidDays} paid</span><span class="badge bg-warning-subtle text-warning-emphasis">${unpaidDays} unpaid</span>`
-            : '';
-
-          return `
-            <tr class="leave-request-child-row leave-emp-group-${uid}">
-              <td style="font-weight:700; color:#173042; padding-left:24px;">
-                <span class="badge bg-light text-dark border">#${req.id}</span>
-              </td>
-              <td><span class="badge bg-light text-dark border" style="text-transform:capitalize;">${escapeHtml(req.leave_type || 'annual')}</span></td>
-              <td>
-                <div style="font-weight:600; color:#475569; font-size:0.88em; font-family:'JetBrains Mono', monospace;">${start}${isHalfDay ? timeSpan : (start !== end ? ` &rarr; ${end}` : '')}</div>
-                ${daysBadge}
-              </td>
-              <td><div style="display:flex; flex-wrap:wrap; gap:4px;">${halfLeaveBadge}${fullDaySplit}</div></td>
-              <td style="max-width:200px; font-size:0.85em; color:#64748b;" title="${escapeHtml(req.reason || '')}">
-                <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(req.reason || '--')}</div>
-              </td>
-              <td>
-                <div>${statusBadge}</div>
-                ${req.approved_by ? `<small style="color:#64748b; font-size:0.75em;">by ${escapeHtml(req.approved_by)}</small>` : ''}
-              </td>
-              <td class="text-end">${actionBtns}</td>
-            </tr>
-          `;
-        }).join('');
-        return headerRow + requestRows;
       }).join('');
     }
 
-    window.toggleLeaveEmployeeGroup = function(userId) {
-      const rows = document.querySelectorAll(`.leave-emp-group-${userId}`);
-      const chevron = document.getElementById(`chevron-emp-${userId}`);
-      let isHidden = false;
-      rows.forEach(r => {
-        if (r.style.display === 'none') {
-          r.style.display = '';
-          isHidden = false;
-        } else {
-          r.style.display = 'none';
-          isHidden = true;
-        }
-      });
-      if (chevron) {
-        chevron.style.transform = isHidden ? 'rotate(-90deg)' : 'rotate(0deg)';
-      }
-    };
-
     let leaveCompletePreviousBodyOverflow = null;
+
+    function openEmployeeCompleteView(userId) {
+      const userRequests = _allLeaveRequests.filter(req => String(req.user_id) === String(userId));
+      if (!userRequests || !userRequests.length) {
+        showAppToast('No leave requests found for this employee.', 'info');
+        return;
+      }
+      openLeavesCompleteViewForRequests(userRequests);
+    }
+    window.openEmployeeCompleteView = openEmployeeCompleteView;
+
     function openLeaveCompleteView(leaveId) {
       const selectedRequest = _leaveRequestDisplayData.get(String(leaveId)) || _allLeaveRequests.find(item => String(item.id) === String(leaveId));
       if (!selectedRequest) return;
+      openLeavesCompleteViewForRequests([selectedRequest]);
+    }
+    window.openLeaveCompleteView = openLeaveCompleteView;
+
+    function openLeavesCompleteViewForRequests(requests) {
+      if (!requests || !requests.length) return;
       const statusFilter = document.getElementById('leaveStatusFilter')?.value || 'all';
-      let request = selectedRequest;
-      let scopedRequestCount = 1;
-      let scopedLeaveCount = 1;
-      const requestedDays = Number(request.requested_days || 0);
-      const leaveType = String(request.leave_type || 'annual').replace(/_/g, ' ');
-      const paidDays = Number(request.paid_days != null ? request.paid_days : (leaveType.toLowerCase() === 'unpaid' ? 0 : requestedDays));
-      const unpaidDays = Number(request.unpaid_days != null ? request.unpaid_days : (leaveType.toLowerCase() === 'unpaid' ? requestedDays : 0));
-      const quotaDays = Number(request.quota_days != null ? request.quota_days : (leaveType.toLowerCase() === 'unpaid' ? 0 : requestedDays));
-      const requestTypeLabel = leaveType.replace(/\b\w/g, char => char.toUpperCase());
-      const quotaThroughDate = request.quota_through_date || request.paid_through_date;
-      const nextIsoDate = dateValue => {
-        if (!dateValue) return request.start_date;
+      const firstReq = requests[0];
+      const isMulti = requests.length > 1;
+
+      let totalRequestedDays = 0;
+      let totalPaidDays = 0;
+      let totalUnpaidDays = 0;
+      let totalQuotaDays = 0;
+      let allSegments = [];
+      const distinctTypes = new Set();
+      const approvers = new Set();
+      const allDates = [];
+
+      const nextIsoDate = (dateValue, startFallback) => {
+        if (!dateValue) return startFallback;
         const [year, month, day] = dateValue.split('-').map(Number);
         const nextDate = new Date(year, month - 1, day + 1);
         return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
       };
-      const segments = Array.isArray(request.child_requests) ? request.child_requests.map(child => {
-        const childType = String(child.leave_type || '').toLowerCase();
-        const isHalfLeave = child.leave_duration === 'half';
-        const days = isHalfLeave ? 1 : Number(child.requested_days || 0);
-        const isUnpaid = childType === 'unpaid' || Number(child.unpaid_days || 0) > 0;
-        const requestPrefix = statusFilter !== 'all' && scopedRequestCount > 1
-          ? `Request #${child.parent_request_id || child.id} · `
-          : '';
-        return {
-          id: Number(child.id),
-          label: isHalfLeave
-            ? `${requestPrefix}${childType.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())} Half Leave`
-            : `${requestPrefix}${childType === 'excess_paid' ? 'Paid Leave (Quota Override)' : childType === 'unpaid' ? 'Unpaid Leave' : `${childType.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())} Leave`}`,
-          start: child.start_date,
-          end: child.end_date,
-          reason: child.reason || '',
-          days,
-          unit: isHalfLeave ? 'half leave(s)' : 'day(s)',
-          treatment: isUnpaid ? 'Unpaid' : 'Paid',
-          pending: String(child.status || 'pending').toLowerCase() === 'pending',
-          status: String(child.status || 'pending').replace(/\b\w/g, char => char.toUpperCase())
-        };
-      }) : [];
-      if (!segments.length && request.leave_duration === 'half') {
-        const isUnpaid = leaveType.toLowerCase() === 'unpaid';
-        const st = (isUnpaid ? (request.unpaid_status || request.status) : (request.paid_status || request.status)) || 'pending';
-        segments.push({
-          id: Number(request.id),
-          portion: isUnpaid ? 'unpaid' : 'paid',
-          label: `${requestTypeLabel} Half Leave`,
-          start: request.start_date,
-          end: request.end_date,
-          reason: request.reason || '',
-          days: 1,
-          unit: 'half leave(s)',
-          treatment: isUnpaid ? 'Unpaid' : 'Paid',
-          pending: String(st).toLowerCase() === 'pending',
-          status: String(st).replace(/\b\w/g, char => char.toUpperCase())
-        });
-      } else if (!segments.length && quotaDays > 0) {
-        const pSt = request.paid_status || (request.status === 'partially_approved' ? 'approved' : request.status) || 'pending';
-        segments.push({
-          id: Number(request.id),
-          portion: 'paid',
-          label: `${requestTypeLabel} Leave`,
-          start: request.start_date,
-          end: quotaThroughDate || request.end_date,
-          reason: request.reason || '',
-          days: quotaDays,
-          unit: 'day(s)',
-          treatment: 'Paid',
-          pending: String(pSt).toLowerCase() === 'pending',
-          status: String(pSt).replace(/\b\w/g, char => char.toUpperCase())
-        });
+
+      for (const req of requests) {
+        const requestedDays = Number(req.requested_days || 0);
+        totalRequestedDays += requestedDays;
+        const leaveType = String(req.leave_type || 'annual').replace(/_/g, ' ');
+        distinctTypes.add(leaveType.replace(/\b\w/g, char => char.toUpperCase()));
+        if (req.approved_by) approvers.add(req.approved_by);
+        if (req.start_date) allDates.push(req.start_date);
+        if (req.end_date) allDates.push(req.end_date);
+
+        const paidDays = Number(req.paid_days != null ? req.paid_days : (leaveType.toLowerCase() === 'unpaid' ? 0 : requestedDays));
+        totalPaidDays += paidDays;
+        const unpaidDays = Number(req.unpaid_days != null ? req.unpaid_days : (leaveType.toLowerCase() === 'unpaid' ? requestedDays : 0));
+        totalUnpaidDays += unpaidDays;
+        const quotaDays = Number(req.quota_days != null ? req.quota_days : (leaveType.toLowerCase() === 'unpaid' ? 0 : requestedDays));
+        totalQuotaDays += quotaDays;
+        const requestTypeLabel = leaveType.replace(/\b\w/g, char => char.toUpperCase());
+        const quotaThroughDate = req.quota_through_date || req.paid_through_date;
+
+        const reqPrefix = isMulti ? `Request #${req.id} · ` : '';
+
+        if (Array.isArray(req.child_requests) && req.child_requests.length) {
+          req.child_requests.forEach(child => {
+            const childType = String(child.leave_type || '').toLowerCase();
+            const isHalfLeave = child.leave_duration === 'half';
+            const days = isHalfLeave ? 1 : Number(child.requested_days || 0);
+            const isUnpaid = childType === 'unpaid' || Number(child.unpaid_days || 0) > 0;
+            allSegments.push({
+              id: Number(child.id),
+              portion: isUnpaid ? 'unpaid' : 'paid',
+              label: isHalfLeave
+                ? `${reqPrefix}${childType.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())} Half Leave`
+                : `${reqPrefix}${childType === 'excess_paid' ? 'Paid Leave (Quota Override)' : childType === 'unpaid' ? 'Unpaid Leave' : `${childType.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())} Leave`}`,
+              start: child.start_date,
+              end: child.end_date,
+              reason: child.reason || req.reason || '',
+              days,
+              unit: isHalfLeave ? 'half leave(s)' : 'day(s)',
+              treatment: isUnpaid ? 'Unpaid' : 'Paid',
+              pending: String(child.status || 'pending').toLowerCase() === 'pending',
+              status: String(child.status || 'pending').replace(/\b\w/g, char => char.toUpperCase())
+            });
+          });
+        } else {
+          let segAdded = false;
+          if (req.leave_duration === 'half') {
+            const isUnpaid = leaveType.toLowerCase() === 'unpaid';
+            const st = (isUnpaid ? (req.unpaid_status || req.status) : (req.paid_status || req.status)) || 'pending';
+            allSegments.push({
+              id: Number(req.id),
+              portion: isUnpaid ? 'unpaid' : 'paid',
+              label: `${reqPrefix}${requestTypeLabel} Half Leave`,
+              start: req.start_date,
+              end: req.end_date,
+              reason: req.reason || '',
+              days: 1,
+              unit: 'half leave(s)',
+              treatment: isUnpaid ? 'Unpaid' : 'Paid',
+              pending: String(st).toLowerCase() === 'pending',
+              status: String(st).replace(/\b\w/g, char => char.toUpperCase())
+            });
+            segAdded = true;
+          } else {
+            if (quotaDays > 0) {
+              const pSt = req.paid_status || (req.status === 'partially_approved' ? 'approved' : req.status) || 'pending';
+              allSegments.push({
+                id: Number(req.id),
+                portion: 'paid',
+                label: `${reqPrefix}${requestTypeLabel} Leave`,
+                start: req.start_date,
+                end: quotaThroughDate || req.end_date,
+                reason: req.reason || '',
+                days: quotaDays,
+                unit: 'day(s)',
+                treatment: 'Paid',
+                pending: String(pSt).toLowerCase() === 'pending',
+                status: String(pSt).replace(/\b\w/g, char => char.toUpperCase())
+              });
+              segAdded = true;
+            }
+            const paidOverrideDays = Math.max(0, paidDays - quotaDays);
+            if (paidOverrideDays > 0) {
+              const pSt = req.paid_status || (req.status === 'partially_approved' ? 'approved' : req.status) || 'pending';
+              allSegments.push({
+                id: Number(req.id),
+                portion: 'paid',
+                label: `${reqPrefix}${requestTypeLabel} Leave (Paid Override)`,
+                start: nextIsoDate(quotaThroughDate, req.start_date),
+                end: req.end_date,
+                reason: req.reason || '',
+                days: paidOverrideDays,
+                unit: 'day(s)',
+                treatment: 'Paid',
+                pending: String(pSt).toLowerCase() === 'pending',
+                status: String(pSt).replace(/\b\w/g, char => char.toUpperCase())
+              });
+              segAdded = true;
+            }
+            if (unpaidDays > 0) {
+              const upSt = req.unpaid_status || (req.status === 'partially_approved' ? 'pending' : req.status) || 'pending';
+              allSegments.push({
+                id: Number(req.id),
+                portion: 'unpaid',
+                label: `${reqPrefix}${requestTypeLabel} Leave (Unpaid)`,
+                start: nextIsoDate(quotaThroughDate, req.start_date),
+                end: req.end_date,
+                reason: req.reason || '',
+                days: unpaidDays,
+                unit: 'day(s)',
+                treatment: 'Unpaid',
+                pending: String(upSt).toLowerCase() === 'pending',
+                status: String(upSt).replace(/\b\w/g, char => char.toUpperCase())
+              });
+              segAdded = true;
+            }
+          }
+          if (!segAdded) {
+            allSegments.push({
+              id: Number(req.id),
+              portion: 'all',
+              label: `${reqPrefix}${requestTypeLabel} Leave`,
+              start: req.start_date,
+              end: req.end_date,
+              reason: req.reason || '',
+              days: requestedDays,
+              unit: 'day(s)',
+              treatment: 'Paid',
+              pending: String(req.status || 'pending').toLowerCase() === 'pending',
+              status: String(req.status || 'pending').replace(/\b\w/g, char => char.toUpperCase())
+            });
+          }
+        }
       }
-      const paidOverrideDays = Math.max(0, paidDays - quotaDays);
-      if (!request.child_requests && paidOverrideDays > 0) {
-        const pSt = request.paid_status || (request.status === 'partially_approved' ? 'approved' : request.status) || 'pending';
-        segments.push({
-          id: Number(request.id),
-          portion: 'paid',
-          label: `${requestTypeLabel} Leave (Paid Override)`,
-          start: nextIsoDate(quotaThroughDate),
-          end: request.end_date,
-          reason: request.reason || '',
-          days: paidOverrideDays,
-          unit: 'day(s)',
-          treatment: 'Paid',
-          pending: String(pSt).toLowerCase() === 'pending',
-          status: String(pSt).replace(/\b\w/g, char => char.toUpperCase())
-        });
-      }
-      if (!request.child_requests && unpaidDays > 0) {
-        const upSt = request.unpaid_status || (request.status === 'partially_approved' ? 'pending' : request.status) || 'pending';
-        segments.push({
-          id: Number(request.id),
-          portion: 'unpaid',
-          label: `${requestTypeLabel} Leave (Unpaid)`,
-          start: nextIsoDate(quotaThroughDate),
-          end: request.end_date,
-          reason: request.reason || '',
-          days: unpaidDays,
-          unit: 'day(s)',
-          treatment: 'Unpaid',
-          pending: String(upSt).toLowerCase() === 'pending',
-          status: String(upSt).replace(/\b\w/g, char => char.toUpperCase())
-        });
-      }
-      if (!segments.length) {
-        segments.push({ id: Number(request.id), portion: 'all', label: 'Leave request', start: request.start_date, end: request.end_date, reason: request.reason || '', days: requestedDays, unit: 'day(s)', treatment: 'Paid', pending: String(request.status || 'pending').toLowerCase() === 'pending', status: String(request.status || 'pending').replace(/\b\w/g, char => char.toUpperCase()) });
-      }
+
+      allDates.sort();
+      const minDate = allDates[0] || '--';
+      const maxDate = allDates[allDates.length - 1] || '--';
+
       const putText = (id, value) => {
         const element = document.getElementById(id);
         if (element) element.textContent = value;
       };
-      const pendingSegments = segments.filter(s => s.pending || s.status.toLowerCase() === 'rejected');
+
+      const pendingSegments = allSegments.filter(s => s.pending || s.status.toLowerCase() === 'rejected');
       const actions = document.getElementById('leaveCompleteActions');
       if (actions) {
         actions.innerHTML = pendingSegments.length ? `
@@ -18615,48 +18699,38 @@ async function fetchMultiLiveDetections() {
         selectAll.indeterminate = false;
         selectAll.disabled = pendingSegments.length === 0;
       }
-      putText('leaveCompleteAvatar', String(request.user_name || '?').charAt(0).toUpperCase());
-      putText('leaveCompleteEmployee', request.user_name || `User ${request.user_id}`);
-      putText('leaveCompleteRequestId', statusFilter === 'all'
-        ? `Request #${request.id} · Employee #${request.user_id}`
-        : `${scopedLeaveCount} ${statusFilter} leave${scopedLeaveCount === 1 ? '' : 's'} · Employee #${request.user_id}`);
-      putText('leaveCompletePeriod', `${request.start_date || '--'} to ${request.end_date || '--'}`);
-      const halfLeaveCount = Array.isArray(request.child_requests)
-        ? request.child_requests.filter(child => child.leave_duration === 'half').length
-        : (request.leave_duration === 'half' ? 1 : 0);
-      const fullDayCount = Math.max(0, requestedDays - halfLeaveCount);
-      const durationSummary = halfLeaveCount
-        ? `${fullDayCount ? `${fullDayCount} full day(s) plus ` : ''}${halfLeaveCount} half-leave occurrence(s)`
-        : `${requestedDays} scheduled day(s)`;
-      let requestStatusLabel = String(request.status || 'pending').replace(/\b\w/g, char => char.toUpperCase());
-      if (request.status === 'partially_approved') {
-        const apprDays = Number(request.approved_days != null ? request.approved_days : (request.paid_status === 'approved' ? (request.paid_days || 0) : 0));
-        const pendDays = Number(request.pending_days != null ? request.pending_days : (request.unpaid_status === 'pending' ? (request.unpaid_days || 0) : 0));
-        const rejDays = Number(request.rejected_days != null ? request.rejected_days : 0);
-        const paidAppr = Number(request.paid_approved_days != null ? request.paid_approved_days : (request.paid_status === 'approved' ? (request.paid_days || 0) : 0));
-        const unpaidAppr = Number(request.unpaid_approved_days != null ? request.unpaid_approved_days : (request.unpaid_status === 'approved' ? (request.unpaid_days || 0) : 0));
-        requestStatusLabel = `Partially Approved (${apprDays} Approved, ${pendDays} Pending, ${rejDays} Rejected | ${paidAppr} Paid, ${unpaidAppr} Unpaid)`;
-      }
+      putText('leaveCompleteAvatar', String(firstReq.user_name || '?').charAt(0).toUpperCase());
+      putText('leaveCompleteEmployee', firstReq.user_name || `User ${firstReq.user_id}`);
+      putText('leaveCompleteRequestId', isMulti
+        ? `${requests.length} leave requests · Employee #${firstReq.user_id}`
+        : `Request #${firstReq.id} · Employee #${firstReq.user_id}`);
+      putText('leaveCompletePeriod', minDate === maxDate ? minDate : `${minDate} to ${maxDate}`);
+
+      const pendingCount = requests.filter(r => r.status === 'pending' || r.paid_status === 'pending' || r.unpaid_status === 'pending').length;
+      const approvedCount = requests.filter(r => r.status === 'approved').length;
+      let overallStatus = isMulti
+        ? (pendingCount && approvedCount ? `${pendingCount} Pending, ${approvedCount} Approved` : (pendingCount ? `${pendingCount} Pending` : `${approvedCount} Approved`))
+        : String(firstReq.status || 'pending').replace(/\b\w/g, char => char.toUpperCase());
+
       const allocationSummary = document.getElementById('leaveCompleteAllocationSummary');
       if (allocationSummary) {
-        allocationSummary.textContent = statusFilter === 'all'
-          ? `One leave request: ${request.start_date || '--'} to ${request.end_date || '--'} (${durationSummary}). ${paidDays} paid day(s) + ${unpaidDays} unpaid day(s).`
-          : `${scopedLeaveCount} ${statusFilter} leave${scopedLeaveCount === 1 ? '' : 's'} for this employee: ${request.start_date || '--'} to ${request.end_date || '--'} (${durationSummary}). ${paidDays} paid day(s) + ${unpaidDays} unpaid day(s).`;
+        allocationSummary.textContent = isMulti
+          ? `Showing all ${requests.length} leave requests for ${firstReq.user_name || 'this employee'}: ${minDate} to ${maxDate} (${totalRequestedDays} total days). ${totalPaidDays} paid + ${totalUnpaidDays} unpaid.`
+          : `Leave request: ${firstReq.start_date || '--'} to ${firstReq.end_date || '--'} (${totalRequestedDays} day(s)). ${totalPaidDays} paid + ${totalUnpaidDays} unpaid.`;
       }
-      putText('leaveCompleteRequestedDays', halfLeaveCount
-        ? `${fullDayCount ? `${fullDayCount} day(s), ` : ''}${halfLeaveCount} half leave(s)`
-        : `${requestedDays} day(s)`);
-      putText('leaveCompletePaidDays', `${paidDays} day(s)`);
-      putText('leaveCompleteUnpaidDays', `${unpaidDays} day(s)`);
-      putText('leaveCompleteQuotaDays', `${quotaDays} day(s)`);
-      putText('leaveCompleteType', leaveType.replace(/\b\w/g, char => char.toUpperCase()));
-      putText('leaveCompleteStatus', requestStatusLabel);
-      putText('leaveCompleteApprover', request.approved_by || '--');
+      putText('leaveCompleteRequestedDays', `${totalRequestedDays} day(s)`);
+      putText('leaveCompletePaidDays', `${totalPaidDays} day(s)`);
+      putText('leaveCompleteUnpaidDays', `${totalUnpaidDays} day(s)`);
+      putText('leaveCompleteQuotaDays', `${totalQuotaDays} day(s)`);
+      putText('leaveCompleteType', Array.from(distinctTypes).join(', ') || 'Leave');
+      putText('leaveCompleteStatus', overallStatus);
+      putText('leaveCompleteApprover', Array.from(approvers).join(', ') || '--');
+
       const balanceView = document.getElementById('leaveCompleteBalance');
       if (balanceView) balanceView.innerHTML = '<span class="text-muted">Loading balances...</span>';
       const allocationBody = document.getElementById('leaveCompleteAllocationBody');
       if (allocationBody) {
-        allocationBody.innerHTML = segments.map(segment => `<tr><td><input type="checkbox" class="leave-segment-select" data-id="${segment.id}" data-portion="${segment.portion || 'all'}" value="${segment.id}" aria-label="Select ${escapeHtml(segment.label)} segment" ${(segment.pending || segment.status.toLowerCase() === 'rejected') ? 'onchange="updateLeaveCompleteSelection()"' : 'disabled'} /></td><td>${escapeHtml(segment.label)}</td><td style="white-space:nowrap;">${escapeHtml(segment.start || '--')} &rarr; ${escapeHtml(segment.end || '--')}</td><td style="max-width:180px; white-space:normal; overflow-wrap:anywhere; user-select:text;">${escapeHtml(segment.reason || '--')}</td><td class="text-center">${segment.days} ${segment.unit || 'day(s)'}</td><td><span class="badge ${segment.treatment === 'Unpaid' ? 'bg-warning-subtle text-warning-emphasis' : 'bg-success-subtle text-success'}">${segment.treatment}</span></td><td>${escapeHtml(segment.status || 'Pending')}</td></tr>`).join('');
+        allocationBody.innerHTML = allSegments.map(segment => `<tr><td><input type="checkbox" class="leave-segment-select" data-id="${segment.id}" data-portion="${segment.portion || 'all'}" value="${segment.id}" aria-label="Select ${escapeHtml(segment.label)} segment" ${(segment.pending || segment.status.toLowerCase() === 'rejected') ? 'onchange="updateLeaveCompleteSelection()"' : 'disabled'} /></td><td>${escapeHtml(segment.label)}</td><td style="white-space:nowrap;">${escapeHtml(segment.start || '--')} &rarr; ${escapeHtml(segment.end || '--')}</td><td style="max-width:180px; white-space:normal; overflow-wrap:anywhere; user-select:text;">${escapeHtml(segment.reason || '--')}</td><td class="text-center">${segment.days} ${segment.unit || 'day(s)'}</td><td><span class="badge ${segment.treatment === 'Unpaid' ? 'bg-warning-subtle text-warning-emphasis' : 'bg-success-subtle text-success'}">${segment.treatment}</span></td><td>${escapeHtml(segment.status || 'Pending')}</td></tr>`).join('');
         updateLeaveCompleteSelection();
       }
       enableLeaveAllocationDragScroll();
@@ -18664,9 +18738,9 @@ async function fetchMultiLiveDetections() {
       if (!modal) return;
       if (leaveCompletePreviousBodyOverflow === null) leaveCompletePreviousBodyOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
-      modal.dataset.leaveUserId = String(request.user_id);
+      modal.dataset.leaveUserId = String(firstReq.user_id);
       modal.style.display = 'flex';
-      loadLeaveCompleteBalances(request.user_id);
+      loadLeaveCompleteBalances(firstReq.user_id);
     }
 
     async function loadLeaveCompleteBalances(userId) {
