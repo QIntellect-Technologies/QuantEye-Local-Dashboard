@@ -15835,7 +15835,12 @@ async function fetchMultiLiveDetections() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
-          let result = await response.json();
+          let result;
+          try {
+            result = await response.json();
+          } catch (_) {
+            result = { error: response.statusText || 'Server error', field: 'form' };
+          }
           if (response.status === 409 && result.needs_confirmation) {
             const confirmed = await appConfirm(`${result.error || 'This pay line affects earlier months.'}\nDo you want to confirm and recalculate?`);
             if (confirmed) {
@@ -15845,7 +15850,11 @@ async function fetchMultiLiveDetections() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
               });
-              result = await response.json();
+              try {
+                result = await response.json();
+              } catch (_) {
+                result = { error: response.statusText || 'Server error', field: 'form' };
+              }
             } else {
               return;
             }
@@ -16044,7 +16053,12 @@ async function fetchMultiLiveDetections() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        let result = await response.json();
+        let result;
+        try {
+          result = await response.json();
+        } catch (_) {
+          result = { error: response.statusText || 'Server error', field: 'form' };
+        }
         if (response.status === 409 && result.needs_confirmation) {
           const confirmed = await appConfirm(`${result.error || 'This pay line affects earlier months.'}\nDo you want to confirm and recalculate?`);
           if (confirmed) {
@@ -16054,7 +16068,11 @@ async function fetchMultiLiveDetections() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
             });
-            result = await response.json();
+            try {
+              result = await response.json();
+            } catch (_) {
+              result = { error: response.statusText || 'Server error', field: 'form' };
+            }
           } else {
             return;
           }

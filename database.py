@@ -8671,13 +8671,47 @@ def get_all_salary_configs(active_only: bool = True, department: Optional[str] =
                     CASE WHEN s.user_id IS NOT NULL THEN 1 ELSE 0 END as is_configured,
                     s.updated_at,
                     COALESCE(
-                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c WHERE c.user_id = u.id AND c.active = 1),
+                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c 
+                         WHERE c.active = 1
+                           AND (c.organization_id IS NULL OR c.organization_id = '' OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
+                           AND (
+                               (COALESCE(c.scope_type, 'employee') = 'employee' AND c.user_id = u.id)
+                               OR (c.scope_type = 'org')
+                               OR (c.scope_type = 'department' AND c.scope_id = u.department)
+                               OR (c.scope_type = 'designation' AND c.scope_id = COALESCE(u.position, 'Staff Member'))
+                               OR (c.scope_type = 'shift' AND (c.scope_id = CAST(u.shift_id AS TEXT) OR c.scope_id = u.shift_id))
+                           )
+                           AND NOT EXISTS (
+                               SELECT 1 FROM payroll_employee_components exc
+                               WHERE exc.component_type_id = c.component_type_id
+                                 AND exc.user_id = u.id
+                                 AND exc.excluded = 1
+                                 AND exc.active = 1
+                           )
+                        ),
                         (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
                         substr(s.updated_at, 1, 10),
                         u.join_date,
                         '2026-01-01'
                     ) as effective_from,
-                    (SELECT COUNT(*) FROM payroll_employee_components c WHERE c.user_id = u.id AND c.active = 1) as named_lines_count
+                    (SELECT COUNT(DISTINCT c.component_type_id) FROM payroll_employee_components c 
+                     WHERE c.active = 1
+                       AND (c.organization_id IS NULL OR c.organization_id = '' OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
+                       AND (
+                           (COALESCE(c.scope_type, 'employee') = 'employee' AND c.user_id = u.id)
+                           OR (c.scope_type = 'org')
+                           OR (c.scope_type = 'department' AND c.scope_id = u.department)
+                           OR (c.scope_type = 'designation' AND c.scope_id = COALESCE(u.position, 'Staff Member'))
+                           OR (c.scope_type = 'shift' AND (c.scope_id = CAST(u.shift_id AS TEXT) OR c.scope_id = u.shift_id))
+                       )
+                       AND NOT EXISTS (
+                           SELECT 1 FROM payroll_employee_components exc
+                           WHERE exc.component_type_id = c.component_type_id
+                             AND exc.user_id = u.id
+                             AND exc.excluded = 1
+                             AND exc.active = 1
+                       )
+                    ) as named_lines_count
                 FROM users u
                 LEFT JOIN salary_configs s ON u.id = s.user_id
                 {where_clause}
@@ -8716,13 +8750,47 @@ def get_salary_config(user_id: int) -> Optional[Dict]:
                     CASE WHEN s.user_id IS NOT NULL THEN 1 ELSE 0 END as is_configured,
                     s.updated_at,
                     COALESCE(
-                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c WHERE c.user_id = u.id AND c.active = 1),
+                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c 
+                         WHERE c.active = 1
+                           AND (c.organization_id IS NULL OR c.organization_id = '' OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
+                           AND (
+                               (COALESCE(c.scope_type, 'employee') = 'employee' AND c.user_id = u.id)
+                               OR (c.scope_type = 'org')
+                               OR (c.scope_type = 'department' AND c.scope_id = u.department)
+                               OR (c.scope_type = 'designation' AND c.scope_id = COALESCE(u.position, 'Staff Member'))
+                               OR (c.scope_type = 'shift' AND (c.scope_id = CAST(u.shift_id AS TEXT) OR c.scope_id = u.shift_id))
+                           )
+                           AND NOT EXISTS (
+                               SELECT 1 FROM payroll_employee_components exc
+                               WHERE exc.component_type_id = c.component_type_id
+                                 AND exc.user_id = u.id
+                                 AND exc.excluded = 1
+                                 AND exc.active = 1
+                           )
+                        ),
                         (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
                         substr(s.updated_at, 1, 10),
                         u.join_date,
                         '2026-01-01'
                     ) as effective_from,
-                    (SELECT COUNT(*) FROM payroll_employee_components c WHERE c.user_id = u.id AND c.active = 1) as named_lines_count
+                    (SELECT COUNT(DISTINCT c.component_type_id) FROM payroll_employee_components c 
+                     WHERE c.active = 1
+                       AND (c.organization_id IS NULL OR c.organization_id = '' OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
+                       AND (
+                           (COALESCE(c.scope_type, 'employee') = 'employee' AND c.user_id = u.id)
+                           OR (c.scope_type = 'org')
+                           OR (c.scope_type = 'department' AND c.scope_id = u.department)
+                           OR (c.scope_type = 'designation' AND c.scope_id = COALESCE(u.position, 'Staff Member'))
+                           OR (c.scope_type = 'shift' AND (c.scope_id = CAST(u.shift_id AS TEXT) OR c.scope_id = u.shift_id))
+                       )
+                       AND NOT EXISTS (
+                           SELECT 1 FROM payroll_employee_components exc
+                           WHERE exc.component_type_id = c.component_type_id
+                             AND exc.user_id = u.id
+                             AND exc.excluded = 1
+                             AND exc.active = 1
+                       )
+                    ) as named_lines_count
                 FROM users u
                 LEFT JOIN salary_configs s ON u.id = s.user_id
                 WHERE u.id = ?
@@ -10338,10 +10406,15 @@ def list_employee_components(user_id: int, organization_id: Optional[str] = None
     org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
+        from payroll_extensions import SCOPE_RANK
         # QA-56: Fetch employee basic salary to calculate estimated/resulting amount for percentage lines
-        u_row = conn.execute("SELECT salary, organization_id, branch_id FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        u_row = conn.execute("SELECT salary, organization_id, branch_id, department, position, shift_id FROM users WHERE id = ?", (int(user_id),)).fetchone()
         basic_sal = float(u_row[0]) if (u_row and u_row[0] is not None) else 0.0
         u_org = u_row[1] if u_row and u_row[1] else org
+        u_branch = u_row[2] if u_row and u_row[2] else branch
+        u_dept = str(u_row[3] or '') if u_row else ''
+        u_desig = str(u_row[4] or '') if u_row else ''
+        u_shift = str(u_row[5] or '') if u_row else ''
 
         s_row = conn.execute("SELECT basic_salary FROM salary_configs WHERE user_id = ?", (int(user_id),)).fetchone()
         if s_row and s_row[0] is not None:
@@ -10351,17 +10424,36 @@ def list_employee_components(user_id: int, organization_id: Optional[str] = None
             """SELECT c.*, t.name, t.code, t.kind, t.category, t.calc_mode
                FROM payroll_employee_components c
                JOIN payroll_component_types t ON t.id = c.component_type_id
-               WHERE c.user_id=?
+               WHERE c.active = 1
                  AND (
                      c.organization_id IS NULL OR c.organization_id = ''
                      OR COALESCE(c.organization_id,'DEFAULT_ORG') = ?
                      OR c.organization_id = ?
                  )
+                 AND (
+                     (COALESCE(c.scope_type, 'employee') = 'employee' AND c.user_id = ?)
+                     OR (c.scope_type = 'org')
+                     OR (c.scope_type = 'department' AND c.scope_id = ?)
+                     OR (c.scope_type = 'designation' AND c.scope_id = ?)
+                     OR (c.scope_type = 'shift' AND (c.scope_id = ? OR CAST(c.scope_id AS TEXT) = ?))
+                     OR (c.scope_type = 'branch' AND (c.scope_id = ? OR c.scope_id = ?))
+                 )
                ORDER BY c.effective_from ASC, t.kind, t.name""",
-            (int(user_id), org, u_org),
+            (org, u_org, int(user_id), u_dept, u_desig, u_shift, u_shift, branch, u_branch),
         ).fetchall()
+
+        excluded_types = {int(r['component_type_id']) for r in rows if r['excluded']}
+        by_type = {}
+        for r in rows:
+            type_id = int(r['component_type_id'])
+            if type_id in excluded_types:
+                continue
+            rank = SCOPE_RANK.get(str(r['scope_type'] or 'employee'), 9)
+            if type_id not in by_type or rank < SCOPE_RANK.get(str(by_type[type_id]['scope_type'] or 'employee'), 9):
+                by_type[type_id] = r
+
         result = []
-        for row in rows:
+        for row in sorted(by_type.values(), key=lambda x: (x['effective_from'] or '', x['kind'], x['name'])):
             d = dict(row)
             d['basic_salary'] = basic_sal
             pct = float(d.get('percent') or 0)
@@ -10537,25 +10629,36 @@ def save_employee_component(
                     'error': 'This pay line affects finalized payroll periods. Confirm to save.',
                     'affected_months': affected,
                 }
-        cursor.execute(
-            """INSERT INTO payroll_employee_components (
-                   organization_id, branch_id, user_id, component_type_id, amount, percent,
-                   effective_from, effective_to, scope_type, scope_id, excluded,
-                   min_amount, max_amount, rounding, calc_mode
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                org, branch, uid, type_id, float(amount or 0), float(percent or 0),
-                start, end, scope, str(scope_id or ''), int(bool(excluded)),
-                min_amount, max_amount, rounding or 'cent', calc_mode,
-            ),
-        )
-        _refresh_duplicate_component_report(cursor)
-        _write_payroll_audit(cursor, 'pay_line_assigned', org, branch, start[:7], 'Admin', {
-            'user_id': uid, 'component_type_id': type_id, 'scope_type': scope, 'scope_id': scope_id,
-            'effective_from': start, 'excluded': bool(excluded),
-        })
-        conn.commit()
-        return {'ok': True, 'id': cursor.lastrowid}
+        try:
+            cursor.execute(
+                """INSERT INTO payroll_employee_components (
+                       organization_id, branch_id, user_id, component_type_id, amount, percent,
+                       effective_from, effective_to, scope_type, scope_id, excluded,
+                       min_amount, max_amount, rounding, calc_mode
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    org, branch, uid, type_id, float(amount or 0), float(percent or 0),
+                    start, end, scope, str(scope_id or ''), int(bool(excluded)),
+                    min_amount, max_amount, rounding or 'cent', calc_mode,
+                ),
+            )
+            assignment_id = cursor.lastrowid
+            _refresh_duplicate_component_report(cursor)
+            _write_payroll_audit(cursor, 'pay_line_assigned', org, branch, start[:7], 'Admin', {
+                'user_id': uid, 'component_type_id': type_id, 'scope_type': scope, 'scope_id': scope_id,
+                'effective_from': start, 'excluded': bool(excluded),
+            })
+            cursor.execute(
+                """UPDATE payroll_settings SET enable_named_components = 1, updated_at = CURRENT_TIMESTAMP
+                   WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (org, branch),
+            )
+            conn.commit()
+            return {'ok': True, 'id': assignment_id}
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def delete_employee_component(assignment_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> bool:
@@ -11622,7 +11725,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         allowances = lump_allowances
         custom_deductions = lump_deductions
         pay_lines: List[Dict[str, Any]] = []
-        if _payroll_flag_on(payroll_settings, 'enable_named_components'):
+        if _payroll_flag_on(payroll_settings, 'enable_named_components') or len(extra_maps.get('assignments', [])) > 0:
             named_earn, named_deduct, named_lines = _named_component_totals(
                 extra_maps['assignments'],
                 extra_maps['types'],

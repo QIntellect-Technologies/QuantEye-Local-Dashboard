@@ -6605,7 +6605,10 @@ def api_save_employee_component():
                 )
             )
         )
-        return jsonify({'error': message, 'field': field}), 400
+        return jsonify({'error': message, 'field': field, 'success': False}), 400
+    except Exception as exc:
+        logger.exception("Unexpected error saving employee component")
+        return jsonify({'error': f"Could not assign pay line: {exc}", 'field': 'form', 'success': False}), 400
     if not result.get('ok'):
         return jsonify({
             'error': result.get('error'),
@@ -6614,7 +6617,11 @@ def api_save_employee_component():
             'needs_confirmation': True,
         }), 409
     listing_user = int(user_id or 0)
-    components = db.list_employee_components(listing_user, **payroll_tenant()) if listing_user else []
+    try:
+        components = db.list_employee_components(listing_user, **payroll_tenant()) if listing_user else []
+    except Exception:
+        logger.exception("Could not list employee components after save")
+        components = []
     return jsonify({'success': True, 'id': result.get('id'), 'components': components})
 
 
