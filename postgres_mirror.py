@@ -1737,19 +1737,21 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                 pg_rec_eids.add(eid)
                 u_row = sqlite_cur.execute("SELECT name FROM users WHERE id = ?", (eid,)).fetchone()
                 ename = u_row[0] if u_row and u_row[0] else f"Employee {eid}"
+                ded_val = float(rec.get("deductions") or rec.get("deduction_amount") or 0.0)
                 sqlite_cur.execute(
                     """
                     INSERT INTO payroll_records (
                         payroll_run_id, employee_id, employee_name,
-                        basic_salary, allowances, deductions, net_salary,
+                        basic_salary, allowances, deductions, deduction_amount, net_salary,
                         scheduled_workdays, present_days, absent_days, late_days,
                         approved_leave_days, payable_days,
                         is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(payroll_run_id, employee_id) DO UPDATE SET
                         basic_salary = excluded.basic_salary,
                         allowances = excluded.allowances,
                         deductions = excluded.deductions,
+                        deduction_amount = excluded.deduction_amount,
                         net_salary = excluded.net_salary,
                         payable_days = excluded.payable_days,
                         is_prorated = excluded.is_prorated,
@@ -1764,7 +1766,8 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                         ename,
                         float(rec.get("basic_salary") or 0.0),
                         float(rec.get("allowances") or 0.0),
-                        float(rec.get("deductions") or 0.0),
+                        ded_val,
+                        ded_val,
                         float(rec.get("net_salary") or 0.0),
                         int(rec.get("scheduled_workdays") or 0),
                         int(float(rec.get("present_days") or 0)),
@@ -2080,6 +2083,22 @@ def mirror_payroll_run(run: Dict[str, Any], records: Optional[List[Dict[str, Any
                     str(r.get("proration_explanation") or ""),
                 ))
             if rec_tuples:
+                eids = list({t[4] for t in rec_tuples if t[4]})
+                if eids:
+                    emp_tuples = [
+                        (eid_val, org_id, branch_id, eid_val, f"Employee {eid_val}")
+                        for eid_val in eids
+                    ]
+                    execute_values(
+                        cur,
+                        """
+                        INSERT INTO employees (id, organization_id, branch_id, employee_code, name)
+                        VALUES %s
+                        ON CONFLICT (organization_id, id) DO NOTHING
+                        """,
+                        emp_tuples,
+                        page_size=500,
+                    )
                 execute_values(
                     cur,
                     """

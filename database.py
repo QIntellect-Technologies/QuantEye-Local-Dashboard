@@ -407,6 +407,123 @@ def _migrate_departments_table_tenant_scope(cursor: sqlite3.Cursor):
         logger.warning(f"Department tenant uniqueness migration warning: {e}")
 
 
+def _migrate_shifts_table_tenant_scope(cursor: sqlite3.Cursor):
+    """
+    Ensure shifts table has tenant-scoped uniqueness (organization_id, branch_id, name)
+    instead of global UNIQUE(name).
+    """
+    try:
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='shifts'")
+        row = cursor.fetchone()
+        if not row or not row[0]:
+            return
+        schema_sql = row[0]
+        cursor.execute("PRAGMA index_list('shifts')")
+        has_global_name_unique = False
+        for idx in cursor.fetchall():
+            if idx[2] == 1:  # unique
+                cursor.execute(f"PRAGMA index_info('{idx[1]}')")
+                cols = [c[2] for c in cursor.fetchall()]
+                if cols == ['name']:
+                    has_global_name_unique = True
+                    break
+        if "name TEXT NOT NULL UNIQUE" in schema_sql or "name TEXT UNIQUE" in schema_sql or has_global_name_unique:
+            logger.info("Migrating shifts table from global UNIQUE(name) to tenant-scoped UNIQUE(organization_id, branch_id, name)...")
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            cursor.execute("""
+                CREATE TABLE shifts_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    start_time TEXT NOT NULL,
+                    end_time TEXT NOT NULL,
+                    grace_period_minutes INTEGER DEFAULT 15,
+                    checkout_grace_period_minutes INTEGER DEFAULT 0,
+                    working_days TEXT NOT NULL DEFAULT '[0,1,2,3,4,5]',
+                    is_default INTEGER DEFAULT 0,
+                    active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    organization_id TEXT DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT DEFAULT 'DEFAULT_BRANCH',
+                    UNIQUE(organization_id, branch_id, name)
+                )
+            """)
+            cursor.execute("""
+                INSERT OR IGNORE INTO shifts_new (
+                    id, name, start_time, end_time, grace_period_minutes,
+                    checkout_grace_period_minutes, working_days, is_default, active,
+                    created_at, organization_id, branch_id
+                )
+                SELECT 
+                    id, name, start_time, end_time, COALESCE(grace_period_minutes, 15),
+                    COALESCE(checkout_grace_period_minutes, 0), COALESCE(working_days, '[0,1,2,3,4,5]'),
+                    COALESCE(is_default, 0), COALESCE(active, 1),
+                    created_at, COALESCE(organization_id, 'DEFAULT_ORG'), COALESCE(branch_id, 'DEFAULT_BRANCH')
+                FROM shifts
+            """)
+            cursor.execute("DROP TABLE shifts")
+            cursor.execute("ALTER TABLE shifts_new RENAME TO shifts")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_shifts_org ON shifts(organization_id, active)")
+            logger.info("✓ shifts table migrated successfully to tenant-scoped uniqueness.")
+    except Exception as e:
+        logger.warning(f"Shift tenant uniqueness migration warning: {e}")
+
+
+def _migrate_cameras_table_tenant_scope(cursor: sqlite3.Cursor):
+    """
+    Ensure cameras table has tenant-scoped uniqueness (organization_id, camera_id)
+    instead of global UNIQUE(camera_id).
+    """
+    try:
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='cameras'")
+        row = cursor.fetchone()
+        if not row or not row[0]:
+            return
+        schema_sql = row[0]
+        cursor.execute("PRAGMA index_list('cameras')")
+        has_global_cam_unique = False
+        for idx in cursor.fetchall():
+            if idx[2] == 1:  # unique
+                cursor.execute(f"PRAGMA index_info('{idx[1]}')")
+                cols = [c[2] for c in cursor.fetchall()]
+                if cols == ['camera_id']:
+                    has_global_cam_unique = True
+                    break
+        if "camera_id TEXT NOT NULL UNIQUE" in schema_sql or "camera_id TEXT UNIQUE" in schema_sql or has_global_cam_unique:
+            logger.info("Migrating cameras table from global UNIQUE(camera_id) to tenant-scoped UNIQUE(organization_id, camera_id)...")
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            cursor.execute("""
+                CREATE TABLE cameras_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    camera_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    room_name TEXT NOT NULL,
+                    camera_type TEXT NOT NULL,
+                    rtsp_url TEXT NOT NULL,
+                    active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    organization_id TEXT DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT DEFAULT 'DEFAULT_BRANCH',
+                    UNIQUE(organization_id, camera_id)
+                )
+            """)
+            cursor.execute("""
+                INSERT OR IGNORE INTO cameras_new (
+                    id, camera_id, name, room_name, camera_type, rtsp_url, active,
+                    created_at, organization_id, branch_id
+                )
+                SELECT 
+                    id, camera_id, name, room_name, camera_type, rtsp_url, COALESCE(active, 1),
+                    created_at, COALESCE(organization_id, 'DEFAULT_ORG'), COALESCE(branch_id, 'DEFAULT_BRANCH')
+                FROM cameras
+            """)
+            cursor.execute("DROP TABLE cameras")
+            cursor.execute("ALTER TABLE cameras_new RENAME TO cameras")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_cameras_org ON cameras(organization_id, active)")
+            logger.info("✓ cameras table migrated successfully to tenant-scoped uniqueness.")
+    except Exception as e:
+        logger.warning(f"Camera tenant uniqueness migration warning: {e}")
+
+
 def init_db():
     """Initialize SQLite database with proper schema, columns, and indexes."""
     try:
@@ -1242,13 +1359,16 @@ def init_db():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS cameras (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    camera_id TEXT NOT NULL UNIQUE,
+                    camera_id TEXT NOT NULL,
                     name TEXT NOT NULL,
                     room_name TEXT NOT NULL,
                     camera_type TEXT NOT NULL,
                     rtsp_url TEXT NOT NULL,
                     active INTEGER DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    organization_id TEXT DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT DEFAULT 'DEFAULT_BRANCH',
+                    UNIQUE(organization_id, camera_id)
                 )
             ''')
             cursor.execute("SELECT COUNT(*) FROM cameras")
@@ -1273,7 +1393,10 @@ def init_db():
                     working_days TEXT NOT NULL DEFAULT '[0,1,2,3,4,5]',
                     is_default INTEGER DEFAULT 0,
                     active INTEGER DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    organization_id TEXT DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT DEFAULT 'DEFAULT_BRANCH',
+                    UNIQUE(organization_id, branch_id, name)
                 )
             ''')
             try:
@@ -1382,6 +1505,12 @@ def init_db():
 
             cursor.execute("PRAGMA foreign_keys = OFF")
             _migrate_departments_table_tenant_scope(cursor)
+            _migrate_shifts_table_tenant_scope(cursor)
+            _migrate_cameras_table_tenant_scope(cursor)
+            try:
+                cursor.execute("ALTER TABLE payroll_records ADD COLUMN deductions REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
             migrate_payroll_policy_tenant_scope(cursor)
             ensure_payroll_settings_row(cursor, 'DEFAULT_ORG', 'DEFAULT_BRANCH')
             seed_leave_types_if_empty(cursor, 'DEFAULT_ORG', 'DEFAULT_BRANCH')
@@ -3053,28 +3182,55 @@ def add_shift(name: str, start_time: str, end_time: str, grace_period_minutes: i
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            norm_org = organization_id or 'DEFAULT_ORG'
+            norm_branch = branch_id or 'DEFAULT_BRANCH'
+            clean_name = name.strip()
+
+            # Check if active/inactive shift with this name already exists in this tenant scope
             cursor.execute(
-                'INSERT INTO shifts (name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes, working_days, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                (name.strip(), start_time, end_time, max(0, int(grace_period_minutes)), max(0, int(checkout_grace_period_minutes)),
-                 json.dumps(_normalize_shift_working_days(working_days)), organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH')
+                "SELECT id, active FROM shifts WHERE LOWER(name) = LOWER(?) AND organization_id = ? AND branch_id = ?",
+                (clean_name, norm_org, norm_branch)
             )
-            conn.commit()
-            shift_id = cursor.lastrowid
-            logger.info(f"✓ Shift '{name}' created for Org '{organization_id or 'DEFAULT_ORG'}' (ID: {shift_id})")
+            existing = cursor.fetchone()
+            if existing:
+                if not existing[1]:
+                    cursor.execute(
+                        """UPDATE shifts SET active = 1, start_time = ?, end_time = ?,
+                           grace_period_minutes = ?, checkout_grace_period_minutes = ?, working_days = ?
+                           WHERE id = ?""",
+                        (start_time, end_time, max(0, int(grace_period_minutes)), max(0, int(checkout_grace_period_minutes)),
+                         json.dumps(_normalize_shift_working_days(working_days)), existing[0])
+                    )
+                    conn.commit()
+                    logger.info(f"✓ Re-activated existing Shift '{clean_name}' for Org '{norm_org}' (ID: {existing[0]})")
+                    shift_id = existing[0]
+                else:
+                    logger.warning(f"Shift '{clean_name}' already exists in organization '{norm_org}'")
+                    return None
+            else:
+                cursor.execute(
+                    'INSERT INTO shifts (name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes, working_days, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    (clean_name, start_time, end_time, max(0, int(grace_period_minutes)), max(0, int(checkout_grace_period_minutes)),
+                     json.dumps(_normalize_shift_working_days(working_days)), norm_org, norm_branch)
+                )
+                conn.commit()
+                shift_id = cursor.lastrowid
+                logger.info(f"✓ Shift '{clean_name}' created for Org '{norm_org}' (ID: {shift_id})")
+
             _cloud_mirror("mirror_shift", {
                 "id": shift_id,
-                "name": name.strip(),
+                "name": clean_name,
                 "start_time": start_time,
                 "end_time": end_time,
                 "grace_period_minutes": grace_period_minutes,
-                "organization_id": organization_id or "DEFAULT_ORG",
-                "branch_id": branch_id or "DEFAULT_BRANCH",
+                "organization_id": norm_org,
+                "branch_id": norm_branch,
             })
             return shift_id
     except ValueError:
         raise
     except sqlite3.IntegrityError:
-        logger.warning(f"Shift '{name}' already exists")
+        logger.warning(f"Shift '{name}' already exists in organization '{organization_id or 'DEFAULT_ORG'}'")
         return None
     except Exception as e:
         logger.error(f"Failed to add shift: {e}")
@@ -12579,18 +12735,44 @@ def add_camera(camera_id: str, name: str, room_name: str, camera_type: str = 'ip
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            norm_org = organization_id or 'DEFAULT_ORG'
+            norm_branch = branch_id or 'DEFAULT_BRANCH'
+            clean_cam_id = camera_id.strip()
+            clean_name = name.strip()
+
+            # Check if camera already exists for this tenant
             cursor.execute(
-                '''INSERT INTO cameras (camera_id, name, room_name, camera_type, rtsp_url, active, organization_id, branch_id)
-                   VALUES (?, ?, ?, ?, ?, 1, ?, ?)''',
-                (camera_id.strip(), name.strip(), room_name.strip(), camera_type.strip(), rtsp_url.strip(), organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH')
+                "SELECT id, active FROM cameras WHERE camera_id = ? AND organization_id = ?",
+                (clean_cam_id, norm_org)
             )
-            conn.commit()
-            cam_db_id = cursor.lastrowid
-            logger.info(f"✓ Camera '{name}' ({camera_id}) added for room '{room_name}' (ID: {cam_db_id})")
+            existing = cursor.fetchone()
+            if existing:
+                if not existing[1]:
+                    cursor.execute(
+                        """UPDATE cameras SET active = 1, name = ?, room_name = ?, camera_type = ?, rtsp_url = ?, branch_id = ?
+                           WHERE id = ?""",
+                        (clean_name, room_name.strip(), camera_type.strip(), rtsp_url.strip(), norm_branch, existing[0])
+                    )
+                    conn.commit()
+                    cam_db_id = existing[0]
+                    logger.info(f"✓ Re-activated existing Camera '{clean_name}' ({clean_cam_id}) for Org '{norm_org}' (ID: {cam_db_id})")
+                else:
+                    logger.warning(f"Camera ID '{clean_cam_id}' already exists in organization '{norm_org}'")
+                    return None
+            else:
+                cursor.execute(
+                    '''INSERT INTO cameras (camera_id, name, room_name, camera_type, rtsp_url, active, organization_id, branch_id)
+                       VALUES (?, ?, ?, ?, ?, 1, ?, ?)''',
+                    (clean_cam_id, clean_name, room_name.strip(), camera_type.strip(), rtsp_url.strip(), norm_org, norm_branch)
+                )
+                conn.commit()
+                cam_db_id = cursor.lastrowid
+                logger.info(f"✓ Camera '{clean_name}' ({clean_cam_id}) added for room '{room_name}' (ID: {cam_db_id})")
+
             _cloud_mirror("mirror_camera_row", cam_db_id)
             return cam_db_id
     except sqlite3.IntegrityError:
-        logger.warning(f"Camera ID '{camera_id}' already exists")
+        logger.warning(f"Camera ID '{camera_id}' already exists in organization '{organization_id or 'DEFAULT_ORG'}'")
         return None
     except Exception as e:
         logger.error(f"Failed to add camera: {e}")
