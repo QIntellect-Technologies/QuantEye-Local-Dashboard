@@ -4143,7 +4143,6 @@ async function fetchMultiLiveDetections() {
     try {
         const resp = await fetch(`${API_BASE}/live-detections`);
         const data = await resp.json();
-        loadStats();
         const list = document.getElementById("multiTickerList");
 
         if (!data.detections || data.detections.length === 0) {
@@ -10267,9 +10266,6 @@ async function fetchMultiLiveDetections() {
             const resp = await fetch(`${API_BASE}/live-detections`);
             const data = await resp.json();
 
-            // Refresh KPIs with database
-            loadStats();
-
             const detections = data.detections || [];
             cachedDetectionsList = detections;
 
@@ -10283,6 +10279,13 @@ async function fetchMultiLiveDetections() {
           }
         }, 1200);
       }
+
+      // Background stats refresh every 60s (avoids continuous 1.2s database load)
+      setInterval(() => {
+        if (!document.hidden && typeof loadStats === 'function') {
+          loadStats();
+        }
+      }, 60000);
 
       function stopTickerFeed() {
         if (tickerInterval) {
