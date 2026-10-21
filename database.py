@@ -568,7 +568,12 @@ def init_db():
                 ("organization_id", "TEXT DEFAULT 'DEFAULT_ORG'"),
                 ("branch_id", "TEXT DEFAULT 'DEFAULT_BRANCH'"),
                 ("face_trained", "INTEGER DEFAULT 0"),
-                ("mobile_login", "INTEGER DEFAULT 0")
+                ("mobile_login", "INTEGER DEFAULT 0"),
+                ("person_type", "TEXT DEFAULT 'staff'"),
+                ("class_id", "INTEGER DEFAULT NULL"),
+                ("roll_number", "TEXT DEFAULT NULL"),
+                ("guardian_name", "TEXT DEFAULT NULL"),
+                ("guardian_phone", "TEXT DEFAULT NULL")
             ]:
                 try:
                     cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
@@ -1283,6 +1288,16 @@ def init_db():
                 conn.commit()
             except sqlite3.OperationalError:
                 pass
+            try:
+                cursor.execute("ALTER TABLE branch_settings ADD COLUMN org_type TEXT DEFAULT 'company'")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+            try:
+                cursor.execute("ALTER TABLE branch_settings ADD COLUMN school_scope TEXT DEFAULT 'both'")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
 
             cursor.execute("SELECT COUNT(*) FROM branch_settings")
             if cursor.fetchone()[0] == 0:
@@ -1355,6 +1370,26 @@ def init_db():
                 except sqlite3.Error as e:
                     logger.warning(f"Designation migration skipped: {e}")
 
+            # Classes table (For School persona)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS classes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                    branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
+                    name TEXT NOT NULL,
+                    section TEXT DEFAULT 'A',
+                    shift_id INTEGER DEFAULT NULL,
+                    room_number TEXT DEFAULT NULL,
+                    teacher_id INTEGER DEFAULT NULL,
+                    active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(organization_id, branch_id, name, section),
+                    FOREIGN KEY(shift_id) REFERENCES shifts(id) ON DELETE SET NULL,
+                    FOREIGN KEY(teacher_id) REFERENCES users(id) ON DELETE SET NULL
+                )
+            ''')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_classes_org ON classes(organization_id, branch_id, active)')
+
             # Cameras table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS cameras (
@@ -1371,6 +1406,16 @@ def init_db():
                     UNIQUE(organization_id, camera_id)
                 )
             ''')
+            for cam_col, cam_col_type in [
+                ("camera_scope", "TEXT DEFAULT 'gate'"),
+                ("assigned_class_id", "INTEGER DEFAULT NULL")
+            ]:
+                try:
+                    cursor.execute(f"ALTER TABLE cameras ADD COLUMN {cam_col} {cam_col_type}")
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    pass
+
             cursor.execute("SELECT COUNT(*) FROM cameras")
             if cursor.fetchone()[0] == 0:
                 # No RTSP URLs are seeded. Only the machine's default local webcam (index 0) is
@@ -1650,9 +1695,14 @@ def add_user(
     checkin_cameras: str = 'all',
     checkout_cameras: str = 'all',
     organization_id: Optional[str] = None,
-    branch_id: Optional[str] = None
+    branch_id: Optional[str] = None,
+    person_type: str = 'staff',
+    class_id: Optional[int] = None,
+    roll_number: Optional[str] = None,
+    guardian_name: Optional[str] = None,
+    guardian_phone: Optional[str] = None
 ) -> Optional[int]:
-    """Add a new user with validation, HR profile attributes, shift assignment, and camera assignments."""
+    """Add a new user with validation, HR/student profile attributes, shift assignment, and camera assignments."""
     if not name or len(name.strip()) == 0:
         logger.warning("Attempted to add user with empty name")
         return None
@@ -1688,9 +1738,10 @@ def add_user(
                     UPDATE users 
                     SET active = 1, email = ?, phone = ?, department = ?, password = NULL, password_hash = ?, role = ?,
                         notes = ?, cnic = ?, position = ?, salary = ?, join_date = ?, shift_id = ?,
-                        checkin_cameras = ?, checkout_cameras = ?, organization_id = ?, branch_id = ?
+                        checkin_cameras = ?, checkout_cameras = ?, organization_id = ?, branch_id = ?,
+                        person_type = ?, class_id = ?, roll_number = ?, guardian_name = ?, guardian_phone = ?
                     WHERE id = ?
-                """, (email, phone, department, password_hash, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target, existing_id))
+                """, (email, phone, department, password_hash, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target, person_type or 'staff', class_id, roll_number, guardian_name, guardian_phone, existing_id))
                 effective_from = join_date if join_date else None
                 if effective_from:
                     try: datetime.strptime(effective_from, "%Y-%m-%d")
@@ -1704,9 +1755,9 @@ def add_user(
             # 2. Insert new user safely scoped to this organization
             cursor.execute(
                 '''INSERT INTO users
-                   (name, email, phone, department, password, password_hash, role, notes, cnic, position, salary, join_date, shift_id, checkin_cameras, checkout_cameras, organization_id, branch_id)
-                   VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (clean_name, email, phone, department, password_hash, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target)
+                   (name, email, phone, department, password, password_hash, role, notes, cnic, position, salary, join_date, shift_id, checkin_cameras, checkout_cameras, organization_id, branch_id, person_type, class_id, roll_number, guardian_name, guardian_phone)
+                   VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (clean_name, email, phone, department, password_hash, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target, person_type or 'staff', class_id, roll_number, guardian_name, guardian_phone)
             )
             user_id = cursor.lastrowid
             if user_id is None:
@@ -1908,8 +1959,9 @@ def heal_deleted_camera_assignments(organization_id: Optional[str] = None, branc
         return 0
 
 
-def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict]:
-    """Get all active users with today's attendance status, shift details, and camera assignments via optimized join, strictly scoped by organization and branch."""
+def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = None, branch_id: Optional[str] = None,
+                  person_type: Optional[str] = None, class_id: Optional[int] = None) -> List[Dict]:
+    """Get all active users with today's attendance status, shift details, camera assignments, and student/class info strictly scoped by tenant."""
     pg_ids = None
     if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
         if postgres_is_configured():
@@ -1947,9 +1999,17 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
                        COALESCE(u.checkout_cameras, 'all') as checkout_cameras,
                        COALESCE(u.organization_id, 'DEFAULT_ORG') as organization_id,
                        COALESCE(u.branch_id, 'DEFAULT_BRANCH') as branch_id,
-                       COALESCE((SELECT COUNT(*) FROM embeddings emb WHERE emb.user_id = u.id), 0) as embedding_count
+                       COALESCE((SELECT COUNT(*) FROM embeddings emb WHERE emb.user_id = u.id), 0) as embedding_count,
+                       COALESCE(u.person_type, 'staff') as person_type,
+                       u.class_id,
+                       u.roll_number,
+                       u.guardian_name,
+                       u.guardian_phone,
+                       c.name as class_name,
+                       c.section as class_section
                 FROM users u
                 LEFT JOIN shifts s ON COALESCE(u.shift_id, 1) = s.id
+                LEFT JOIN classes c ON u.class_id = c.id
                 LEFT JOIN (
                     SELECT DISTINCT user_id 
                     FROM attendance 
@@ -1978,6 +2038,12 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
             if role:
                 query += " AND u.role = ?"
                 params.append(role)
+            if person_type:
+                query += " AND u.person_type = ?"
+                params.append(person_type)
+            if class_id is not None:
+                query += " AND u.class_id = ?"
+                params.append(class_id)
             cursor.execute(query, params)
             rows = cursor.fetchall()
             
@@ -1992,7 +2058,14 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
             'checkin_cameras': r[21], 'checkout_cameras': r[22],
             'organization_id': r[23], 'branch_id': r[24],
             'embedding_count': r[25] if len(r) > 25 else 0,
-            'has_embedding': (r[25] > 0) if len(r) > 25 else False
+            'has_embedding': (r[25] > 0) if len(r) > 25 else False,
+            'person_type': r[26] if len(r) > 26 else 'staff',
+            'class_id': r[27] if len(r) > 27 else None,
+            'roll_number': r[28] if len(r) > 28 else None,
+            'guardian_name': r[29] if len(r) > 29 else None,
+            'guardian_phone': r[30] if len(r) > 30 else None,
+            'class_name': r[31] if len(r) > 31 else None,
+            'class_section': r[32] if len(r) > 32 else None
         } for r in rows]
         if pg_ids is not None:
             user_list = [u for u in user_list if u['id'] in pg_ids]
@@ -2006,7 +2079,10 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                 position: str | None = None, cnic: str | None = None, salary: float | None = None, join_date: str | None = None,
                 shift_id: int | None = None, checkin_cameras: str | None = None, checkout_cameras: str | None = None,
                 shift_effective_from: str | None = None, exit_date: str | None = None,
-                confirm_shift_reclassify: bool = False) -> bool:
+                confirm_shift_reclassify: bool = False,
+                person_type: str | None = None, class_id: int | None = None,
+                roll_number: str | None = None, guardian_name: str | None = None,
+                guardian_phone: str | None = None) -> bool:
     """Update user information in database. HR fields and camera assignments left as None are preserved."""
     if not name or len(name.strip()) == 0:
         logger.warning("Attempted to update user with empty name")
@@ -2066,9 +2142,14 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                     exit_date = CASE WHEN ? = '__KEEP__' THEN exit_date ELSE ? END,
                     shift_id = COALESCE(?, shift_id),
                     checkin_cameras = COALESCE(?, checkin_cameras),
-                    checkout_cameras = COALESCE(?, checkout_cameras)
+                    checkout_cameras = COALESCE(?, checkout_cameras),
+                    person_type = COALESCE(?, person_type),
+                    class_id = COALESCE(?, class_id),
+                    roll_number = COALESCE(?, roll_number),
+                    guardian_name = COALESCE(?, guardian_name),
+                    guardian_phone = COALESCE(?, guardian_phone)
                 WHERE id = ?
-            ''', (name.strip(), email, phone, department, notes, position, cnic, salary, join_date, norm_exit, norm_exit, persisted_shift_id, checkin_cameras, checkout_cameras, user_id))
+            ''', (name.strip(), email, phone, department, notes, position, cnic, salary, join_date, norm_exit, norm_exit, persisted_shift_id, checkin_cameras, checkout_cameras, person_type, class_id, roll_number, guardian_name, guardian_phone, user_id))
             updated = cursor.rowcount > 0
             cursor.execute("UPDATE overtime SET user_name = ? WHERE user_id = ?", (name.strip(), user_id))
             if updated and shift_id is not None and (shift_id != previous_shift_id or shift_effective_from is not None):
@@ -12987,7 +13068,7 @@ def get_camera_by_id(camera_id: str, organization_id: Optional[str] = None) -> O
         logger.error(f"Failed to fetch camera {camera_id}: {e}")
         return None
 
-def add_camera(camera_id: str, name: str, room_name: str, camera_type: str = 'ip_camera', rtsp_url: str = '', organization_id: str = 'DEFAULT_ORG', branch_id: Optional[str] = None) -> Optional[int]:
+def add_camera(camera_id: str, name: str, room_name: str, camera_type: str = 'ip_camera', rtsp_url: str = '', organization_id: str = 'DEFAULT_ORG', branch_id: Optional[str] = None, camera_scope: str = 'gate', assigned_class_id: Optional[int] = None) -> Optional[int]:
     """Add a new camera configuration scoped to tenant organization and branch."""
     if not name or not camera_id or not room_name:
         return None
@@ -13008,9 +13089,11 @@ def add_camera(camera_id: str, name: str, room_name: str, camera_type: str = 'ip
             if existing:
                 if not existing[1]:
                     cursor.execute(
-                        """UPDATE cameras SET active = 1, name = ?, room_name = ?, camera_type = ?, rtsp_url = ?, branch_id = ?
+                        """UPDATE cameras SET active = 1, name = ?, room_name = ?, camera_type = ?, rtsp_url = ?, branch_id = ?,
+                                  camera_scope = ?, assigned_class_id = ?
                            WHERE id = ?""",
-                        (clean_name, room_name.strip(), camera_type.strip(), rtsp_url.strip(), norm_branch, existing[0])
+                        (clean_name, room_name.strip(), camera_type.strip(), rtsp_url.strip(), norm_branch,
+                         camera_scope or 'gate', assigned_class_id, existing[0])
                     )
                     conn.commit()
                     cam_db_id = existing[0]
@@ -13020,13 +13103,14 @@ def add_camera(camera_id: str, name: str, room_name: str, camera_type: str = 'ip
                     return None
             else:
                 cursor.execute(
-                    '''INSERT INTO cameras (camera_id, name, room_name, camera_type, rtsp_url, active, organization_id, branch_id)
-                       VALUES (?, ?, ?, ?, ?, 1, ?, ?)''',
-                    (clean_cam_id, clean_name, room_name.strip(), camera_type.strip(), rtsp_url.strip(), norm_org, norm_branch)
+                    '''INSERT INTO cameras (camera_id, name, room_name, camera_type, rtsp_url, active, organization_id, branch_id, camera_scope, assigned_class_id)
+                       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)''',
+                    (clean_cam_id, clean_name, room_name.strip(), camera_type.strip(), rtsp_url.strip(), norm_org, norm_branch,
+                     camera_scope or 'gate', assigned_class_id)
                 )
                 conn.commit()
                 cam_db_id = cursor.lastrowid
-                logger.info(f"✓ Camera '{clean_name}' ({clean_cam_id}) added for room '{room_name}' (ID: {cam_db_id})")
+                logger.info(f"✓ Camera '{clean_name}' ({clean_cam_id}) added for room '{room_name}' (ID: {cam_db_id}, Scope: {camera_scope})")
 
             _cloud_mirror("mirror_camera_row", cam_db_id)
             return cam_db_id
@@ -13037,7 +13121,7 @@ def add_camera(camera_id: str, name: str, room_name: str, camera_type: str = 'ip
         logger.error(f"Failed to add camera: {e}")
         return None
 
-def update_camera(cam_db_id: int, camera_id: str, name: str, room_name: str, camera_type: str = 'ip_camera', rtsp_url: str = '', active: int = 1, organization_id: Optional[str] = None) -> bool:
+def update_camera(cam_db_id: int, camera_id: str, name: str, room_name: str, camera_type: str = 'ip_camera', rtsp_url: str = '', active: int = 1, organization_id: Optional[str] = None, camera_scope: Optional[str] = None, assigned_class_id: Optional[int] = None) -> bool:
     """Update camera configuration with tenant check."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -13052,9 +13136,12 @@ def update_camera(cam_db_id: int, camera_id: str, name: str, room_name: str, cam
                     return False
             cursor.execute(
                 '''UPDATE cameras
-                   SET camera_id = ?, name = ?, room_name = ?, camera_type = ?, rtsp_url = ?, active = ?
+                   SET camera_id = ?, name = ?, room_name = ?, camera_type = ?, rtsp_url = ?, active = ?,
+                       camera_scope = COALESCE(?, camera_scope),
+                       assigned_class_id = COALESCE(?, assigned_class_id)
                    WHERE id = ?''',
-                (camera_id.strip(), name.strip(), room_name.strip(), camera_type.strip(), rtsp_url.strip(), active, cam_db_id)
+                (camera_id.strip(), name.strip(), room_name.strip(), camera_type.strip(), rtsp_url.strip(), active,
+                 camera_scope, assigned_class_id, cam_db_id)
             )
             conn.commit()
             logger.info(f"✓ Camera DB ID {cam_db_id} updated: {name}")
@@ -13099,9 +13186,183 @@ def get_camera_room_mappings(active_only: bool = True, organization_id: Optional
             'camera_name': cam['name'],
             'room_name': cam['room_name'],
             'camera_type': cam['camera_type'],
+            'camera_scope': cam.get('camera_scope', 'gate'),
+            'assigned_class_id': cam.get('assigned_class_id'),
             'description': f"{cam['camera_type'].upper().replace('_', ' ')} - {cam['room_name']}",
         }
     return mappings
+
+
+# ============================================
+# SCHOOL PERSONA: CLASS MANAGEMENT CRUD
+# ============================================
+
+def get_classes(organization_id: Optional[str] = None, branch_id: Optional[str] = None, active_only: bool = False) -> List[Dict]:
+    """Retrieve all classes for an organization and branch with shift and teacher metadata."""
+    if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
+        if postgres_is_configured():
+            try:
+                import postgres_mirror as cloud_pg
+                cloud_pg.hydrate_branch_classes(organization_id, branch_id or 'BR-01')
+            except Exception as error:
+                logger.warning("Could not hydrate classes cache from Postgres: %s", error)
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            conditions = []
+            params = []
+            if organization_id and organization_id != 'all':
+                if organization_id == 'DEFAULT_ORG':
+                    conditions.append("(c.organization_id = 'DEFAULT_ORG' OR c.organization_id IS NULL OR c.organization_id = '')")
+                else:
+                    conditions.append("c.organization_id = ?")
+                    params.append(organization_id)
+            if branch_id and branch_id != 'all':
+                if branch_id == 'DEFAULT_BRANCH':
+                    conditions.append("(c.branch_id = 'DEFAULT_BRANCH' OR c.branch_id IS NULL OR c.branch_id = '')")
+                else:
+                    conditions.append("c.branch_id = ?")
+                    params.append(branch_id)
+            if active_only:
+                conditions.append("c.active = 1")
+            where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+            cursor.execute(f"""
+                SELECT c.*, s.name as shift_name, s.start_time as shift_start, s.end_time as shift_end,
+                       u.name as teacher_name,
+                       (SELECT COUNT(*) FROM users stud WHERE stud.class_id = c.id AND stud.active = 1) as student_count
+                FROM classes c
+                LEFT JOIN shifts s ON c.shift_id = s.id
+                LEFT JOIN users u ON c.teacher_id = u.id
+                {where}
+                ORDER BY c.name ASC, c.section ASC
+            """, params)
+            return [dict(r) for r in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Failed to fetch classes: {e}")
+        return []
+
+
+def get_class_by_id(class_id: int, organization_id: Optional[str] = None) -> Optional[Dict]:
+    """Retrieve a single class by its ID, with tenant protection."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            conditions = ["c.id = ?"]
+            params = [class_id]
+            if organization_id and organization_id != 'all':
+                if organization_id == 'DEFAULT_ORG':
+                    conditions.append("(c.organization_id = 'DEFAULT_ORG' OR c.organization_id IS NULL OR c.organization_id = '')")
+                else:
+                    conditions.append("c.organization_id = ?")
+                    params.append(organization_id)
+            where = "WHERE " + " AND ".join(conditions)
+            cursor.execute(f"""
+                SELECT c.*, s.name as shift_name, s.start_time as shift_start, s.end_time as shift_end,
+                       u.name as teacher_name,
+                       (SELECT COUNT(*) FROM users stud WHERE stud.class_id = c.id AND stud.active = 1) as student_count
+                FROM classes c
+                LEFT JOIN shifts s ON c.shift_id = s.id
+                LEFT JOIN users u ON c.teacher_id = u.id
+                {where}
+            """, params)
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Failed to fetch class {class_id}: {e}")
+        return None
+
+
+def add_class(name: str, section: str = 'A', organization_id: str = 'DEFAULT_ORG', branch_id: str = 'DEFAULT_BRANCH',
+              shift_id: Optional[int] = None, room_number: Optional[str] = None, teacher_id: Optional[int] = None) -> Optional[int]:
+    """Create a new class scoped to tenant organization and branch."""
+    if not name or not name.strip():
+        return None
+    try:
+        clean_name = name.strip()
+        clean_sec = (section or 'A').strip().upper()
+        norm_org = organization_id or 'DEFAULT_ORG'
+        norm_branch = branch_id or 'DEFAULT_BRANCH'
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO classes (name, section, organization_id, branch_id, shift_id, room_number, teacher_id, active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            """, (clean_name, clean_sec, norm_org, norm_branch, shift_id, room_number, teacher_id))
+            conn.commit()
+            class_id = cursor.lastrowid
+            logger.info(f"✓ Class '{clean_name} - {clean_sec}' created for Org '{norm_org}' (ID: {class_id})")
+            _cloud_mirror("mirror_class_row", class_id)
+            return class_id
+    except sqlite3.IntegrityError:
+        logger.warning(f"Class '{name}' section '{section}' already exists in org '{organization_id}'")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to add class: {e}")
+        return None
+
+
+def update_class(class_id: int, name: str, section: str = 'A', organization_id: Optional[str] = None,
+                 branch_id: Optional[str] = None, shift_id: Optional[int] = None, room_number: Optional[str] = None,
+                 teacher_id: Optional[int] = None, active: int = 1) -> bool:
+    """Update class details with tenant check."""
+    try:
+        clean_name = name.strip()
+        clean_sec = (section or 'A').strip().upper()
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            conditions = ["id = ?"]
+            params = [clean_name, clean_sec, shift_id, room_number, teacher_id, active, class_id]
+            tenant_clause = ""
+            if organization_id and organization_id != 'all':
+                if organization_id == 'DEFAULT_ORG':
+                    tenant_clause = " AND (organization_id = 'DEFAULT_ORG' OR organization_id IS NULL OR organization_id = '')"
+                else:
+                    tenant_clause = " AND organization_id = ?"
+                    params.append(organization_id)
+            cursor.execute(f"""
+                UPDATE classes
+                SET name = ?, section = ?, shift_id = ?, room_number = ?, teacher_id = ?, active = ?
+                WHERE id = ? {tenant_clause}
+            """, params)
+            conn.commit()
+            updated = cursor.rowcount > 0
+            if updated:
+                logger.info(f"✓ Class ID {class_id} updated: {clean_name} - {clean_sec}")
+                _cloud_mirror("mirror_class_row", class_id)
+            return updated
+    except Exception as e:
+        logger.error(f"Failed to update class {class_id}: {e}")
+        return False
+
+
+def delete_class(class_id: int, organization_id: Optional[str] = None) -> bool:
+    """Delete a class, safely resetting enrolled students' class_id to NULL."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            conditions = ["id = ?"]
+            params = [class_id]
+            if organization_id and organization_id != 'all':
+                if organization_id == 'DEFAULT_ORG':
+                    conditions.append("(organization_id = 'DEFAULT_ORG' OR organization_id IS NULL OR organization_id = '')")
+                else:
+                    conditions.append("organization_id = ?")
+                    params.append(organization_id)
+            where = "WHERE " + " AND ".join(conditions)
+            cursor.execute("UPDATE users SET class_id = NULL WHERE class_id = ?", (class_id,))
+            cursor.execute("UPDATE cameras SET assigned_class_id = NULL WHERE assigned_class_id = ?", (class_id,))
+            cursor.execute(f"DELETE FROM classes {where}", params)
+            conn.commit()
+            deleted = cursor.rowcount > 0
+            if deleted:
+                logger.info(f"✓ Class ID {class_id} deleted.")
+                _cloud_mirror("delete_class", class_id, organization_id)
+            return deleted
+    except Exception as e:
+        logger.error(f"Failed to delete class {class_id}: {e}")
+        return False
 
 
 # Automatically ensure schema and migrations are up-to-date on load.

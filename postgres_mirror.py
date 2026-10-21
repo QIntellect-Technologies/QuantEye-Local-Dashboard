@@ -152,20 +152,31 @@ def mirror_employee(user: Dict[str, Any]) -> None:
     code = str(user.get("employee_code") or user_id)
     shift_val = user.get("shift_id")
     shift_id = str(shift_val).strip() if shift_val is not None and str(shift_val).strip() else None
+    person_type = str(user.get("person_type") or "staff").strip()
+    class_id = user.get("class_id")
+    roll_number = str(user.get("roll_number") or "").strip() or None
+    guardian_name = str(user.get("guardian_name") or "").strip() or None
+    guardian_phone = str(user.get("guardian_phone") or "").strip() or None
 
     def _write(cur):
         _ensure_tenant(cur, org_id, branch_id, str(user.get("organization_name") or ""))
         cur.execute(
             """
             INSERT INTO employees (
-                id, organization_id, branch_id, employee_code, name, email, phone, is_active, shift_id
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                id, organization_id, branch_id, employee_code, name, email, phone, is_active, shift_id,
+                person_type, class_id, roll_number, guardian_name, guardian_phone
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (organization_id, id) DO UPDATE SET
                 name = EXCLUDED.name,
                 email = EXCLUDED.email,
                 phone = EXCLUDED.phone,
                 is_active = EXCLUDED.is_active,
                 shift_id = COALESCE(EXCLUDED.shift_id, employees.shift_id),
+                person_type = EXCLUDED.person_type,
+                class_id = EXCLUDED.class_id,
+                roll_number = EXCLUDED.roll_number,
+                guardian_name = EXCLUDED.guardian_name,
+                guardian_phone = EXCLUDED.guardian_phone,
                 updated_at = CURRENT_TIMESTAMP
             """,
             (
@@ -178,6 +189,11 @@ def mirror_employee(user: Dict[str, Any]) -> None:
                 user.get("phone") or "",
                 bool(int(user["active"]) if user.get("active") is not None else True),
                 shift_id,
+                person_type,
+                class_id,
+                roll_number,
+                guardian_name,
+                guardian_phone,
             ),
         )
 
@@ -380,6 +396,8 @@ def mirror_camera(camera: Dict[str, Any]) -> None:
     rtsp_url = str(camera.get("rtsp_url") or "").strip() or "rtsp://unconfigured"
     if not camera_id:
         return
+    camera_scope = str(camera.get("camera_scope") or "gate").strip()
+    assigned_class_id = camera.get("assigned_class_id")
 
     def _write(cur):
         _ensure_tenant(cur, org_id, branch_id)
@@ -387,8 +405,8 @@ def mirror_camera(camera: Dict[str, Any]) -> None:
             """
             INSERT INTO cameras (
                 id, organization_id, branch_id, camera_name, camera_type, rtsp_url,
-                location, room_name, is_active
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                location, room_name, is_active, camera_scope, assigned_class_id
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (organization_id, id) DO UPDATE SET
                 camera_name = EXCLUDED.camera_name,
                 camera_type = EXCLUDED.camera_type,
@@ -396,6 +414,8 @@ def mirror_camera(camera: Dict[str, Any]) -> None:
                 location = EXCLUDED.location,
                 room_name = EXCLUDED.room_name,
                 is_active = EXCLUDED.is_active,
+                camera_scope = EXCLUDED.camera_scope,
+                assigned_class_id = EXCLUDED.assigned_class_id,
                 updated_at = CURRENT_TIMESTAMP
             """,
             (
@@ -408,6 +428,8 @@ def mirror_camera(camera: Dict[str, Any]) -> None:
                 camera.get("room_name") or "",
                 camera.get("room_name") or "",
                 bool(int(camera["active"]) if camera.get("active") is not None else True),
+                camera_scope,
+                assigned_class_id,
             ),
         )
 
@@ -815,7 +837,12 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                        shift_id,
                        COALESCE(password_hash, '') as password_hash,
                        COALESCE(mobile_login, 0) as mobile_login,
-                       created_at::text as created_at
+                       created_at::text as created_at,
+                       COALESCE(person_type, 'staff') as person_type,
+                       class_id,
+                       roll_number,
+                       guardian_name,
+                       guardian_phone
                 FROM employees
                 WHERE organization_id = %s AND branch_id = %s
                 """,
@@ -842,6 +869,11 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                     emp_shift_id = int(str(s_id_raw).strip()) if s_id_raw is not None and str(s_id_raw).strip() != "" else None
                 except (ValueError, TypeError):
                     emp_shift_id = None
+                p_type = row.get("person_type") or 'staff'
+                c_id = row.get("class_id")
+                r_num = row.get("roll_number")
+                g_name = row.get("guardian_name")
+                g_phone = row.get("guardian_phone")
                 exists = sqlite_cur.execute(
                     "SELECT 1 FROM users WHERE id = ?",
                     (user_id,),
@@ -861,7 +893,12 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             mobile_login = MAX(?, COALESCE(mobile_login, 0)),
                             created_at = COALESCE(?, created_at),
                             join_date = CASE WHEN join_date IS NULL OR join_date = '' OR (join_date > ? AND ? IS NOT NULL) THEN COALESCE(?, join_date) ELSE join_date END,
-                            enrollment_date = CASE WHEN enrollment_date IS NULL OR enrollment_date = '' OR (enrollment_date > ? AND ? IS NOT NULL) THEN COALESCE(?, enrollment_date) ELSE enrollment_date END
+                            enrollment_date = CASE WHEN enrollment_date IS NULL OR enrollment_date = '' OR (enrollment_date > ? AND ? IS NOT NULL) THEN COALESCE(?, enrollment_date) ELSE enrollment_date END,
+                            person_type = COALESCE(?, person_type),
+                            class_id = COALESCE(?, class_id),
+                            roll_number = COALESCE(?, roll_number),
+                            guardian_name = COALESCE(?, guardian_name),
+                            guardian_phone = COALESCE(?, guardian_phone)
                         WHERE id = ?
                         """,
                         (
@@ -881,6 +918,11 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             row_created,
                             row_created,
                             row_created,
+                            p_type,
+                            c_id,
+                            r_num,
+                            g_name,
+                            g_phone,
                             user_id,
                         ),
                     )
@@ -888,8 +930,9 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                 sqlite_cur.execute(
                     """
                     INSERT INTO users (
-                        id, name, email, phone, notes, active, shift_id, organization_id, branch_id, password_hash, mobile_login, created_at, join_date, enrollment_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, name, email, phone, notes, active, shift_id, organization_id, branch_id, password_hash, mobile_login, created_at, join_date, enrollment_date,
+                        person_type, class_id, roll_number, guardian_name, guardian_phone
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         user_id,
@@ -906,6 +949,11 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                         row_created,
                         join_date_val,
                         row_created,
+                        p_type,
+                        c_id,
+                        r_num,
+                        g_name,
+                        g_phone,
                     ),
                 )
             # LAYER 1 PROTECTION: A temporary absence of an employee from PostgreSQL
@@ -1011,7 +1059,9 @@ def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> An
                 """
                 SELECT id, organization_id, branch_id, employee_code, name, email, phone,
                        is_active, COALESCE(password_hash, '') as password_hash,
-                       COALESCE(mobile_login, 0) as mobile_login
+                       COALESCE(mobile_login, 0) as mobile_login,
+                       COALESCE(person_type, 'staff') as person_type,
+                       class_id, roll_number, guardian_name, guardian_phone
                 FROM employees
                 WHERE id = %s AND organization_id = %s
                 """,
@@ -1027,6 +1077,11 @@ def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> An
         br_id = row.get("branch_id") or "BR-01"
         pw_hash = row.get("password_hash") or None
         mob_login = int(row.get("mobile_login", 0) or 0)
+        p_type = row.get("person_type") or 'staff'
+        c_id = row.get("class_id")
+        r_num = row.get("roll_number")
+        g_name = row.get("guardian_name")
+        g_phone = row.get("guardian_phone")
         with sqlite3.connect(_sqlite_path()) as sqlite_conn:
             sqlite_cur = sqlite_conn.cursor()
             exists = sqlite_cur.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -1042,7 +1097,12 @@ def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> An
                         branch_id = COALESCE(?, branch_id),
                         notes = COALESCE(?, notes),
                         password_hash = COALESCE(?, password_hash),
-                        mobile_login = MAX(?, COALESCE(mobile_login, 0))
+                        mobile_login = MAX(?, COALESCE(mobile_login, 0)),
+                        person_type = COALESCE(?, person_type),
+                        class_id = COALESCE(?, class_id),
+                        roll_number = COALESCE(?, roll_number),
+                        guardian_name = COALESCE(?, guardian_name),
+                        guardian_phone = COALESCE(?, guardian_phone)
                     WHERE id = ?
                     """,
                     (
@@ -1055,6 +1115,11 @@ def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> An
                         row.get("employee_code"),
                         pw_hash,
                         mob_login,
+                        p_type,
+                        c_id,
+                        r_num,
+                        g_name,
+                        g_phone,
                         user_id,
                     ),
                 )
@@ -1062,8 +1127,9 @@ def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> An
                 sqlite_cur.execute(
                     """
                     INSERT INTO users (
-                        id, name, email, phone, notes, active, organization_id, branch_id, password_hash, mobile_login
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, name, email, phone, notes, active, organization_id, branch_id, password_hash, mobile_login,
+                        person_type, class_id, roll_number, guardian_name, guardian_phone
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         user_id,
@@ -1076,6 +1142,11 @@ def fetch_pg_employee(user_id: int, organization_id: Optional[str] = None) -> An
                         br_id,
                         pw_hash,
                         mob_login,
+                        p_type,
+                        c_id,
+                        r_num,
+                        g_name,
+                        g_phone,
                     ),
                 )
             sqlite_conn.commit()
@@ -2246,6 +2317,132 @@ def mirror_camera_row(cam_db_id: Optional[int] = None, camera_id: Optional[str] 
                 mirror_camera(dict(row))
     except Exception as error:
         logger.warning("Could not load camera for Postgres mirror: %s", error)
+
+
+def mirror_class_row(class_id: Optional[int] = None) -> None:
+    try:
+        with sqlite3.connect(_sqlite_path()) as conn:
+            conn.row_factory = sqlite3.Row
+            if class_id is not None:
+                row = conn.execute("SELECT * FROM classes WHERE id = ?", (class_id,)).fetchone()
+                if row:
+                    mirror_class(dict(row))
+    except Exception as error:
+        logger.warning("Could not load class for Postgres mirror: %s", error)
+
+
+def mirror_class(cls: Dict[str, Any]) -> None:
+    org_id = str(cls.get("organization_id") or "").strip()
+    branch_id = str(cls.get("branch_id") or "BR-01").strip() or "BR-01"
+    if not _real_tenant(org_id, branch_id):
+        return
+    class_id = cls.get("id")
+    name = str(cls.get("name") or "").strip()
+    section = str(cls.get("section") or "A").strip()
+    if not name:
+        return
+    shift_id = cls.get("shift_id")
+    room_number = cls.get("room_number")
+    teacher_id = cls.get("teacher_id")
+    active = int(cls.get("active", 1) or 1)
+
+    def _write(cur):
+        _ensure_tenant(cur, org_id, branch_id)
+        cur.execute(
+            """
+            INSERT INTO classes (
+                id, organization_id, branch_id, name, section, shift_id, room_number, teacher_id, active
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                organization_id = EXCLUDED.organization_id,
+                branch_id = EXCLUDED.branch_id,
+                name = EXCLUDED.name,
+                section = EXCLUDED.section,
+                shift_id = EXCLUDED.shift_id,
+                room_number = EXCLUDED.room_number,
+                teacher_id = EXCLUDED.teacher_id,
+                active = EXCLUDED.active
+            """,
+            (class_id, org_id, branch_id, name, section, shift_id, room_number, teacher_id, active),
+        )
+
+    return _with_cursor(_write)
+
+
+def delete_class(class_id: int, organization_id: Optional[str] = None) -> None:
+    def _write(cur):
+        if organization_id and _real_tenant(organization_id):
+            cur.execute(
+                "UPDATE employees SET class_id = NULL WHERE organization_id = %s AND class_id = %s",
+                (organization_id, class_id),
+            )
+            cur.execute(
+                "UPDATE cameras SET assigned_class_id = NULL WHERE organization_id = %s AND assigned_class_id = %s",
+                (organization_id, class_id),
+            )
+            cur.execute(
+                "DELETE FROM classes WHERE organization_id = %s AND id = %s",
+                (organization_id, class_id),
+            )
+        else:
+            cur.execute("UPDATE employees SET class_id = NULL WHERE class_id = %s", (class_id,))
+            cur.execute("UPDATE cameras SET assigned_class_id = NULL WHERE assigned_class_id = %s", (class_id,))
+            cur.execute("DELETE FROM classes WHERE id = %s", (class_id,))
+
+    _with_cursor(_write)
+
+
+def hydrate_branch_classes(organization_id: str, branch_id: str) -> int:
+    """Synchronize classes from Postgres into SQLite cache."""
+    org_id = str(organization_id or "").strip()
+    br_id = str(branch_id or "").strip()
+    if not postgres_is_configured() or not _real_tenant(org_id, br_id):
+        return 0
+    conn = _connect()
+    if conn is None:
+        return 0
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, organization_id, branch_id, name, section, shift_id, room_number, teacher_id, active
+                FROM classes
+                WHERE organization_id = %s AND branch_id = %s
+                """,
+                (org_id, br_id),
+            )
+            rows = list(cur.fetchall() or [])
+        if not rows:
+            return 0
+        with sqlite3.connect(_sqlite_path()) as sqlite_conn:
+            sqlite_cur = sqlite_conn.cursor()
+            for r in rows:
+                c_id = r.get("id")
+                c_name = r.get("name")
+                c_sec = r.get("section") or "A"
+                c_shift = r.get("shift_id")
+                c_room = r.get("room_number")
+                c_teacher = r.get("teacher_id")
+                c_active = int(r.get("active", 1) or 1)
+                sqlite_cur.execute(
+                    """
+                    INSERT INTO classes (id, organization_id, branch_id, name, section, shift_id, room_number, teacher_id, active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(organization_id, branch_id, name, section) DO UPDATE SET
+                        shift_id = excluded.shift_id,
+                        room_number = excluded.room_number,
+                        teacher_id = excluded.teacher_id,
+                        active = excluded.active
+                    """,
+                    (c_id, org_id, br_id, c_name, c_sec, c_shift, c_room, c_teacher, c_active),
+                )
+            sqlite_conn.commit()
+        return len(rows)
+    except Exception as error:
+        logger.warning("Could not hydrate classes from Postgres: %s", error)
+        return 0
+    finally:
+        conn.close()
 
 
 def bootstrap_cloud_postgres() -> None:
