@@ -124,6 +124,22 @@ def _with_cursor(work):
         conn.close()
 
 
+def _with_read_cursor(work):
+    if not postgres_is_configured():
+        return None
+    conn = _connect()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            return work(cur)
+    except Exception as error:
+        logger.warning("Cloud Postgres read failed: %s", error)
+        return None
+    finally:
+        conn.close()
+
+
 def mirror_employee(user: Dict[str, Any]) -> None:
     org_id = str(user.get("organization_id") or "").strip()
     branch_id = str(user.get("branch_id") or "BR-01").strip() or "BR-01"
@@ -2355,24 +2371,63 @@ def mirror_payroll_run(run: Dict[str, Any], records: Optional[List[Dict[str, Any
     return _with_cursor(_write)
 
 
-def fetch_pg_organization_modules(organization_id: str) -> Optional[List[str]]:
-    """Fetch enabled modules for an organization from PostgreSQL organization_modules table."""
+def fetch_pg_organization_info(organization_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch enabled modules and company name for an organization from PostgreSQL."""
     if not postgres_is_configured() or not organization_id or organization_id in _PLACEHOLDER_ORGS:
         return None
 
     def _read(cur):
         cur.execute(
             """
-            SELECT module_id FROM organization_modules
-            WHERE organization_id = %s AND (is_enabled = TRUE OR enabled = 1)
+            SELECT id, name, portal_slug FROM organizations
+            WHERE id = %s OR LOWER(id) = LOWER(%s) OR LOWER(COALESCE(portal_slug, '')) = LOWER(%s)
+            LIMIT 1
             """,
-            (organization_id,)
+            (organization_id, organization_id, organization_id)
         )
-        return [str(r[0]).strip().lower() for r in cur.fetchall() if r and r[0]]
+        row = cur.fetchone()
+        org_name = ""
+        resolved_id = organization_id
+        if row:
+            if isinstance(row, dict):
+                org_name = str(row.get('name') or '').strip()
+                resolved_id = str(row.get('id') or organization_id).strip()
+            else:
+                org_name = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+                resolved_id = str(row[0]).strip() if len(row) > 0 and row[0] else organization_id
+
+        cur.execute(
+            """
+            SELECT module_id FROM organization_modules
+            WHERE (organization_id = %s OR LOWER(organization_id) = LOWER(%s))
+              AND (is_enabled IS TRUE OR is_enabled IS NULL)
+            """,
+            (resolved_id, resolved_id)
+        )
+        modules = []
+        for r in cur.fetchall():
+            if isinstance(r, dict):
+                mod = r.get('module_id')
+            else:
+                mod = r[0] if len(r) > 0 else None
+            if mod:
+                modules.append(str(mod).strip().lower())
+        return {
+            "name": org_name,
+            "modules": modules,
+        }
 
     try:
-        return _with_cursor(_read)
+        return _with_read_cursor(_read)
     except Exception as e:
-        logger.debug("Could not fetch organization modules from postgres: %s", e)
+        logger.debug("Could not fetch organization info from postgres: %s", e)
         return None
+
+
+def fetch_pg_organization_modules(organization_id: str) -> Optional[List[str]]:
+    """Fetch enabled modules for an organization from PostgreSQL organization_modules table."""
+    info = fetch_pg_organization_info(organization_id)
+    if info is not None:
+        return info.get("modules")
+    return None
 

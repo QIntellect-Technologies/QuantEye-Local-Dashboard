@@ -3924,14 +3924,17 @@ def get_mobile_organization_entitlements(organization_id: str) -> Dict[str, Any]
             pass
 
     # 3. PostgreSQL mirror if configured
-    if modules is None:
+    if modules is None or not company_name:
         try:
             import postgres_mirror
-            pg_mods = postgres_mirror.fetch_pg_organization_modules(org_id)
-            if pg_mods is not None:
-                modules = pg_mods
+            pg_info = postgres_mirror.fetch_pg_organization_info(org_id)
+            if pg_info:
+                if not company_name and pg_info.get('name'):
+                    company_name = pg_info['name']
+                if modules is None and pg_info.get('modules') is not None:
+                    modules = pg_info['modules']
         except Exception as e:
-            logger.debug("Could not read organization_modules from pg: %s", e)
+            logger.debug("Could not read organization info from pg: %s", e)
 
     # 4. Main Cloud Dashboard API
     allowed_from_cloud = None
@@ -3947,11 +3950,16 @@ def get_mobile_organization_entitlements(organization_id: str) -> Dict[str, Any]
             timeout=1.5,
         ) as resp:
             payload = json.loads(resp.read().decode('utf-8'))
-        allowed_from_cloud = bool(payload.get('mobile'))
-        if not company_name:
-            company_name = str(payload.get('name') or '').strip()
-        if modules is None and 'modules' in payload and isinstance(payload['modules'], list):
-            modules = [str(m).strip().lower() for m in payload['modules'] if str(m).strip()]
+        cloud_found = payload.get('found')
+        if cloud_found is None:
+            cloud_found = bool(payload.get('name') or payload.get('modules'))
+
+        if cloud_found:
+            allowed_from_cloud = bool(payload.get('mobile'))
+            if not company_name:
+                company_name = str(payload.get('name') or '').strip()
+            if modules is None and 'modules' in payload and isinstance(payload['modules'], list):
+                modules = [str(m).strip().lower() for m in payload['modules'] if str(m).strip()]
     except Exception:
         pass
 
