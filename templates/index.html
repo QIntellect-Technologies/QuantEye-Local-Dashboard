@@ -12087,8 +12087,6 @@ async function fetchMultiLiveDetections() {
               statusBadge = `<span class="badge" style="background:#e6f4ea; color:#1e8e3e; border:1px solid #a8dab5; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-check"></i> Present${dayTypeSuffix}</span>`;
             } else if (st === 'not_employed') {
               statusBadge = '<span class="badge" style="background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-user-slash"></i> Not Employed</span>';
-            } else if (st === 'not_checked_in') {
-              statusBadge = '<span class="badge" style="background:#fefce8; color:#a16207; border:1px solid #fde047; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-hourglass-start"></i> Not Checked In</span>';
             } else {
               statusBadge = '<span class="badge" style="background:#fce8e6; color:#d93025; border:1px solid #f5b4b0; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-xmark"></i> Absent</span>';
             }
@@ -12553,8 +12551,6 @@ async function fetchMultiLiveDetections() {
                   stBadge = '<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-plane-slash"></i> Unpaid Leave</span>';
                 } else if (st === 'not_employed') {
                   stBadge = '<span class="badge" style="background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-user-slash"></i> Not Employed</span>';
-                } else if (st === 'not_checked_in') {
-                  stBadge = '<span class="badge" style="background:#fefce8; color:#a16207; border:1px solid #fde047; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-hourglass-start"></i> Not Checked In</span>';
                 } else {
                   stBadge = '<span class="badge" style="background:#fce8e6; color:#d93025; border:1px solid #f5b4b0; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-circle-xmark"></i> Absent</span>';
                 }

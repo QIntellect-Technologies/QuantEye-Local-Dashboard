@@ -4892,27 +4892,9 @@ def get_detailed_attendance_report(
                             checkin_cam = '-'
                             checkout_cam = '-'
                         else:
-                            # QA-50 & Section C #3: Today is NOT counted as absent before the shift ends
-                            is_cur_today = (cur_date == datetime.now().strftime('%Y-%m-%d'))
-                            shift_ended = True
-                            if is_cur_today:
-                                now_dt = datetime.now()
-                                now_mins = now_dt.hour * 60 + now_dt.minute
-                                try:
-                                    s_end_m = parse_time_to_minutes(shift_end)
-                                    s_start_m = parse_time_to_minutes(shift_start)
-                                    if s_end_m < s_start_m:  # overnight
-                                        shift_ended = (now_mins >= s_end_m and now_mins < s_start_m)
-                                    else:
-                                        shift_ended = (now_mins >= s_end_m)
-                                except Exception:
-                                    shift_ended = True
-
-                            if is_cur_today and not shift_ended:
-                                status = 'not_checked_in'
-                            else:
-                                status = 'absent'
-                                emp_absent_days += 1
+                            # If an employee has not checked in, they are marked and counted as absent
+                            status = 'absent'
+                            emp_absent_days += 1
                             first_seen = None
                             last_seen = None
                             loc = '-'
