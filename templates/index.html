@@ -18457,10 +18457,14 @@ async function fetchMultiLiveDetections() {
           ? (starts[0] === ends[ends.length - 1] ? starts[0] : `${starts[0]} &rarr; ${ends[ends.length - 1]}`)
           : '--';
 
-        const pendingCount = reqs.filter(r => r.status === 'pending' || r.paid_status === 'pending' || r.unpaid_status === 'pending').length;
-        const approvedCount = reqs.filter(r => r.status === 'approved').length;
-        const partialCount = reqs.filter(r => r.status === 'partially_approved').length;
-        const rejectedCount = reqs.filter(r => r.status === 'rejected').length;
+        let pendingCount = 0, approvedCount = 0, partialCount = 0, rejectedCount = 0;
+        for (const r of reqs) {
+          const st = String(r.status || 'pending').toLowerCase();
+          if (st === 'approved') approvedCount++;
+          else if (st === 'rejected') rejectedCount++;
+          else if (st === 'partially_approved') partialCount++;
+          else pendingCount++;
+        }
 
         let statusBadges = [];
         if (pendingCount) statusBadges.push(`<span class="badge bg-warning-subtle text-warning-emphasis">${pendingCount} Pending</span>`);
@@ -18604,7 +18608,7 @@ async function fetchMultiLiveDetections() {
           let segAdded = false;
           if (req.leave_duration === 'half') {
             const isUnpaid = leaveType.toLowerCase() === 'unpaid';
-            const st = (isUnpaid ? (req.unpaid_status || req.status) : (req.paid_status || req.status)) || 'pending';
+            const st = req.status === 'approved' ? 'approved' : ((isUnpaid ? req.unpaid_status : req.paid_status) || req.status || 'pending');
             allSegments.push({
               id: Number(req.id),
               portion: isUnpaid ? 'unpaid' : 'paid',
@@ -18621,7 +18625,7 @@ async function fetchMultiLiveDetections() {
             segAdded = true;
           } else {
             if (quotaDays > 0) {
-              const pSt = req.paid_status || (req.status === 'partially_approved' ? 'approved' : req.status) || 'pending';
+              const pSt = (req.status === 'approved' || req.paid_status === 'approved') ? 'approved' : (req.paid_status || req.status || 'pending');
               allSegments.push({
                 id: Number(req.id),
                 portion: 'paid',
@@ -18639,7 +18643,7 @@ async function fetchMultiLiveDetections() {
             }
             const paidOverrideDays = Math.max(0, paidDays - quotaDays);
             if (paidOverrideDays > 0) {
-              const pSt = req.paid_status || (req.status === 'partially_approved' ? 'approved' : req.status) || 'pending';
+              const pSt = (req.status === 'approved' || req.paid_status === 'approved') ? 'approved' : (req.paid_status || req.status || 'pending');
               allSegments.push({
                 id: Number(req.id),
                 portion: 'paid',
@@ -18720,10 +18724,21 @@ async function fetchMultiLiveDetections() {
         : `Request #${firstReq.id} · Employee #${firstReq.user_id}`);
       putText('leaveCompletePeriod', minDate === maxDate ? minDate : `${minDate} to ${maxDate}`);
 
-      const pendingCount = requests.filter(r => r.status === 'pending' || r.paid_status === 'pending' || r.unpaid_status === 'pending').length;
-      const approvedCount = requests.filter(r => r.status === 'approved').length;
+      let pendingCount = 0, approvedCount = 0, partialCount = 0, rejectedCount = 0;
+      for (const r of requests) {
+        const st = String(r.status || 'pending').toLowerCase();
+        if (st === 'approved') approvedCount++;
+        else if (st === 'rejected') rejectedCount++;
+        else if (st === 'partially_approved') partialCount++;
+        else pendingCount++;
+      }
+      let statusParts = [];
+      if (pendingCount) statusParts.push(`${pendingCount} Pending`);
+      if (approvedCount) statusParts.push(`${approvedCount} Approved`);
+      if (partialCount) statusParts.push(`${partialCount} Partial`);
+      if (rejectedCount) statusParts.push(`${rejectedCount} Rejected`);
       let overallStatus = isMulti
-        ? (pendingCount && approvedCount ? `${pendingCount} Pending, ${approvedCount} Approved` : (pendingCount ? `${pendingCount} Pending` : `${approvedCount} Approved`))
+        ? (statusParts.length ? statusParts.join(', ') : 'Done')
         : String(firstReq.status || 'pending').replace(/\b\w/g, char => char.toUpperCase());
 
       const allocationSummary = document.getElementById('leaveCompleteAllocationSummary');

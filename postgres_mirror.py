@@ -1405,7 +1405,14 @@ def fetch_pg_leave(leave_id: int, organization_id: Optional[str] = None) -> Any:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, organization_id, branch_id, employee_id, leave_type, start_date::text as start_date, end_date::text as end_date, status, reason FROM leave_requests WHERE id = %s AND organization_id = %s",
+                """
+                SELECT id, organization_id, branch_id, employee_id, leave_type,
+                       start_date::text as start_date, end_date::text as end_date,
+                       status, reason, paid_days, unpaid_days, start_time, end_time,
+                       leave_duration, rejection_reason
+                FROM leave_requests
+                WHERE id = %s AND organization_id = %s
+                """,
                 (str(leave_id), org_id),
             )
             row = cur.fetchone()
@@ -1419,26 +1426,45 @@ def fetch_pg_leave(leave_id: int, organization_id: Optional[str] = None) -> Any:
             return False
         with sqlite3.connect(_sqlite_path()) as sqlite_conn:
             sqlite_cur = sqlite_conn.cursor()
+            raw_st = str(row.get("status") or "pending").strip().lower()
+            sub_st = 'approved' if raw_st == 'approved' else ('rejected' if raw_st == 'rejected' else 'pending')
+            dur = str(row.get("leave_duration") or "full").strip().lower()
             exists = sqlite_cur.execute("SELECT 1 FROM leave_requests WHERE id = ?", (leave_id,)).fetchone()
             if exists:
                 sqlite_cur.execute(
                     """
                     UPDATE leave_requests SET
                         status = ?,
+                        paid_status = ?,
+                        unpaid_status = ?,
                         reason = ?,
                         leave_type = COALESCE(?, leave_type),
                         start_date = COALESCE(?, start_date),
                         end_date = COALESCE(?, end_date),
+                        leave_duration = COALESCE(?, leave_duration),
+                        paid_days = COALESCE(?, paid_days),
+                        unpaid_days = COALESCE(?, unpaid_days),
+                        start_time = COALESCE(?, start_time),
+                        end_time = COALESCE(?, end_time),
+                        rejection_reason = COALESCE(?, rejection_reason),
                         organization_id = ?,
                         branch_id = COALESCE(?, branch_id)
                     WHERE id = ?
                     """,
                     (
-                        row.get("status"),
-                        row.get("reason"),
+                        raw_st,
+                        sub_st,
+                        sub_st,
+                        row.get("reason") or "",
                         row.get("leave_type"),
                         row.get("start_date"),
                         row.get("end_date"),
+                        dur,
+                        row.get("paid_days"),
+                        row.get("unpaid_days"),
+                        row.get("start_time"),
+                        row.get("end_time"),
+                        row.get("rejection_reason"),
                         org_id,
                         row.get("branch_id") or "DEFAULT_BRANCH",
                         leave_id,
@@ -1451,16 +1477,27 @@ def fetch_pg_leave(leave_id: int, organization_id: Optional[str] = None) -> Any:
                     user_id = 0
                 sqlite_cur.execute(
                     """
-                    INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, status, reason, organization_id, branch_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO leave_requests (
+                        id, user_id, leave_type, start_date, end_date, status, paid_status, unpaid_status,
+                        leave_duration, paid_days, unpaid_days, start_time, end_time, rejection_reason,
+                        reason, organization_id, branch_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         leave_id,
                         user_id,
-                        row.get("leave_type"),
-                        str(row.get("start_date")),
-                        str(row.get("end_date")),
-                        row.get("status"),
+                        row.get("leave_type") or "casual",
+                        row.get("start_date"),
+                        row.get("end_date"),
+                        raw_st,
+                        sub_st,
+                        sub_st,
+                        dur,
+                        row.get("paid_days"),
+                        row.get("unpaid_days"),
+                        row.get("start_time"),
+                        row.get("end_time"),
+                        row.get("rejection_reason"),
                         row.get("reason") or "",
                         org_id,
                         row.get("branch_id") or "DEFAULT_BRANCH",
@@ -1489,7 +1526,8 @@ def fetch_pg_leave_requests(organization_id: str, branch_id: Optional[str] = Non
             query = """
                 SELECT id, organization_id, branch_id, employee_id, leave_type,
                        start_date::text as start_date, end_date::text as end_date,
-                       status, reason
+                       status, reason, paid_days, unpaid_days, start_time, end_time,
+                       leave_duration, rejection_reason
                 FROM leave_requests
                 WHERE organization_id = %s
             """
@@ -1523,26 +1561,45 @@ def fetch_pg_leave_requests(organization_id: str, branch_id: Optional[str] = Non
                     uid = int(str(r.get("employee_id") or "").strip())
                 except (ValueError, TypeError):
                     uid = 0
+                raw_st = str(r.get("status") or "pending").strip().lower()
+                sub_st = 'approved' if raw_st == 'approved' else ('rejected' if raw_st == 'rejected' else 'pending')
+                dur = str(r.get("leave_duration") or "full").strip().lower()
                 exists = sqlite_cur.execute("SELECT 1 FROM leave_requests WHERE id = ?", (lid,)).fetchone()
                 if exists:
                     sqlite_cur.execute(
                         """
                         UPDATE leave_requests SET
                             status = ?,
+                            paid_status = ?,
+                            unpaid_status = ?,
                             reason = ?,
                             leave_type = COALESCE(?, leave_type),
                             start_date = COALESCE(?, start_date),
                             end_date = COALESCE(?, end_date),
+                            leave_duration = COALESCE(?, leave_duration),
+                            paid_days = COALESCE(?, paid_days),
+                            unpaid_days = COALESCE(?, unpaid_days),
+                            start_time = COALESCE(?, start_time),
+                            end_time = COALESCE(?, end_time),
+                            rejection_reason = COALESCE(?, rejection_reason),
                             organization_id = ?,
                             branch_id = COALESCE(?, branch_id)
                         WHERE id = ?
                         """,
                         (
-                            r.get("status"),
+                            raw_st,
+                            sub_st,
+                            sub_st,
                             r.get("reason") or "",
                             r.get("leave_type"),
                             r.get("start_date"),
                             r.get("end_date"),
+                            dur,
+                            r.get("paid_days"),
+                            r.get("unpaid_days"),
+                            r.get("start_time"),
+                            r.get("end_time"),
+                            r.get("rejection_reason"),
                             organization_id,
                             r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
                             lid,
@@ -1551,8 +1608,11 @@ def fetch_pg_leave_requests(organization_id: str, branch_id: Optional[str] = Non
                 else:
                     sqlite_cur.execute(
                         """
-                        INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, status, reason, organization_id, branch_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO leave_requests (
+                            id, user_id, leave_type, start_date, end_date, status, paid_status, unpaid_status,
+                            leave_duration, paid_days, unpaid_days, start_time, end_time, rejection_reason,
+                            reason, organization_id, branch_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             lid,
@@ -1560,7 +1620,15 @@ def fetch_pg_leave_requests(organization_id: str, branch_id: Optional[str] = Non
                             r.get("leave_type") or "casual",
                             r.get("start_date"),
                             r.get("end_date"),
-                            r.get("status") or "pending",
+                            raw_st,
+                            sub_st,
+                            sub_st,
+                            dur,
+                            r.get("paid_days"),
+                            r.get("unpaid_days"),
+                            r.get("start_time"),
+                            r.get("end_time"),
+                            r.get("rejection_reason"),
                             r.get("reason") or "",
                             organization_id,
                             r.get("branch_id") or branch_id or "DEFAULT_BRANCH",

@@ -6943,6 +6943,13 @@ def update_leave_type(
                  int(bool(half_leave_enabled)), half_mode, half_count, half_months, half_conversion,
                  half_leave_quota_type_id, type_id, _tenant_ids(organization_id)[0])
             )
+            cursor.execute(
+                """UPDATE employee_leave_balances SET allocated_days = ?
+                   WHERE leave_type_id = ? AND user_id IN (
+                       SELECT id FROM users WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                   )""",
+                (yearly_allowance, type_id, _tenant_ids(organization_id)[0])
+            )
             conn.commit()
             return cursor.rowcount > 0
     except Exception as e:
@@ -7203,16 +7210,27 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
                 u_balances = {'user_id': u['id'], 'user_name': u['name'], 'department': u['department'], 'year': year, 'balances': {}}
                 for lt in ltypes:
                     allowance_period = lt.get('allowance_period', 'yearly')
+                    policy_allowance = float(lt.get('yearly_allowance') or 0.0)
                     cursor.execute(
                         "SELECT allocated_days, used_days FROM employee_leave_balances WHERE user_id = ? AND leave_type_id = ? AND year = ?",
                         (u['id'], lt['id'], year)
                     )
                     row = cursor.fetchone()
                     if row:
-                        alloc = row['allocated_days']
+                        alloc = float(row['allocated_days'])
+                        if (allowance_period in ('yearly', 'annual') or alloc < policy_allowance) and alloc != policy_allowance:
+                            alloc = policy_allowance
+                            try:
+                                cursor.execute(
+                                    "UPDATE employee_leave_balances SET allocated_days = ? WHERE user_id = ? AND leave_type_id = ? AND year = ?",
+                                    (policy_allowance, u['id'], lt['id'], year)
+                                )
+                                conn.commit()
+                            except Exception:
+                                pass
                     else:
-                        alloc = lt['yearly_allowance']
-                        if allowance_period == 'yearly':
+                        alloc = policy_allowance
+                        if allowance_period in ('yearly', 'annual', '') or not allowance_period:
                             try:
                                 cursor.execute(
                                     "INSERT OR IGNORE INTO employee_leave_balances (user_id, leave_type_id, year, allocated_days, used_days) VALUES (?, ?, ?, ?, ?)",
@@ -7802,7 +7820,9 @@ def check_leave_quota(
                     )
                     bal_row = cursor.fetchone()
                     if bal_row:
-                        allocated = float(bal_row['allocated_days'])
+                        bal_alloc = float(bal_row['allocated_days'])
+                        if bal_alloc > allocated:
+                            allocated = bal_alloc
 
                 allowance_period = lt_dict.get('allowance_period', 'yearly')
                 cycle_start, cycle_end = _leave_allowance_cycle_window(
@@ -7958,7 +7978,9 @@ def check_leave_quota(
                 )
                 bal_row = cursor.fetchone()
                 if bal_row:
-                    allocated = float(bal_row['allocated_days'])
+                    bal_alloc = float(bal_row['allocated_days'])
+                    if bal_alloc > allocated:
+                        allocated = bal_alloc
 
             # Sum already approved days in this year/month
             already_used = 0.0
