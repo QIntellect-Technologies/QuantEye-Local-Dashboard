@@ -151,6 +151,40 @@ class MobileLeaveRequestTests(unittest.TestCase):
         bob_history = bob_res.get_json()["requests"]
         self.assertEqual(len(bob_history), 0)
 
+    def test_module_entitlement_gating(self):
+        # Configure ORG_A cache with attendance & mobile only (NO leave, NO overtime)
+        import time
+        app_module._MOBILE_COMPANY_CACHE[ORG_A] = (True, "Org A", ["attendance", "mobile"], time.time())
+
+        self._login_mobile(self.user_a_id, ORG_A, BR_A, "Alice Mobile")
+
+        # Today endpoint returns module entitlement flags
+        today_res = self.client.get("/api/mobile/today")
+        self.assertEqual(today_res.status_code, 200)
+        mods = today_res.get_json().get("modules", {})
+        self.assertTrue(mods.get("attendance"))
+        self.assertTrue(mods.get("mobile"))
+        self.assertFalse(mods.get("leave"))
+        self.assertFalse(mods.get("overtime"))
+
+        # Gated leave endpoints return 403 Forbidden
+        lt_res = self.client.get("/api/mobile/leave-types")
+        self.assertEqual(lt_res.status_code, 403)
+        self.assertIn("not licensed", lt_res.get_json().get("message", ""))
+
+        lr_res = self.client.get("/api/mobile/leave-requests")
+        self.assertEqual(lr_res.status_code, 403)
+
+        post_res = self.client.post("/api/mobile/leave-requests", json={
+            "leave_type": "casual",
+            "start_date": "2026-11-10",
+            "end_date": "2026-11-12",
+        })
+        self.assertEqual(post_res.status_code, 403)
+
+        # Clear cache for other tests
+        app_module._MOBILE_COMPANY_CACHE.pop(ORG_A, None)
+
 
 if __name__ == "__main__":
     unittest.main()

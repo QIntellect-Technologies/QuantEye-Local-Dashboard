@@ -2353,3 +2353,26 @@ def mirror_payroll_run(run: Dict[str, Any], records: Optional[List[Dict[str, Any
                 )
 
     return _with_cursor(_write)
+
+
+def fetch_pg_organization_modules(organization_id: str) -> Optional[List[str]]:
+    """Fetch enabled modules for an organization from PostgreSQL organization_modules table."""
+    if not postgres_is_configured() or not organization_id or organization_id in _PLACEHOLDER_ORGS:
+        return None
+
+    def _read(cur):
+        cur.execute(
+            """
+            SELECT module_id FROM organization_modules
+            WHERE organization_id = %s AND (is_enabled = TRUE OR enabled = 1)
+            """,
+            (organization_id,)
+        )
+        return [str(r[0]).strip().lower() for r in cur.fetchall() if r and r[0]]
+
+    try:
+        return _with_cursor(_read)
+    except Exception as e:
+        logger.debug("Could not fetch organization modules from postgres: %s", e)
+        return None
+

@@ -791,10 +791,10 @@
           <h3 id="monthTitle">This Month</h3>
           <span id="monthSub" style="font-size:0.75rem; color:var(--muted); font-weight:600; background:#f1f5f9; padding:3px 8px; border-radius:999px;">Scroll to view all days</span>
         </div>
-        <div class="month-stats">
+        <div class="month-stats" id="monthStatsGrid">
           <div class="m-stat green"><span>Present</span><strong id="mStatPresent">0</strong></div>
           <div class="m-stat red"><span>Absent</span><strong id="mStatAbsent">0</strong></div>
-          <div class="m-stat amber"><span>Leaves</span><strong id="mStatLeave">0</strong></div>
+          <div class="m-stat amber" id="mStatLeaveBox"><span>Leaves</span><strong id="mStatLeave">0</strong></div>
           <div class="m-stat slate"><span>Working</span><strong id="mStatWorking">0</strong></div>
         </div>
         <div class="days-list-wrapper">
@@ -1007,6 +1007,28 @@
     let punchPollingInterval = null;
     let lastSeenPunchId = localStorage.getItem('qe_last_punch_id') || null;
     let toastDismissTimer = null;
+    window.mobileModules = null;
+
+    function applyModuleEntitlements(modules) {
+      if (!modules) return;
+      window.mobileModules = modules;
+      const hasLeave = (modules.leave !== false);
+      const tabLeaves = document.getElementById('tabLeaves');
+      if (tabLeaves) {
+        tabLeaves.style.display = hasLeave ? 'flex' : 'none';
+      }
+      const leaveBox = document.getElementById('mStatLeaveBox');
+      const statsGrid = document.getElementById('monthStatsGrid');
+      if (leaveBox) {
+        leaveBox.style.display = hasLeave ? '' : 'none';
+      }
+      if (statsGrid) {
+        statsGrid.style.gridTemplateColumns = hasLeave ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)';
+      }
+      if (!hasLeave && currentTab === 'leaves') {
+        switchTab('today');
+      }
+    }
 
     function parseClockToDate(todayDateStr, clockStr) {
       if (!clockStr) return null;
@@ -1124,6 +1146,18 @@
           fill.style.width = percent + '%';
           footLeft.textContent = `Shift Length: ${shiftHours} hrs`;
           footRight.textContent = `${percent}% elapsed`;
+        } else if (window.mobileModules && window.mobileModules.overtime === false) {
+          // Overtime module not subscribed: show standard completion without overtime counting
+          meterCard.className = 'meter-card';
+          badge.className = 'meter-badge badge-completed';
+          badgeText.textContent = 'Shift Hours Completed';
+          caption.textContent = 'Scheduled Shift Met';
+          timer.textContent = card.working_time || 'Done';
+          const endClockStr = endDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          note.textContent = `Shift completed at ${endClockStr}`;
+          fill.style.width = '100%';
+          footLeft.textContent = `Target: ${shiftHours} hrs met`;
+          footRight.textContent = 'Duty Finished';
         } else {
           // Overtime active! Turn Emerald Green and count UP
           const overtimeMs = now - endDt.getTime();
@@ -1309,6 +1343,7 @@
           if (!isSilent) showLogin();
           return;
         }
+        if (data.modules) applyModuleEntitlements(data.modules);
         showCard(data.attendance || {});
       } catch (err) {
         if (!isSilent) showLogin();
@@ -1627,6 +1662,7 @@
         loginError.textContent = data.message || 'Login failed. Please check credentials.';
         return;
       }
+      if (data.modules) applyModuleEntitlements(data.modules);
       currentTab = 'today';
       cachedToday = null;
       cachedMonth = null;
@@ -1662,6 +1698,7 @@
       cachedProfile = null;
       cachedLeaves = null;
       cachedLeaveTypes = null;
+      window.mobileModules = null;
       showLogin();
     });
 

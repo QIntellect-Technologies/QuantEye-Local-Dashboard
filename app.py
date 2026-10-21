@@ -3885,25 +3885,56 @@ def api_client_login():
 
 _MOBILE_COMPANY_CACHE = {}
 
-def _mobile_company(organization_id: str):
-    """Ask Main whether this company selected Mobile App, and return its name."""
+
+def get_mobile_organization_entitlements(organization_id: str) -> Dict[str, Any]:
+    """Return company name, allowed flag, and module entitlement flags for an organization."""
     org_id = str(organization_id or '').strip()
     if not org_id:
-        return False, ''
+        default_flags = licensed_module_flags(list(CANONICAL_MODULES))
+        return {'allowed': True, 'company': '', 'modules': default_flags}
+
     now = time.time()
     if org_id in _MOBILE_COMPANY_CACHE:
-        c_allowed, c_name, c_time = _MOBILE_COMPANY_CACHE[org_id]
-        if now - c_time < 3600:
-            return c_allowed, c_name
+        entry = _MOBILE_COMPANY_CACHE[org_id]
+        if len(entry) == 4 and (now - entry[3] < 3600):
+            c_allowed, c_name, c_mods, _ = entry
+            return {'allowed': c_allowed, 'company': c_name, 'modules': licensed_module_flags(c_mods)}
+
+    company_name = ''
+    modules = None
+
+    # 1. Local integration config (if tenant matches)
     try:
-        with sqlite3.connect(db.DB_PATH) as conn:
-            row = conn.execute("SELECT name FROM organizations WHERE id = ?", (org_id,)).fetchone()
-            if row and row[0]:
-                org_name = str(row[0]).strip()
-                _MOBILE_COMPANY_CACHE[org_id] = (True, org_name, now)
-                return True, org_name
+        cfg = load_integration_config()
+        if cfg.get('organization_id') == org_id:
+            company_name = str(cfg.get('organization_name') or '').strip()
+            if isinstance(cfg.get('licensed_modules'), list):
+                modules = [str(m).strip().lower() for m in cfg['licensed_modules'] if str(m).strip()]
     except Exception:
         pass
+
+    # 2. Local SQLite organizations table
+    if not company_name:
+        try:
+            with sqlite3.connect(db.DB_PATH) as conn:
+                row = conn.execute("SELECT name FROM organizations WHERE id = ?", (org_id,)).fetchone()
+                if row and row[0]:
+                    company_name = str(row[0]).strip()
+        except Exception:
+            pass
+
+    # 3. PostgreSQL mirror if configured
+    if modules is None:
+        try:
+            import postgres_mirror
+            pg_mods = postgres_mirror.fetch_pg_organization_modules(org_id)
+            if pg_mods is not None:
+                modules = pg_mods
+        except Exception as e:
+            logger.debug("Could not read organization_modules from pg: %s", e)
+
+    # 4. Main Cloud Dashboard API
+    allowed_from_cloud = None
     main_url = os.environ.get(
         "MAIN_DASHBOARD_URL",
         "https://quanteye-main-dashboard-production.up.railway.app",
@@ -3916,14 +3947,28 @@ def _mobile_company(organization_id: str):
             timeout=1.5,
         ) as resp:
             payload = json.loads(resp.read().decode('utf-8'))
-        allowed = bool(payload.get('mobile'))
-        name = str(payload.get('name') or '').strip()
-        _MOBILE_COMPANY_CACHE[org_id] = (allowed, name, now)
-        return allowed, name
+        allowed_from_cloud = bool(payload.get('mobile'))
+        if not company_name:
+            company_name = str(payload.get('name') or '').strip()
+        if modules is None and 'modules' in payload and isinstance(payload['modules'], list):
+            modules = [str(m).strip().lower() for m in payload['modules'] if str(m).strip()]
     except Exception:
-        logger.debug("Could not confirm the Mobile App module for %s; using local tenant defaults", org_id)
-        _MOBILE_COMPANY_CACHE[org_id] = (True, '', now)
-        return True, ''
+        pass
+
+    # 5. Fallback if no modules found: default canonical
+    if modules is None:
+        modules = list(CANONICAL_MODULES)
+
+    flags = licensed_module_flags(modules)
+    allowed = allowed_from_cloud if allowed_from_cloud is not None else flags.get('mobile', True)
+    _MOBILE_COMPANY_CACHE[org_id] = (allowed, company_name, modules, now)
+    return {'allowed': allowed, 'company': company_name, 'modules': flags}
+
+
+def _mobile_company(organization_id: str):
+    """Ask Main whether this company selected Mobile App, and return its name."""
+    ent = get_mobile_organization_entitlements(organization_id)
+    return ent['allowed'], ent['company']
 
 
 def _organization_has_mobile_module(organization_id: str) -> bool:
@@ -4009,15 +4054,24 @@ def api_mobile_login():
     if not user.get('active', 1) or (user.get('exit_date') and str(user['exit_date'])[:10] < date.today().isoformat()):
         return jsonify({'success': False, 'message': 'Account is inactive. Employee has left the organization.'}), 403
     organization_id = str(user.get('organization_id') or '').strip()
-    _allowed, company_name = _mobile_company(organization_id)
-    if not company_name:
-        company_name = str(user.get('organization_name') or '').strip()
+    ent = get_mobile_organization_entitlements(organization_id)
+    if not ent.get('allowed'):
+        return jsonify({'success': False, 'message': 'Mobile Attendance is not licensed for your organization.'}), 403
+
+    company_name = ent.get('company') or str(user.get('organization_name') or '').strip()
     session['mobile_employee_id'] = int(user['id'])
     session['mobile_organization_id'] = organization_id
     session['mobile_branch_id'] = str(user.get('branch_id') or 'DEFAULT_BRANCH')
     session['mobile_employee_name'] = user.get('name') or ''
     session['mobile_company_name'] = company_name
-    return jsonify({'success': True, 'name': user.get('name') or '', 'company': company_name})
+    session['mobile_modules'] = ent.get('modules')
+
+    return jsonify({
+        'success': True,
+        'name': user.get('name') or '',
+        'company': company_name,
+        'modules': ent.get('modules'),
+    })
 
 
 @app.route('/api/mobile/logout', methods=['POST'])
@@ -4028,6 +4082,7 @@ def api_mobile_logout():
         'mobile_branch_id',
         'mobile_employee_name',
         'mobile_company_name',
+        'mobile_modules',
     ):
         session.pop(key, None)
     return jsonify({'success': True})
@@ -4039,9 +4094,10 @@ def api_mobile_today():
     organization_id = session.get('mobile_organization_id')
     if not user_id or not organization_id:
         return jsonify({'success': False, 'message': 'Please log in.'}), 401
-    company_name = str(session.get('mobile_company_name') or '').strip()
-    if not company_name:
-        _allowed, company_name = _mobile_company(str(organization_id))
+    ent = get_mobile_organization_entitlements(str(organization_id))
+    if not ent.get('allowed'):
+        return jsonify({'success': False, 'message': 'Mobile Attendance is not licensed for your organization.'}), 403
+    company_name = str(session.get('mobile_company_name') or '').strip() or ent.get('company')
     if not company_name:
         company_name = str(session.get('mobile_employee_name') or '')
     card = db.employee_mobile_attendance(
@@ -4052,7 +4108,9 @@ def api_mobile_today():
     card['company'] = company_name or str(session.get('mobile_company_name') or '')
     if card['company']:
         session['mobile_company_name'] = card['company']
-    return jsonify({'success': True, 'attendance': card})
+    modules = ent.get('modules')
+    session['mobile_modules'] = modules
+    return jsonify({'success': True, 'attendance': card, 'modules': modules})
 
 
 @app.route('/api/mobile/latest-punch', methods=['GET'])
@@ -4112,6 +4170,10 @@ def api_mobile_leave_types():
     if not user_id or not organization_id:
         return jsonify({'success': False, 'message': 'Please log in.'}), 401
 
+    ent = get_mobile_organization_entitlements(str(organization_id))
+    if not ent.get('modules', {}).get('leave', True):
+        return jsonify({'success': False, 'message': 'Leave Management is not licensed for this organization.'}), 403
+
     branch_id = session.get('mobile_branch_id') or 'DEFAULT_BRANCH'
     raw_types = db.get_leave_types(organization_id=str(organization_id), branch_id=str(branch_id))
 
@@ -4151,6 +4213,10 @@ def api_mobile_leave_requests():
     if not user_id or not organization_id:
         return jsonify({'success': False, 'message': 'Please log in.'}), 401
 
+    ent = get_mobile_organization_entitlements(str(organization_id))
+    if not ent.get('modules', {}).get('leave', True):
+        return jsonify({'success': False, 'message': 'Leave Management is not licensed for this organization.'}), 403
+
     branch_id = session.get('mobile_branch_id') or 'DEFAULT_BRANCH'
     raw_types = db.get_leave_types(organization_id=str(organization_id), branch_id=str(branch_id))
     name_map = {lt.get('code'): lt.get('name') for lt in raw_types}
@@ -4178,6 +4244,10 @@ def api_mobile_add_leave_request():
     user_name = session.get('mobile_employee_name') or 'Employee'
     if not user_id or not organization_id:
         return jsonify({'success': False, 'message': 'Please log in.'}), 401
+
+    ent = get_mobile_organization_entitlements(str(organization_id))
+    if not ent.get('modules', {}).get('leave', True):
+        return jsonify({'success': False, 'message': 'Leave Management is not licensed for this organization.'}), 403
 
     data = request.get_json(silent=True) or {}
     leave_type = str(data.get('leave_type', '')).strip()
