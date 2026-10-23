@@ -15375,7 +15375,8 @@ async function fetchMultiLiveDetections() {
             const dailyRate = absenceCut / absentDays;
             const daysStr = Number.isInteger(absentDays) ? absentDays : absentDays.toFixed(1);
             const rateStr = money(dailyRate);
-            pushItem(`Missed-day cut (${daysStr} day${daysStr === 1 ? '' : 's'} @ ${rateStr}/day)`, absenceCut, absentDays);
+            const hlNote = emp.half_leave_absent_note ? ` (incl. ${emp.half_leave_absent_note})` : '';
+            pushItem(`Missed-day cut (${daysStr} day${daysStr === 1 ? '' : 's'}${hlNote} @ ${rateStr}/day)`, absenceCut, absentDays);
           } else {
             pushItem('Missed-day cut', absenceCut, 1);
           }

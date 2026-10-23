@@ -4275,12 +4275,11 @@ def api_mobile_add_leave_request():
     if leave_duration == 'half':
         if start_date != end_date:
             return jsonify({'success': False, 'message': 'Half-day leave must be for a single date.'}), 400
-        if not start_time:
-            return jsonify({'success': False, 'message': 'Half-day start time is required.'}), 400
-        if not end_time:
-            return jsonify({'success': False, 'message': 'Half-day end time is required.'}), 400
-        if end_time <= start_time:
-            return jsonify({'success': False, 'message': 'Leave end time must be later than start time.'}), 400
+        is_valid, err_msg = db.validate_half_day_leave_times(
+            db.DB_PATH, int(user_id), start_date, start_time, end_time
+        )
+        if not is_valid:
+            return jsonify({'success': False, 'message': err_msg, 'error': err_msg}), 400
     else:
         start_time = None
         end_time = None
@@ -5690,45 +5689,12 @@ def api_add_leave():
             msg = f'Half-day leave is not permitted for leave type {matched_type.get("name", leave_type)}.'
             return jsonify({'success': False, 'message': msg, 'error': msg}), 400
 
-        if not start_time:
-            return jsonify({'success': False, 'message': 'Half-day start time is required.', 'error': 'Half-day start time is required.'}), 400
-        if not end_time:
-            return jsonify({'success': False, 'message': 'Half-day end time is required.', 'error': 'Half-day end time is required.'}), 400
-        if end_time <= start_time:
-            return jsonify({'success': False, 'message': 'Leave end time must be later than start time.', 'error': 'Leave end time must be later than start time.'}), 400
-
-        # QA-52: A half-day leave can cover only up to half of the scheduled shift duration
-        try:
-            with sqlite3.connect(db.DB_PATH) as conn_shift:
-                cur_s = conn_shift.cursor()
-                cur_s.execute("""
-                    SELECT s.start_time, s.end_time 
-                    FROM shifts s
-                    JOIN users u ON u.shift_id = s.id
-                    WHERE u.id = ?
-                """, (int(user_id),))
-                s_row = cur_s.fetchone()
-                if not s_row:
-                    cur_s.execute("SELECT start_time, end_time FROM shifts WHERE id = 1")
-                    s_row = cur_s.fetchone()
-                if s_row:
-                    def _t_to_m(t_val):
-                        parts = str(t_val).strip().split(':')
-                        return int(parts[0]) * 60 + int(parts[1])
-                    req_duration = _t_to_m(end_time) - _t_to_m(start_time)
-                    if req_duration < 0:
-                        req_duration += 24 * 60
-                    shift_duration = _t_to_m(s_row[1]) - _t_to_m(s_row[0])
-                    if shift_duration <= 0:
-                        shift_duration += 24 * 60
-                    max_allowed_mins = shift_duration / 2.0
-                    if req_duration > max_allowed_mins:
-                        max_hrs = max_allowed_mins / 60.0
-                        hrs_str = f"{int(max_hrs)}h" if max_hrs.is_integer() else f"{max_hrs:.1f}h"
-                        msg = f"A half-day leave can only cover up to half of the scheduled shift duration ({hrs_str} max). For longer absences, please file a full-day leave."
-                        return jsonify({'success': False, 'message': msg, 'error': msg}), 400
-        except Exception as shift_val_err:
-            logger.warning("Could not validate half-day leave against shift: %s", shift_val_err)
+        # QA-80 / QA-52: Authoritative boundary & duration checks against scheduled shift
+        is_valid, err_msg = db.validate_half_day_leave_times(
+            db.DB_PATH, int(user_id), start_date, start_time, end_time
+        )
+        if not is_valid:
+            return jsonify({'success': False, 'message': err_msg, 'error': err_msg}), 400
 
     user = db.get_user_by_id(int(user_id))
     try:

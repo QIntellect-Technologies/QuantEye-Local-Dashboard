@@ -6586,6 +6586,119 @@ def _find_active_leave_overlap(cursor, user_id: int, start_date: str, end_date: 
     return cursor.fetchone()
 
 
+def validate_half_day_leave_times(
+    cursor_or_conn,
+    user_id: int,
+    leave_date: str,
+    start_time: Optional[str],
+    end_time: Optional[str],
+) -> Tuple[bool, Optional[str]]:
+    """
+    QA-80 / QA-52: Authoritative validation of half-day leave times.
+    Enforces:
+    - start_time and end_time must be provided in valid HH:MM format
+    - end_time must be strictly greater than start_time (rejects zero length or end < start)
+    - leave times must fall strictly within the employee's scheduled shift hours on leave_date
+    - half-day leave cannot cover the entire scheduled shift (must apply full-day instead)
+    - half-day leave cannot exceed half of the scheduled shift duration (QA-52)
+    """
+    if not start_time or not str(start_time).strip():
+        return False, "Half-day start time is required."
+    if not end_time or not str(end_time).strip():
+        return False, "Half-day end time is required."
+
+    s_time_str = str(start_time).strip()[:5]
+    e_time_str = str(end_time).strip()[:5]
+
+    try:
+        s_parts = [int(p) for p in s_time_str.split(':')]
+        e_parts = [int(p) for p in e_time_str.split(':')]
+        if len(s_parts) != 2 or len(e_parts) != 2:
+            return False, "Invalid time format. Use HH:MM."
+        s_mins = s_parts[0] * 60 + s_parts[1]
+        e_mins = e_parts[0] * 60 + e_parts[1]
+    except Exception:
+        return False, "Invalid time format. Use HH:MM."
+
+    if s_mins == e_mins:
+        return False, "Half-day leave duration cannot be zero. End time must be later than start time."
+    if e_mins < s_mins:
+        return False, "Leave end time must be later than start time."
+
+    req_duration = e_mins - s_mins
+
+    own_conn = False
+    if isinstance(cursor_or_conn, str) or hasattr(cursor_or_conn, '__fspath__'):
+        conn = sqlite3.connect(cursor_or_conn)
+        cursor = conn.cursor()
+        own_conn = True
+    elif hasattr(cursor_or_conn, 'cursor'):
+        cursor = cursor_or_conn.cursor()
+    else:
+        cursor = cursor_or_conn
+
+    try:
+        date_filter = str(leave_date)[:10] if leave_date else None
+        shift_row = None
+        if date_filter:
+            shift_row = cursor.execute("""
+                SELECT start_time, end_time FROM employee_shift_history
+                WHERE user_id = ? AND effective_from <= ?
+                ORDER BY effective_from DESC, id DESC LIMIT 1
+            """, (user_id, date_filter)).fetchone()
+
+        if not shift_row:
+            shift_row = cursor.execute("""
+                SELECT s.start_time, s.end_time
+                FROM users u
+                JOIN shifts s ON s.id = COALESCE(u.shift_id, 1)
+                WHERE u.id = ?
+            """, (user_id,)).fetchone()
+
+        if not shift_row:
+            shift_row = cursor.execute("SELECT start_time, end_time FROM shifts WHERE id = 1").fetchone()
+
+        if shift_row and shift_row[0] and shift_row[1]:
+            shift_s_str = str(shift_row[0]).strip()[:5]
+            shift_e_str = str(shift_row[1]).strip()[:5]
+            sh_s_parts = [int(p) for p in shift_s_str.split(':')]
+            sh_e_parts = [int(p) for p in shift_e_str.split(':')]
+            sh_s_mins = sh_s_parts[0] * 60 + sh_s_parts[1]
+            sh_e_mins = sh_e_parts[0] * 60 + sh_e_parts[1]
+
+            if sh_e_mins > sh_s_mins:
+                shift_duration = sh_e_mins - sh_s_mins
+                if s_mins < sh_s_mins:
+                    return False, f"Leave start time ({s_time_str}) cannot be earlier than shift start ({shift_s_str}). Leave times must fall within the employee's scheduled shift hours ({shift_s_str} to {shift_e_str})."
+                if e_mins > sh_e_mins:
+                    return False, f"Leave end time ({e_time_str}) cannot be later than shift end ({shift_e_str}). Leave times must fall within the employee's scheduled shift hours ({shift_s_str} to {shift_e_str})."
+            else:
+                shift_duration = (sh_e_mins + 24 * 60) - sh_s_mins
+                norm_s = (s_mins - sh_s_mins) % (24 * 60)
+                norm_e = (e_mins - sh_s_mins) % (24 * 60)
+                if norm_e <= norm_s:
+                    norm_e += 24 * 60
+                if norm_s < 0 or norm_e > shift_duration:
+                    return False, f"Leave times ({s_time_str} to {e_time_str}) fall outside scheduled shift hours ({shift_s_str} to {shift_e_str})."
+                req_duration = norm_e - norm_s
+
+            if req_duration >= shift_duration or (s_time_str == shift_s_str and e_time_str == shift_e_str):
+                return False, f"A half-day leave cannot cover the entire scheduled shift ({shift_s_str} to {shift_e_str}). Please apply for a full-day leave instead."
+
+            max_allowed_mins = shift_duration / 2.0
+            if req_duration > max_allowed_mins:
+                max_hrs = max_allowed_mins / 60.0
+                hrs_str = f"{int(max_hrs)}h" if max_hrs.is_integer() else f"{max_hrs:.1f}h"
+                return False, f"A half-day leave can only cover up to half of the scheduled shift duration ({hrs_str} max). For longer absences, please file a full-day leave."
+    except Exception as e:
+        logger.warning("Could not validate half-day leave against shift: %s", e)
+    finally:
+        if own_conn:
+            conn.close()
+
+    return True, None
+
+
 def add_leave_request(
     user_id: int,
     user_name: str,
@@ -6616,6 +6729,15 @@ def add_leave_request(
         if d2 < d1:
             logger.error(f"Cannot add leave request: end_date ({e_str}) < start_date ({s_str})")
             return None
+
+        if leave_duration == 'half':
+            if s_str != e_str:
+                raise ValueError("Half-day leave must be requested for a single date.")
+            is_valid, err_msg = validate_half_day_leave_times(
+                DB_PATH, user_id, s_str, start_time, end_time
+            )
+            if not is_valid:
+                raise ValueError(err_msg)
 
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -8455,10 +8577,9 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
             cursor = conn.cursor()
             query = """
                 SELECT o.id, o.user_id, COALESCE(u.name, o.user_name) as user_name, o.ot_date, o.hours, o.reason, o.status, o.approved_by, o.created_at, o.rejection_reason,
-                       o.rejected_by, o.rejected_at, o.audit_trail,
                        COALESCE(u.department, '') as department,
                        COALESCE(u.position, '') as designation,
-                       COALESCE(sc.ot_rate, CASE WHEN COALESCE(u.salary, sc.basic_salary, 0) > 0 THEN ROUND(COALESCE(u.salary, sc.basic_salary) / COALESCE(ps.ot_hour_divisor, 208.0), 2) ELSE 0.0 END) as ot_rate
+                       COALESCE(sc.ot_rate, 0.0) as configured_ot_rate
                 FROM overtime o
                 LEFT JOIN users u ON o.user_id = u.id
                 LEFT JOIN salary_configs sc ON o.user_id = sc.user_id
@@ -8502,9 +8623,12 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
             for r in overtime_rows:
                 d = dict(r)
                 hours = float(d.get('hours') or 0.0)
-                base_rate = float(d.get('ot_rate') or 0.0)
-                if base_rate <= 0:
-                    base_rate = calculate_employee_ot_rate(cursor, int(d['user_id']), as_of_date=str(d.get('ot_date')))
+                ot_date_str = str(d.get('ot_date') or '')
+                conf_rate = float(d.get('configured_ot_rate') or 0.0)
+                if conf_rate > 0.0:
+                    base_rate = round(conf_rate, 2)
+                else:
+                    base_rate = calculate_employee_ot_rate(cursor, int(d['user_id']), as_of_date=ot_date_str)
                 emp_org = str(d.get('organization_id') or 'DEFAULT_ORG')
                 emp_branch = str(d.get('branch_id') or 'DEFAULT_BRANCH')
                 cache_key = (emp_org, emp_branch)
@@ -8514,33 +8638,37 @@ def get_overtime(user_id: Optional[int] = None, status: Optional[str] = None,
                         """SELECT holiday_ot_premium_percent, non_working_day_ot_premium_percent,
                                   holiday_ot_premium_active, non_working_day_ot_premium_active,
                                   holiday_ot_pay_mode, holiday_ot_multiplier,
-                                  non_working_day_ot_pay_mode, non_working_day_ot_multiplier
+                                  non_working_day_ot_pay_mode, non_working_day_ot_multiplier,
+                                  COALESCE(ot_rounding, 'round_rate_first') AS ot_rounding
                            FROM payroll_settings
                            WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
                              AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
                         cache_key,
                     ).fetchone()
                 settings_row = settings_cache[cache_key]
-                day_type = _get_overtime_day_type(cursor, int(d['user_id']), str(d['ot_date']))
+                day_type = _get_overtime_day_type(cursor, int(d['user_id']), ot_date_str)
                 holiday = _get_company_holiday_for_date(
                     cursor,
-                    str(d['ot_date']),
+                    ot_date_str,
                     emp_org,
                     emp_branch,
                 ) if day_type == 'holiday' else None
-                premium = _get_overtime_premium_percent(
-                    cursor, str(d['ot_date']), day_type, settings_row, holiday, user_id=int(d['user_id'])
+                effective_rate, ot_amount, premium = _overtime_entry_pay(
+                    base_rate,
+                    hours,
+                    day_type,
+                    settings_row,
+                    holiday=holiday,
                 )
-                effective_rate = round(base_rate * (1 + premium / 100), 2)
                 d['base_ot_rate'] = base_rate
                 d['ot_day_type'] = day_type
                 d['holiday_id'] = holiday.get('id') if holiday else None
                 d['holiday_name'] = holiday.get('name') if holiday else None
                 d['ot_premium_percent'] = premium
                 d['ot_rate'] = effective_rate
-                d['ot_amount'] = round(hours * effective_rate, 2)
-                d['date'] = str(d.get('ot_date') or '')
-                d['overtime_date'] = str(d.get('ot_date') or '')
+                d['ot_amount'] = ot_amount
+                d['date'] = ot_date_str
+                d['overtime_date'] = ot_date_str
                 records.append(d)
             return records
     except Exception as e:
@@ -11732,6 +11860,15 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 approved_leave_days += 0.5
 
         half_leave_count = sum(int(day.get('half_leave_count') or 0) for day in eligible_records)
+        equiv_half_leave_days = round(half_leave_count * 0.5, 2)
+        hl_cnt_int = int(half_leave_count) if float(half_leave_count).is_integer() else half_leave_count
+        eq_str = int(equiv_half_leave_days) if float(equiv_half_leave_days).is_integer() else f"{equiv_half_leave_days:.1f}"
+        d_pl = "day" if hl_cnt_int == 1 else "days"
+        eq_pl = "day" if equiv_half_leave_days == 1 else "days"
+        half_leave_absent_note = (
+            f"{hl_cnt_int} half-{d_pl} counted as {eq_str} {eq_pl}"
+            if half_leave_count > 0 else ""
+        )
         absent_days = unexcused_absent_days + unpaid_leave_days
         payable_days = min(float(scheduled_workdays), round(present_days + late_days + approved_leave_days_period, 2))
         
@@ -11830,9 +11967,25 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             entry_hours = float(overtime_entry['hours'] or 0.0)
             if entry_hours <= 0:
                 continue
+            entry_ot_date = str(overtime_entry.get('ot_date') or eligible_end.isoformat())
+            if configured_ot_rate > 0.0:
+                entry_ot_rate = _m(configured_ot_rate) if ot_rounding == 'round_rate_first' else float(configured_ot_rate)
+            elif basic_salary > 0.0:
+                # QA-79: Pay each approved OT entry at the rate in force on the OT date
+                # so that a shift change only affects OT from the change date onward.
+                raw_entry_rate = calculate_employee_ot_rate(
+                    cursor,
+                    employee_id,
+                    as_of_date=entry_ot_date,
+                    basic_salary=basic_salary,
+                )
+                entry_ot_rate = _m(raw_entry_rate) if ot_rounding == 'round_rate_first' else raw_entry_rate
+            else:
+                entry_ot_rate = 0.0
+
             day_type = overtime_entry['day_type']
             effective_rate, category_amount, premium_percent = _overtime_entry_pay(
-                ot_rate,
+                entry_ot_rate,
                 entry_hours,
                 day_type,
                 payroll_settings,
@@ -12026,12 +12179,13 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
 
             base_name = 'prorated basic' if is_prorated else 'basic'
             pct_label = f"{int(deduction_percent)}%" if deduction_percent is not None and deduction_percent.is_integer() else f"{deduction_percent}%"
-            # QA-48: Name the rule, absent-day count, and percent so hand-verifiable:
-            # Example: "Absent 14 days (6 to 31 days: 30% of 58,064.52) = 17,419.36"
+            # QA-48 / QA-81: Name the rule, absent-day count, and transparent note for half-leaves
+            absent_display = f"{int(unexcused_absent_days)}" if float(unexcused_absent_days).is_integer() else f"{unexcused_absent_days:.1f}"
+            half_note_suffix = f" (incl. {half_leave_absent_note})" if half_leave_absent_note else ""
             if deduction_type == 'percentage':
-                explanation = f"Missed-day rule: {bracket_str} = {pct_label} of {base_name} (Absent {int(unexcused_absent_days)} days: {absence_rule_deduction:,.2f})"
+                explanation = f"Missed-day rule: {bracket_str} = {pct_label} of {base_name} (Absent {absent_display} days{half_note_suffix}: {absence_rule_deduction:,.2f})"
             else:
-                explanation = f"Missed-day rule: {bracket_str} = fixed {fixed_amount:,.2f} (Absent {int(unexcused_absent_days)} days)"
+                explanation = f"Missed-day rule: {bracket_str} = fixed {fixed_amount:,.2f} (Absent {absent_display} days{half_note_suffix})"
             missed_day_details = {
                 'rule_label': bracket_str,
                 'min_absent_days': min_d,
@@ -12040,6 +12194,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 'percentage': deduction_percent,
                 'fixed_amount': fixed_amount,
                 'missed_days': unexcused_absent_days,
+                'half_leave_absent_note': half_leave_absent_note,
                 'base_type': base_name,
                 'base_amount': basic_salary,
                 'unrounded_base': unrounded_basic_salary,
@@ -12074,6 +12229,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'proration_explanation': proration_explanation,
             'days_paid': days_paid,
             'missed_day_details': missed_day_details,
+            'half_leave_absent_note': half_leave_absent_note,
             'allowances': allowances,
             'custom_deductions': custom_deductions,
             'overtime_hours': ot_hours,
