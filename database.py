@@ -6614,6 +6614,18 @@ def add_leave_request(
             u_org = organization_id or (u_row[0] if u_row else None) or 'DEFAULT_ORG'
             u_branch = branch_id or (u_row[1] if u_row else None) or 'DEFAULT_BRANCH'
             raise_if_payroll_month_locked(s_str, u_org, u_branch)
+
+            if paid_days is None and unpaid_days is None:
+                calc_days = 1 if leave_duration == 'half' else _count_scheduled_leave_days(cursor, user_id, s_str, e_str)
+                if str(leave_type).lower() == 'unpaid':
+                    paid_days = 0
+                    unpaid_days = calc_days
+                    quota_days = 0 if quota_days is None else quota_days
+                else:
+                    paid_days = calc_days
+                    unpaid_days = 0
+                    quota_days = calc_days if quota_days is None else quota_days
+
             cursor.execute(
                      '''INSERT INTO leave_requests (
                                 user_id, user_name, leave_type, leave_duration, start_date, end_date, reason,
@@ -6641,6 +6653,9 @@ def add_leave_request(
                 "leave_duration": leave_duration,
                 "start_time": start_time,
                 "end_time": end_time,
+                "paid_days": paid_days,
+                "unpaid_days": unpaid_days,
+                "quota_days": quota_days,
             })
             return leave_id
     except ValueError:
@@ -6729,20 +6744,29 @@ def get_leave_requests(user_id: Optional[int] = None, status: Optional[str] = No
                     cursor, leave_request['user_id'], leave_request['start_date'], leave_request['end_date']
                 )
                 leave_request['requested_days'] = requested_days
-                if leave_request.get('paid_days') is None or leave_request.get('unpaid_days') is None:
-                    leave_type = str(leave_request.get('leave_type') or '').lower()
-                    if leave_type == 'unpaid':
+                leave_type_raw = str(leave_request.get('leave_type') or '').lower()
+                pd = leave_request.get('paid_days')
+                ud = leave_request.get('unpaid_days')
+                # Normalize: fix NULL or both-zero when the leave type is paid
+                # (old records / PG-synced records may have paid_days=0, unpaid_days=0)
+                needs_fix = (pd is None or ud is None) or (
+                    float(pd or 0) == 0.0 and float(ud or 0) == 0.0
+                    and leave_type_raw not in ('unpaid',)
+                )
+                if needs_fix:
+                    if leave_type_raw == 'unpaid':
                         leave_request['paid_days'] = 0
                         leave_request['unpaid_days'] = requested_days
-                        leave_request['quota_days'] = 0
-                    elif leave_type == 'excess_paid':
+                        leave_request['quota_days'] = leave_request.get('quota_days') or 0
+                    elif leave_type_raw == 'excess_paid':
                         leave_request['paid_days'] = requested_days
                         leave_request['unpaid_days'] = 0
-                        leave_request['quota_days'] = 0
+                        leave_request['quota_days'] = leave_request.get('quota_days') or 0
                     else:
                         leave_request['paid_days'] = requested_days
                         leave_request['unpaid_days'] = 0
-                        leave_request['quota_days'] = requested_days
+                        leave_request['quota_days'] = leave_request.get('quota_days') or requested_days
+
 
                 # LV-06: Derive approved, pending, rejected, paid approved, unpaid approved breakdowns
                 p_days = int(leave_request.get('paid_days') or 0)
