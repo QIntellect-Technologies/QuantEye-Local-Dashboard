@@ -8267,9 +8267,18 @@ async function fetchMultiLiveDetections() {
               <label class="payroll-rule-field">Effective from
                 <input id="modalSalaryComponentFrom" class="form-control" type="date" required>
               </label>
+              <!-- QA-25: Lowest / highest amount limit inputs for Named pay lines -->
+              <label class="payroll-rule-field" title="Optional floor — entered amount cannot go below this value">
+                Lowest amt (optional)
+                <input id="modalSalaryComponentMin" class="form-control" type="number" min="0" step="0.01" placeholder="no limit">
+              </label>
+              <label class="payroll-rule-field" title="Optional cap — entered amount cannot go above this value">
+                Highest amt (optional)
+                <input id="modalSalaryComponentMax" class="form-control" type="number" min="0" step="0.01" placeholder="no limit">
+              </label>
               <button type="button" class="btn btn-outline-primary btn-sm" onclick="assignEmployeePayLine()">Assign</button>
             </div>
-            <div id="modalSalaryPrecedenceHelp" style="font-size:0.75em; color:#0d9488; margin-top:4px; font-weight:600;"><i class="fa-solid fa-circle-info me-1"></i>Precedence: If both Amount and Percent of basic are entered, Percent of basic is used and calculated from basic salary (fixed Amount is ignored).</div>
+            <div id="modalSalaryPrecedenceHelp" style="font-size:0.75em; color:#0d9488; margin-top:4px; font-weight:600;"><i class="fa-solid fa-circle-info me-1"></i>Precedence: If both Amount and Percent of basic are entered, Percent of basic is used and calculated from basic salary (fixed Amount is ignored). Lowest / Highest amount limit: the assigned amount must fall within this range.</div>
             <div class="log-table-wrapper" style="margin-top:8px;">
               <table class="log-table" style="width:100%;">
                 <thead><tr><th>Line</th><th>Kind</th><th>Amount / %</th><th>Effective</th><th></th></tr></thead>
@@ -14384,11 +14393,13 @@ async function fetchMultiLiveDetections() {
           if (res.ok && data.success) {
             showToast(data.message || 'Rule saved successfully.', 'success');
             document.getElementById('halfLeaveRuleValue').value = '';
-            loadHalfLeaveSpecificRules();
+            await loadHalfLeaveSpecificRules(); // QA-65: await so table is visible immediately
           } else if (res.status === 409 || data.duplicate) {
             showToast(data.error || 'Duplicate rule: A rule already exists for this target.', 'warning');
+            await loadHalfLeaveSpecificRules(); // QA-65: refresh table even on duplicate
           } else {
             showToast(data.error || 'Failed to save rule.', 'danger');
+            await loadHalfLeaveSpecificRules(); // QA-65: refresh table on error too
           }
         } catch (e) {
           showToast('Error saving rule.', 'danger');
@@ -14402,9 +14413,10 @@ async function fetchMultiLiveDetections() {
           const data = await res.json();
           if (data.success) {
             showToast('Rule deleted.', 'success');
-            loadHalfLeaveSpecificRules();
+            await loadHalfLeaveSpecificRules(); // QA-65: await delete refresh
           } else {
             showToast(data.error || 'Failed to delete.', 'danger');
+            await loadHalfLeaveSpecificRules(); // QA-65: refresh even on delete error
           }
         } catch (e) {
           showToast('Error deleting rule.', 'danger');
@@ -15605,6 +15617,22 @@ async function fetchMultiLiveDetections() {
           if (!response.ok) throw new Error(result.error || 'Failed to load pay lines');
           const types = result.types || [];
           window._payrollComponentTypes = types;
+          // QA-64: Keep the "Which item" dropdown in Who-it-applies-to in sync whenever items list is refreshed
+          const payLineTypeSelect = document.getElementById('payLineAssignType');
+          if (payLineTypeSelect) {
+            payLineTypeSelect.innerHTML = types.map((row) =>
+              `<option value="${row.id}">${payrollEscape(row.name)}</option>`).join('');
+            if (typeof updatePayLineAssignInputs === 'function') updatePayLineAssignInputs();
+          }
+          // QA-64: Also keep the Named pay lines modal dropdown in sync
+          const modalCompSelect = document.getElementById('modalSalaryComponentType');
+          if (modalCompSelect) {
+            const currentVal = modalCompSelect.value;
+            modalCompSelect.innerHTML = types.map((row) =>
+              `<option value="${row.id}">${payrollEscape(row.name)} (${payrollEscape(row.kind)})</option>`).join('');
+            if (currentVal) modalCompSelect.value = currentVal;
+            if (typeof updateModalSalaryComponentInputs === 'function') updateModalSalaryComponentInputs();
+          }
           tbody.innerHTML = types.length ? types.map((row) => {
             const mode = String(row.calc_mode || 'fixed');
             const amount = Number(row.default_amount || 0);
@@ -16036,13 +16064,38 @@ async function fetchMultiLiveDetections() {
         const typeId = Number(document.getElementById('modalSalaryComponentType')?.value);
         const comp = (window._payrollComponentTypes || []).find(t => Number(t.id) === typeId);
         const isPercent = comp && (comp.calc_mode === 'percent_basic' || comp.calc_mode === 'percent_gross');
+
+        // QA-25: Read and validate Lowest / Highest amount limits
+        const minRaw = document.getElementById('modalSalaryComponentMin')?.value;
+        const maxRaw = document.getElementById('modalSalaryComponentMax')?.value;
+        const minVal = (minRaw === '' || minRaw == null) ? null : Number(minRaw);
+        const maxVal = (maxRaw === '' || maxRaw == null) ? null : Number(maxRaw);
+
+        if (minVal !== null && maxVal !== null && minVal > maxVal) {
+          showAppToast('Lowest amount cannot be greater than highest amount', 'error');
+          return;
+        }
+        if (!isPercent) {
+          const rawAmt = Number(document.getElementById('modalSalaryComponentAmount')?.value || 0);
+          if (minVal !== null && rawAmt < minVal) {
+            showAppToast(`Amount (${rawAmt.toLocaleString()}) cannot be less than lowest limit (${minVal.toLocaleString()})`, 'error');
+            return;
+          }
+          if (maxVal !== null && rawAmt > maxVal) {
+            showAppToast(`Amount (${rawAmt.toLocaleString()}) cannot be greater than highest limit (${maxVal.toLocaleString()})`, 'error');
+            return;
+          }
+        }
+
         const payload = {
           user_id: Number(uid),
           scope: 'employee',
           component_type_id: typeId,
           amount: isPercent ? 0 : Number(document.getElementById('modalSalaryComponentAmount')?.value || 0),
           percent: isPercent ? Number(document.getElementById('modalSalaryComponentPercent')?.value || 0) : 0,
-          effective_from: document.getElementById('modalSalaryComponentFrom')?.value || undefined
+          effective_from: document.getElementById('modalSalaryComponentFrom')?.value || undefined,
+          min_amount: minVal,  // QA-25
+          max_amount: maxVal   // QA-25
         };
         let response = await fetch(`${API_BASE}/payroll/employee-components`, {
           method: 'POST',
@@ -16084,6 +16137,11 @@ async function fetchMultiLiveDetections() {
         if (pctInput) pctInput.value = '0';
         const fromInput = document.getElementById('modalSalaryComponentFrom');
         if (fromInput) fromInput.value = '';
+        // QA-25: Also clear limit fields
+        const minInput = document.getElementById('modalSalaryComponentMin');
+        if (minInput) minInput.value = '';
+        const maxInput = document.getElementById('modalSalaryComponentMax');
+        if (maxInput) maxInput.value = '';
 
         // QA-58: Short success message naming the item
         const compSelect = document.getElementById('modalSalaryComponentType');
