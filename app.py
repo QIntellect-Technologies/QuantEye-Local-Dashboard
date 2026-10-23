@@ -4797,6 +4797,13 @@ def format_report_time(time_val: Any) -> str:
     return str(time_val)
 
 
+def _safe_excel_val(val: Any) -> Any:
+    """QA-75: Prevent formula injection in exported Excel and CSV spreadsheets."""
+    if isinstance(val, str) and val and val[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + val
+    return val
+
+
 def generate_excel_attendance_report(report_data: dict, filter_info: dict = None) -> Any:
     """
     Generate a clean, client-facing professional Excel attendance report (.xlsx).
@@ -5051,7 +5058,7 @@ def generate_excel_attendance_report(report_data: dict, filter_info: dict = None
         ]
 
         for col_idx, (val, align, font, fill) in enumerate(row_values, 1):
-            cell = ws.cell(row=curr_row, column=col_idx, value=val)
+            cell = ws.cell(row=curr_row, column=col_idx, value=_safe_excel_val(val))
             cell.alignment = align
             cell.font = font
             cell.fill = fill
@@ -5412,18 +5419,18 @@ def api_reports_export_csv():
                 cout_cam = '-'
 
             writer.writerow([
-                emp_id_disp,
-                r.get('name') or '-',
-                r.get('department') or '-',
-                r.get('position') or 'Staff Member',
-                shift_disp,
-                format_report_date(r.get('date', '')),
-                cin_time,
-                cin_cam,
-                cout_time,
-                cout_cam,
+                _safe_excel_val(emp_id_disp),
+                _safe_excel_val(r.get('name') or '-'),
+                _safe_excel_val(r.get('department') or '-'),
+                _safe_excel_val(r.get('position') or 'Staff Member'),
+                _safe_excel_val(shift_disp),
+                _safe_excel_val(format_report_date(r.get('date', ''))),
+                _safe_excel_val(cin_time),
+                _safe_excel_val(cin_cam),
+                _safe_excel_val(cout_time),
+                _safe_excel_val(cout_cam),
                 'Manually' if str(r.get('source', '')).lower() == 'manual' else 'Automatically',
-                status_display
+                _safe_excel_val(status_display)
             ])
 
     csv_data = '\ufeff' + output.getvalue()
@@ -5494,15 +5501,15 @@ def api_reports_export_employee_csv():
 
     for d in emp_record.get('daily_records', []):
         writer.writerow([
-            format_report_date(d.get('date', '')),
-            d.get('day', '-'),
-            d.get('status_display', d.get('status', '-')).upper(),
+            _safe_excel_val(format_report_date(d.get('date', ''))),
+            _safe_excel_val(d.get('day', '-')),
+            _safe_excel_val(d.get('status_display', d.get('status', '-')).upper()),
             'Manually' if str(d.get('source', '')).lower() == 'manual' else 'Automatically',
-            format_report_time(d.get('first_seen')),
-            d.get('checkin_camera_name') or d.get('checkin_camera') or d.get('location') or '-',
-            format_report_time(d.get('last_seen')),
-            d.get('checkout_camera_name') or d.get('checkout_camera') or d.get('checkout_location') or '-',
-            d.get('shift_name', shift)
+            _safe_excel_val(format_report_time(d.get('first_seen'))),
+            _safe_excel_val(d.get('checkin_camera_name') or d.get('checkin_camera') or d.get('location') or '-'),
+            _safe_excel_val(format_report_time(d.get('last_seen'))),
+            _safe_excel_val(d.get('checkout_camera_name') or d.get('checkout_camera') or d.get('checkout_location') or '-'),
+            _safe_excel_val(d.get('shift_name', shift))
         ])
 
     clean_name = emp_name.replace(' ', '_')
@@ -6607,10 +6614,10 @@ def api_payroll_bonus_template():
             existing = bonuses.get(int(user['id']), {})
             sheet.append([
                 user['id'],
-                user.get('name') or '',
-                user.get('email') or '',
+                _safe_excel_val(user.get('name') or ''),
+                _safe_excel_val(user.get('email') or ''),
                 float(existing.get('amount') or 0),
-                existing.get('note') or '',
+                _safe_excel_val(existing.get('note') or ''),
             ])
         sheet.append([])
         sheet.append(['Instructions'])

@@ -2076,15 +2076,17 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                 sqlite_cur.execute(
                     """
                     INSERT INTO payroll_records (
-                        payroll_run_id, employee_id, employee_name,
+                        payroll_run_id, employee_id, employee_name, organization_id, branch_id,
                         basic_salary, allowances, deductions, deduction_amount, net_salary,
                         scheduled_workdays, present_days, absent_days, late_days,
                         approved_leave_days, payable_days,
                         is_prorated, unprorated_basic_salary, proration_days_paid, proration_method_days, proration_explanation,
                         gross_salary, overtime_amount, overtime_hours, bonus_amount, arrears_amount, adjustment_amount,
                         unpaid_leave_deduction, off_day_extra_pay, custom_deductions, paid_leave_days, unpaid_leave_days, total_leave_days
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(payroll_run_id, employee_id) DO UPDATE SET
+                        organization_id = excluded.organization_id,
+                        branch_id = excluded.branch_id,
                         basic_salary = excluded.basic_salary,
                         allowances = excluded.allowances,
                         deductions = excluded.deductions,
@@ -2113,6 +2115,8 @@ def fetch_pg_monthly_payroll(payroll_month: str, organization_id: str, branch_id
                         target_run_id,
                         eid,
                         ename,
+                        organization_id,
+                        branch,
                         float(rec.get("basic_salary") or 0.0),
                         float(rec.get("allowances") or 0.0),
                         ded_val,

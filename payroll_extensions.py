@@ -596,11 +596,16 @@ def payroll_excel_bytes(payroll: Dict[str, Any], currency: str = DEFAULT_CURRENC
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill(start_color="0F2942", end_color="0F2942", fill_type="solid")
         cell.alignment = Alignment(horizontal="center")
+    def _safe_excel_val(val: Any) -> Any:
+        if isinstance(val, str) and val and val[0] in ('=', '+', '-', '@', '\t', '\r'):
+            return "'" + val
+        return val
+
     for row in payroll.get("records") or []:
         ws.append([
             row.get("employee_id"),
-            row.get("employee_name"),
-            row.get("department"),
+            _safe_excel_val(row.get("employee_name")),
+            _safe_excel_val(row.get("department")),
             float(row.get("basic_salary") or 0),
             float(row.get("allowances") or 0),
             float(row.get("overtime_amount") or 0),
@@ -611,7 +616,7 @@ def payroll_excel_bytes(payroll: Dict[str, Any], currency: str = DEFAULT_CURRENC
             float(row.get("gross_salary") or 0),
             float(row.get("deduction_amount") or 0),
             float(row.get("net_salary") or 0),
-            row.get("status"),
+            _safe_excel_val(row.get("status")),
         ])
     buf = io.BytesIO()
     wb.save(buf)

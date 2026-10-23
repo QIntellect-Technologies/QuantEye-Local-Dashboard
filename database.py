@@ -1708,6 +1708,8 @@ def add_user(
         return None
 
     clean_name = name.strip()
+    if len(clean_name) > 100:
+        raise ValueError("Full name cannot exceed 100 characters")
     try:
         salary = parse_salary_amount(salary, default=0.0)
     except ValueError as salary_err:
@@ -1720,6 +1722,11 @@ def add_user(
     password_hash = generate_password_hash(password) if password else None
     org_target = organization_id or 'DEFAULT_ORG'
     branch_target = branch_id or 'DEFAULT_BRANCH'
+
+    if join_date:
+        join_m = str(join_date).strip()[:7]
+        if len(join_m) == 7 and payroll_month_is_finalized(join_m, org_target, branch_target):
+            raise ValueError(f"Cannot set joining date in an already finalized payroll month ({join_m})")
 
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -2087,6 +2094,8 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
     if not name or len(name.strip()) == 0:
         logger.warning("Attempted to update user with empty name")
         return False
+    if len(name.strip()) > 100:
+        raise ValueError("Full name cannot exceed 100 characters")
     if salary is not None:
         try:
             salary = parse_salary_amount(salary, default=None)
@@ -2097,15 +2106,28 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COALESCE(shift_id, 1), join_date FROM users WHERE id = ?", (user_id,))
+            cursor.execute("SELECT COALESCE(shift_id, 1), join_date, COALESCE(organization_id, 'DEFAULT_ORG'), COALESCE(branch_id, 'DEFAULT_BRANCH'), exit_date FROM users WHERE id = ?", (user_id,))
             current_user_row = cursor.fetchone()
             if not current_user_row:
                 return False
             previous_shift_id = current_user_row[0]
             existing_join_date = current_user_row[1]
+            user_org = current_user_row[2]
+            user_branch = current_user_row[3]
+            existing_exit_date = current_user_row[4]
 
             effective_join = str(join_date).strip()[:10] if (join_date is not None and str(join_date).strip()) else (str(existing_join_date).strip()[:10] if existing_join_date else None)
             norm_exit = str(exit_date).strip()[:10] if (exit_date is not None and str(exit_date).strip()) else (None if exit_date is not None else '__KEEP__')
+
+            if join_date is not None and str(join_date).strip() != str(existing_join_date or '').strip() and effective_join:
+                join_m = effective_join[:7]
+                if len(join_m) == 7 and payroll_month_is_finalized(join_m, user_org, user_branch):
+                    raise ValueError(f"Cannot set joining date in an already finalized payroll month ({join_m})")
+
+            if norm_exit and norm_exit != '__KEEP__' and norm_exit != str(existing_exit_date or '').strip()[:10]:
+                exit_m = norm_exit[:7]
+                if len(exit_m) == 7 and payroll_month_is_finalized(exit_m, user_org, user_branch):
+                    raise ValueError(f"Cannot set exit date in an already finalized payroll month ({exit_m})")
 
             if norm_exit and norm_exit != '__KEEP__' and effective_join:
                 if norm_exit < effective_join:
@@ -2115,12 +2137,8 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
             persisted_shift_id = shift_id if effective_date <= datetime.now().date().isoformat() else None
             if shift_id is not None and (shift_id != previous_shift_id or shift_effective_from is not None):
                 affected_month = effective_date[:7]
-                org_row = cursor.execute(
-                    "SELECT COALESCE(organization_id,'DEFAULT_ORG'), COALESCE(branch_id,'DEFAULT_BRANCH') FROM users WHERE id = ?",
-                    (user_id,),
-                ).fetchone()
-                org_id = org_row[0] if org_row else 'DEFAULT_ORG'
-                branch_id = org_row[1] if org_row else 'DEFAULT_BRANCH'
+                org_id = user_org
+                branch_id = user_branch
                 if payroll_month_is_finalized(affected_month, org_id, branch_id):
                     raise ValueError(PAYROLL_LOCK_MESSAGE)
                 past_logs = cursor.execute(
@@ -8976,7 +8994,11 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
             return False
         raise_if_payroll_month_locked(str(effective_from or date.today().isoformat())[:10], owner[1], owner[2])
         settings = get_payroll_settings(organization_id=owner[1], branch_id=owner[2])
-        b_sal = max(0.0, float(basic_salary or 0.0))
+        b_sal = float(basic_salary or 0.0)
+        if b_sal <= 0:
+            raise ValueError("Basic salary must be greater than 0")
+        if b_sal > 50_000_000:
+            raise ValueError("Basic salary cannot exceed 50,000,000")
         allow = max(0.0, float(allowances or 0.0))
         deduct = max(0.0, float(deductions or 0.0))
         ot = max(0.0, float(ot_rate or 0.0))
@@ -9608,11 +9630,17 @@ def save_scoped_overtime_limit_rule(
     if scope not in ('department', 'employee') or p not in ('day', 'week', 'month', 'per_entry'):
         return False
     try:
-        max_h = float(max_hours)
+        max_h = round(float(max_hours), 2)
     except (TypeError, ValueError, OverflowError):
-        return False
+        raise ValueError("Overtime limit must be a valid number.")
     if max_h <= 0:
-        return False
+        raise ValueError("Overtime limit must be greater than 0.")
+    if p in ('day', 'per_entry') and max_h > 24.0:
+        raise ValueError("Each-entry / daily overtime limit cannot exceed 24 hours (max 2 decimals).")
+    if p == 'week' and max_h > 168.0:
+        raise ValueError("Weekly overtime limit cannot exceed 168 hours (max 2 decimals).")
+    if p == 'month' and max_h > 744.0:
+        raise ValueError("Monthly overtime limit cannot exceed 744 hours (max 2 decimals).")
     try:
         with sqlite3.connect(DB_PATH) as conn:
             org, branch = _tenant_ids(organization_id, branch_id)
@@ -9965,20 +9993,20 @@ def update_payroll_settings(
     if conversion_count < 1:
         raise ValueError('Half-leave conversion count must be a positive integer.')
     try:
-        holiday_premium = float(holiday_ot_premium_percent)
-        non_working_premium = float(non_working_day_ot_premium_percent)
+        holiday_premium = round(float(holiday_ot_premium_percent), 2)
+        non_working_premium = round(float(non_working_day_ot_premium_percent), 2)
     except (TypeError, ValueError, OverflowError):
-        raise ValueError('Overtime premiums must be numbers between 0 and 1000.')
-    if not (0 <= holiday_premium <= 1000 and 0 <= non_working_premium <= 1000):
-        raise ValueError('Overtime premiums must be between 0 and 1000 percent.')
+        raise ValueError('Overtime premiums must be numbers between 0% and 100%.')
+    if not (0 <= holiday_premium <= 100 and 0 <= non_working_premium <= 100):
+        raise ValueError('Overtime premiums must be between 0% and 100% (max 2 decimals).')
     org, branch = _tenant_ids(organization_id, branch_id)
     current = get_payroll_settings(organization_id=org, branch_id=branch)
     try:
         divisor = float(ot_hour_divisor if ot_hour_divisor is not None else current.get('ot_hour_divisor', DEFAULT_OT_DIVISOR))
     except (TypeError, ValueError, OverflowError):
-        raise ValueError('OT hour divisor must be a positive number.')
-    if divisor <= 0 or divisor != divisor:
-        raise ValueError('OT hour divisor must be a positive number.')
+        raise ValueError('Hours per month must be a number between 1 and 744.')
+    if divisor < 1.0 or divisor > 744.0 or divisor != divisor:
+        raise ValueError('Hours per month must be between 1 and 744 hours.')
     basis = str(proration_basis if proration_basis is not None else current.get('proration_basis', DEFAULT_PRORATION_BASIS)).strip().lower()
     if basis in ('all_days', 'all_days_in_month', 'calendar'):
         basis = 'calendar_days'
@@ -10022,16 +10050,20 @@ def update_payroll_settings(
     if not off_mode:
         raise ValueError('Rest-day extra must be a daily-rate multiplier or a fixed amount per rest day.')
     try:
-        h_mult = float(holiday_ot_multiplier if holiday_ot_multiplier is not None else current.get('holiday_ot_multiplier') or 1.5)
-        nw_mult = float(non_working_day_ot_multiplier if non_working_day_ot_multiplier is not None else current.get('non_working_day_ot_multiplier') or 1.5)
-        h_fixed = float(holiday_ot_fixed_amount if holiday_ot_fixed_amount is not None else current.get('holiday_ot_fixed_amount') or 0)
-        nw_fixed = float(non_working_day_ot_fixed_amount if non_working_day_ot_fixed_amount is not None else current.get('non_working_day_ot_fixed_amount') or 0)
-        off_mult = float(off_day_attendance_pay_multiplier if off_day_attendance_pay_multiplier is not None else current.get('off_day_attendance_pay_multiplier') or 1.5)
-        off_fixed = float(off_day_attendance_pay_fixed_amount if off_day_attendance_pay_fixed_amount is not None else current.get('off_day_attendance_pay_fixed_amount') or 0)
+        h_mult = round(float(holiday_ot_multiplier if holiday_ot_multiplier is not None else current.get('holiday_ot_multiplier') or 1.5), 2)
+        nw_mult = round(float(non_working_day_ot_multiplier if non_working_day_ot_multiplier is not None else current.get('non_working_day_ot_multiplier') or 1.5), 2)
+        h_fixed = round(float(holiday_ot_fixed_amount if holiday_ot_fixed_amount is not None else current.get('holiday_ot_fixed_amount') or 0), 2)
+        nw_fixed = round(float(non_working_day_ot_fixed_amount if non_working_day_ot_fixed_amount is not None else current.get('non_working_day_ot_fixed_amount') or 0), 2)
+        off_mult = round(float(off_day_attendance_pay_multiplier if off_day_attendance_pay_multiplier is not None else current.get('off_day_attendance_pay_multiplier') or 1.5), 2)
+        off_fixed = round(float(off_day_attendance_pay_fixed_amount if off_day_attendance_pay_fixed_amount is not None else current.get('off_day_attendance_pay_fixed_amount') or 0), 2)
     except (TypeError, ValueError, OverflowError):
         raise ValueError('Extra-pay amounts must be valid numbers.')
     if any(value < 0 or value != value for value in (h_mult, nw_mult, h_fixed, nw_fixed, off_mult, off_fixed)):
         raise ValueError('Extra-pay amounts cannot be negative.')
+    if h_mult < 1.0 or h_mult > 5.0:
+        raise ValueError('Holiday OT multiplier must be between 1.0 and 5.0 (max 2 decimals).')
+    if nw_mult < 1.0 or nw_mult > 5.0:
+        raise ValueError('Rest-day OT multiplier must be between 1.0 and 5.0 (max 2 decimals).')
     if off_day_attendance_pay_active is None:
         off_active = int(bool(current.get('off_day_attendance_pay_active')))
     else:
@@ -10439,6 +10471,17 @@ def save_payroll_component_type(
     mode = str(calc_mode or 'fixed').strip().lower()
     if not str(name or '').strip() or not str(code or '').strip():
         return None
+    if len(name.strip()) > 100:
+        raise ValueError("Item name cannot exceed 100 characters")
+    if len(code.strip()) > 10:
+        raise ValueError("Short code cannot exceed 10 characters")
+    try:
+        def_amt = round(float(default_amount or 0), 2)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError("Amount must be numeric")
+    if def_amt < 0 or def_amt > 10_000_000:
+        raise ValueError("Amount must be between 0 and 10,000,000 (max 2 decimals)")
+    default_amount = def_amt
     if kind_n not in VALID_COMPONENT_KINDS or cat not in VALID_COMPONENT_CATEGORIES or mode not in VALID_CALC_MODES:
         return None
     org, branch = _tenant_ids(organization_id, branch_id)
@@ -10623,33 +10666,39 @@ def save_employee_component(
             raise ValueError(f'{scope} is required')
     if min_amount is not None:
         try:
-            min_val = float(min_amount)
+            min_val = round(float(min_amount), 2)
             if min_val < 0:
                 raise ValueError('Lowest amount limit cannot be negative')
+            if min_val > 10_000_000:
+                raise ValueError('Lowest amount limit cannot exceed 10,000,000')
             min_amount = min_val
         except (TypeError, ValueError) as exc:
-            if 'negative' in str(exc): raise
+            if 'negative' in str(exc) or 'exceed' in str(exc): raise
             raise ValueError('Lowest amount limit must be numeric') from exc
     if max_amount is not None:
         try:
-            max_val = float(max_amount)
+            max_val = round(float(max_amount), 2)
             if max_val < 0:
                 raise ValueError('Highest amount limit cannot be negative')
+            if max_val > 10_000_000:
+                raise ValueError('Highest amount limit cannot exceed 10,000,000')
             max_amount = max_val
         except (TypeError, ValueError) as exc:
-            if 'negative' in str(exc): raise
+            if 'negative' in str(exc) or 'exceed' in str(exc): raise
             raise ValueError('Highest amount limit must be numeric') from exc
     if min_amount is not None and max_amount is not None:
         if min_amount > max_amount:
             raise ValueError('Lowest amount limit cannot be greater than highest amount limit')
 
     try:
-        amt_val = float(amount or 0)
+        amt_val = round(float(amount or 0), 2)
         if amt_val < 0:
             raise ValueError('Amount cannot be negative')
+        if amt_val > 10_000_000:
+            raise ValueError('Amount cannot exceed 10,000,000')
         amount = amt_val
     except (TypeError, ValueError, OverflowError) as exc:
-        if 'negative' in str(exc): raise
+        if 'negative' in str(exc) or 'exceed' in str(exc): raise
         raise ValueError('Amount must be numeric') from exc
 
     # QA-57: Rule precedence: If both amount and percent are provided, percent wins
@@ -11457,10 +11506,11 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             FROM users u
             LEFT JOIN salary_configs sc ON sc.user_id = u.id
             WHERE (u.active = 1 OR (u.exit_date IS NOT NULL AND u.exit_date >= ?))
+              AND (u.join_date IS NULL OR TRIM(u.join_date) = '' OR u.join_date <= ?)
               AND COALESCE(u.organization_id, 'DEFAULT_ORG') = ?
               AND (? IS NULL OR COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?)
             ORDER BY u.department COLLATE NOCASE, u.name COLLATE NOCASE
-        ''', (month_start.isoformat(), organization_id, branch_id, branch_id))
+        ''', (month_start.isoformat(), month_end.isoformat(), organization_id, branch_id, branch_id))
         employees = [dict(row) for row in cursor.fetchall()]
         inactive_no_exit = [dict(row) for row in cursor.execute(
             """SELECT id, name FROM users
@@ -12380,10 +12430,10 @@ def get_monthly_payroll(
         records_query = "SELECT * FROM payroll_records WHERE payroll_run_id = ?"
         records_params: List[Any] = [run['id']]
         if organization_id:
-            records_query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
+            records_query += " AND (organization_id = ? OR organization_id IS NULL OR organization_id = '' OR organization_id = 'DEFAULT_ORG')"
             records_params.append(organization_id)
         if branch_id:
-            records_query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+            records_query += " AND (branch_id = ? OR branch_id IS NULL OR branch_id = '' OR branch_id = 'DEFAULT_BRANCH')"
             records_params.append(branch_id)
         records_query += " ORDER BY department COLLATE NOCASE, employee_name COLLATE NOCASE"
         cursor.execute(records_query, records_params)

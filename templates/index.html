@@ -9794,6 +9794,15 @@ async function fetchMultiLiveDetections() {
           showMessage("enrollmentMessage", "Joining date is required.", "error");
           return;
         }
+        // QA-73: Validate the join date is a real calendar date (reject e.g. 31 Nov)
+        {
+          const [jy, jm, jd] = join_date.split('-').map(Number);
+          const jObj = new Date(jy, jm - 1, jd);
+          if (isNaN(jObj.getTime()) || jObj.getFullYear() !== jy || jObj.getMonth() !== jm - 1 || jObj.getDate() !== jd) {
+            showMessage("enrollmentMessage", "Joining date is invalid (this date does not exist on the calendar). Please pick a real date.", "error");
+            return;
+          }
+        }
 
         const btn = document.querySelector('button[onclick="createEnrollUser()"]');
         const restoreBtn = setButtonLoading(btn, 'Registering...');
@@ -11096,6 +11105,26 @@ async function fetchMultiLiveDetections() {
           return;
         }
 
+        // QA-73: Validate join date is a real calendar date (reject e.g. 31 Nov)
+        if (join_date) {
+          const [jy, jm, jd] = join_date.split('-').map(Number);
+          const jObj = new Date(jy, jm - 1, jd);
+          if (isNaN(jObj.getTime()) || jObj.getFullYear() !== jy || jObj.getMonth() !== jm - 1 || jObj.getDate() !== jd) {
+            showMessage("editModalMessage", "Joining date is invalid (this date does not exist on the calendar). Please pick a real date.", "error");
+            showAppToast("Joining date is invalid — this date does not exist.", "error");
+            return;
+          }
+        }
+        // QA-73: Validate exit date is a real calendar date
+        if (exit_date) {
+          const [ey, em, ed] = exit_date.split('-').map(Number);
+          const eObj = new Date(ey, em - 1, ed);
+          if (isNaN(eObj.getTime()) || eObj.getFullYear() !== ey || eObj.getMonth() !== em - 1 || eObj.getDate() !== ed) {
+            showMessage("editModalMessage", "Exit date is invalid (this date does not exist on the calendar). Please pick a real date.", "error");
+            showAppToast("Exit date is invalid — this date does not exist.", "error");
+            return;
+          }
+        }
         if (exit_date && join_date && exit_date < join_date) {
           showMessage("editModalMessage", "Exit date cannot be before joining date", "error");
           showAppToast("Exit date cannot be before joining date", "error");
@@ -12498,7 +12527,7 @@ async function fetchMultiLiveDetections() {
           const elPos = document.getElementById('mainModalEmpPos');
           if (elPos) elPos.textContent = emp.position || 'Staff Member';
           const elShift = document.getElementById('mainModalEmpShift');
-          if (elShift) elShift.innerHTML = `<i class="fa-solid fa-business-time"></i> ${emp.shift_name || 'General Shift'}`;
+          if (elShift) elShift.innerHTML = `<i class="fa-solid fa-business-time"></i> ${payrollEscape(emp.shift_name || 'General Shift')}`;  // QA-76: escape shift name
 
           const dateLabel = mainReportData.date_label || 'Reporting Period';
           const elPeriod = document.getElementById('mainModalPeriodBadge');
@@ -13850,7 +13879,7 @@ async function fetchMultiLiveDetections() {
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
                   <div>
                     <h3 style="font-size:1.1em; font-weight:800; color:#173042; margin:0; display:flex; align-items:center; gap:6px;">
-                      ${s.name}
+                      ${payrollEscape(s.name)}
                       ${s.is_default ? '<span class="badge bg-success" style="font-size:0.68em; font-weight:700;"><i class="fa-solid fa-star"></i> DEFAULT</span>' : ''}
                     </h3>
                     <span class="badge bg-light text-primary border" style="font-size:0.75em; font-weight:700; margin-top:4px;">ID #${s.id}</span>
@@ -13916,7 +13945,7 @@ async function fetchMultiLiveDetections() {
               return `
               <tr style="border-bottom:1px solid #e2e8f0;">
                 <td style="padding:12px 16px; font-weight:700; color:#173042;">
-                  ${s.name} ${s.is_default ? '<span class="badge bg-success" style="font-size:0.65em; margin-left:4px;"><i class="fa-solid fa-star"></i> DEFAULT</span>' : ''}
+                  ${payrollEscape(s.name)} ${s.is_default ? '<span class="badge bg-success" style="font-size:0.65em; margin-left:4px;"><i class="fa-solid fa-star"></i> DEFAULT</span>' : ''}
                 </td>
                 <td style="padding:12px 16px; font-family:'JetBrains Mono',monospace; color:#334155; font-weight:600;"><i class="fa-regular fa-clock" style="color:#3d9fd4; margin-right:4px;"></i>${start12}</td>
                 <td style="padding:12px 16px; font-family:'JetBrains Mono',monospace; color:#334155; font-weight:600;"><i class="fa-solid fa-right-from-bracket" style="color:#64748b; margin-right:4px;"></i>${end12}</td>
@@ -13927,7 +13956,8 @@ async function fetchMultiLiveDetections() {
                 </td>
                 <td style="padding:12px 16px; font-weight:700; color:#475569;">${s.user_count || 0} Staff</td>
                 <td style="padding:12px 16px; text-align:right;">
-                  ${!s.is_default ? `<button class="btn btn-sm btn-outline-success me-1" onclick="setDefaultShift(${s.id}, '${s.name}')" title="Set as Default Shift"><i class="fa-solid fa-star"></i> Set Default</button>` : ''}
+                  ${!s.is_default ? `<button class="btn btn-sm btn-outline-success me-1" onclick="setDefaultShift(${s.id}, '${payrollEscape(s.name).replace(/'/g, "\\'")}')"
+ title="Set as Default Shift"><i class="fa-solid fa-star"></i> Set Default</button>` : ''}
                   <button class="btn btn-sm btn-outline-primary me-1" onclick="openEditShiftModal(${s.id}, '${s.name}', '${s.start_time}', '${s.end_time}', ${s.grace_period_minutes}, ${JSON.stringify(s.working_days || [0, 1, 2, 3, 4, 5])}, ${s.checkout_grace_period_minutes || 0})">
                     <i class="fa-solid fa-pen-to-square"></i>
                   </button>
@@ -13992,7 +14022,7 @@ async function fetchMultiLiveDetections() {
         const coGraceEl = document.getElementById("modalShiftCheckoutGrace");
         if (coGraceEl) coGraceEl.value = (checkoutGrace !== undefined && checkoutGrace !== null) ? parseInt(checkoutGrace) || 0 : 0;
 
-        document.getElementById("shiftModalTitle").innerHTML = `<i class="fa-solid fa-pen-to-square" style="color:#3d9fd4; margin-right:8px;"></i> Edit Shift: ${name}`;
+        document.getElementById("shiftModalTitle").innerHTML = `<i class="fa-solid fa-pen-to-square" style="color:#3d9fd4; margin-right:8px;"></i> Edit Shift: ${payrollEscape(name)}`;  // QA-76: escape shift name
         document.getElementById("shiftModalMsg").innerHTML = "";
 
         const modalEl = document.getElementById("shiftModal");
@@ -14382,7 +14412,10 @@ async function fetchMultiLiveDetections() {
         const target = document.getElementById('halfLeaveRuleTarget').value;
         const count = document.getElementById('halfLeaveRuleValue').value;
         const mode = document.getElementById('halfLeaveQuotaMode')?.value || 'category';
-        if (!target || !count) return showToast('Please select a target and enter a value.', 'warning');
+        // QA-66: Specific validation for each required field
+        if (!target) return showToast('Please select who the rule applies to (department or employee).', 'warning');
+        if (!count || count.trim() === '') return showToast('Enter Times per month — this field cannot be empty.', 'warning');
+        if (Number(count) <= 0 || isNaN(Number(count))) return showToast('Times per month must be a positive number (for example 1 or 2).', 'warning');
         try {
           const res = await fetch('/api/payroll-settings/scoped-rules/half-leave', {
             method: 'POST',
@@ -19877,7 +19910,10 @@ async function fetchMultiLiveDetections() {
     }
 
     function csvEscape(value) {
-      const text = String(value ?? '');
+      let text = String(value ?? '');
+      if (/^[=\+\-@\t\r]/.test(text)) {
+        text = "'" + text;
+      }
       if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
       return text;
     }
