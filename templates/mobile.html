@@ -851,6 +851,17 @@
               </div>
             </div>
 
+            <div id="leaveHalfDayTimeContainer" class="form-row-2" style="display:none; margin-top:10px;">
+              <div>
+                <label for="leaveStartTime">Half Day Start Time *</label>
+                <input type="time" id="leaveStartTime" class="mobile-input">
+              </div>
+              <div>
+                <label for="leaveEndTime">Half Day End Time *</label>
+                <input type="time" id="leaveEndTime" class="mobile-input">
+              </div>
+            </div>
+
             <label for="leaveReason">Reason / Notes</label>
             <textarea id="leaveReason" class="mobile-textarea" rows="3" placeholder="Brief reason for your leave request..." required></textarea>
 
@@ -1464,7 +1475,15 @@
       const sEl = document.getElementById('leaveStartDate');
       const eEl = document.getElementById('leaveEndDate');
       const dSel = document.getElementById('leaveDurationSelect');
-      if (dSel.value === 'half' && sEl.value) {
+      const timeContainer = document.getElementById('leaveHalfDayTimeContainer');
+      const isHalf = dSel && dSel.value === 'half';
+      if (timeContainer) {
+        timeContainer.style.display = isHalf ? 'grid' : 'none';
+      }
+      if (eEl) {
+        eEl.disabled = isHalf;
+      }
+      if (isHalf && sEl && sEl.value && eEl) {
         eEl.value = sEl.value;
       }
       onLeaveDateChange();
@@ -1546,7 +1565,8 @@
             }
 
             const typeName = r.type_name || r.leave_type || 'Leave';
-            const durationText = (r.leave_duration === 'half') ? 'Half Day' : (r.start_date === r.end_date ? '1 Day' : `${r.start_date} to ${r.end_date}`);
+            const timeInfo = (r.start_time && r.end_time) ? ` (${r.start_time} - ${r.end_time})` : '';
+            const durationText = (r.leave_duration === 'half') ? `Half Day${timeInfo}` : (r.start_date === r.end_date ? '1 Day' : `${r.start_date} to ${r.end_date}`);
             const rejectionHtml = r.rejection_reason ? `<div class="leave-history-rejection">Declined: ${r.rejection_reason}</div>` : '';
             const reasonHtml = r.reason ? `<div class="leave-history-reason">"${r.reason}"</div>` : '';
 
@@ -1591,22 +1611,47 @@
         return;
       }
 
+      let startTime = null;
+      let endTime = null;
+      if (duration === 'half') {
+        startTime = (document.getElementById('leaveStartTime')?.value || '').trim();
+        endTime = (document.getElementById('leaveEndTime')?.value || '').trim();
+        if (!startTime || !endTime) {
+          alertEl.textContent = 'Please select both start time and end time for half-day leave.';
+          alertEl.classList.add('error');
+          alertEl.style.display = 'block';
+          return;
+        }
+        if (endTime <= startTime) {
+          alertEl.textContent = 'Half-day end time must be later than start time.';
+          alertEl.classList.add('error');
+          alertEl.style.display = 'block';
+          return;
+        }
+      }
+
       submitBtn.disabled = true;
       submitBtn.style.opacity = '0.7';
       submitBtn.textContent = 'Submitting...';
 
       try {
+        const payload = {
+          leave_type: leaveType,
+          start_date: startDate,
+          end_date: duration === 'half' ? startDate : endDate,
+          leave_duration: duration,
+          reason: reason
+        };
+        if (duration === 'half') {
+          payload.start_time = startTime;
+          payload.end_time = endTime;
+        }
+
         const resp = await fetch('/api/mobile/leave-requests', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            leave_type: leaveType,
-            start_date: startDate,
-            end_date: endDate,
-            leave_duration: duration,
-            reason: reason
-          })
+          body: JSON.stringify(payload)
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok || !data.success) {
@@ -1621,6 +1666,8 @@
 
         // Reset form
         document.getElementById('leaveReason').value = '';
+        if (document.getElementById('leaveStartTime')) document.getElementById('leaveStartTime').value = '';
+        if (document.getElementById('leaveEndTime')) document.getElementById('leaveEndTime').value = '';
         alertEl.textContent = 'Leave request submitted successfully! Your manager will review it.';
         alertEl.classList.add('success');
         alertEl.style.display = 'block';

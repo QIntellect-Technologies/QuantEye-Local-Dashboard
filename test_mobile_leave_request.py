@@ -54,6 +54,12 @@ class MobileLeaveRequestTests(unittest.TestCase):
             os.environ["QINTELLECT_DB_PATH"] = _ORIGINAL_DB_PATH_ENV
         _TEST_DB_DIR.cleanup()
 
+    def setUp(self):
+        import sqlite3
+        with sqlite3.connect(_TEST_DB_PATH) as conn:
+            conn.execute("DELETE FROM leave_requests")
+            conn.commit()
+
     @classmethod
     def _seed(cls):
         # Create users
@@ -184,6 +190,68 @@ class MobileLeaveRequestTests(unittest.TestCase):
 
         # Clear cache for other tests
         app_module._MOBILE_COMPANY_CACHE.pop(ORG_A, None)
+
+    def test_submit_half_day_leave_validation_and_persistence(self):
+        self._login_mobile(self.user_a_id, ORG_A, BR_A, "Alice Mobile")
+
+        # 1. Missing start_time or end_time
+        res_no_times = self.client.post("/api/mobile/leave-requests", json={
+            "leave_type": "alice_special",
+            "start_date": "2026-11-20",
+            "end_date": "2026-11-20",
+            "leave_duration": "half",
+            "reason": "Doctor appointment",
+        })
+        self.assertEqual(res_no_times.status_code, 400)
+        self.assertIn("start time is required", res_no_times.get_json().get("message", "").lower())
+
+        res_no_end = self.client.post("/api/mobile/leave-requests", json={
+            "leave_type": "alice_special",
+            "start_date": "2026-11-20",
+            "end_date": "2026-11-20",
+            "leave_duration": "half",
+            "start_time": "09:00",
+            "reason": "Doctor appointment",
+        })
+        self.assertEqual(res_no_end.status_code, 400)
+        self.assertIn("end time is required", res_no_end.get_json().get("message", "").lower())
+
+        # 2. Invalid time range (end_time <= start_time)
+        res_bad_times = self.client.post("/api/mobile/leave-requests", json={
+            "leave_type": "alice_special",
+            "start_date": "2026-11-20",
+            "end_date": "2026-11-20",
+            "leave_duration": "half",
+            "start_time": "14:00",
+            "end_time": "10:00",
+            "reason": "Doctor appointment",
+        })
+        self.assertEqual(res_bad_times.status_code, 400)
+        self.assertIn("later than start time", res_bad_times.get_json().get("message", "").lower())
+
+        # 3. Valid submission with start_time and end_time
+        res_ok = self.client.post("/api/mobile/leave-requests", json={
+            "leave_type": "alice_special",
+            "start_date": "2026-11-20",
+            "end_date": "2026-11-20",
+            "leave_duration": "half",
+            "start_time": "09:00",
+            "end_time": "13:00",
+            "reason": "Dentist visit",
+        })
+        self.assertEqual(res_ok.status_code, 200)
+        data = res_ok.get_json()
+        self.assertTrue(data.get("success"))
+
+        # Verify history reflects half_day with start_time and end_time
+        hist_res = self.client.get("/api/mobile/leave-requests")
+        self.assertEqual(hist_res.status_code, 200)
+        reqs = hist_res.get_json().get("requests", [])
+        half_req = next((r for r in reqs if r.get("start_date") == "2026-11-20"), None)
+        self.assertIsNotNone(half_req)
+        self.assertEqual(half_req.get("leave_duration"), "half")
+        self.assertEqual(half_req.get("start_time"), "09:00")
+        self.assertEqual(half_req.get("end_time"), "13:00")
 
 
 if __name__ == "__main__":

@@ -6638,6 +6638,9 @@ def add_leave_request(
                 "status": status,
                 "organization_id": u_org,
                 "branch_id": u_branch,
+                "leave_duration": leave_duration,
+                "start_time": start_time,
+                "end_time": end_time,
             })
             return leave_id
     except ValueError:

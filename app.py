@@ -4263,6 +4263,8 @@ def api_mobile_add_leave_request():
     end_date = str(data.get('end_date', '')).strip()
     leave_duration = str(data.get('leave_duration', 'full')).strip().lower()
     reason = str(data.get('reason', '')).strip()
+    start_time = (data.get('start_time') or '').strip() or None
+    end_time = (data.get('end_time') or '').strip() or None
 
     if not leave_type:
         return jsonify({'success': False, 'message': 'Please select a leave type.'}), 400
@@ -4270,8 +4272,18 @@ def api_mobile_add_leave_request():
         return jsonify({'success': False, 'message': 'Start date and end date are required.'}), 400
     if leave_duration not in ('full', 'half'):
         leave_duration = 'full'
-    if leave_duration == 'half' and start_date != end_date:
-        return jsonify({'success': False, 'message': 'Half-day leave must be for a single date.'}), 400
+    if leave_duration == 'half':
+        if start_date != end_date:
+            return jsonify({'success': False, 'message': 'Half-day leave must be for a single date.'}), 400
+        if not start_time:
+            return jsonify({'success': False, 'message': 'Half-day start time is required.'}), 400
+        if not end_time:
+            return jsonify({'success': False, 'message': 'Half-day end time is required.'}), 400
+        if end_time <= start_time:
+            return jsonify({'success': False, 'message': 'Leave end time must be later than start time.'}), 400
+    else:
+        start_time = None
+        end_time = None
 
     try:
         d1 = datetime.strptime(start_date, '%Y-%m-%d')
@@ -4303,6 +4315,8 @@ def api_mobile_add_leave_request():
             end_date=end_date,
             reason=reason,
             leave_duration=leave_duration,
+            start_time=start_time,
+            end_time=end_time,
             status='pending',
             organization_id=str(organization_id),
             branch_id=str(branch_id),
