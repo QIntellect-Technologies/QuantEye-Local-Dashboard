@@ -1013,7 +1013,11 @@ def create_user():
     try:
         salary = db.parse_salary_amount(data.get('salary', 0))
     except ValueError as salary_err:
-        return jsonify({'error': str(salary_err)}), 400
+        return jsonify({'error': str(salary_err), 'field': 'salary'}), 400
+    if salary <= 0:
+        return jsonify({'error': 'Basic salary must be greater than 0.', 'field': 'salary'}), 400
+    if salary > 50_000_000:
+        return jsonify({'error': 'Basic salary cannot exceed 50,000,000.', 'field': 'salary'}), 400
     join_date = str(data.get('join_date') or '').strip()
     if not join_date:
         return jsonify({'error': 'Joining date is required for employee enrollment.', 'field': 'join_date'}), 400
@@ -1028,22 +1032,27 @@ def create_user():
     checkout_cameras = data.get('checkout_cameras', 'all') or 'all'
     
     current_tenant = get_current_tenant_id()
-    user_id = db.add_user(
-        name=name,
-        email=email,
-        phone=phone,
-        department=department,
-        position=position,
-        cnic=cnic,
-        salary=salary,
-        join_date=join_date,
-        notes=notes,
-        shift_id=shift_id,
-        checkin_cameras=checkin_cameras,
-        checkout_cameras=checkout_cameras,
-        organization_id=current_tenant,
-        branch_id=get_current_branch_id(),
-    )
+    try:
+        user_id = db.add_user(
+            name=name,
+            email=email,
+            phone=phone,
+            department=department,
+            position=position,
+            cnic=cnic,
+            salary=salary,
+            join_date=join_date,
+            notes=notes,
+            shift_id=shift_id,
+            checkin_cameras=checkin_cameras,
+            checkout_cameras=checkout_cameras,
+            organization_id=current_tenant,
+            branch_id=get_current_branch_id(),
+        )
+    except ValueError as ve:
+        err_msg = str(ve)
+        field = 'join_date' if 'finalized' in err_msg.lower() else ('name' if 'name' in err_msg.lower() else None)
+        return jsonify({'error': err_msg, 'field': field}), 400
     if user_id:
         return jsonify({
             'success': True,
@@ -4603,23 +4612,30 @@ def api_add_staff():
         salary = db.parse_salary_amount(data.get('salary', 0))
     except ValueError as salary_err:
         return jsonify({'success': False, 'message': str(salary_err)}), 400
-    uid = db.add_user(
-        name=data.get('name', ''),
-        email=data.get('email', ''),
-        role=data.get('role', 'staff'),
-        department=data.get('department', ''),
-        phone=data.get('phone', ''),
-        notes=data.get('notes', ''),
-        cnic=data.get('cnic', ''),
-        position=data.get('position', ''),
-        salary=salary,
-        join_date=data.get('join_date', ''),
-        shift_id=shift_id,
-        checkin_cameras=data.get('checkin_cameras', 'all') or 'all',
-        checkout_cameras=data.get('checkout_cameras', 'all') or 'all',
-        organization_id=current_tenant,
-        branch_id=current_branch
-    )
+    if salary <= 0:
+        return jsonify({'success': False, 'message': 'Basic salary must be greater than 0.'}), 400
+    if salary > 50_000_000:
+        return jsonify({'success': False, 'message': 'Basic salary cannot exceed 50,000,000.'}), 400
+    try:
+        uid = db.add_user(
+            name=data.get('name', ''),
+            email=data.get('email', ''),
+            role=data.get('role', 'staff'),
+            department=data.get('department', ''),
+            phone=data.get('phone', ''),
+            notes=data.get('notes', ''),
+            cnic=data.get('cnic', ''),
+            position=data.get('position', ''),
+            salary=salary,
+            join_date=data.get('join_date', ''),
+            shift_id=shift_id,
+            checkin_cameras=data.get('checkin_cameras', 'all') or 'all',
+            checkout_cameras=data.get('checkout_cameras', 'all') or 'all',
+            organization_id=current_tenant,
+            branch_id=current_branch
+        )
+    except ValueError as ve:
+        return jsonify({'success': False, 'message': str(ve), 'error': str(ve)}), 400
     if uid is None:
         return jsonify({'success': False, 'message': 'Email or name already exists'}), 409
     return jsonify({'success': True, 'user': _safe_user(db.get_user_by_id(uid))}), 201
@@ -4662,6 +4678,22 @@ def api_update_user(user_id):
         salary = db.parse_salary_amount(salary_val, default=None) if salary_val is not None and str(salary_val).strip() != '' else None
     except ValueError as salary_err:
         return jsonify({'error': str(salary_err)}), 400
+
+    join_date = data.get('join_date')
+    if join_date is not None and str(join_date).strip():
+        join_str = str(join_date).strip()[:10]
+        try:
+            datetime.strptime(join_str, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'Joining date must be a valid calendar date (YYYY-MM-DD)', 'field': 'join_date'}), 400
+
+    exit_date = data.get('exit_date')
+    if exit_date is not None and str(exit_date).strip():
+        exit_str = str(exit_date).strip()[:10]
+        try:
+            datetime.strptime(exit_str, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'Exit date must be a valid calendar date (YYYY-MM-DD)', 'field': 'exit_date'}), 400
 
     checkin_cameras = data.get('checkin_cameras')
     checkout_cameras = data.get('checkout_cameras')
@@ -5829,23 +5861,26 @@ def api_add_leave_type():
         quota_id = int(quota_raw) if quota_raw not in (None, '', 'null') else None
     except (TypeError, ValueError):
         quota_id = None
-    tid = db.add_leave_type(
-        name=name,
-        code=code,
-        yearly_allowance=float(data.get('yearly_allowance', 12.0)),
-        is_paid=int(data.get('is_paid', 1)),
-        description=data.get('description', ''),
-        allowance_period=allowance_period,
-        allowance_months=allowance_months,
-        half_leave_enabled=bool(data.get('half_leave_enabled')),
-        half_leave_mode=str(data.get('half_leave_mode') or 'separate'),
-        half_leave_allowance_count=int(data.get('half_leave_allowance_count') or 0),
-        half_leave_allowance_months=int(data.get('half_leave_allowance_months') or 12),
-        half_leaves_per_quota_day=int(data.get('half_leaves_per_quota_day') or 2),
-        half_leave_quota_type_id=quota_id,
-        organization_id=get_current_tenant_id(),
-        branch_id=get_current_branch_id(),
-    )
+    try:
+        tid = db.add_leave_type(
+            name=name,
+            code=code,
+            yearly_allowance=float(data.get('yearly_allowance', 12.0)),
+            is_paid=int(data.get('is_paid', 1)),
+            description=data.get('description', ''),
+            allowance_period=allowance_period,
+            allowance_months=allowance_months,
+            half_leave_enabled=bool(data.get('half_leave_enabled')),
+            half_leave_mode=str(data.get('half_leave_mode') or 'separate'),
+            half_leave_allowance_count=int(data.get('half_leave_allowance_count') or 0),
+            half_leave_allowance_months=int(data.get('half_leave_allowance_months') or 12),
+            half_leaves_per_quota_day=int(data.get('half_leaves_per_quota_day') or 2),
+            half_leave_quota_type_id=quota_id,
+            organization_id=get_current_tenant_id(),
+            branch_id=get_current_branch_id(),
+        )
+    except (TypeError, ValueError) as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
     if tid:
         return jsonify({'success': True, 'id': tid}), 201
     return jsonify({'success': False, 'message': 'Failed to add leave type'}), 400
@@ -5867,30 +5902,36 @@ def api_update_leave_type(type_id):
         quota_id = int(quota_raw) if quota_raw not in (None, '', 'null') else None
     except (TypeError, ValueError):
         quota_id = None
-    ok = db.update_leave_type(
-        type_id=type_id,
-        name=data.get('name', ''),
-        yearly_allowance=float(data.get('yearly_allowance', 12.0)),
-        is_paid=int(data.get('is_paid', 1)),
-        description=data.get('description', ''),
-        active=int(data.get('active', 1)),
-        allowance_period=allowance_period,
-        allowance_months=allowance_months,
-        half_leave_enabled=bool(data.get('half_leave_enabled')),
-        half_leave_mode=str(data.get('half_leave_mode') or 'separate'),
-        half_leave_allowance_count=int(data.get('half_leave_allowance_count') or 0),
-        half_leave_allowance_months=int(data.get('half_leave_allowance_months') or 12),
-        half_leaves_per_quota_day=int(data.get('half_leaves_per_quota_day') or 2),
-        half_leave_quota_type_id=quota_id,
-        organization_id=get_current_tenant_id(),
-    )
+    try:
+        ok = db.update_leave_type(
+            type_id=type_id,
+            name=data.get('name', ''),
+            yearly_allowance=float(data.get('yearly_allowance', 12.0)),
+            is_paid=int(data.get('is_paid', 1)),
+            description=data.get('description', ''),
+            active=int(data.get('active', 1)),
+            allowance_period=allowance_period,
+            allowance_months=allowance_months,
+            half_leave_enabled=bool(data.get('half_leave_enabled')),
+            half_leave_mode=str(data.get('half_leave_mode') or 'separate'),
+            half_leave_allowance_count=int(data.get('half_leave_allowance_count') or 0),
+            half_leave_allowance_months=int(data.get('half_leave_allowance_months') or 12),
+            half_leaves_per_quota_day=int(data.get('half_leaves_per_quota_day') or 2),
+            half_leave_quota_type_id=quota_id,
+            organization_id=get_current_tenant_id(),
+        )
+    except (TypeError, ValueError) as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
     return jsonify({'success': ok})
 
 
 @app.route('/api/leave-types/<int:type_id>', methods=['DELETE'])
 def api_delete_leave_type(type_id):
-    ok = db.delete_leave_type(type_id, organization_id=get_current_tenant_id())
-    return jsonify({'success': ok})
+    try:
+        ok = db.delete_leave_type(type_id, organization_id=get_current_tenant_id())
+    except ValueError as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 409
+    return jsonify({'success': ok, 'message': 'Leave type not found.' if not ok else ''}), 404 if not ok else 200
 
 
 @app.route('/api/leaves/balances', methods=['GET'])
@@ -5941,15 +5982,18 @@ def api_add_holiday():
         )
     ):
         return jsonify({'success': False, 'message': 'A holiday already starts on this date.'}), 409
-    hid = db.add_company_holiday(
-        name=name,
-        holiday_date=hdate,
-        end_date=edate,
-        description=data.get('description', ''),
-        is_recurring=int(data.get('is_recurring', 0)),
-        organization_id=current_tenant,
-        branch_id=current_branch,
-    )
+    try:
+        hid = db.add_company_holiday(
+            name=name,
+            holiday_date=hdate,
+            end_date=edate,
+            description=data.get('description', ''),
+            is_recurring=int(data.get('is_recurring', 0)),
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
+    except (TypeError, ValueError) as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
     if hid:
         return jsonify({'success': True, 'id': hid}), 201
     return jsonify({'success': False, 'message': 'Failed to add holiday'}), 400
@@ -5972,16 +6016,19 @@ def api_update_holiday(holiday_id):
         return jsonify({'success': False, 'message': 'Holiday end date cannot be earlier than its start date.'}), 400
     current_tenant = get_current_tenant_id()
     current_branch = get_current_branch_id()
-    ok = db.update_company_holiday(
-        holiday_id=holiday_id,
-        name=name,
-        holiday_date=hdate,
-        end_date=edate,
-        description=data.get('description', ''),
-        is_recurring=int(data.get('is_recurring', 0)),
-        organization_id=current_tenant,
-        branch_id=current_branch,
-    )
+    try:
+        ok = db.update_company_holiday(
+            holiday_id=holiday_id,
+            name=name,
+            holiday_date=hdate,
+            end_date=edate,
+            description=data.get('description', ''),
+            is_recurring=int(data.get('is_recurring', 0)),
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
+    except (TypeError, ValueError) as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
     if ok:
         return jsonify({'success': True}), 200
     return jsonify({'success': False, 'message': 'Failed to update holiday'}), 400
@@ -6738,6 +6785,11 @@ def api_list_payroll_component_types():
 @app.route('/api/payroll/component-types', methods=['POST'])
 def api_save_payroll_component_type():
     data = request.get_json(silent=True) or {}
+    raw_amt = str(data.get('default_amount') or '').strip()
+    if raw_amt and '.' in raw_amt:
+        dec_part = raw_amt.split('.')[1]
+        if len(dec_part.rstrip('0')) > 2:
+            return jsonify({'error': 'Amount cannot have more than 2 decimal places.', 'message': 'Amount cannot have more than 2 decimal places.', 'field': 'default_amount'}), 400
     try:
         saved_id = db.save_payroll_component_type(
             name=str(data.get('name') or '').strip(),
@@ -7480,6 +7532,16 @@ def api_update_overtime_limit_settings():
     period = str(data.get('overtime_max_period') or '').strip().lower()
     if not 0 <= max_hours <= 744:
         return jsonify({'success': False, 'error': 'Maximum overtime hours must be from 0 to 744.'}), 400
+    if 0 < max_hours < 0.25:
+        return jsonify({'success': False, 'error': 'Maximum overtime hours must be at least 0.25 (15 minutes), or 0 to turn off.'}), 400
+    if period in ('per_entry', 'day') and max_hours > 24:
+        return jsonify({'success': False, 'error': f'Maximum overtime hours for {period.replace("_", " ")} cannot exceed 24 hours.'}), 400
+    if period == 'week' and max_hours > 168:
+        return jsonify({'success': False, 'error': 'Maximum overtime hours for week cannot exceed 168 hours.'}), 400
+    raw_str = str(data.get('overtime_max_hours')).strip()
+    if '.' in raw_str and len(raw_str.split('.')[1].rstrip('0')) > 2:
+        return jsonify({'success': False, 'error': 'Maximum overtime hours cannot have more than 2 decimal places.'}), 400
+    max_hours = round(max_hours, 2)
     if period not in ('per_entry', 'day', 'week', 'month'):
         return jsonify({'success': False, 'error': 'Choose an OT entry, day, week, or calendar month limit.'}), 400
     if not db.update_overtime_limit_settings(max_hours, period, **payroll_tenant()):

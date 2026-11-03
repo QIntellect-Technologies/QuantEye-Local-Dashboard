@@ -1710,6 +1710,8 @@ def add_user(
     clean_name = name.strip()
     if len(clean_name) > 100:
         raise ValueError("Full name cannot exceed 100 characters")
+    if clean_name and clean_name[0] in ('=', '+', '-', '@'):
+        raise ValueError("Name cannot start with =, +, -, or @")
     try:
         salary = parse_salary_amount(salary, default=0.0)
     except ValueError as salary_err:
@@ -1724,7 +1726,12 @@ def add_user(
     branch_target = branch_id or 'DEFAULT_BRANCH'
 
     if join_date:
-        join_m = str(join_date).strip()[:7]
+        join_str = str(join_date).strip()[:10]
+        try:
+            datetime.strptime(join_str, '%Y-%m-%d')
+        except ValueError:
+            raise ValueError("Joining date must be a valid calendar date (YYYY-MM-DD)")
+        join_m = join_str[:7]
         if len(join_m) == 7 and payroll_month_is_finalized(join_m, org_target, branch_target):
             raise ValueError(f"Cannot set joining date in an already finalized payroll month ({join_m})")
 
@@ -2094,14 +2101,28 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
     if not name or len(name.strip()) == 0:
         logger.warning("Attempted to update user with empty name")
         return False
-    if len(name.strip()) > 100:
+    clean_name = name.strip()
+    if len(clean_name) > 100:
         raise ValueError("Full name cannot exceed 100 characters")
+    if clean_name and clean_name[0] in ('=', '+', '-', '@'):
+        raise ValueError("Name cannot start with =, +, -, or @")
     if salary is not None:
         try:
             salary = parse_salary_amount(salary, default=None)
         except ValueError as salary_err:
             logger.warning("Rejected staff update for ID %s: %s", user_id, salary_err)
             return False
+
+    if join_date is not None and str(join_date).strip():
+        try:
+            datetime.strptime(str(join_date).strip()[:10], '%Y-%m-%d')
+        except ValueError:
+            raise ValueError("Joining date must be a valid calendar date (YYYY-MM-DD)")
+    if exit_date is not None and str(exit_date).strip():
+        try:
+            datetime.strptime(str(exit_date).strip()[:10], '%Y-%m-%d')
+        except ValueError:
+            raise ValueError("Exit date must be a valid calendar date (YYYY-MM-DD)")
 
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -3292,12 +3313,16 @@ def add_shift(name: str, start_time: str, end_time: str, grace_period_minutes: i
     if not name or not name.strip():
         logger.warning("Attempted to add shift with empty name")
         return None
+    clean_name = name.strip()
+    if len(clean_name) > 100:
+        raise ValueError("Shift name cannot exceed 100 characters")
+    if clean_name and clean_name[0] in ('=', '+', '-', '@'):
+        raise ValueError("Shift name cannot start with =, +, -, or @")
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             norm_org = organization_id or 'DEFAULT_ORG'
             norm_branch = branch_id or 'DEFAULT_BRANCH'
-            clean_name = name.strip()
 
             # Check if active/inactive shift with this name already exists in this tenant scope
             cursor.execute(
@@ -3352,6 +3377,13 @@ def add_shift(name: str, start_time: str, end_time: str, grace_period_minutes: i
 
 def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace_period_minutes: int = 15, checkout_grace_period_minutes: int = 0, working_days: Any = None, organization_id: Optional[str] = None) -> bool:
     """Update custom shift configuration, ensuring tenant authorization."""
+    if not name or not name.strip():
+        return False
+    clean_name = name.strip()
+    if len(clean_name) > 100:
+        raise ValueError("Shift name cannot exceed 100 characters")
+    if clean_name and clean_name[0] in ('=', '+', '-', '@'):
+        raise ValueError("Shift name cannot start with =, +, -, or @")
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -3363,12 +3395,12 @@ def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace
             if working_days is None:
                 cursor.execute(
                     'UPDATE shifts SET name = ?, start_time = ?, end_time = ?, grace_period_minutes = ?, checkout_grace_period_minutes = ? WHERE id = ?',
-                    (name.strip(), start_time, end_time, max(0, int(grace_period_minutes)), max(0, int(checkout_grace_period_minutes)), shift_id)
+                    (clean_name, start_time, end_time, max(0, int(grace_period_minutes)), max(0, int(checkout_grace_period_minutes)), shift_id)
                 )
             else:
                 cursor.execute(
                     'UPDATE shifts SET name = ?, start_time = ?, end_time = ?, grace_period_minutes = ?, checkout_grace_period_minutes = ?, working_days = ? WHERE id = ?',
-                    (name.strip(), start_time, end_time, max(0, int(grace_period_minutes)), max(0, int(checkout_grace_period_minutes)),
+                    (clean_name, start_time, end_time, max(0, int(grace_period_minutes)), max(0, int(checkout_grace_period_minutes)),
                      json.dumps(_normalize_shift_working_days(working_days)), shift_id)
                 )
             updated = cursor.rowcount > 0
@@ -6721,6 +6753,11 @@ def add_leave_request(
     branch_id: Optional[str] = None,
 ) -> Optional[int]:
     """Insert a new leave request with strict date ordering validation."""
+    clean_reason = str(reason or '').strip()
+    if len(clean_reason) > 500:
+        raise ValueError("Leave reason cannot exceed 500 characters")
+    if re.search(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', clean_reason, re.IGNORECASE):
+        raise ValueError("HTML or script tags are not allowed in leave reason")
     try:
         s_str = (start_date or '').strip()
         e_str = (end_date or '').strip()
@@ -6733,11 +6770,12 @@ def add_leave_request(
         if leave_duration == 'half':
             if s_str != e_str:
                 raise ValueError("Half-day leave must be requested for a single date.")
-            is_valid, err_msg = validate_half_day_leave_times(
-                DB_PATH, user_id, s_str, start_time, end_time
-            )
-            if not is_valid:
-                raise ValueError(err_msg)
+            if start_time or end_time:
+                is_valid, err_msg = validate_half_day_leave_times(
+                    DB_PATH, user_id, s_str, start_time, end_time
+                )
+                if not is_valid:
+                    raise ValueError(err_msg)
 
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -7131,6 +7169,32 @@ def add_leave_type(
     branch_id: Optional[str] = None,
 ) -> Optional[int]:
     """Add a new leave type policy for one organization."""
+    clean_name = str(name or '').strip()
+    if not clean_name:
+        raise ValueError("Leave type name is required")
+    if len(clean_name) > 100:
+        raise ValueError("Leave type name cannot exceed 100 characters")
+    if clean_name and clean_name[0] in ('=', '+', '-', '@'):
+        raise ValueError("Leave type name cannot start with =, +, -, or @")
+    if not re.match(r"^[a-zA-Z0-9\s\-_()&'/]+$", clean_name):
+        raise ValueError("Leave type name contains unsupported special characters")
+    clean_code = str(code or '').strip()
+    if len(clean_code) > 20:
+        raise ValueError("Leave type code cannot exceed 20 characters")
+    if clean_code and clean_code[0] in ('=', '+', '-', '@'):
+        raise ValueError("Leave type code cannot start with =, +, -, or @")
+    allowance = float(yearly_allowance)
+    if allowance < 0:
+        raise ValueError("Leave allowance cannot be negative")
+    if allowance > 365:
+        raise ValueError("Leave allowance cannot exceed 365 days")
+    if int(is_paid) == 1 and allowance <= 0:
+        raise ValueError("Paid leave types must have an allowance greater than 0")
+    clean_desc = str(description or '').strip()
+    if len(clean_desc) > 250:
+        raise ValueError("Description cannot exceed 250 characters")
+    if re.search(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', clean_desc, re.IGNORECASE):
+        raise ValueError("HTML or script tags are not allowed in description")
     try:
         default_months = {'monthly': 1, 'half_yearly': 6, 'yearly': 12}.get(allowance_period, 12)
         duration_months = int(allowance_months if allowance_months is not None else default_months)
@@ -7149,12 +7213,14 @@ def add_leave_type(
                        half_leave_allowance_months, half_leaves_per_quota_day, half_leave_quota_type_id,
                        organization_id, branch_id
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (name, code, yearly_allowance, is_paid, description, allowance_period, duration_months,
+                (clean_name, clean_code, allowance, is_paid, clean_desc, allowance_period, duration_months,
                  int(bool(half_leave_enabled)), half_mode, half_count, half_months, half_conversion,
                  half_leave_quota_type_id, *_tenant_ids(organization_id, branch_id))
             )
             conn.commit()
             return cursor.lastrowid
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Add leave type error: {e}")
         return None
@@ -7170,6 +7236,27 @@ def update_leave_type(
     organization_id: Optional[str] = None,
 ) -> bool:
     """Update an existing leave type owned by the organization."""
+    clean_name = str(name or '').strip()
+    if not clean_name:
+        raise ValueError("Leave type name is required")
+    if len(clean_name) > 100:
+        raise ValueError("Leave type name cannot exceed 100 characters")
+    if clean_name and clean_name[0] in ('=', '+', '-', '@'):
+        raise ValueError("Leave type name cannot start with =, +, -, or @")
+    if not re.match(r"^[a-zA-Z0-9\s\-_()&'/]+$", clean_name):
+        raise ValueError("Leave type name contains unsupported special characters")
+    allowance = float(yearly_allowance)
+    if allowance < 0:
+        raise ValueError("Leave allowance cannot be negative")
+    if allowance > 365:
+        raise ValueError("Leave allowance cannot exceed 365 days")
+    if int(is_paid) == 1 and allowance <= 0:
+        raise ValueError("Paid leave types must have an allowance greater than 0")
+    clean_desc = str(description or '').strip()
+    if len(clean_desc) > 250:
+        raise ValueError("Description cannot exceed 250 characters")
+    if re.search(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', clean_desc, re.IGNORECASE):
+        raise ValueError("HTML or script tags are not allowed in description")
     try:
         default_months = {'monthly': 1, 'half_yearly': 6, 'yearly': 12}.get(allowance_period, 12)
         duration_months = int(allowance_months if allowance_months is not None else default_months)
@@ -7187,7 +7274,7 @@ def update_leave_type(
                    half_leave_allowance_count = ?, half_leave_allowance_months = ?,
                    half_leaves_per_quota_day = ?, half_leave_quota_type_id = ?
                    WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
-                (name, yearly_allowance, is_paid, description, active, allowance_period, duration_months,
+                (clean_name, allowance, is_paid, clean_desc, active, allowance_period, duration_months,
                  int(bool(half_leave_enabled)), half_mode, half_count, half_months, half_conversion,
                  half_leave_quota_type_id, type_id, _tenant_ids(organization_id)[0])
             )
@@ -7196,26 +7283,53 @@ def update_leave_type(
                    WHERE leave_type_id = ? AND user_id IN (
                        SELECT id FROM users WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
                    )""",
-                (yearly_allowance, type_id, _tenant_ids(organization_id)[0])
+                (allowance, type_id, _tenant_ids(organization_id)[0])
             )
             conn.commit()
             return cursor.rowcount > 0
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Update leave type error: {e}")
         return False
 
 
 def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bool:
-    """Delete a leave type policy owned by the organization."""
+    """Delete a leave type policy owned by the organization, guarding historical records."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            org = _tenant_ids(organization_id)[0]
+            cursor.execute("SELECT name, code FROM leave_types WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?", (type_id, org))
+            row = cursor.fetchone()
+            if not row:
+                return False
+            lt_name, lt_code = row[0], row[1]
+            cursor.execute(
+                     """SELECT COUNT(*) FROM leave_requests
+                         WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND (leave_type = ? OR leave_type = ? OR leave_type = ?)""",
+                (org, str(type_id), lt_code, lt_name)
+            )
+            req_count = cursor.fetchone()[0]
+            if req_count > 0:
+                raise ValueError("Cannot delete leave type because historical employee leave records exist for it. Please deactivate the leave type instead.")
+            cursor.execute(
+                """SELECT COUNT(*) FROM employee_leave_balances
+                   WHERE leave_type_id = ?""",
+                (type_id,)
+            )
+            bal_count = cursor.fetchone()[0]
+            if bal_count > 0:
+                raise ValueError("Cannot delete leave type because employee leave balances exist for it. Please deactivate the leave type instead.")
             cursor.execute(
                 "DELETE FROM leave_types WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?",
-                (type_id, _tenant_ids(organization_id)[0]),
+                (type_id, org),
             )
             conn.commit()
             return cursor.rowcount > 0
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Delete leave type error: {e}")
         return False
@@ -7300,6 +7414,20 @@ def get_company_holiday_in_range(
 def add_company_holiday(name: str, holiday_date: str, end_date: str = None, description: str = '', is_recurring: int = 0,
                         organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> Optional[int]:
     """Add a new company holiday."""
+    clean_name = str(name or '').strip()
+    if not clean_name:
+        raise ValueError("Holiday title is required")
+    if len(clean_name) > 100:
+        raise ValueError("Holiday title cannot exceed 100 characters")
+    if clean_name and clean_name[0] in ('=', '+', '-', '@'):
+        raise ValueError("Holiday title cannot start with =, +, -, or @")
+    if re.search(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', clean_name, re.IGNORECASE):
+        raise ValueError("HTML or script tags are not allowed in holiday name")
+    clean_desc = str(description or '').strip()
+    if len(clean_desc) > 250:
+        raise ValueError("Holiday description cannot exceed 250 characters")
+    if re.search(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', clean_desc, re.IGNORECASE):
+        raise ValueError("HTML or script tags are not allowed in holiday description")
     try:
         if not end_date:
             end_date = holiday_date
@@ -7309,21 +7437,23 @@ def add_company_holiday(name: str, holiday_date: str, end_date: str = None, desc
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO company_holidays (name, holiday_date, end_date, description, is_recurring, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (name, holiday_date, end_date, description, is_recurring, organization_id, branch_id)
+                (clean_name, holiday_date, end_date, clean_desc, is_recurring, organization_id, branch_id)
             )
             conn.commit()
             holiday_id = cursor.lastrowid
             _cloud_mirror("mirror_company_holiday", {
                 "id": holiday_id,
-                "name": name,
+                "name": clean_name,
                 "holiday_date": holiday_date,
                 "end_date": end_date,
-                "description": description,
+                "description": clean_desc,
                 "is_recurring": is_recurring,
                 "organization_id": organization_id,
                 "branch_id": branch_id,
             })
             return holiday_id
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Add company holiday error: {e}")
         return None
@@ -7368,6 +7498,20 @@ def update_company_holiday(
     branch_id: Optional[str] = None,
 ) -> bool:
     """Update an existing company holiday within its owning tenant and branch."""
+    clean_name = str(name or '').strip()
+    if not clean_name:
+        raise ValueError("Holiday title is required")
+    if len(clean_name) > 100:
+        raise ValueError("Holiday title cannot exceed 100 characters")
+    if clean_name and clean_name[0] in ('=', '+', '-', '@'):
+        raise ValueError("Holiday title cannot start with =, +, -, or @")
+    if re.search(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', clean_name, re.IGNORECASE):
+        raise ValueError("HTML or script tags are not allowed in holiday name")
+    clean_desc = str(description or '').strip()
+    if len(clean_desc) > 250:
+        raise ValueError("Holiday description cannot exceed 250 characters")
+    if re.search(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', clean_desc, re.IGNORECASE):
+        raise ValueError("HTML or script tags are not allowed in holiday description")
     try:
         if not end_date:
             end_date = holiday_date
@@ -7378,7 +7522,7 @@ def update_company_holiday(
                    SET name = ?, holiday_date = ?, end_date = ?, description = ?, is_recurring = ?
                  WHERE id = ?
             """
-            params: List[Any] = [name, holiday_date, end_date, description, is_recurring, holiday_id]
+            params: List[Any] = [clean_name, holiday_date, end_date, clean_desc, is_recurring, holiday_id]
             if organization_id is not None:
                 query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
                 params.append(organization_id)
@@ -8371,6 +8515,16 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
             branch_id = user_branch
             organization_id = organization_id or 'DEFAULT_ORG'
             branch_id = branch_id or 'DEFAULT_BRANCH'
+            hours_val = round(float(hours), 6)
+            if hours_val <= 0:
+                raise ValueError("Overtime hours must be greater than 0")
+            if hours_val > 24.0:
+                raise ValueError("Overtime hours cannot exceed 24 hours for a single day")
+            clean_reason = str(reason or '').strip()
+            if len(clean_reason) > 250:
+                raise ValueError("Overtime reason cannot exceed 250 characters")
+            if re.search(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', clean_reason, re.IGNORECASE):
+                raise ValueError("HTML or script tags are not allowed in overtime reason")
             validate_employment_dates(cursor, user_id, ot_date, activity_name='Overtime')
             next_day_att = _get_following_workday_attendance_status(cursor, user_id, ot_date, organization_id=organization_id, branch_id=branch_id)
             if next_day_att == 'absent':
@@ -8379,7 +8533,7 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
             cursor.execute(
                 '''INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, organization_id, branch_id)
                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                (user_id, user_name, ot_date, hours, reason, organization_id, branch_id)
+                (user_id, user_name, ot_date, hours_val, clean_reason, organization_id, branch_id)
             )
             conn.commit()
             overtime_id = cursor.lastrowid
@@ -10597,12 +10751,22 @@ def save_payroll_component_type(
     kind_n = str(kind or '').strip().lower()
     cat = str(category or 'allowance').strip().lower()
     mode = str(calc_mode or 'fixed').strip().lower()
-    if not str(name or '').strip() or not str(code or '').strip():
+    clean_name = str(name or '').strip()
+    clean_code = str(code or '').strip()
+    if not clean_name or not clean_code:
         return None
-    if len(name.strip()) > 100:
+    if len(clean_name) > 100:
         raise ValueError("Item name cannot exceed 100 characters")
-    if len(code.strip()) > 10:
-        raise ValueError("Short code cannot exceed 10 characters")
+    if clean_name and clean_name[0] in ('=', '+', '-', '@'):
+        raise ValueError("Item name cannot start with =, +, -, or @")
+    if len(clean_code) > 20:
+        raise ValueError("Short code cannot exceed 20 characters")
+    if clean_code and clean_code[0] in ('=', '+', '-', '@'):
+        raise ValueError("Short code cannot start with =, +, -, or @")
+    if default_amount is not None:
+        raw_amt_str = str(default_amount).strip()
+        if '.' in raw_amt_str and len(raw_amt_str.split('.')[1].rstrip('0')) > 2:
+            raise ValueError("Amount cannot have more than 2 decimal places")
     try:
         def_amt = round(float(default_amount or 0), 2)
     except (TypeError, ValueError, OverflowError):
@@ -11754,12 +11918,12 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         eligible_start = max(month_start, employed_from)
         eligible_end = min(period_end, exited_on) if exited_on else period_end
 
-        if (exited_on and exited_on < employed_from) or eligible_start > month_end or (exited_on and exited_on < month_start) or eligible_start > eligible_end:
+        if (exited_on and exited_on < employed_from) or eligible_start > month_end or (exited_on and exited_on < month_start):
             continue
 
-        daily_records = report_records[employee_id].get('daily_records', [])
+        daily_records = report_records[employee_id].get('daily_records', []) if employee_id in report_records else []
         eligible_records = [day for day in daily_records
-                            if eligible_start.isoformat() <= str(day.get('date', '')) <= eligible_end.isoformat()]
+                            if eligible_start.isoformat() <= str(day.get('date', '')) <= eligible_end.isoformat()] if eligible_start <= eligible_end else []
         
         # Join/exit proration uses the full remaining month. Attendance KPIs and
         # payable-day pay use the live window through period_end (today for the current month).
@@ -11767,7 +11931,7 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         month_schedule_records = [day for day in daily_records
                             if eligible_start.isoformat() <= str(day.get('date', '')) <= schedule_end.isoformat()]
         period_schedule_records = [day for day in daily_records
-                            if eligible_start.isoformat() <= str(day.get('date', '')) <= eligible_end.isoformat()]
+                            if eligible_start.isoformat() <= str(day.get('date', '')) <= eligible_end.isoformat()] if eligible_start <= eligible_end else []
         month_scheduled_workdays = sum(bool(day.get('scheduled_workday')) for day in month_schedule_records)
         scheduled_workdays = sum(bool(day.get('scheduled_workday')) for day in period_schedule_records)
         pattern_days = None

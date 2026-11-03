@@ -5047,7 +5047,7 @@ async function fetchMultiLiveDetections() {
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="openFileLeaveModal()"><i class="fa-solid fa-plus"></i> File Leave Request</button>
-          <button class="btn btn-outline-secondary" onclick="exportLeaveRequests()"><i class="fa-solid fa-file-export"></i> Export</button>
+          <button id="leaveExportTopBtn" class="btn btn-outline-secondary" onclick="exportLeaveRequests()" disabled><i class="fa-solid fa-file-export"></i> Export</button>
           <button class="btn btn-outline-secondary" onclick="openAddHolidayModal()"><i class="fa-solid fa-calendar-day"></i> Add Holiday</button>
           <button class="btn btn-outline-primary" onclick="openAddOvertimeModal()" style="border-color:#6366f1; color:#6366f1; font-weight:600;"><i class="fa-solid fa-plus-circle"></i> + Log Overtime</button>
         </div>
@@ -5077,7 +5077,7 @@ async function fetchMultiLiveDetections() {
               <input id="leaveDateFilter" type="date" class="form-control" onchange="onLeaveFilterChange()" style="width:160px; min-height:38px; font-size:1rem; font-weight:700; color:#173042;">
             </label>
           </div>
-          <input type="search" id="leaveSearch" class="form-control" placeholder="Search employee name or ID..." oninput="onLeaveSearchInput()" style="max-width:260px;" />
+          <input type="search" id="leaveSearch" class="form-control" maxlength="100" placeholder="Search employee name or ID..." oninput="onLeaveSearchInput()" style="max-width:260px;" />
           <select id="leaveStatusFilter" class="form-select" onchange="onLeaveFilterChange()" style="width:auto; min-width:140px;">
             <option value="all">All Statuses</option>
             <option value="active">Active Requests</option>
@@ -5093,7 +5093,7 @@ async function fetchMultiLiveDetections() {
             <option value="100">100 / page</option>
           </select>
           <button class="btn btn-outline-secondary btn-sm" onclick="loadLeaveRequests()"><i class="fa-solid fa-rotate"></i> Refresh</button>
-          <button class="btn btn-outline-secondary btn-sm" onclick="exportLeaveRequests()"><i class="fa-solid fa-file-export"></i> Export</button>
+          <button id="leaveExportBtn" class="btn btn-outline-secondary btn-sm" onclick="exportLeaveRequests()" disabled><i class="fa-solid fa-file-export"></i> Export</button>
           <button class="btn btn-primary btn-sm ms-auto" onclick="openFileLeaveModal()"><i class="fa-solid fa-plus"></i> File Leave Request</button>
         </div>
 
@@ -5309,7 +5309,7 @@ async function fetchMultiLiveDetections() {
       <div id="otSubContent-log" style="margin-top:16px;">
         <!-- Filters Toolbar -->
         <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center; background:#ffffff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:10px;">
-          <input type="search" id="otSearchInput" class="form-control" placeholder="Search employee, ID, reason..." oninput="filterOvertimeTable()" style="max-width:280px;" />
+            <input type="search" id="otSearchInput" class="form-control" maxlength="100" placeholder="Search employee, ID, reason..." oninput="filterOvertimeTable()" style="max-width:280px;" />
           <select id="otStatusFilter" class="form-select" onchange="filterOvertimeTable()" style="width:auto; min-width:150px;">
             <option value="all">All Statuses</option>
             <option value="pending">Pending Approval</option>
@@ -5362,14 +5362,14 @@ async function fetchMultiLiveDetections() {
         <!-- Filters for approval view -->
         <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center; background:#ffffff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:10px; justify-content:space-between;">
           <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-            <input type="search" id="otApprovalSearch" class="form-control" placeholder="Search employee..." oninput="renderOtApprovalList()" style="max-width:220px;" />
+            <input type="search" id="otApprovalSearch" class="form-control" maxlength="100" placeholder="Search employee..." oninput="renderOtApprovalList()" style="max-width:220px;" />
             <input type="month" id="otApprovalMonth" class="form-control" onchange="renderOtApprovalList()" style="width:auto; min-width:150px;" />
           </div>
           <div style="display:flex; gap:8px; align-items:center;">
-            <button class="btn btn-success btn-sm" id="otAcceptAllBtn" onclick="otAcceptAllInView()" style="font-weight:700;">
+            <button class="btn btn-success btn-sm" id="otAcceptAllBtn" onclick="otAcceptAllInView()" disabled style="font-weight:700;">
               <i class="fa-solid fa-check-double"></i> Accept All Pending
             </button>
-            <button class="btn btn-danger btn-sm" id="otRejectAllBtn" onclick="otRejectAllInView()" style="font-weight:700;">
+            <button class="btn btn-danger btn-sm" id="otRejectAllBtn" onclick="otRejectAllInView()" disabled style="font-weight:700;">
               <i class="fa-solid fa-xmark"></i> Reject All Pending
             </button>
           </div>
@@ -6384,12 +6384,7 @@ async function fetchMultiLiveDetections() {
               <label class="payroll-rule-field" id="payLinePercentWrap" style="display:none;">Percent (%, optional)
                 <input id="payLinePercent" class="form-control" type="number" min="0" max="100" step="0.01" placeholder="Catalog default">
               </label>
-              <label class="payroll-rule-field">Lowest amount (PKR floor, optional)
-                <input id="payLineMinAmount" class="form-control" type="number" min="0" step="0.01" placeholder="No minimum">
-              </label>
-              <label class="payroll-rule-field">Highest amount (PKR cap, optional)
-                <input id="payLineMaxAmount" class="form-control" type="number" min="0" step="0.01" placeholder="No maximum">
-              </label>
+
               <label class="payroll-rule-field" style="display:flex; align-items:center; gap:6px;">
                 <input id="payLineExcluded" type="checkbox"> Skip this person
               </label>
@@ -7982,7 +7977,7 @@ async function fetchMultiLiveDetections() {
           </div>
           <div class="col-md-6">
             <label class="form-label" style="font-weight: 600; color: #173042;">Overtime Hours *</label>
-            <input type="number" id="modalOtHoursInput" class="form-control" step="0.01" min="0.01" max="24" value="1.0" oninput="updateOtModalPreview()" />
+            <input type="number" id="modalOtHoursInput" class="form-control" step="0.000001" min="0.000001" max="24" value="1.0" oninput="updateOtModalPreview()" />
           </div>
         </div>
         <!-- Real-Time OT Calculation Preview Box -->
@@ -8003,7 +7998,8 @@ async function fetchMultiLiveDetections() {
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Reason / Overtime Activity Description</label>
-          <textarea id="modalOtReasonInput" class="form-control" rows="2" placeholder="e.g. Server maintenance, critical project deployment, emergency support..."></textarea>
+          <textarea id="modalOtReasonInput" class="form-control" rows="2" maxlength="250" oninput="updateCharacterCounter('modalOtReasonInput', 'modalOtReasonCounter')" placeholder="e.g. Server maintenance, critical project deployment, emergency support..."></textarea>
+          <small id="modalOtReasonCounter" class="form-text text-muted">0/250 characters</small>
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Initial Approval Status</label>
@@ -8034,12 +8030,12 @@ async function fetchMultiLiveDetections() {
         <input type="hidden" id="modalLeaveTypeId" value="" />
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Leave Type Name *</label>
-          <input type="text" id="modalLeaveTypeName" class="form-control" placeholder="e.g. Sick Leave, Annual Leave" />
+          <input type="text" id="modalLeaveTypeName" class="form-control" maxlength="100" placeholder="e.g. Sick Leave, Annual Leave" />
         </div>
         <div class="row g-3 mb-3">
           <div class="col-md-6">
             <label class="form-label" style="font-weight: 600; color: #173042;">Days Allowed *</label>
-            <input type="number" min="0" step="0.5" id="modalLeaveTypeDays" class="form-control" value="12" />
+            <input type="number" min="0" max="365" step="0.5" id="modalLeaveTypeDays" class="form-control" value="12" />
             <small class="form-text text-muted">Maximum paid leave days for this period.</small>
           </div>
           <div class="col-md-6">
@@ -8066,7 +8062,8 @@ async function fetchMultiLiveDetections() {
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Notes</label>
-          <input type="text" id="modalLeaveTypeDesc" class="form-control" placeholder="Optional notes about this leave type" />
+          <input type="text" id="modalLeaveTypeDesc" class="form-control" maxlength="250" oninput="updateCharacterCounter('modalLeaveTypeDesc', 'modalLeaveTypeDescCounter')" placeholder="Optional notes about this leave type" />
+          <small id="modalLeaveTypeDescCounter" class="form-text text-muted">0/250 characters</small>
         </div>
         <div style="border-top:1px solid #e2e8f0; padding-top:14px;">
           <label for="modalLeaveTypeHalfEnabled" style="display:flex; align-items:center; gap:9px; margin:0; font-weight:700; color:#173042; cursor:pointer;">
@@ -8126,7 +8123,8 @@ async function fetchMultiLiveDetections() {
         <input type="hidden" id="modalHolidayId" value="" />
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Holiday Title *</label>
-          <input type="text" id="modalHolidayName" class="form-control" placeholder="e.g. Eid-ul-Fitr Holiday, Independence Day" />
+          <input type="text" id="modalHolidayName" class="form-control" maxlength="100" oninput="updateCharacterCounter('modalHolidayName', 'modalHolidayNameCounter')" placeholder="e.g. Eid-ul-Fitr Holiday, Independence Day" />
+          <small id="modalHolidayNameCounter" class="form-text text-muted">0/100 characters</small>
         </div>
         <div class="row g-3 mb-3">
           <div class="col-md-4">
@@ -8146,7 +8144,8 @@ async function fetchMultiLiveDetections() {
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Description</label>
-          <input type="text" id="modalHolidayDesc" class="form-control" placeholder="Public holiday details..." />
+          <input type="text" id="modalHolidayDesc" class="form-control" maxlength="250" oninput="updateCharacterCounter('modalHolidayDesc', 'modalHolidayDescCounter')" placeholder="Public holiday details..." />
+          <small id="modalHolidayDescCounter" class="form-text text-muted">0/250 characters</small>
         </div>
       </div>
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 24px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -8267,18 +8266,9 @@ async function fetchMultiLiveDetections() {
               <label class="payroll-rule-field">Effective from
                 <input id="modalSalaryComponentFrom" class="form-control" type="date" required>
               </label>
-              <!-- QA-25: Lowest / highest amount limit inputs for Named pay lines -->
-              <label class="payroll-rule-field" title="Optional floor — entered amount cannot go below this value">
-                Lowest amt (optional)
-                <input id="modalSalaryComponentMin" class="form-control" type="number" min="0" step="0.01" placeholder="no limit">
-              </label>
-              <label class="payroll-rule-field" title="Optional cap — entered amount cannot go above this value">
-                Highest amt (optional)
-                <input id="modalSalaryComponentMax" class="form-control" type="number" min="0" step="0.01" placeholder="no limit">
-              </label>
               <button type="button" class="btn btn-outline-primary btn-sm" onclick="assignEmployeePayLine()">Assign</button>
             </div>
-            <div id="modalSalaryPrecedenceHelp" style="font-size:0.75em; color:#0d9488; margin-top:4px; font-weight:600;"><i class="fa-solid fa-circle-info me-1"></i>Precedence: If both Amount and Percent of basic are entered, Percent of basic is used and calculated from basic salary (fixed Amount is ignored). Lowest / Highest amount limit: the assigned amount must fall within this range.</div>
+            <div id="modalSalaryPrecedenceHelp" style="font-size:0.75em; color:#0d9488; margin-top:4px; font-weight:600;"><i class="fa-solid fa-circle-info me-1"></i>Precedence: If both Amount and Percent of basic are entered, Percent of basic is used and calculated from basic salary (fixed Amount is ignored).</div>
             <div class="log-table-wrapper" style="margin-top:8px;">
               <table class="log-table" style="width:100%;">
                 <thead><tr><th>Line</th><th>Kind</th><th>Amount / %</th><th>Effective</th><th></th></tr></thead>
@@ -15808,17 +15798,6 @@ async function fetchMultiLiveDetections() {
       async function assignScopedPayLine() {
         const scope = document.getElementById('payLineScopeType')?.value || 'employee';
         const scopeId = document.getElementById('payLineScopeValue')?.value || '';
-        const minCap = document.getElementById('payLineMinAmount')?.value;
-        const maxCap = document.getElementById('payLineMaxAmount')?.value;
-        const minVal = minCap === '' || minCap === null || minCap === undefined ? null : Number(minCap);
-        const maxVal = maxCap === '' || maxCap === null || maxCap === undefined ? null : Number(maxCap);
-
-        if (minVal !== null && maxVal !== null && minVal > maxVal) {
-          showAppToast('Lowest amount cannot be greater than highest amount', 'error');
-          const message = document.getElementById('payLineAssignMessage');
-          if (message) message.textContent = 'Lowest amount cannot be greater than highest amount';
-          return;
-        }
 
         const compTypeId = Number(document.getElementById('payLineAssignType')?.value);
         const currentType = (window._payrollComponentTypes || []).find(t => Number(t.id) === compTypeId);
@@ -15847,26 +15826,6 @@ async function fetchMultiLiveDetections() {
             showAppToast('Amount cannot be negative', 'error');
             return;
           }
-          if (minVal !== null && maxVal !== null && minVal > maxVal) {
-            showAppToast('Lowest amount limit cannot be greater than highest amount limit', 'error');
-            const message = document.getElementById('payLineAssignMessage');
-            if (message) message.textContent = 'Lowest amount limit cannot be greater than highest amount limit';
-            return;
-          }
-          if (minVal !== null && rawVal < minVal) {
-            const errStr = `Amount (${rawVal.toLocaleString()}) cannot be less than lowest limit (${minVal.toLocaleString()})`;
-            showAppToast(errStr, 'error');
-            const message = document.getElementById('payLineAssignMessage');
-            if (message) message.textContent = errStr;
-            return;
-          }
-          if (maxVal !== null && rawVal > maxVal) {
-            const errStr = `Amount (${rawVal.toLocaleString()}) cannot be greater than highest limit (${maxVal.toLocaleString()})`;
-            showAppToast(errStr, 'error');
-            const message = document.getElementById('payLineAssignMessage');
-            if (message) message.textContent = errStr;
-            return;
-          }
           sendAmount = (customAmt !== '' && customAmt !== null && customAmt !== undefined) ? rawVal : (currentType?.default_amount != null ? currentType.default_amount : rawVal);
         }
 
@@ -15882,8 +15841,6 @@ async function fetchMultiLiveDetections() {
           amount: sendAmount,
           effective_from: document.getElementById('payLineEffectiveFrom')?.value,
           effective_to: document.getElementById('payLineEffectiveTo')?.value || null,
-          min_amount: minVal,
-          max_amount: maxVal,
           excluded: Boolean(document.getElementById('payLineExcluded')?.checked)
         };
         const message = document.getElementById('payLineAssignMessage');
@@ -15934,8 +15891,6 @@ async function fetchMultiLiveDetections() {
           if (document.getElementById('payLineEffectiveTo')) document.getElementById('payLineEffectiveTo').value = '';
           if (document.getElementById('payLineAmount')) document.getElementById('payLineAmount').value = '';
           if (document.getElementById('payLinePercent')) document.getElementById('payLinePercent').value = '';
-          if (document.getElementById('payLineMinAmount')) document.getElementById('payLineMinAmount').value = '';
-          if (document.getElementById('payLineMaxAmount')) document.getElementById('payLineMaxAmount').value = '';
           if (document.getElementById('payLineExcluded')) document.getElementById('payLineExcluded').checked = false;
 
           await loadPayLineDuplicates();
@@ -16099,27 +16054,6 @@ async function fetchMultiLiveDetections() {
         const comp = (window._payrollComponentTypes || []).find(t => Number(t.id) === typeId);
         const isPercent = comp && (comp.calc_mode === 'percent_basic' || comp.calc_mode === 'percent_gross');
 
-        // QA-25: Read and validate Lowest / Highest amount limits
-        const minRaw = document.getElementById('modalSalaryComponentMin')?.value;
-        const maxRaw = document.getElementById('modalSalaryComponentMax')?.value;
-        const minVal = (minRaw === '' || minRaw == null) ? null : Number(minRaw);
-        const maxVal = (maxRaw === '' || maxRaw == null) ? null : Number(maxRaw);
-
-        if (minVal !== null && maxVal !== null && minVal > maxVal) {
-          showAppToast('Lowest amount cannot be greater than highest amount', 'error');
-          return;
-        }
-        if (!isPercent) {
-          const rawAmt = Number(document.getElementById('modalSalaryComponentAmount')?.value || 0);
-          if (minVal !== null && rawAmt < minVal) {
-            showAppToast(`Amount (${rawAmt.toLocaleString()}) cannot be less than lowest limit (${minVal.toLocaleString()})`, 'error');
-            return;
-          }
-          if (maxVal !== null && rawAmt > maxVal) {
-            showAppToast(`Amount (${rawAmt.toLocaleString()}) cannot be greater than highest limit (${maxVal.toLocaleString()})`, 'error');
-            return;
-          }
-        }
 
         const payload = {
           user_id: Number(uid),
@@ -16128,8 +16062,6 @@ async function fetchMultiLiveDetections() {
           amount: isPercent ? 0 : Number(document.getElementById('modalSalaryComponentAmount')?.value || 0),
           percent: isPercent ? Number(document.getElementById('modalSalaryComponentPercent')?.value || 0) : 0,
           effective_from: document.getElementById('modalSalaryComponentFrom')?.value || undefined,
-          min_amount: minVal,  // QA-25
-          max_amount: maxVal   // QA-25
         };
         let response = await fetch(`${API_BASE}/payroll/employee-components`, {
           method: 'POST',
@@ -16171,11 +16103,6 @@ async function fetchMultiLiveDetections() {
         if (pctInput) pctInput.value = '0';
         const fromInput = document.getElementById('modalSalaryComponentFrom');
         if (fromInput) fromInput.value = '';
-        // QA-25: Also clear limit fields
-        const minInput = document.getElementById('modalSalaryComponentMin');
-        if (minInput) minInput.value = '';
-        const maxInput = document.getElementById('modalSalaryComponentMax');
-        if (maxInput) maxInput.value = '';
 
         // QA-58: Short success message naming the item
         const compSelect = document.getElementById('modalSalaryComponentType');
@@ -18489,6 +18416,11 @@ async function fetchMultiLiveDetections() {
         return searchMatch && statusMatch && monthMatch && dateMatch;
       });
       _filteredLeaveExportRows = filtered;
+      const hasExportRows = filtered.length > 0;
+      ['leaveExportTopBtn', 'leaveExportBtn'].forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = !hasExportRows;
+      });
 
       const showStatusCount = statusFilter !== 'all';
       const groupMap = new Map();
@@ -19792,6 +19724,7 @@ async function fetchMultiLiveDetections() {
       if (halfMonths) halfMonths.value = '12';
       if (halfPerDay) halfPerDay.value = '2';
       if (title) title.innerHTML = '<i class="fa-solid fa-layer-group" style="color:#0d9488;"></i> Add Leave Category';
+      updateCharacterCounter('modalLeaveTypeDesc', 'modalLeaveTypeDescCounter');
       fillHalfLeaveQuotaTypeOptions();
       updateHalfLeavePolicyFields();
     }
@@ -19833,13 +19766,14 @@ async function fetchMultiLiveDetections() {
       fillHalfLeaveQuotaTypeOptions(lt.id);
       const quotaSelect = document.getElementById('modalHalfLeaveQuotaType');
       if (quotaSelect && lt.half_leave_quota_type_id) quotaSelect.value = String(lt.half_leave_quota_type_id);
+      updateCharacterCounter('modalLeaveTypeDesc', 'modalLeaveTypeDescCounter');
       updateHalfLeavePolicyFields();
       modal.style.display = 'flex';
     }
 
     function collectLeaveTypePayload() {
       const name = document.getElementById('modalLeaveTypeName').value.trim();
-      const days = parseFloat(document.getElementById('modalLeaveTypeDays').value) || 12.0;
+      const days = parseFloat(document.getElementById('modalLeaveTypeDays').value);
       const period = document.getElementById('modalLeaveTypePeriod')?.value || 'yearly';
       const months = parseInt(document.getElementById('modalLeaveTypeMonths')?.value || '12', 10);
       const isPaid = parseInt(document.getElementById('modalLeaveTypeIsPaid').value, 10);
@@ -19863,6 +19797,12 @@ async function fetchMultiLiveDetections() {
       };
     }
 
+    function updateCharacterCounter(inputId, counterId) {
+      const input = document.getElementById(inputId);
+      const counter = document.getElementById(counterId);
+      if (input && counter) counter.textContent = `${input.value.length}/${input.maxLength} characters`;
+    }
+
     function closeLeaveTypeModal() {
       const modal = document.getElementById('leaveTypeModal');
       if (modal) modal.style.display = 'none';
@@ -19880,6 +19820,14 @@ async function fetchMultiLiveDetections() {
 
       if (!payload.name) {
         alert("Please enter a leave type name.");
+        return;
+      }
+      if (!Number.isFinite(payload.yearly_allowance) || payload.yearly_allowance < 0 || payload.yearly_allowance > 365) {
+        alert("Allowed days must be between 0 and 365.");
+        return;
+      }
+      if (payload.is_paid === 1 && payload.yearly_allowance <= 0) {
+        alert("Paid leave types must have an allowance greater than 0.");
         return;
       }
       if (!Number.isInteger(payload.allowance_months) || payload.allowance_months < 1 || payload.allowance_months > 12) {
@@ -19959,6 +19907,8 @@ async function fetchMultiLiveDetections() {
           }
           loadLeaveTypes();
           loadLeaveBalances();
+        } else {
+          alert(data.message || 'Leave type could not be deleted. Deactivate it instead if it has employee history or balances.');
         }
       } catch (e) {
         alert("Error deleting leave type.");
@@ -19981,6 +19931,8 @@ async function fetchMultiLiveDetections() {
       if (msgDiv) msgDiv.innerHTML = '';
       if (nInput) nInput.value = '';
       if (descInput) descInput.value = '';
+      updateCharacterCounter('modalHolidayName', 'modalHolidayNameCounter');
+      updateCharacterCounter('modalHolidayDesc', 'modalHolidayDescCounter');
       if (recInput) recInput.checked = true;
       if (dInput) {
         const todayStr = new Date().toISOString().split('T')[0];
@@ -20007,6 +19959,8 @@ async function fetchMultiLiveDetections() {
       if (eInput) eInput.value = h.end_date || h.holiday_date || '';
       const descInput = document.getElementById('modalHolidayDesc');
       if (descInput) descInput.value = h.description || '';
+      updateCharacterCounter('modalHolidayName', 'modalHolidayNameCounter');
+      updateCharacterCounter('modalHolidayDesc', 'modalHolidayDescCounter');
       const recInput = document.getElementById('modalHolidayRecurring');
       if (recInput) recInput.checked = Boolean(Number(h.is_recurring));
       const msgDiv = document.getElementById('holidayMsg');
@@ -20723,9 +20677,18 @@ async function fetchMultiLiveDetections() {
       if (badge) badge.textContent = totalPending > 0 ? totalPending : '';
 
       if (!emps.length) {
+        ['otAcceptAllBtn', 'otRejectAllBtn'].forEach(id => {
+          const button = document.getElementById(id);
+          if (button) button.disabled = true;
+        });
         tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted p-4">No pending overtime records match the selected criteria.</td></tr>';
         return;
       }
+
+      ['otAcceptAllBtn', 'otRejectAllBtn'].forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = false;
+      });
 
       tbody.innerHTML = emps.map(e => {
         const pendingHrs = e.pending.reduce((s,r)=>s+parseFloat(r.hours||0),0);
