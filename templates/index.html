@@ -5191,7 +5191,8 @@ async function fetchMultiLiveDetections() {
                 <th>Code</th>
                 <th>Allowance & Period</th>
                 <th>Type</th>
-                <th>Description</th>
+                <th>Half-Day Policy</th>
+                <th>Notes</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -7864,11 +7865,13 @@ async function fetchMultiLiveDetections() {
         <div class="row g-3 mb-3">
           <div class="col-md-6">
             <label class="form-label" style="font-weight: 600; color: #173042;">Start Date *</label>
-            <input type="date" id="modalLeaveStartDate" class="form-control" onchange="validateModalLeaveQuota()" />
+            <input type="date" id="modalLeaveStartDate" class="form-control" onchange="validateLeaveRequestForm(); validateModalLeaveQuota()" oninput="validateLeaveRequestForm(); validateModalLeaveQuota()" />
+            <small id="modalLeaveStartDateError" class="text-danger" role="alert"></small>
           </div>
           <div class="col-md-6">
             <label class="form-label" style="font-weight: 600; color: #173042;">End Date *</label>
-            <input type="date" id="modalLeaveEndDate" class="form-control" onchange="validateModalLeaveQuota()" />
+            <input type="date" id="modalLeaveEndDate" class="form-control" onchange="validateLeaveRequestForm(); validateModalLeaveQuota()" oninput="validateLeaveRequestForm(); validateModalLeaveQuota()" disabled />
+            <small id="modalLeaveEndDateError" class="text-danger" role="alert"></small>
           </div>
         </div>
         <div id="modalLeaveTimeContainer" class="row g-3 mb-3" style="display: none;">
@@ -7884,7 +7887,8 @@ async function fetchMultiLiveDetections() {
         <div id="modalLeaveQuotaAlert" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:0.83rem; font-weight:600; line-height:1.45;"></div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Reason for Leave</label>
-          <textarea id="modalLeaveReason" class="form-control" rows="2" placeholder="Describe the reason for leave..."></textarea>
+          <textarea id="modalLeaveReason" class="form-control" rows="2" maxlength="500" oninput="validateLeaveRequestForm()" placeholder="Describe the reason for leave..."></textarea>
+          <small id="modalLeaveReasonError" class="text-danger" role="alert"></small>
         </div>
         <div id="excessLeaveContainer" style="display:none; background: #fffbeb; border: 1px solid #fde68a; padding: 12px; border-radius: 8px; margin-bottom: 15px;">
             <label class="form-label" style="font-weight: 600; color: #92400e; margin-bottom: 5px;"><i class="fa-solid fa-triangle-exclamation"></i> Leave Limit Exceeded</label>
@@ -7899,7 +7903,7 @@ async function fetchMultiLiveDetections() {
       </div>
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 24px; display: flex; justify-content: flex-end; gap: 10px;">
         <button type="button" class="btn btn-secondary" onclick="closeFileLeaveModal()">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="submitLeaveRequest()" style="background:#0d9488; border:none; font-weight:700;">Submit Leave Request</button>
+        <button type="button" class="btn btn-primary" id="submitLeaveRequestBtn" onclick="submitLeaveRequest()" disabled style="background:#0d9488; border:none; font-weight:700;">Submit Leave Request</button>
       </div>
     </div>
   </div>
@@ -8030,17 +8034,19 @@ async function fetchMultiLiveDetections() {
         <input type="hidden" id="modalLeaveTypeId" value="" />
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Leave Type Name *</label>
-          <input type="text" id="modalLeaveTypeName" class="form-control" maxlength="100" placeholder="e.g. Sick Leave, Annual Leave" />
+          <input type="text" id="modalLeaveTypeName" class="form-control" maxlength="100" oninput="validateLeaveTypeForm()" placeholder="e.g. Sick Leave, Annual Leave" />
+          <small id="modalLeaveTypeNameError" class="text-danger" role="alert"></small>
         </div>
         <div class="row g-3 mb-3">
           <div class="col-md-6">
             <label class="form-label" style="font-weight: 600; color: #173042;">Days Allowed *</label>
-            <input type="number" min="0" max="365" step="0.5" id="modalLeaveTypeDays" class="form-control" value="12" />
+            <input type="number" min="0" max="365" step="0.5" id="modalLeaveTypeDays" class="form-control" value="12" oninput="validateLeaveTypeForm()" />
             <small class="form-text text-muted">Maximum paid leave days for this period.</small>
+            <small id="modalLeaveTypeDaysError" class="text-danger" role="alert"></small>
           </div>
           <div class="col-md-6">
             <label class="form-label" style="font-weight: 600; color: #173042;">Is This Leave Paid? *</label>
-            <select id="modalLeaveTypeIsPaid" class="form-select">
+            <select id="modalLeaveTypeIsPaid" class="form-select" onchange="validateLeaveTypeForm()">
               <option value="1">Paid Leave</option>
               <option value="0">Unpaid Leave</option>
             </select>
@@ -8056,14 +8062,16 @@ async function fetchMultiLiveDetections() {
           </div>
           <div class="col-md-6">
             <label class="form-label" style="font-weight: 600; color: #173042;">Renew After (Months) *</label>
-            <input type="number" id="modalLeaveTypeMonths" class="form-control" min="1" max="12" step="1" value="12" />
+            <input type="number" id="modalLeaveTypeMonths" class="form-control" min="1" max="12" step="1" value="12" oninput="validateLeaveTypeForm()" />
             <small class="form-text text-muted">Leave days reset after this many months.</small>
+            <small id="modalLeaveTypeMonthsError" class="text-danger" role="alert"></small>
           </div>
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Notes</label>
-          <input type="text" id="modalLeaveTypeDesc" class="form-control" maxlength="250" oninput="updateCharacterCounter('modalLeaveTypeDesc', 'modalLeaveTypeDescCounter')" placeholder="Optional notes about this leave type" />
+          <input type="text" id="modalLeaveTypeDesc" class="form-control" maxlength="250" oninput="updateCharacterCounter('modalLeaveTypeDesc', 'modalLeaveTypeDescCounter'); validateLeaveTypeForm()" placeholder="Optional notes about this leave type" />
           <small id="modalLeaveTypeDescCounter" class="form-text text-muted">0/250 characters</small>
+          <small id="modalLeaveTypeDescError" class="text-danger" role="alert"></small>
         </div>
         <div style="border-top:1px solid #e2e8f0; padding-top:14px;">
           <label for="modalLeaveTypeHalfEnabled" style="display:flex; align-items:center; gap:9px; margin:0; font-weight:700; color:#173042; cursor:pointer;">
@@ -8106,7 +8114,7 @@ async function fetchMultiLiveDetections() {
       </div>
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 24px; display: flex; justify-content: flex-end; gap: 10px;">
         <button type="button" class="btn btn-secondary" onclick="closeLeaveTypeModal()">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="submitLeaveType()" style="background:#0d9488; border:none; font-weight:700;">Save Leave Type</button>
+        <button type="button" class="btn btn-primary" id="saveLeaveTypeBtn" onclick="submitLeaveType()" disabled style="background:#0d9488; border:none; font-weight:700;">Save Leave Type</button>
       </div>
     </div>
   </div>
@@ -8123,17 +8131,18 @@ async function fetchMultiLiveDetections() {
         <input type="hidden" id="modalHolidayId" value="" />
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Holiday Title *</label>
-          <input type="text" id="modalHolidayName" class="form-control" maxlength="100" oninput="updateCharacterCounter('modalHolidayName', 'modalHolidayNameCounter')" placeholder="e.g. Eid-ul-Fitr Holiday, Independence Day" />
+          <input type="text" id="modalHolidayName" class="form-control" maxlength="100" oninput="updateCharacterCounter('modalHolidayName', 'modalHolidayNameCounter'); validateHolidayForm()" placeholder="e.g. Eid-ul-Fitr Holiday, Independence Day" />
           <small id="modalHolidayNameCounter" class="form-text text-muted">0/100 characters</small>
+          <small id="modalHolidayNameError" class="text-danger" role="alert"></small>
         </div>
         <div class="row g-3 mb-3">
           <div class="col-md-4">
             <label class="form-label" style="font-weight: 600; color: #173042;">Start Date *</label>
-            <input type="date" id="modalHolidayDate" class="form-control" />
+            <input type="date" id="modalHolidayDate" class="form-control" onchange="validateHolidayForm()" oninput="validateHolidayForm()" />
           </div>
           <div class="col-md-4">
             <label class="form-label" style="font-weight: 600; color: #173042;">End Date (Optional)</label>
-            <input type="date" id="modalHolidayEndDate" class="form-control" />
+            <input type="date" id="modalHolidayEndDate" class="form-control" onchange="validateHolidayForm()" oninput="validateHolidayForm()" />
           </div>
           <div class="col-md-4 d-flex align-items-end">
             <div class="form-check pb-2">
@@ -8144,13 +8153,14 @@ async function fetchMultiLiveDetections() {
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Description</label>
-          <input type="text" id="modalHolidayDesc" class="form-control" maxlength="250" oninput="updateCharacterCounter('modalHolidayDesc', 'modalHolidayDescCounter')" placeholder="Public holiday details..." />
+          <input type="text" id="modalHolidayDesc" class="form-control" maxlength="250" oninput="updateCharacterCounter('modalHolidayDesc', 'modalHolidayDescCounter'); validateHolidayForm()" placeholder="Public holiday details..." />
           <small id="modalHolidayDescCounter" class="form-text text-muted">0/250 characters</small>
+          <small id="modalHolidayDescError" class="text-danger" role="alert"></small>
         </div>
       </div>
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 24px; display: flex; justify-content: flex-end; gap: 10px;">
         <button type="button" class="btn btn-secondary" onclick="closeAddHolidayModal()">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="submitCompanyHoliday()" style="background:#0d9488; border:none; font-weight:700;">Save Public Holiday</button>
+        <button type="button" class="btn btn-primary" id="saveHolidayBtn" onclick="submitCompanyHoliday()" disabled style="background:#0d9488; border:none; font-weight:700;">Save Public Holiday</button>
       </div>
     </div>
   </div>
@@ -19139,9 +19149,10 @@ async function fetchMultiLiveDetections() {
             : lt.half_leave_mode === 'convert'
               ? `Every ${lt.half_leaves_per_quota_day} half leave(s) charges 1 ${quotaTarget?.name || 'quota'} day (${halfLeaveMonths}-month cycle)`
               : `${lt.half_leave_allowance_count} half leave(s) per ${halfLeaveMonths}-month cycle`;
+          const isActive = Number(lt.active ?? 1) === 1;
           return `
           <tr>
-            <td style="font-weight:700; color:#173042;">${escapeHtml(lt.name)}</td>
+            <td style="font-weight:700; color:#173042;">${escapeHtml(lt.name)} ${isActive ? '' : '<span class="badge bg-secondary-subtle text-secondary ms-1">Inactive</span>'}</td>
             <td><code>${escapeHtml(lt.code)}</code></td>
             <td style="font-weight:700; color:#0d9488;">
               ${lt.yearly_allowance} days
@@ -19152,6 +19163,7 @@ async function fetchMultiLiveDetections() {
             <td style="font-size:0.85em; color:#64748b;">${escapeHtml(lt.description || '--')}</td>
             <td>
               <button class="btn btn-sm btn-outline-primary py-0 px-2 me-1" onclick="editLeaveType(${lt.id})" title="Edit Type"><i class="fa-solid fa-pen"></i></button>
+              <button class="btn btn-sm btn-outline-warning py-0 px-2 me-1" onclick="toggleLeaveTypeActive(${lt.id})" title="${isActive ? 'Deactivate' : 'Reactivate'} Type"><i class="fa-solid fa-${isActive ? 'ban' : 'rotate-left'}"></i></button>
               <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteLeaveType(${lt.id})" title="Delete Type"><i class="fa-solid fa-trash"></i></button>
             </td>
           </tr>
@@ -19298,7 +19310,10 @@ async function fetchMultiLiveDetections() {
       if (sInput) sInput.value = '';
       if (eInput) eInput.value = '';
       if (durationInput) { durationInput.value = 'full'; durationInput.disabled = false; }
-      if (eInput) eInput.disabled = false;
+      if (eInput) {
+        eInput.disabled = true;
+        eInput.min = '';
+      }
       const stInput = document.getElementById('modalLeaveStartTime');
       const etInput = document.getElementById('modalLeaveEndTime');
       if (stInput) stInput.value = '';
@@ -19348,7 +19363,7 @@ async function fetchMultiLiveDetections() {
         const types = await tRes.json();
         _allLeaveTypes = Array.isArray(types) ? types : [];
         if (Array.isArray(types) && types.length > 0 && typeSelect) {
-          typeSelect.innerHTML = types.map(t => {
+          typeSelect.innerHTML = types.filter(t => Number(t.active ?? 1) === 1).map(t => {
             const periodTag = t.allowance_period === 'monthly' ? 'Month' : (t.allowance_period === 'half_yearly' ? '6-Month' : 'Year');
             const durationMonths = Number(t.allowance_months || (t.allowance_period === 'monthly' ? 1 : (t.allowance_period === 'half_yearly' ? 6 : 12)));
             return `<option value="${escapeHtml(t.code)}" data-id="${t.id}" data-half="${t.half_leave_enabled ? '1' : '0'}">${escapeHtml(t.name)} (${t.yearly_allowance} Days/${periodTag}, ${durationMonths} month${durationMonths === 1 ? '' : 's'} - ${t.is_paid ? 'Paid' : 'Unpaid'})</option>`;
@@ -19431,7 +19446,7 @@ async function fetchMultiLiveDetections() {
       summary.innerHTML = `<strong>Request total:</strong> ${requested} scheduled day(s) &nbsp; <strong style="color:#047857;">Paid:</strong> ${paidDays} &nbsp; <strong style="color:#b91c1c;">Unpaid:</strong> ${unpaidDays}${excessNote}`;
     }
 
-    async function validateModalLeaveQuota() {
+    async function validateModalLeaveQuotaInternal() {
       const requestSequence = ++leaveQuotaRequestSequence;
       const userId = document.getElementById('modalLeaveUserSelect')?.value;
       const leaveType = document.getElementById('modalLeaveTypeSelect')?.value || 'casual';
@@ -19550,6 +19565,11 @@ async function fetchMultiLiveDetections() {
       }
     }
 
+    async function validateModalLeaveQuota() {
+      await validateModalLeaveQuotaInternal();
+      validateLeaveRequestForm();
+    }
+
     function onLeaveDurationChange() {
       const isHalfLeave = document.getElementById('modalLeaveDurationSelect')?.value === 'half';
       const startInput = document.getElementById('modalLeaveStartDate');
@@ -19576,6 +19596,7 @@ async function fetchMultiLiveDetections() {
     }
 
     async function submitLeaveRequest() {
+      if (!validateLeaveRequestForm()) return;
       const userId = document.getElementById('modalLeaveUserSelect').value;
       let leaveType = document.getElementById('modalLeaveTypeSelect').value;
       const startDate = document.getElementById('modalLeaveStartDate').value;
@@ -19725,6 +19746,7 @@ async function fetchMultiLiveDetections() {
       if (halfPerDay) halfPerDay.value = '2';
       if (title) title.innerHTML = '<i class="fa-solid fa-layer-group" style="color:#0d9488;"></i> Add Leave Category';
       updateCharacterCounter('modalLeaveTypeDesc', 'modalLeaveTypeDescCounter');
+      validateLeaveTypeForm();
       fillHalfLeaveQuotaTypeOptions();
       updateHalfLeavePolicyFields();
     }
@@ -19767,6 +19789,7 @@ async function fetchMultiLiveDetections() {
       const quotaSelect = document.getElementById('modalHalfLeaveQuotaType');
       if (quotaSelect && lt.half_leave_quota_type_id) quotaSelect.value = String(lt.half_leave_quota_type_id);
       updateCharacterCounter('modalLeaveTypeDesc', 'modalLeaveTypeDescCounter');
+      validateLeaveTypeForm();
       updateHalfLeavePolicyFields();
       modal.style.display = 'flex';
     }
@@ -19793,7 +19816,8 @@ async function fetchMultiLiveDetections() {
         half_leave_allowance_count: parseInt(document.getElementById('modalHalfLeaveAllowance')?.value || '0', 10) || 0,
         half_leave_allowance_months: parseInt(document.getElementById('modalHalfLeaveMonths')?.value || '12', 10) || 12,
         half_leaves_per_quota_day: parseInt(document.getElementById('modalHalfLeavesPerQuotaDay')?.value || '2', 10) || 2,
-        half_leave_quota_type_id: quotaRaw ? parseInt(quotaRaw, 10) : null
+        half_leave_quota_type_id: quotaRaw ? parseInt(quotaRaw, 10) : null,
+        active: Number((_allLeaveTypes || []).find(item => String(item.id) === String(document.getElementById('modalLeaveTypeId')?.value))?.active ?? 1)
       };
     }
 
@@ -19801,6 +19825,73 @@ async function fetchMultiLiveDetections() {
       const input = document.getElementById(inputId);
       const counter = document.getElementById(counterId);
       if (input && counter) counter.textContent = `${input.value.length}/${input.maxLength} characters`;
+    }
+
+    function setFieldError(errorId, message) {
+      const error = document.getElementById(errorId);
+      if (error) error.textContent = message || '';
+    }
+
+    function containsUnsafeInput(value) {
+      return /<[^>]*>|(?:javascript|vbscript|data:text\/html):|\bon\w+\s*=/i.test(String(value || ''));
+    }
+
+    function validateLeaveTypeForm() {
+      const name = document.getElementById('modalLeaveTypeName')?.value.trim() || '';
+      const days = parseFloat(document.getElementById('modalLeaveTypeDays')?.value);
+      const months = parseInt(document.getElementById('modalLeaveTypeMonths')?.value || '', 10);
+      const isPaid = Number(document.getElementById('modalLeaveTypeIsPaid')?.value || 1);
+      const description = document.getElementById('modalLeaveTypeDesc')?.value.trim() || '';
+      const nameValid = /^[a-zA-Z0-9\s\-_()&'/]+$/.test(name) && !/^[=+\-@]/.test(name);
+      const daysValid = Number.isFinite(days) && days >= 0 && days <= 365 && (isPaid !== 1 || days > 0);
+      const monthsValid = Number.isInteger(months) && months >= 1 && months <= 12;
+      const descriptionValid = description.length <= 250 && !containsUnsafeInput(description);
+      setFieldError('modalLeaveTypeNameError', !name ? 'Leave type name is required.' : !nameValid ? 'Use letters, numbers, spaces, and normal punctuation only.' : '');
+      setFieldError('modalLeaveTypeDaysError', !Number.isFinite(days) ? 'Allowed days are required.' : days < 0 || days > 365 ? 'Allowed days must be between 0 and 365.' : isPaid === 1 && days <= 0 ? 'Paid leave must have an allowance greater than 0.' : '');
+      setFieldError('modalLeaveTypeMonthsError', monthsValid ? '' : 'Renewal months must be a whole number from 1 to 12.');
+      setFieldError('modalLeaveTypeDescError', descriptionValid ? '' : 'Notes contain unsupported content or exceed 250 characters.');
+      const valid = Boolean(name && nameValid && daysValid && monthsValid && descriptionValid);
+      const button = document.getElementById('saveLeaveTypeBtn');
+      if (button) button.disabled = !valid;
+      return valid;
+    }
+
+    function validateHolidayForm() {
+      const name = document.getElementById('modalHolidayName')?.value.trim() || '';
+      const date = document.getElementById('modalHolidayDate')?.value || '';
+      const endDate = document.getElementById('modalHolidayEndDate')?.value || '';
+      const description = document.getElementById('modalHolidayDesc')?.value.trim() || '';
+      const nameValid = name.length <= 100 && !containsUnsafeInput(name) && !/^[=+\-@]/.test(name);
+      const descriptionValid = description.length <= 250 && !containsUnsafeInput(description);
+      const datesValid = Boolean(date && (!endDate || endDate >= date));
+      setFieldError('modalHolidayNameError', !name ? 'Holiday name is required.' : nameValid ? '' : 'Use safe text and normal punctuation only (maximum 100 characters).');
+      setFieldError('modalHolidayDescError', descriptionValid ? '' : 'Description contains unsupported content or exceeds 250 characters.');
+      const valid = Boolean(name && nameValid && datesValid);
+      const button = document.getElementById('saveHolidayBtn');
+      if (button) button.disabled = !valid;
+      return valid;
+    }
+
+    function validateLeaveRequestForm() {
+      const user = document.getElementById('modalLeaveUserSelect')?.value || '';
+      const leaveType = document.getElementById('modalLeaveTypeSelect')?.value || '';
+      const startInput = document.getElementById('modalLeaveStartDate');
+      const endInput = document.getElementById('modalLeaveEndDate');
+      const reason = document.getElementById('modalLeaveReason')?.value || '';
+      const start = startInput?.value || '';
+      if (endInput) {
+        endInput.disabled = !start || document.getElementById('modalLeaveDurationSelect')?.value === 'half';
+        endInput.min = start || '';
+      }
+      const end = endInput?.value || '';
+      const datesValid = Boolean(start && end && end >= start);
+      setFieldError('modalLeaveStartDateError', start ? '' : 'Start date is required.');
+      setFieldError('modalLeaveEndDateError', !start ? 'Select a start date first.' : !end ? 'End date is required.' : end < start ? 'End date cannot be earlier than start date.' : '');
+      setFieldError('modalLeaveReasonError', containsUnsafeInput(reason) ? 'Reason contains unsupported HTML or script content.' : reason.length > 500 ? 'Reason cannot exceed 500 characters.' : '');
+      const valid = Boolean(user && leaveType && datesValid && !containsUnsafeInput(reason) && reason.length <= 500 && currentLeaveQuotaValid);
+      const button = document.getElementById('submitLeaveRequestBtn');
+      if (button) button.disabled = !valid;
+      return valid;
     }
 
     function closeLeaveTypeModal() {
@@ -19818,10 +19909,7 @@ async function fetchMultiLiveDetections() {
       const payload = collectLeaveTypePayload();
       const typeId = document.getElementById('modalLeaveTypeId')?.value;
 
-      if (!payload.name) {
-        alert("Please enter a leave type name.");
-        return;
-      }
+      if (!validateLeaveTypeForm()) return;
       if (!Number.isFinite(payload.yearly_allowance) || payload.yearly_allowance < 0 || payload.yearly_allowance > 365) {
         alert("Allowed days must be between 0 and 365.");
         return;
@@ -19915,6 +20003,42 @@ async function fetchMultiLiveDetections() {
       }
     }
 
+    async function toggleLeaveTypeActive(typeId) {
+      const leaveType = (_allLeaveTypes || []).find(item => Number(item.id) === Number(typeId));
+      if (!leaveType) return;
+      const isActive = Number(leaveType.active ?? 1) === 1;
+      const action = isActive ? 'deactivate' : 'reactivate';
+      if (!await appConfirm(`Are you sure you want to ${action} "${leaveType.name}"?`)) return;
+      try {
+        const res = await fetch(`/api/leave-types/${typeId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: leaveType.name,
+            yearly_allowance: leaveType.yearly_allowance,
+            is_paid: leaveType.is_paid,
+            description: leaveType.description || '',
+            active: isActive ? 0 : 1,
+            allowance_period: leaveType.allowance_period || 'yearly',
+            allowance_months: leaveType.allowance_months || 12,
+            half_leave_enabled: Boolean(Number(leaveType.half_leave_enabled)),
+            half_leave_mode: leaveType.half_leave_mode || 'separate',
+            half_leave_allowance_count: leaveType.half_leave_allowance_count || 0,
+            half_leave_allowance_months: leaveType.half_leave_allowance_months || 12,
+            half_leaves_per_quota_day: leaveType.half_leaves_per_quota_day || 2,
+            half_leave_quota_type_id: leaveType.half_leave_quota_type_id || null
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || `Could not ${action} leave type.`);
+        showAppToast(`Leave type ${action}d successfully.`, 'success');
+        await loadLeaveTypes();
+        await loadLeaveBalances();
+      } catch (error) {
+        alert(error.message || `Error trying to ${action} leave type.`);
+      }
+    }
+
     function openAddHolidayModal() {
       const modal = document.getElementById('companyHolidayModal');
       if (!modal) return;
@@ -19939,6 +20063,7 @@ async function fetchMultiLiveDetections() {
         if (!dInput.value) dInput.value = todayStr;
       }
       if (eInput) eInput.value = '';
+      validateHolidayForm();
       modal.style.display = 'flex';
     }
 
@@ -19961,6 +20086,7 @@ async function fetchMultiLiveDetections() {
       if (descInput) descInput.value = h.description || '';
       updateCharacterCounter('modalHolidayName', 'modalHolidayNameCounter');
       updateCharacterCounter('modalHolidayDesc', 'modalHolidayDescCounter');
+      validateHolidayForm();
       const recInput = document.getElementById('modalHolidayRecurring');
       if (recInput) recInput.checked = Boolean(Number(h.is_recurring));
       const msgDiv = document.getElementById('holidayMsg');
@@ -19985,6 +20111,7 @@ async function fetchMultiLiveDetections() {
         alert("Please enter holiday name and start date.");
         return;
       }
+      if (!validateHolidayForm()) return;
 
       try {
         const url = holidayId ? `/api/holidays/${holidayId}` : '/api/holidays';
@@ -20043,6 +20170,7 @@ async function fetchMultiLiveDetections() {
     window.updateLeavePolicyDurationDefault = updateLeavePolicyDurationDefault;
     window.updateLeaveCalculationSummary = updateLeaveCalculationSummary;
     window.deleteLeaveType = deleteLeaveType;
+    window.toggleLeaveTypeActive = toggleLeaveTypeActive;
     window.loadCompanyHolidays = loadCompanyHolidays;
     window.openAddHolidayModal = openAddHolidayModal;
     window.openEditCompanyHolidayModal = openEditCompanyHolidayModal;

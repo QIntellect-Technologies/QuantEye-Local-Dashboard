@@ -5612,6 +5612,17 @@ def api_add_leave():
     if leave_duration == 'half' and start_date != end_date:
         return jsonify({'success': False, 'message': 'Half-day leave must be requested for a single date.'}), 400
 
+    leave_types = db.get_leave_types(
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
+    )
+    matched_leave_type = next(
+        (item for item in leave_types if str(item.get('code')) == str(leave_type) or str(item.get('id')) == str(leave_type)),
+        None,
+    )
+    if matched_leave_type and int(matched_leave_type.get('active', 1) or 0) != 1:
+        return jsonify({'success': False, 'message': 'This leave type is inactive and cannot be used for new requests.'}), 400
+
     try:
         d1 = datetime.strptime(start_date, '%Y-%m-%d')
         d2 = datetime.strptime(end_date, '%Y-%m-%d')
