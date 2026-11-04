@@ -1191,7 +1191,7 @@ def attendance_report_pdf_bytes(report: Dict[str, Any], filter_info: Optional[Di
     shift_filter = filters.get('shift') or 'All'
     camera_filter = filters.get('camera') or 'All'
     search_filter = filters.get('search') or ''
-    gen_time = datetime.now().strftime('%d %b %Y %H:%M')
+    gen_time = datetime.now().strftime('%d %b %Y, %I:%M %p')
 
     def rgb_fill(ops: List[str], r: float, g: float, b: float, x: float, y: float, w: float, h: float) -> None:
         ops.append("{:.3f} {:.3f} {:.3f} rg {:.1f} {:.1f} {:.1f} {:.1f} re f".format(r, g, b, x, y, w, h))
@@ -1217,19 +1217,11 @@ def attendance_report_pdf_bytes(report: Dict[str, Any], filter_info: Optional[Di
         rgb_fill(ops, 0.09, 0.19, 0.26, 36, 786, 523, 36)
         text_at(ops, 48, 804, str(org_name)[:45], 13, True, (1, 1, 1))
         text_at(ops, 48, 792, "ATTENDANCE REPORT", 8, True, (0.24, 0.62, 0.83))
-        text_at(ops, 380, 804, f"Period: {date_label}"[:30], 8, True, (1, 1, 1))
+        text_at(ops, 350, 804, f"Period: {date_label}", 7, True, (1, 1, 1))
         text_at(ops, 380, 792, f"Generated: {gen_time}", 8, False, (0.7, 0.8, 0.85))
 
-        # Filters subheader box
-        rgb_fill(ops, 0.96, 0.98, 1.0, 36, 746, 523, 34)
-        rgb_stroke(ops, 0.86, 0.92, 0.96, 36, 746, 523, 34)
-        f_text1 = f"Department: {dept_filter}   |   Status: {status_filter}   |   Shift: {shift_filter}"
-        f_text2 = f"Camera: {camera_filter}" + (f"   |   Search: {search_filter}" if search_filter else "") + f"   |   Total Staff: {total_records}"
-        text_at(ops, 46, 764, f_text1[:90], 8, False, (0.38, 0.50, 0.58))
-        text_at(ops, 46, 752, f_text2[:90], 8, False, (0.38, 0.50, 0.58))
-
         # Table header
-        table_top = 718
+        table_top = 746
         row_height = 22
         rgb_fill(ops, 0.14, 0.49, 0.68, 36, table_top, 523, row_height)
         if is_multi_day:
@@ -1276,8 +1268,8 @@ def attendance_report_pdf_bytes(report: Dict[str, Any], filter_info: Optional[Di
                 text_at(ops, 220, y + 6, dept[:15], 8, False, (0.38, 0.50, 0.58))
                 text_at(ops, 310, y + 6, shift_name[:14], 8, False, (0.38, 0.50, 0.58))
                 text_at(ops, 390, y + 6, pres_disp[:14], 8, True, (0.12, 0.55, 0.24))
-                text_at(ops, 465, y + 6, abs_disp[:8], 8, False, (0.85, 0.19, 0.15))
-                text_at(ops, 510, y + 6, late_disp[:6], 8, False, (0.69, 0.38, 0.0))
+                text_at(ops, 465, y + 6, abs_disp[:12], 8, False, (0.85, 0.19, 0.15))
+                text_at(ops, 510, y + 6, late_disp[:8], 8, False, (0.69, 0.38, 0.0))
             else:
                 st = str(rec.get('day_type_label') or rec.get('status_display') or rec.get('status') or 'Absent')
                 first_seen = str(rec.get('first_seen') or '-')

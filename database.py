@@ -1679,6 +1679,35 @@ def abandon_attendance_ingestion(event_id: str) -> None:
         )
 
 
+def _validate_staff_fields(name: str, email: Optional[str], phone: Optional[str], department: Optional[str], position: Optional[str], notes: Optional[str], cnic: Optional[str]) -> None:
+    clean_name = str(name or '').strip()
+    clean_email = str(email or '').strip()
+    clean_phone = str(phone or '').strip()
+    clean_department = str(department or '').strip()
+    clean_position = str(position or '').strip()
+    clean_notes = str(notes or '').strip()
+    clean_cnic = str(cnic or '').strip()
+    if not re.match(r"^[A-Za-z][A-Za-z\s.'-]*$", clean_name):
+        raise ValueError('Full name may contain letters, spaces, hyphens, apostrophes, and periods only')
+    if len(clean_name) > 100:
+        raise ValueError('Full name cannot exceed 100 characters')
+    if clean_email and (len(clean_email) > 120 or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', clean_email)):
+        raise ValueError('Enter a valid email address')
+    if clean_phone:
+        digits = re.sub(r'\D', '', clean_phone)
+        if len(clean_phone) > 30 or len(digits) < 7 or len(digits) > 15 or not re.match(r'^\+?[0-9\s().-]+$', clean_phone):
+            raise ValueError('Enter a valid phone number')
+    if clean_cnic and (len(clean_cnic) > 15 or not re.match(r'^\d{5}-?\d{7}-?\d$', clean_cnic)):
+        raise ValueError('CNIC must use the format 12345-1234567-1')
+    for label, value, limit in (
+        ('Department', clean_department, 100),
+        ('Designation', clean_position, 100),
+        ('Notes', clean_notes, 500),
+    ):
+        if len(value) > limit:
+            raise ValueError(f'{label} cannot exceed {limit} characters')
+
+
 def add_user(
     name: str,
     email: Optional[str] = None,
@@ -1708,8 +1737,7 @@ def add_user(
         return None
 
     clean_name = name.strip()
-    if len(clean_name) > 100:
-        raise ValueError("Full name cannot exceed 100 characters")
+    _validate_staff_fields(clean_name, email, phone, department, position, notes, cnic)
     if clean_name and clean_name[0] in ('=', '+', '-', '@'):
         raise ValueError("Name cannot start with =, +, -, or @")
     try:
@@ -2102,8 +2130,7 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
         logger.warning("Attempted to update user with empty name")
         return False
     clean_name = name.strip()
-    if len(clean_name) > 100:
-        raise ValueError("Full name cannot exceed 100 characters")
+    _validate_staff_fields(clean_name, email, phone, department, position, notes, cnic)
     if clean_name and clean_name[0] in ('=', '+', '-', '@'):
         raise ValueError("Name cannot start with =, +, -, or @")
     if salary is not None:
@@ -5160,7 +5187,7 @@ def get_detailed_attendance_report(
                     if not is_multi_day:
                         st_today = emp_daily_records[0].get('status', 'absent') if emp_daily_records else 'absent'
                         dt_today = (emp_daily_records[0].get('day_type') or '') if emp_daily_records else ''
-                        if sf == 'present' and st_today not in ('present', 'checked_out'):
+                        if sf == 'present' and st_today not in ('present', 'late', 'checked_out'):
                             continue
                         elif sf == 'absent' and st_today != 'absent':
                             continue
@@ -5697,6 +5724,8 @@ def mark_user_present_today(
             raise ValueError('Check-in time is required')
         if check_out_time is not None and str(check_out_time).strip() == '':
             raise ValueError('Check-out time is required')
+        if len(str(notes or '').strip()) > 500:
+            raise ValueError('Attendance notes cannot exceed 500 characters')
 
         if target_date == 'today' or not target_date:
             target_date = datetime.now().strftime("%Y-%m-%d")

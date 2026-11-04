@@ -155,6 +155,20 @@
             transition: all 0.2s ease;
         }
 
+        .app-page-btn {
+            border: 1px solid #cfe8f7;
+            border-radius: 6px;
+            background: #ffffff;
+            color: #247eae;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        .app-page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .btn-primary {
             background: linear-gradient(135deg, var(--primary-blue), var(--accent-purple));
             color: white;
@@ -894,15 +908,16 @@
                 <p id="reportDateSubtitle" aria-live="polite" style="margin:4px 0 0; color:#64748b; font-size:0.82rem;"></p>
             </div>
             <div class="header-actions">
-                <button class="btn-action btn-primary" onclick="exportExcel()" title="Export filtered records to Excel (.xlsx)" style="background: linear-gradient(135deg, #10b981, #059669); font-weight: 600;">
-                    <i class="fa-solid fa-file-excel"></i> Export Excel
-                </button>
-                <button class="btn-action btn-primary" onclick="exportPDF()" title="Export filtered records to PDF" style="background: linear-gradient(135deg, #e11d48, #be123c); font-weight: 600;">
-                    <i class="fa-solid fa-file-pdf"></i> Export PDF
-                </button>
-                <button class="btn-action btn-primary" onclick="exportCSV()" title="Export filtered records to CSV" style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600;">
-                    <i class="fa-solid fa-file-csv"></i> Export CSV
-                </button>
+                <div style="position:relative; display:inline-flex;">
+                    <button id="attendanceExportBtn" class="btn-action btn-primary" onclick="toggleAttendanceExportMenu()" disabled title="Export filtered records" style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600;">
+                        <i class="fa-solid fa-file-export"></i> Export <i class="fa-solid fa-chevron-down" style="font-size:.72em;"></i>
+                    </button>
+                    <div id="attendanceExportMenu" style="display:none; position:absolute; right:0; top:calc(100% + 6px); z-index:20; min-width:150px; padding:6px; background:#fff; border:1px solid #cfe8f7; border-radius:8px; box-shadow:0 8px 20px rgba(15,23,42,.14);">
+                        <button type="button" class="btn-action" onclick="exportExcel(); closeAttendanceExportMenu();" style="width:100%; justify-content:flex-start; background:#ecfdf5; color:#047857;"><i class="fa-solid fa-file-excel"></i> Excel</button>
+                        <button type="button" class="btn-action" onclick="exportPDF(); closeAttendanceExportMenu();" style="width:100%; justify-content:flex-start; background:#fff1f2; color:#be123c;"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                        <button type="button" class="btn-action" onclick="exportCSV(); closeAttendanceExportMenu();" style="width:100%; justify-content:flex-start; background:#eff6ff; color:#0369a1;"><i class="fa-solid fa-file-csv"></i> CSV</button>
+                    </div>
+                </div>
                 <button class="btn-action btn-clear" onclick="clearAllFilters()" title="Reset all filters to default">
                     <i class="fa-solid fa-filter-circle-xmark"></i> Clear Filters
                 </button>
@@ -943,7 +958,7 @@
                 </div>
 
                 <!-- Department Filter -->
-                <div class="filter-group">
+                <div class="filter-group" id="statusFilterGroup">
                     <label><i class="fa-solid fa-building"></i> Dept:</label>
                     <select id="departmentFilter" class="form-select" onchange="fetchReport()">
                         <option value="all">All Departments</option>
@@ -981,7 +996,7 @@
                 <!-- Live Search Box -->
                 <div class="search-box">
                     <i class="fa-solid fa-magnifying-glass"></i>
-                    <input type="text" id="searchInput" class="form-input" placeholder="Search by name, ID, position, CNIC..." oninput="handleSearchInput()">
+                    <input type="text" id="searchInput" class="form-input" maxlength="100" placeholder="Search by name, ID, position, CNIC..." oninput="handleSearchInput()">
                 </div>
             </div>
         </div>
@@ -1079,6 +1094,14 @@
             <div id="emptyState" class="empty-state" style="display: none;">
                 <i class="fa-solid fa-folder-open"></i>
                 <p>No attendance records found for the selected filter criteria.</p>
+            </div>
+            <div id="attendancePagination" class="app-table-pagination" style="display:none; align-items:center; justify-content:space-between; padding:10px 14px; border-top:1px solid #e2e8f0;">
+                <span id="attendancePageInfo" class="app-page-info"></span>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <button type="button" class="app-page-btn" id="attendancePrevPage" onclick="changeAttendancePage(-1)">Previous</button>
+                    <span id="attendancePageNumber" class="app-page-info"></span>
+                    <button type="button" class="app-page-btn" id="attendanceNextPage" onclick="changeAttendancePage(1)">Next</button>
+                </div>
             </div>
         </div>
 
@@ -1235,6 +1258,10 @@
         let currentFilterDate = 'today';
         let reportData = null;
         let searchDebounceTimer = null;
+        let attendanceRows = [];
+        let attendanceRowsAreMultiDay = false;
+        let attendancePage = 1;
+        const attendancePageSize = 25;
         let isFetching = false;
         let activeModalUserId = null;
 
@@ -1341,14 +1368,17 @@
 
             if (s && e) {
                 if (s > e) {
-                    const temp = s;
-                    s = e;
-                    e = temp;
-                    if (sInput) sInput.value = s;
-                    if (eInput) eInput.value = e;
+                    if (eInput) eInput.setCustomValidity('End date cannot be earlier than start date.');
+                    return;
+                }
+                if (eInput) eInput.setCustomValidity('');
+                if (s !== e) {
+                    const status = document.getElementById('statusFilter');
+                    if (status) status.value = 'all';
                 }
                 fetchReport();
             } else if (force) {
+                if (eInput) eInput.setCustomValidity('');
                 fetchReport();
             }
         }
@@ -1365,6 +1395,10 @@
                 if (customGroup) customGroup.classList.remove('show');
                 if (sInput) sInput.value = '';
                 if (eInput) eInput.value = '';
+            }
+            if (['last7', 'this_week', 'this_month', 'last30'].includes(preset)) {
+                const status = document.getElementById('statusFilter');
+                if (status) status.value = 'all';
             }
 
             if (preset === 'today') {
@@ -1446,6 +1480,27 @@
             }
 
             return params.toString();
+        }
+
+        function toggleAttendanceExportMenu() {
+            const menu = document.getElementById('attendanceExportMenu');
+            if (menu) menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function closeAttendanceExportMenu() {
+            const menu = document.getElementById('attendanceExportMenu');
+            if (menu) menu.style.display = 'none';
+        }
+
+        function changeAttendancePage(delta) {
+            const totalPages = Math.max(1, Math.ceil(attendanceRows.length / attendancePageSize));
+            attendancePage = Math.min(totalPages, Math.max(1, attendancePage + delta));
+            renderTableRows(attendanceRows, attendanceRowsAreMultiDay, false);
+        }
+
+        function updateAttendanceExportState(hasRecords) {
+            const button = document.getElementById('attendanceExportBtn');
+            if (button) button.disabled = !hasRecords;
         }
 
         let reportAbortController = null;
@@ -1547,16 +1602,19 @@
         }
 
         function exportExcel() {
+            if (!reportData || !Array.isArray(reportData.records) || reportData.records.length === 0) return;
             const query = buildFilterQuery();
             window.location.href = `/api/reports/export/excel?${query}`;
         }
 
         function exportCSV() {
+            if (!reportData || !Array.isArray(reportData.records) || reportData.records.length === 0) return;
             const query = buildFilterQuery();
             window.location.href = `/api/reports/export/csv?${query}`;
         }
 
         function exportPDF() {
+            if (!reportData || !Array.isArray(reportData.records) || reportData.records.length === 0) return;
             const query = buildFilterQuery();
             window.location.href = `/api/reports/export/pdf?${query}`;
         }
@@ -1564,6 +1622,13 @@
         function renderReportUI(data) {
             const isMultiDay = Boolean(data.is_multi_day);
             const summary = data.summary || {};
+            const statusGroup = document.getElementById('statusFilterGroup');
+            if (statusGroup) statusGroup.style.display = isMultiDay ? 'none' : '';
+            if (isMultiDay) {
+                const status = document.getElementById('statusFilter');
+                if (status) status.value = 'all';
+            }
+            updateAttendanceExportState(Array.isArray(data.records) && data.records.length > 0);
 
             // Metric Summary Cards
             if (isMultiDay) {
@@ -1605,7 +1670,8 @@
                 document.getElementById('tableSectionTitle').innerHTML = '<i class="fa-solid fa-list-check" style="color: var(--primary-blue); margin-right: 8px;"></i> Daily Attendance Log';
             }
 
-            document.getElementById('reportDateSubtitle').textContent = `Report Period: ${data.date_label || 'Today'} • Generated at ${new Date().toLocaleTimeString()}`;
+            const generatedAt = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+            document.getElementById('reportDateSubtitle').textContent = `Report Period: ${data.date_label || 'Today'} • Generated at ${generatedAt}`;
 
             // Render Department Breakdown Grid
             const deptGrid = document.getElementById('deptSummaryGrid');
@@ -1644,11 +1710,19 @@
             renderTableRows(data.records || [], isMultiDay);
         }
 
-        function renderTableRows(records, isMultiDay) {
+        function renderTableRows(records, isMultiDay, resetPage = true) {
             const thead = document.getElementById('attendanceTableHead');
             const tbody = document.getElementById('attendanceTableBody');
             const emptyState = document.getElementById('emptyState');
             const toolbar = document.getElementById('selectionToolbar');
+
+            if (resetPage || records !== attendanceRows || isMultiDay !== attendanceRowsAreMultiDay) attendancePage = 1;
+            attendanceRows = records || [];
+            attendanceRowsAreMultiDay = isMultiDay;
+            const totalPages = Math.max(1, Math.ceil(attendanceRows.length / attendancePageSize));
+            attendancePage = Math.min(attendancePage, totalPages);
+            const pageStart = (attendancePage - 1) * attendancePageSize;
+            const pageRecords = attendanceRows.slice(pageStart, pageStart + attendancePageSize);
             
             tbody.innerHTML = '';
             clearAllSelections();
@@ -1696,11 +1770,24 @@
 
             if (!records || records.length === 0) {
                 emptyState.style.display = 'block';
+                const pagination = document.getElementById('attendancePagination');
+                if (pagination) pagination.style.display = 'none';
+                updateAttendanceExportState(false);
                 return;
             }
             emptyState.style.display = 'none';
+            const pagination = document.getElementById('attendancePagination');
+            if (pagination) pagination.style.display = totalPages > 1 ? 'flex' : 'none';
+            const pageInfo = document.getElementById('attendancePageInfo');
+            const pageNumber = document.getElementById('attendancePageNumber');
+            if (pageInfo) pageInfo.textContent = `Showing ${pageStart + 1} to ${Math.min(pageStart + attendancePageSize, records.length)} of ${records.length}`;
+            if (pageNumber) pageNumber.textContent = `Page ${attendancePage} of ${totalPages}`;
+            const previous = document.getElementById('attendancePrevPage');
+            const next = document.getElementById('attendanceNextPage');
+            if (previous) previous.disabled = attendancePage <= 1;
+            if (next) next.disabled = attendancePage >= totalPages;
 
-            records.forEach(r => {
+            pageRecords.forEach(r => {
                 const tr = document.createElement('tr');
                 const initial = r.name ? r.name.charAt(0).toUpperCase() : '?';
                 let photoHtml = `<div class="user-avatar-placeholder">${initial}</div>`;

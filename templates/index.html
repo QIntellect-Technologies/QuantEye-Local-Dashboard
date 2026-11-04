@@ -603,6 +603,70 @@
         border-color: var(--accent-primary);
       }
 
+      /* Shared module presentation rules. */
+      .page-view .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+      }
+
+      .page-view .stats-grid .stat-box {
+        min-height: 104px;
+        padding: 16px;
+        border-radius: 12px;
+        gap: 14px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+      }
+
+      .page-view .log-table-wrapper,
+      .page-view .table-responsive {
+        border-radius: 12px;
+      }
+
+      .page-view .log-table th,
+      .page-view .directory-table th {
+        padding: 10px 12px;
+        min-height: 40px;
+        background: #f8fafc;
+        color: #475569;
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        vertical-align: middle;
+      }
+
+      .page-view .log-table td,
+      .page-view .directory-table td {
+        padding: 10px 12px;
+        min-height: 44px;
+        vertical-align: middle;
+      }
+
+      .page-view .staff-directory-filter-row,
+      .page-view #subtab-leave-requests > div:first-child,
+      .page-view #otSubContent-log > div:first-child,
+      .page-view #otSubContent-approval > div:first-child {
+        min-height: 54px;
+        padding: 10px 14px;
+        gap: 10px;
+        align-items: center;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+      }
+
+      .page-view .staff-directory-filter-row input,
+      .page-view .staff-directory-filter-row select,
+      .page-view #subtab-leave-requests > div:first-child input,
+      .page-view #subtab-leave-requests > div:first-child select,
+      .page-view #otSubContent-log > div:first-child input,
+      .page-view #otSubContent-log > div:first-child select,
+      .page-view #otSubContent-approval > div:first-child input,
+      .page-view #otSubContent-approval > div:first-child select {
+        min-height: 38px;
+        border-radius: 8px;
+      }
+
       .stat-icon {
         width: 56px;
         height: 56px;
@@ -3671,19 +3735,19 @@
               <div class="row g-3 mb-2">
                 <div class="col-md-6">
                   <label class="form-label" for="enrollName">Full Name *</label>
-                  <input type="text" class="form-control" id="enrollName" placeholder="Full name" required autocomplete="name" />
+                  <input type="text" class="form-control" id="enrollName" maxlength="100" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="Full name" required autocomplete="name" />
                 </div>
                 <div class="col-md-6">
                   <label class="form-label" for="enrollEmail">Email Address</label>
-                  <input type="email" class="form-control" id="enrollEmail" placeholder="name@company.com" autocomplete="email" />
+                  <input type="email" class="form-control" id="enrollEmail" maxlength="120" placeholder="name@company.com" autocomplete="email" />
                 </div>
                 <div class="col-md-6">
                   <label class="form-label" for="enrollPhone">Phone Number</label>
-                  <input type="text" class="form-control" id="enrollPhone" placeholder="03xx-xxxxxxx" autocomplete="tel" />
+                  <input type="text" class="form-control" id="enrollPhone" maxlength="30" pattern="\+?[0-9 .()\-]{7,30}" placeholder="03xx-xxxxxxx" autocomplete="tel" />
                 </div>
                 <div class="col-md-6">
                   <label class="form-label" for="enrollCNIC">CNIC / National ID</label>
-                  <input type="text" class="form-control" id="enrollCNIC" placeholder="xxxxx-xxxxxxx-x" />
+                  <input type="text" class="form-control" id="enrollCNIC" maxlength="15" pattern="[0-9]{5}-?[0-9]{7}-?[0-9]" placeholder="xxxxx-xxxxxxx-x" />
                 </div>
               </div>
             </div>
@@ -3714,7 +3778,7 @@
                 {% if not is_client_session or client_module_entitlements.payroll %}
                 <div class="col-md-6 payroll-only-ui">
                   <label class="form-label" for="enrollSalary">Basic Salary (PKR)</label>
-                  <input type="number" class="form-control" id="enrollSalary" placeholder="0" min="0" />
+                  <input type="number" class="form-control" id="enrollSalary" placeholder="0" min="0.01" required />
                 </div>
                 {% endif %}
                 <div class="col-md-6">
@@ -5674,15 +5738,15 @@ async function fetchMultiLiveDetections() {
           <div class="row g-3 mb-3">
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Full Name *</label>
-              <input type="text" class="form-control" id="editName" placeholder="e.g. Imran Khalid" required style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="text" class="form-control" id="editName" maxlength="100" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="e.g. Imran Khalid" required style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Email Address</label>
-              <input type="email" class="form-control" id="editEmail" placeholder="e.g. imran@example.com" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="email" class="form-control" id="editEmail" maxlength="120" placeholder="e.g. imran@example.com" style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Phone Number</label>
-              <input type="text" class="form-control" id="editPhone" placeholder="e.g. 0300-1234567" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="text" class="form-control" id="editPhone" maxlength="30" pattern="\+?[0-9 .()\-]{7,30}" placeholder="e.g. 0300-1234567" style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Department *</label>
@@ -5698,12 +5762,12 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">CNIC / National ID</label>
-              <input type="text" class="form-control" id="editCNIC" placeholder="e.g. 35202-1234567-1" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="text" class="form-control" id="editCNIC" maxlength="15" pattern="[0-9]{5}-?[0-9]{7}-?[0-9]" placeholder="e.g. 35202-1234567-1" style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
             {% if not is_client_session or client_module_entitlements.payroll %}
             <div class="col-md-6 payroll-only-ui">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Basic Salary (PKR)</label>
-              <input type="number" min="0" class="form-control" id="editSalary" placeholder="e.g. 75000" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="number" min="0.01" class="form-control" id="editSalary" placeholder="e.g. 75000" style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
             {% endif %}
             <div class="col-md-6">
@@ -5724,7 +5788,7 @@ async function fetchMultiLiveDetections() {
             {% endif %}
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Notes / Remarks</label>
-              <input type="text" class="form-control" id="editNotes" placeholder="Optional notes or remarks" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="text" class="form-control" id="editNotes" maxlength="500" placeholder="Optional notes or remarks" style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
             <!-- Edit Camera Permissions -->
             <div class="col-md-6">
@@ -5817,7 +5881,7 @@ async function fetchMultiLiveDetections() {
         <div class="staff-directory-filter-row" style="background:#f7fbff;">
           <div class="staff-directory-search-wrap">
             <i class="fa-solid fa-magnifying-glass" style="color:#3d9fd4; font-size:0.9em;"></i>
-            <input type="text" id="tabStaffSearchInput" placeholder="Search by name, ID, position, CNIC, phone, department..." oninput="filterTabStaffTable()">
+            <input type="text" id="tabStaffSearchInput" maxlength="100" placeholder="Search by name, ID, position, CNIC, phone, department..." oninput="filterTabStaffTable()">
           </div>
           <div class="staff-directory-dept-wrap">
             <label style="font-size:0.78em; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px;"><i class="fa-solid fa-building" style="color:#3d9fd4;"></i> Dept:</label>
@@ -7810,7 +7874,8 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="mb-3">
               <label class="form-label" style="font-weight: 600; color: #334155;">Description / Notes</label>
-              <textarea class="form-control" id="manualAttNotes" rows="2" placeholder="E.g., Marked manually due to biometric failure"></textarea>
+              <textarea class="form-control" id="manualAttNotes" rows="2" maxlength="500" oninput="updateManualNotesCounter()" placeholder="E.g., Marked manually due to biometric failure"></textarea>
+              <small id="manualAttNotesCounter" class="text-muted">0/500 characters</small>
             </div>
           </form>
         </div>
@@ -9789,6 +9854,12 @@ async function fetchMultiLiveDetections() {
           showMessage("enrollmentMessage", "Full name is required.", "error");
           return;
         }
+        const enrollmentFields = ['enrollName', 'enrollEmail', 'enrollPhone', 'enrollCNIC', 'enrollSalary'];
+        const invalidEnrollmentField = enrollmentFields.map(id => document.getElementById(id)).find(field => field && !field.checkValidity());
+        if (invalidEnrollmentField) {
+          invalidEnrollmentField.reportValidity();
+          return;
+        }
 
         if (!join_date) {
           showMessage("enrollmentMessage", "Joining date is required.", "error");
@@ -11104,6 +11175,12 @@ async function fetchMultiLiveDetections() {
           showMessage("editModalMessage", "Name is required", "error");
           return;
         }
+        const editFields = ['editName', 'editEmail', 'editPhone', 'editCNIC', 'editSalary', 'editNotes'];
+        const invalidEditField = editFields.map(id => document.getElementById(id)).find(field => field && !field.checkValidity());
+        if (invalidEditField) {
+          invalidEditField.reportValidity();
+          return;
+        }
 
         // QA-73: Validate join date is a real calendar date (reject e.g. 31 Nov)
         if (join_date) {
@@ -12362,6 +12439,12 @@ async function fetchMultiLiveDetections() {
         new bootstrap.Modal(document.getElementById('manualAttendanceModal')).show();
       }
       
+      function updateManualNotesCounter() {
+        const input = document.getElementById('manualAttNotes');
+        const counter = document.getElementById('manualAttNotesCounter');
+        if (input && counter) counter.textContent = `${input.value.length}/${input.maxLength} characters`;
+      }
+
       async function submitManualAttendance() {
         const userId = document.getElementById('manualAttUserId').value;
         const targetDate = document.getElementById('manualAttDate').value || null;
