@@ -545,34 +545,50 @@ def apply_adjustments(
 
 
 def simple_pdf_bytes(title: str, lines: Sequence[str]) -> bytes:
-    """Minimal one-page PDF without extra packages."""
-    content_lines = ["BT /F1 14 Tf 50 780 Td 18 TL ({}) Tj T*".format(_pdf_escape(title))]
-    content_lines.append("/F1 10 Tf 14 TL")
+    """Build a small multi-page text PDF without extra packages."""
+    import textwrap
+
+    wrapped = []
     for line in lines:
-        content_lines.append("({}) Tj T*".format(_pdf_escape(line)))
-    content_lines.append("ET")
-    stream = "\n".join(content_lines).encode("latin-1", "replace")
-    objs = []
-    objs.append(b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n")
-    objs.append(b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n")
-    objs.append(
-        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-        b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n"
-    )
-    objs.append(b"4 0 obj << /Length %d >> stream\n" % len(stream) + stream + b"\nendstream endobj\n")
-    objs.append(b"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n")
+        wrapped.extend(textwrap.wrap(str(line or ''), width=96, break_long_words=True) or [''])
+    rows_per_page = 44
+    page_rows = [wrapped[index:index + rows_per_page] for index in range(0, len(wrapped), rows_per_page)] or [[]]
+    page_count = len(page_rows)
+    font_id = 3 + page_count * 2
+    page_ids = [3 + index * 2 for index in range(page_count)]
+
+    objects = {
+        1: b"<< /Type /Catalog /Pages 2 0 R >>",
+        2: ("<< /Type /Pages /Kids [{}] /Count {} >>".format(
+            ' '.join(f'{page_id} 0 R' for page_id in page_ids), page_count
+        )).encode('ascii'),
+        font_id: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    }
+    for index, rows in enumerate(page_rows):
+        page_id = page_ids[index]
+        stream_id = page_id + 1
+        text_ops = [f"BT /F1 14 Tf 50 760 Td 18 TL ({_pdf_escape(title)}) Tj T*", "/F1 9 Tf 13 TL"]
+        text_ops.extend(f"({_pdf_escape(row)}) Tj T*" for row in rows)
+        text_ops.append(f"/F1 8 Tf 50 28 Td ({index + 1} / {page_count}) Tj ET")
+        stream = '\n'.join(text_ops).encode('latin-1', 'replace')
+        objects[page_id] = (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {stream_id} 0 R "
+            f"/Resources << /Font << /F1 {font_id} 0 R >> >> >>"
+        ).encode('ascii')
+        objects[stream_id] = b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream"
+
     parts = [b"%PDF-1.4\n"]
-    offsets = [0]
-    for obj in objs:
-        offsets.append(sum(len(p) for p in parts))
-        parts.append(obj)
-    xref_pos = sum(len(p) for p in parts)
-    xref = [b"xref\n0 6\n0000000000 65535 f \n"]
-    for off in offsets[1:]:
-        xref.append("{:010d} 00000 n \n".format(off).encode("ascii"))
+    offsets = [0] * (font_id + 1)
+    for obj_id in range(1, font_id + 1):
+        body = objects[obj_id]
+        offsets[obj_id] = sum(map(len, parts))
+        parts.append(f"{obj_id} 0 obj\n".encode('ascii') + body + b"\nendobj\n")
+    xref_pos = sum(map(len, parts))
+    xref = [f"xref\n0 {font_id + 1}\n0000000000 65535 f \n".encode('ascii')]
+    xref.extend(f"{offsets[obj_id]:010d} 00000 n \n".encode('ascii') for obj_id in range(1, font_id + 1))
     parts.extend(xref)
-    parts.append(b"trailer << /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % xref_pos)
-    return b"".join(parts)
+    parts.append(f"trailer << /Size {font_id + 1} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n".encode('ascii'))
+    return b''.join(parts)
 
 
 def _pdf_escape(text: str) -> str:

@@ -3258,6 +3258,98 @@
         color: #94a3b8;
       }
 
+      .character-counter {
+        display: block;
+        text-align: right;
+      }
+
+      .leave-filter-bar {
+        min-height: 54px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+      }
+
+      /* LH-03 / ST-04: match Camera Selection trigger look across module dropdowns */
+      select.form-select:not([multiple]):not(.form-select-sm),
+      select:not([multiple]):not(.form-select-sm):not(.ts-hidden-accessible) {
+        min-height: 44px;
+        padding: 8px 36px 8px 12px;
+        border: 1.5px solid #cfe8f7;
+        border-radius: 10px;
+        background-color: #ffffff;
+        color: #173042;
+        font-family: "Outfit", sans-serif;
+        font-size: 0.9rem;
+        font-weight: 600;
+        line-height: 1.25;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+        transition: all 0.2s ease;
+      }
+
+      select.form-select:not([multiple]):not(.form-select-sm):hover,
+      select:not([multiple]):not(.form-select-sm):not(.ts-hidden-accessible):hover {
+        border-color: #3d9fd4;
+        background: #fcfdfe;
+      }
+
+      select.form-select:not([multiple]):not(.form-select-sm):focus,
+      select:not([multiple]):not(.form-select-sm):not(.ts-hidden-accessible):focus {
+        border-color: #3d9fd4;
+        box-shadow: 0 0 0 3px rgba(61, 159, 212, 0.15);
+        background: #ffffff;
+      }
+
+      .ts-wrapper.single .ts-control {
+        min-height: 44px;
+        padding: 10px 12px;
+        border: 1.5px solid #cfe8f7 !important;
+        border-radius: 10px !important;
+        background: #ffffff !important;
+        color: #173042;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+        transition: all 0.2s ease;
+      }
+
+      .ts-wrapper.single .ts-control:hover {
+        border-color: #3d9fd4 !important;
+        background: #fcfdfe !important;
+      }
+
+      .ts-wrapper.single.input-active .ts-control,
+      .ts-wrapper.single.focus .ts-control {
+        border-color: #3d9fd4 !important;
+        box-shadow: 0 0 0 3px rgba(61, 159, 212, 0.15) !important;
+        background: #ffffff !important;
+      }
+
+      .ts-dropdown {
+        border: 1.5px solid #cfe8f7 !important;
+        border-radius: 12px !important;
+        box-shadow: 0 14px 32px rgba(15, 23, 42, 0.15) !important;
+        overflow: hidden;
+      }
+
+      .ts-dropdown .option {
+        padding: 7px 10px !important;
+        border-radius: 8px;
+        font-size: 0.84rem;
+        font-weight: 600;
+        color: #1e293b;
+      }
+
+      .ts-dropdown .option:hover,
+      .ts-dropdown .option.active {
+        background: #f0f9ff !important;
+        color: #0369a1 !important;
+      }
+
       .ot-log-drag-scroller {
         scrollbar-width: none;
         -ms-overflow-style: none;
@@ -3735,7 +3827,7 @@
               <div class="row g-3 mb-2">
                 <div class="col-md-6">
                   <label class="form-label" for="enrollName">Full Name *</label>
-                  <input type="text" class="form-control" id="enrollName" maxlength="100" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="Full name" required autocomplete="name" />
+                  <input type="text" class="form-control" id="enrollName" maxlength="100" pattern="(?=.*[A-Za-z])[A-Za-z0-9 .'-]+" placeholder="Full name" required autocomplete="name" />
                 </div>
                 <div class="col-md-6">
                   <label class="form-label" for="enrollEmail">Email Address</label>
@@ -5113,7 +5205,7 @@ async function fetchMultiLiveDetections() {
           <button class="btn btn-primary" onclick="openFileLeaveModal()"><i class="fa-solid fa-plus"></i> File Leave Request</button>
           <button id="leaveExportTopBtn" class="btn btn-outline-secondary" onclick="exportLeaveRequests()" disabled><i class="fa-solid fa-file-export"></i> Export</button>
           <button class="btn btn-outline-secondary" onclick="openAddHolidayModal()"><i class="fa-solid fa-calendar-day"></i> Add Holiday</button>
-          <button class="btn btn-outline-primary" onclick="openAddOvertimeModal()" style="border-color:#6366f1; color:#6366f1; font-weight:600;"><i class="fa-solid fa-plus-circle"></i> + Log Overtime</button>
+          <button type="button" id="leavePdfExportBtn" class="btn btn-outline-danger" onclick="exportLeaveHolidayPDF()"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>
         </div>
       </div>
 
@@ -5127,7 +5219,7 @@ async function fetchMultiLiveDetections() {
 
       <!-- Subtab 1: Leave Requests -->
       <div id="subtab-leave-requests">
-        <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+        <div class="leave-filter-bar">
           <div style="display:flex; align-items:center; gap:8px;">
             <button id="leavePrevMonth" type="button" class="btn btn-outline-secondary" onclick="moveLeaveMonth(-1)" aria-label="Previous month" title="Previous month" style="width:40px; min-height:38px;"><i class="fa-solid fa-chevron-left"></i></button>
             <label for="leaveMonthFilter" style="display:grid; gap:2px; font-size:0.76em; font-weight:700; color:#64748b; margin:0;">
@@ -5205,17 +5297,17 @@ async function fetchMultiLiveDetections() {
 
       <!-- Subtab 2: Leave Balances -->
       <div id="subtab-leave-balances" style="display:none;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
-          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-            <h3 style="font-size:1.05em; font-weight:700; margin:0;">Employee Yearly Quotas (2026)</h3>
-            <input type="search" id="leaveBalanceSearch" class="form-control" placeholder="Search by name or ID..." oninput="onLeaveBalanceSearchInput()" style="max-width:240px;" />
-            <select id="leaveBalancePageSize" class="form-select" onchange="changeLeaveBalancePageSize(this.value)" style="width:auto; min-width:110px;">
-              <option value="10">10 / page</option>
-              <option value="25" selected>25 / page</option>
-              <option value="50">50 / page</option>
-              <option value="100">100 / page</option>
-            </select>
+        <div class="leave-filter-bar">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h3 style="font-size:1.05em; font-weight:700; margin:0; color:#173042;">Employee Yearly Quotas (2026)</h3>
           </div>
+          <input type="search" id="leaveBalanceSearch" class="form-control" maxlength="100" placeholder="Search by name or ID..." oninput="onLeaveBalanceSearchInput()" style="max-width:260px; min-height:38px;" />
+          <select id="leaveBalancePageSize" class="form-select" onchange="changeLeaveBalancePageSize(this.value)" style="width:auto; min-width:110px;">
+            <option value="10">10 / page</option>
+            <option value="25" selected>25 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+          </select>
           <button class="btn btn-outline-secondary btn-sm" onclick="loadLeaveBalances()"><i class="fa-solid fa-rotate"></i> Refresh</button>
         </div>
         <div class="card p-0" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; box-shadow:0 6px 18px rgba(61,159,212,0.07); overflow:hidden;">
@@ -5402,7 +5494,7 @@ async function fetchMultiLiveDetections() {
                   <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; text-align:right; width:140px;">Amount</th>
                   <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Reason / Task</th>
                   <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; width:110px;">Status</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; width:110px;">Approved By</th>
+                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; width:140px;">By Admin</th>
                   <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; width:130px;">Impact</th>
                   <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; text-align:center; width:150px;">Actions</th>
                 </tr>
@@ -5504,7 +5596,7 @@ async function fetchMultiLiveDetections() {
                   <th class="text-center" style="width:130px;">OT Amount</th>
                   <th>Reason / Task</th>
                   <th style="width:110px; text-align:center;">Status</th>
-                  <th style="width:120px;">Approved By</th>
+                  <th style="width:140px;">By Admin</th>
                   <th style="width:80px;">Actions</th>
                 </tr>
               </thead>
@@ -5738,7 +5830,7 @@ async function fetchMultiLiveDetections() {
           <div class="row g-3 mb-3">
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Full Name *</label>
-              <input type="text" class="form-control" id="editName" maxlength="100" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="e.g. Imran Khalid" required style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="text" class="form-control" id="editName" maxlength="100" pattern="(?=.*[A-Za-z])[A-Za-z0-9 .'-]+" placeholder="e.g. Imran Khalid" required style="border-color: #cfe8f7; font-size: 0.9em;" />
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Email Address</label>
@@ -5833,6 +5925,13 @@ async function fetchMultiLiveDetections() {
           <p class="page-subtitle">View and manage enrolled staff members.</p>
         </div>
         <div class="page-header-actions">
+          <div class="dropdown">
+            <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="fa-solid fa-file-export"></i> Export</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><button type="button" class="dropdown-item" onclick="exportStaffDirectory('csv')"><i class="fa-solid fa-file-csv me-2"></i>Export CSV</button></li>
+              <li><button type="button" class="dropdown-item" onclick="exportStaffDirectory('pdf')"><i class="fa-solid fa-file-pdf me-2"></i>Export PDF</button></li>
+            </ul>
+          </div>
           <button onclick="openBulkCameraModal()" class="btn btn-outline" style="width:auto; padding:9px 18px; font-size:0.88em; border-color:#3d9fd4; color:#247eae; font-weight:700;">
             <i class="fa-solid fa-camera-rotate"></i> Bulk Camera Assignment
           </button>
@@ -6067,23 +6166,23 @@ async function fetchMultiLiveDetections() {
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Organization / Company Name *</label>
-              <input type="text" id="settingOrganizationName" class="form-control" placeholder="e.g. QIntellect Technologies" required style="border-radius: 8px;">
+              <input type="text" id="settingOrganizationName" class="form-control" maxlength="120" pattern="(?=.*[A-Za-z])[A-Za-z0-9 .&'()/-]+" placeholder="e.g. QIntellect Technologies" required style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">City *</label>
-              <input type="text" id="settingCity" class="form-control" placeholder="e.g. New York" required style="border-radius: 8px;">
+              <input type="text" id="settingCity" class="form-control" maxlength="80" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="e.g. New York" required style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Contact Phone</label>
-              <input type="text" id="settingPhone" class="form-control" placeholder="e.g. +1 (555) 019-2834" style="border-radius: 8px;">
+              <input type="tel" id="settingPhone" class="form-control" maxlength="30" pattern="\+?[0-9 .()\-]{7,30}" placeholder="e.g. +1 (555) 019-2834" style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Admin / User Display Name</label>
-              <input type="text" id="settingAdminName" class="form-control" placeholder="e.g. Mr. Junaid" style="border-radius: 8px;">
+              <input type="text" id="settingAdminName" class="form-control" maxlength="100" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="e.g. Mr. Junaid" style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Official Email</label>
-              <input type="email" id="settingEmail" class="form-control" placeholder="e.g. info@forknknives.com" style="border-radius: 8px;">
+              <input type="email" id="settingEmail" class="form-control" maxlength="120" placeholder="e.g. info@forknknives.com" style="border-radius: 8px;">
             </div>
           </div>
 
@@ -7236,9 +7335,9 @@ async function fetchMultiLiveDetections() {
 
         <!-- Lock Configuration Button -->
         <div style="border-top:1px solid #1e3a5f; padding-top:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
-          <div style="color:#64748b; font-size:0.82em;"><i class="fa-solid fa-circle-info" style="margin-right:5px;"></i>Locking hides Staff Enrollment and Add Employee. You stay logged in. Enter the enrollment key again to re-enable.</div>
-          <button onclick="adminLockConfiguration()" style="background:linear-gradient(135deg,#7f1d1d,#991b1b); color:#fca5a5; border:1px solid #991b1b; padding:10px 22px; border-radius:10px; font-weight:700; font-size:0.88em; cursor:pointer; transition:all 0.2s ease; display:flex; align-items:center; gap:8px;">
-            <i class="fa-solid fa-lock"></i> Lock Staff Enrollment
+          <div style="color:#64748b; font-size:0.82em;"><i class="fa-solid fa-circle-info" style="margin-right:5px;"></i>The toggle above controls Staff Enrollment access. Lock Settings ends the unlocked configuration session; you remain signed in and can unlock settings again with the admin password.</div>
+          <button onclick="adminLockConfiguration()" aria-label="Lock settings configuration" title="Lock the settings session" style="background:linear-gradient(135deg,#7f1d1d,#991b1b); color:#fca5a5; border:1px solid #991b1b; padding:10px 22px; border-radius:10px; font-weight:700; font-size:0.88em; cursor:pointer; transition:all 0.2s ease; display:flex; align-items:center; gap:8px;">
+            <i class="fa-solid fa-lock"></i> Lock Settings
           </button>
         </div>
         </div>
@@ -7727,7 +7826,7 @@ async function fetchMultiLiveDetections() {
     <div class="card p-0" style="width: 100%; max-width: 500px; background: #ffffff; border-radius: 16px; border: 1px solid #cfe8f7; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2);">
       <div style="background: #f2faff; border-bottom: 1px solid #cfe8f7; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
         <h3 id="deptModalTitle" style="font-size: 1.1em; font-weight: 700; color: #173042; margin: 0;"><i class="fa-solid fa-sitemap" style="color:#3d9fd4; margin-right:8px;"></i> Add Department</h3>
-        <i class="fa-solid fa-xmark" onclick="closeDeptModal()" style="font-size: 1.2em; color: #64748b; cursor: pointer;"></i>
+        <button type="button" class="btn-close" onclick="closeDeptModal()" aria-label="Close department form"></button>
       </div>
       <div style="padding: 20px;">
         <input type="hidden" id="modalDeptId" value="" />
@@ -7735,15 +7834,15 @@ async function fetchMultiLiveDetections() {
         
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Department Name *</label>
-          <input type="text" class="form-control" id="modalDeptName" placeholder="e.g. Finance, IT, Security, Operations" required />
+          <input type="text" class="form-control" id="modalDeptName" maxlength="100" placeholder="e.g. Finance, IT, Security, Operations" required />
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Department Code</label>
-          <input type="text" class="form-control" id="modalDeptCode" placeholder="e.g. FIN, IT, SEC" />
+          <input type="text" class="form-control" id="modalDeptCode" maxlength="20" placeholder="e.g. FIN, IT, SEC" />
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Description</label>
-          <input type="text" class="form-control" id="modalDeptDesc" placeholder="Brief description of department scope" />
+          <input type="text" class="form-control" id="modalDeptDesc" maxlength="250" placeholder="Brief description of department scope" />
         </div>
       </div>
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 20px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -7758,7 +7857,7 @@ async function fetchMultiLiveDetections() {
     <div class="card p-0" style="width: 100%; max-width: 500px; background: #ffffff; border-radius: 16px; border: 1px solid #cfe8f7; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2);">
       <div style="background: #f2faff; border-bottom: 1px solid #cfe8f7; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
         <h3 id="desigModalTitle" style="font-size: 1.1em; font-weight: 700; color: #173042; margin: 0;"><i class="fa-solid fa-id-badge" style="color:#3d9fd4; margin-right:8px;"></i> Add Designation</h3>
-        <i class="fa-solid fa-xmark" onclick="closeDesigModal()" style="font-size: 1.2em; color: #64748b; cursor: pointer;"></i>
+        <button type="button" class="btn-close" onclick="closeDesigModal()" aria-label="Close designation form"></button>
       </div>
       <div style="padding: 20px;">
         <input type="hidden" id="modalDesigId" value="" />
@@ -7772,11 +7871,11 @@ async function fetchMultiLiveDetections() {
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Designation Title *</label>
-          <input type="text" class="form-control" id="modalDesigTitle" placeholder="e.g. Software Engineer, IT Manager, HR Officer" required />
+          <input type="text" class="form-control" id="modalDesigTitle" maxlength="100" placeholder="e.g. Software Engineer, IT Manager, HR Officer" required />
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Description</label>
-          <input type="text" class="form-control" id="modalDesigDesc" placeholder="Role description or position level" />
+          <input type="text" class="form-control" id="modalDesigDesc" maxlength="250" placeholder="Role description or position level" />
         </div>
       </div>
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 20px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -7875,7 +7974,7 @@ async function fetchMultiLiveDetections() {
             <div class="mb-3">
               <label class="form-label" style="font-weight: 600; color: #334155;">Description / Notes</label>
               <textarea class="form-control" id="manualAttNotes" rows="2" maxlength="500" oninput="updateManualNotesCounter()" placeholder="E.g., Marked manually due to biometric failure"></textarea>
-              <small id="manualAttNotesCounter" class="text-muted">0/500 characters</small>
+              <small id="manualAttNotesCounter" class="text-muted character-counter">0/500 characters</small>
             </div>
           </form>
         </div>
@@ -7985,7 +8084,7 @@ async function fetchMultiLiveDetections() {
         </div>
         <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
           <span id="leaveCompletePeriod" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:6px 12px; border-radius:20px; font-size:0.8rem; font-weight:700;"></span>
-          <button type="button" onclick="closeLeaveCompleteView()" aria-label="Close leave details" title="Close" style="width:34px; height:34px; border-radius:50%; border:1px solid #cbd5e1; background:#f1f5f9; color:#64748b; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+          <button type="button" onclick="closeLeaveCompleteView()" aria-label="Close leave details" title="Close" style="box-sizing:border-box; width:34px; min-width:34px; height:34px; min-height:34px; padding:0; border-radius:50%; border:1px solid #cbd5e1; background:#f1f5f9; color:#64748b; display:inline-flex; align-items:center; justify-content:center; flex:0 0 34px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
         </div>
       </div>
       <div style="padding:20px 22px; overflow-y:auto; min-height:0; flex:1; overscroll-behavior:contain;">
@@ -7999,7 +8098,7 @@ async function fetchMultiLiveDetections() {
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px;">
           <div><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">Leave Type</div><div id="leaveCompleteType" style="color:#334155; font-weight:700;"></div></div>
           <div><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">Status</div><div id="leaveCompleteStatus" style="color:#334155; font-weight:700;"></div></div>
-          <div><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">Approved By</div><div id="leaveCompleteApprover" style="color:#334155; font-weight:700;"></div></div>
+          <div><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">By Admin</div><div id="leaveCompleteApprover" style="color:#334155; font-weight:700;"></div></div>
           <div style="grid-column:1/-1;"><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">Remaining Leave Balances</div><div id="leaveCompleteBalance" aria-live="polite" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;"><span class="text-muted">Loading balances...</span></div></div>
         </div>
         <h4 style="font-size:0.95rem; color:#173042; font-weight:800; margin:20px 0 10px;"><i class="fa-solid fa-list-check" style="color:#0284c7;"></i> Allocation Details</h4>
@@ -8068,7 +8167,7 @@ async function fetchMultiLiveDetections() {
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Reason / Overtime Activity Description</label>
           <textarea id="modalOtReasonInput" class="form-control" rows="2" maxlength="250" oninput="updateCharacterCounter('modalOtReasonInput', 'modalOtReasonCounter')" placeholder="e.g. Server maintenance, critical project deployment, emergency support..."></textarea>
-          <small id="modalOtReasonCounter" class="form-text text-muted">0/250 characters</small>
+          <small id="modalOtReasonCounter" class="form-text text-muted character-counter">0/250 characters</small>
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Initial Approval Status</label>
@@ -8135,12 +8234,12 @@ async function fetchMultiLiveDetections() {
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Notes</label>
           <input type="text" id="modalLeaveTypeDesc" class="form-control" maxlength="250" oninput="updateCharacterCounter('modalLeaveTypeDesc', 'modalLeaveTypeDescCounter'); validateLeaveTypeForm()" placeholder="Optional notes about this leave type" />
-          <small id="modalLeaveTypeDescCounter" class="form-text text-muted">0/250 characters</small>
+          <small id="modalLeaveTypeDescCounter" class="form-text text-muted character-counter">0/250 characters</small>
           <small id="modalLeaveTypeDescError" class="text-danger" role="alert"></small>
         </div>
         <div style="border-top:1px solid #e2e8f0; padding-top:14px;">
           <label for="modalLeaveTypeHalfEnabled" style="display:flex; align-items:center; gap:9px; margin:0; font-weight:700; color:#173042; cursor:pointer;">
-            <input type="checkbox" id="modalLeaveTypeHalfEnabled" onchange="updateHalfLeavePolicyFields()" style="width:17px; height:17px; accent-color:#0d9488;">
+            <input type="checkbox" id="modalLeaveTypeHalfEnabled" onchange="updateHalfLeavePolicyFields(); validateLeaveTypeForm()" style="width:17px; height:17px; accent-color:#0d9488;">
             Allow half-day requests
           </label>
           <small class="form-text text-muted" style="display:block; margin-top:5px;">Employees can request half a day instead of a full day.</small>
@@ -8148,25 +8247,28 @@ async function fetchMultiLiveDetections() {
             <div class="row g-3 mb-3">
               <div class="col-md-6">
                 <label class="form-label" for="modalHalfLeaveMode" style="font-weight:600; color:#173042;">Half-Leave Rule</label>
-                <select id="modalHalfLeaveMode" class="form-select" onchange="updateHalfLeavePolicyFields()">
+                <select id="modalHalfLeaveMode" class="form-select" onchange="updateHalfLeavePolicyFields(); validateLeaveTypeForm()">
                   <option value="separate">Independent limit (e.g., 2 half-leaves/period)</option>
                   <option value="convert">Deduct from full leave balance</option>
                 </select>
               </div>
               <div class="col-md-6">
                 <label class="form-label" for="modalHalfLeaveMonths" style="font-weight:600; color:#173042;">Reset Every (Months)</label>
-                <input type="number" id="modalHalfLeaveMonths" class="form-control" min="1" max="12" step="1" value="12" />
+                <input type="number" id="modalHalfLeaveMonths" class="form-control" min="1" max="12" step="1" value="12" oninput="validateLeaveTypeForm()" />
+                <small id="modalHalfLeaveMonthsError" class="text-danger" role="alert"></small>
               </div>
             </div>
             <div id="halfLeaveSeparateFields" class="mb-3">
               <label class="form-label" for="modalHalfLeaveAllowance" style="font-weight:600; color:#173042;">Half-Days Allowed Per Period</label>
-              <input type="number" id="modalHalfLeaveAllowance" class="form-control" min="1" step="1" value="1" />
+              <input type="number" id="modalHalfLeaveAllowance" class="form-control" min="1" max="365" step="1" value="1" oninput="validateLeaveTypeForm()" />
+              <small id="modalHalfLeaveAllowanceError" class="text-danger" role="alert"></small>
             </div>
             <div id="halfLeaveConvertFields" style="display:none;">
               <div class="row g-3">
                 <div class="col-md-6">
                   <label class="form-label" for="modalHalfLeavesPerQuotaDay" style="font-weight:600; color:#173042;">Half-Days That Count as One Full Day</label>
-                  <input type="number" id="modalHalfLeavesPerQuotaDay" class="form-control" min="1" step="1" value="2" />
+                  <input type="number" id="modalHalfLeavesPerQuotaDay" class="form-control" min="1" max="24" step="1" value="2" oninput="validateLeaveTypeForm()" />
+                  <small id="modalHalfLeavesPerQuotaDayError" class="text-danger" role="alert"></small>
                 </div>
                 <div class="col-md-6">
                   <label class="form-label" for="modalHalfLeaveQuotaType" style="font-weight:600; color:#173042;">Take Days From</label>
@@ -8197,7 +8299,7 @@ async function fetchMultiLiveDetections() {
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Holiday Title *</label>
           <input type="text" id="modalHolidayName" class="form-control" maxlength="100" oninput="updateCharacterCounter('modalHolidayName', 'modalHolidayNameCounter'); validateHolidayForm()" placeholder="e.g. Eid-ul-Fitr Holiday, Independence Day" />
-          <small id="modalHolidayNameCounter" class="form-text text-muted">0/100 characters</small>
+          <small id="modalHolidayNameCounter" class="form-text text-muted character-counter">0/100 characters</small>
           <small id="modalHolidayNameError" class="text-danger" role="alert"></small>
         </div>
         <div class="row g-3 mb-3">
@@ -8219,7 +8321,7 @@ async function fetchMultiLiveDetections() {
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Description</label>
           <input type="text" id="modalHolidayDesc" class="form-control" maxlength="250" oninput="updateCharacterCounter('modalHolidayDesc', 'modalHolidayDescCounter'); validateHolidayForm()" placeholder="Public holiday details..." />
-          <small id="modalHolidayDescCounter" class="form-text text-muted">0/250 characters</small>
+          <small id="modalHolidayDescCounter" class="form-text text-muted character-counter">0/250 characters</small>
           <small id="modalHolidayDescError" class="text-danger" role="alert"></small>
         </div>
       </div>
@@ -12213,8 +12315,8 @@ async function fetchMultiLiveDetections() {
             const loc = String(r.location || '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             const pos = String(r.position || r.email || r.phone || 'Staff Member').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-            const source = r.source === 'manual' ? 'Manual by Admin' : 'Auto by System';
             const markedBy = r.marked_by || (r.source === 'manual' ? 'Admin' : 'System');
+            const source = r.source === 'manual' ? `Manual by ${markedBy}` : 'Auto by System';
             const notesText = r.notes ? `<span title="${escapeHtml(r.notes)}" style="font-size:0.8em; color:#475569;">${escapeHtml(r.notes)}</span>` : '<span style="color:#94a3b8;">—</span>';
             const sourceBadge = `<div style="display:flex; align-items:center; gap:6px; flex-wrap:nowrap; white-space:nowrap;">
               <span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${r.source === 'manual' ? '#e0f2fe' : '#f1f5f9'}; color:${r.source === 'manual' ? '#0369a1' : '#475569'};">${source}</span>
@@ -12681,8 +12783,8 @@ async function fetchMultiLiveDetections() {
 
                 const checkInTime = formatMainTime(d.first_seen);
                 const checkOutTime = formatMainTime(d.last_seen);
-                const source = d.source === 'manual' ? 'Manual by Admin' : 'Auto by System';
                 const markedBy = d.marked_by || (d.source === 'manual' ? 'Admin' : 'System');
+                const source = d.source === 'manual' ? `Manual by ${markedBy}` : 'Auto by System';
                 const sourceBadge = `<span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${d.source === 'manual' ? '#e0f2fe' : '#f1f5f9'}; color:${d.source === 'manual' ? '#0369a1' : '#475569'};">${source}</span>`;
                 const notesText = d.notes ? `<div style="font-size:0.75em; color:#64748b; margin-top:2px;">${escapeHtml(d.notes)}</div>` : '';
 
@@ -12789,6 +12891,11 @@ async function fetchMultiLiveDetections() {
 
       // ================= STAFF DIRECTORY TAB LOGIC =================
       let tabAllStaff = [];
+
+      function exportStaffDirectory(format) {
+        if (!['csv', 'pdf'].includes(format)) return;
+        window.location.href = `${API_BASE}/staff/export.${format}`;
+      }
 
       async function loadTabStaffDirectory(showRefreshState = false) {
         const refreshButton = document.getElementById('refreshStaffDirectoryBtn');
@@ -17056,11 +17163,22 @@ async function fetchMultiLiveDetections() {
         const organizationName = {{ active_organization_name|tojson }};
         const sessionBranchName = {{ active_branch_name|tojson }};
         const sessionUserName = {{ active_user_name|tojson }};
+        const configuredBrand = (organizationName || branchName || 'QIntellect Technologies').trim();
         if (organizationName) {
           const orgTitle = `${organizationName} (${sessionBranchName || 'Main Branch'})`;
+          const brandSpan = document.querySelector('.sidebar-brand span');
+          if (brandSpan) brandSpan.textContent = configuredBrand;
+          const companyHeader = document.querySelector('.header-company-name');
+          if (companyHeader) {
+            const icon = companyHeader.querySelector('i');
+            companyHeader.textContent = '';
+            if (icon) companyHeader.appendChild(icon);
+            companyHeader.appendChild(document.createTextNode(` ${configuredBrand}`));
+          }
           document.querySelectorAll('#headerBranchNameText, #sidebarBranchNameText').forEach(el => el.textContent = orgTitle);
-          document.querySelectorAll('#headerUserName, #sidebarUserName').forEach(el => el.textContent = sessionUserName || organizationName);
-          document.title = `${orgTitle} - QIntellect Technologies`;
+          const displayName = (adminName || sessionUserName || organizationName).trim();
+          document.querySelectorAll('#headerUserName, #sidebarUserName, .header-user-name').forEach(el => el.textContent = displayName);
+          document.title = `${orgTitle} - ${configuredBrand}`;
           return;
         }
 
@@ -17075,14 +17193,16 @@ async function fetchMultiLiveDetections() {
           fullBranchText = 'Main Branch';
         }
 
-        // Main header brand company name
         const brandSpan = document.querySelector('.sidebar-brand span');
         if (brandSpan) {
-          brandSpan.textContent = 'QIntellect Technologies';
+          brandSpan.textContent = configuredBrand;
         }
         const compHeader = document.querySelector('.header-company-name');
         if (compHeader) {
-          compHeader.innerHTML = '<i class="fa-solid fa-circle-nodes" style="color:#3d9fd4;"></i> QIntellect Technologies';
+          const icon = compHeader.querySelector('i');
+          compHeader.textContent = '';
+          if (icon) compHeader.appendChild(icon);
+          compHeader.appendChild(document.createTextNode(` ${configuredBrand}`));
         }
 
         // Header branch badge
@@ -17102,7 +17222,7 @@ async function fetchMultiLiveDetections() {
         }
 
         // Dynamic title
-        document.title = `${fullBranchText} - QIntellect Technologies`;
+        document.title = `${fullBranchText} - ${configuredBrand}`;
 
         // User / Admin display name
         const displayName = adminName || 'Mr. Junaid';
@@ -17120,17 +17240,47 @@ async function fetchMultiLiveDetections() {
         });
       }
 
-      async function saveBranchSettings() {
+        async function saveBranchSettings() {
         const msgEl = document.getElementById('branchSettingsMsg');
-        const branch_name = document.getElementById('settingOrganizationName')?.value.trim();
-        const city = document.getElementById('settingCity')?.value.trim();
+        const orgInput = document.getElementById('settingOrganizationName');
+        const cityInput = document.getElementById('settingCity');
+        const adminInput = document.getElementById('settingAdminName');
+        const phoneInput = document.getElementById('settingPhone');
+        const emailInput = document.getElementById('settingEmail');
+        const branch_name = orgInput?.value.trim();
+        const city = cityInput?.value.trim();
         const company_name = branch_name;
-        const admin_name = document.getElementById('settingAdminName')?.value.trim() || 'Mr. Junaid';
-        const phone = document.getElementById('settingPhone')?.value.trim();
-        const email = document.getElementById('settingEmail')?.value.trim();
+        const admin_name = adminInput?.value.trim() || 'Mr. Junaid';
+        const phone = phoneInput?.value.trim();
+        const email = emailInput?.value.trim();
 
         if (!branch_name || !city) {
           if (msgEl) msgEl.innerHTML = '<div class="alert alert-danger p-2" style="font-size:0.85em;">Organization / Company Name and City are required.</div>';
+          return;
+        }
+        if (orgInput && !orgInput.checkValidity()) {
+          if (msgEl) msgEl.innerHTML = '<div class="alert alert-danger p-2" style="font-size:0.85em;">Organization name must include letters and cannot be numbers-only or use invalid special characters.</div>';
+          orgInput.reportValidity();
+          return;
+        }
+        if (cityInput && !cityInput.checkValidity()) {
+          if (msgEl) msgEl.innerHTML = '<div class="alert alert-danger p-2" style="font-size:0.85em;">City must be a valid name (letters only, no numbers-only values).</div>';
+          cityInput.reportValidity();
+          return;
+        }
+        if (adminInput && admin_name && !adminInput.checkValidity()) {
+          if (msgEl) msgEl.innerHTML = '<div class="alert alert-danger p-2" style="font-size:0.85em;">Admin display name must be a valid name.</div>';
+          adminInput.reportValidity();
+          return;
+        }
+        if (phone && phoneInput && !phoneInput.checkValidity()) {
+          if (msgEl) msgEl.innerHTML = '<div class="alert alert-danger p-2" style="font-size:0.85em;">Enter a valid phone number format.</div>';
+          phoneInput.reportValidity();
+          return;
+        }
+        if (email && emailInput && !emailInput.checkValidity()) {
+          if (msgEl) msgEl.innerHTML = '<div class="alert alert-danger p-2" style="font-size:0.85em;">Enter a valid email address.</div>';
+          emailInput.reportValidity();
           return;
         }
 
@@ -17342,17 +17492,33 @@ async function fetchMultiLiveDetections() {
         }).join('');
       }
 
+      function populateDesignationDepartmentPicker(selectedDepartmentId) {
+        const select = document.getElementById('modalDesigDeptId');
+        if (!select || !window.TomSelect) return;
+        if (window._designationDepartmentPicker) {
+          window._designationDepartmentPicker.destroy();
+          window._designationDepartmentPicker = null;
+        }
+        select.innerHTML = '<option value="">Select Parent Department...</option>' +
+          cachedDepartments.filter(department => department.active).map(department =>
+            `<option value="${department.id}">${escapeHtml(department.name)}</option>`
+          ).join('');
+        window._designationDepartmentPicker = new TomSelect(select, {
+          create: false,
+          allowEmptyOption: true,
+          placeholder: 'Select Parent Department...',
+          sortField: { field: 'text', direction: 'asc' },
+          dropdownParent: 'body'
+        });
+        if (selectedDepartmentId) window._designationDepartmentPicker.setValue(String(selectedDepartmentId), true);
+      }
+
       function openAddDesigModal() {
         document.getElementById('modalDesigId').value = '';
         document.getElementById('modalDesigTitle').value = '';
         document.getElementById('modalDesigDesc').value = '';
-        const deptSelect = document.getElementById('modalDesigDeptId');
-        if (deptSelect) {
-          deptSelect.innerHTML = '<option value="">Select Parent Department...</option>' + 
-            cachedDepartments.filter(d => d.active).map(d => `<option value="${d.id}">${d.name}</option>`).join('');
-          const filterVal = document.getElementById('desigDeptFilter')?.value;
-          if (filterVal) deptSelect.value = filterVal;
-        }
+        const filterVal = document.getElementById('desigDeptFilter')?.value;
+        populateDesignationDepartmentPicker(filterVal || '');
         document.getElementById('desigModalTitle').innerHTML = '<i class="fa-solid fa-id-badge" style="color:#3d9fd4; margin-right:8px;"></i> Add Designation';
         document.getElementById('desigModalMsg').innerHTML = '';
         document.getElementById('desigModal').style.display = 'flex';
@@ -17362,12 +17528,7 @@ async function fetchMultiLiveDetections() {
         document.getElementById('modalDesigId').value = id;
         document.getElementById('modalDesigTitle').value = title;
         document.getElementById('modalDesigDesc').value = desc || '';
-        const deptSelect = document.getElementById('modalDesigDeptId');
-        if (deptSelect) {
-          deptSelect.innerHTML = '<option value="">Select Parent Department...</option>' + 
-            cachedDepartments.filter(d => d.active).map(d => `<option value="${d.id}">${d.name}</option>`).join('');
-          deptSelect.value = deptId;
-        }
+        populateDesignationDepartmentPicker(deptId);
         document.getElementById('desigModalTitle').innerHTML = `<i class="fa-solid fa-pen-to-square" style="color:#3d9fd4; margin-right:8px;"></i> Edit Designation: ${title}`;
         document.getElementById('desigModalMsg').innerHTML = '';
         document.getElementById('desigModal').style.display = 'flex';
@@ -18362,6 +18523,25 @@ async function fetchMultiLiveDetections() {
       controls.appendChild(next);
     }
 
+    function getActingAdminDisplayName() {
+      const fromSettings = (document.getElementById('settingAdminName')?.value || '').trim();
+      if (fromSettings) return fromSettings;
+      const fromHeader = (document.getElementById('headerUserName')?.textContent
+        || document.getElementById('sidebarUserName')?.textContent
+        || '').trim();
+      if (fromHeader && fromHeader.toLowerCase() !== 'admin') return fromHeader;
+      const sessionName = {{ active_user_name|tojson }};
+      if (sessionName && String(sessionName).trim()) return String(sessionName).trim();
+      return 'Admin';
+    }
+
+    function formatByAdminLabel(name) {
+      const cleaned = String(name || '').trim();
+      if (!cleaned || cleaned === '--') return '--';
+      if (/^by\s+admin\b/i.test(cleaned)) return cleaned;
+      return `By Admin: ${cleaned}`;
+    }
+
     function switchLeaveSubTab(subtab) {
       document.getElementById('subtab-leave-requests').style.display = subtab === 'requests' ? 'block' : 'none';
       document.getElementById('subtab-leave-balances').style.display = subtab === 'balances' ? 'block' : 'none';
@@ -18870,7 +19050,9 @@ async function fetchMultiLiveDetections() {
       putText('leaveCompleteQuotaDays', `${totalQuotaDays} day(s)`);
       putText('leaveCompleteType', Array.from(distinctTypes).join(', ') || 'Leave');
       putText('leaveCompleteStatus', overallStatus);
-      putText('leaveCompleteApprover', Array.from(approvers).join(', ') || '--');
+      putText('leaveCompleteApprover', approvers.size
+        ? Array.from(approvers).map(name => formatByAdminLabel(name)).join(', ')
+        : '--');
 
       const balanceView = document.getElementById('leaveCompleteBalance');
       if (balanceView) balanceView.innerHTML = '<span class="text-muted">Loading balances...</span>';
@@ -19020,7 +19202,7 @@ async function fetchMultiLiveDetections() {
         const responses = await Promise.all(items.map(item => fetch(`/api/leaves/${item.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status, portion: item.portion, approved_by: 'Admin', rejection_reason: rejectionReason })
+          body: JSON.stringify({ status, portion: item.portion, approved_by: getActingAdminDisplayName(), rejection_reason: rejectionReason })
         })));
         const results = await Promise.all(responses.map(response => response.json()));
         const failed = responses.some((response, index) => !response.ok || !results[index].success);
@@ -19046,7 +19228,7 @@ async function fetchMultiLiveDetections() {
     async function updateLeaveStatus(leaveId, status, rejectionReason = '') {
       if (!await appConfirm(`Are you sure you want to set leave #${leaveId} to ${status.toUpperCase()}?`)) return;
       try {
-        const payload = { status: status, approved_by: 'Admin' };
+        const payload = { status: status, approved_by: getActingAdminDisplayName() };
         if (rejectionReason) payload.rejection_reason = rejectionReason;
         const res = await fetch(`/api/leaves/${leaveId}`, {
           method: 'PUT',
@@ -19925,15 +20107,26 @@ async function fetchMultiLiveDetections() {
       const months = parseInt(document.getElementById('modalLeaveTypeMonths')?.value || '', 10);
       const isPaid = Number(document.getElementById('modalLeaveTypeIsPaid')?.value || 1);
       const description = document.getElementById('modalLeaveTypeDesc')?.value.trim() || '';
+      const halfEnabled = Boolean(document.getElementById('modalLeaveTypeHalfEnabled')?.checked);
+      const halfMode = document.getElementById('modalHalfLeaveMode')?.value || 'separate';
+      const halfMonths = parseInt(document.getElementById('modalHalfLeaveMonths')?.value || '', 10);
+      const halfCount = parseInt(document.getElementById('modalHalfLeaveAllowance')?.value || '', 10);
+      const halfConversion = parseInt(document.getElementById('modalHalfLeavesPerQuotaDay')?.value || '', 10);
       const nameValid = /^[a-zA-Z0-9\s\-_()&'/]+$/.test(name) && !/^[=+\-@]/.test(name);
       const daysValid = Number.isFinite(days) && days >= 0 && days <= 365 && (isPaid !== 1 || days > 0);
       const monthsValid = Number.isInteger(months) && months >= 1 && months <= 12;
       const descriptionValid = description.length <= 250 && !containsUnsafeInput(description);
+      const halfMonthsValid = !halfEnabled || (Number.isInteger(halfMonths) && halfMonths >= 1 && halfMonths <= 12);
+      const halfCountValid = !halfEnabled || halfMode !== 'separate' || (Number.isInteger(halfCount) && halfCount >= 1 && halfCount <= 365);
+      const halfConversionValid = !halfEnabled || halfMode !== 'convert' || (Number.isInteger(halfConversion) && halfConversion >= 1 && halfConversion <= 24);
       setFieldError('modalLeaveTypeNameError', !name ? 'Leave type name is required.' : !nameValid ? 'Use letters, numbers, spaces, and normal punctuation only.' : '');
       setFieldError('modalLeaveTypeDaysError', !Number.isFinite(days) ? 'Allowed days are required.' : days < 0 || days > 365 ? 'Allowed days must be between 0 and 365.' : isPaid === 1 && days <= 0 ? 'Paid leave must have an allowance greater than 0.' : '');
       setFieldError('modalLeaveTypeMonthsError', monthsValid ? '' : 'Renewal months must be a whole number from 1 to 12.');
       setFieldError('modalLeaveTypeDescError', descriptionValid ? '' : 'Notes contain unsupported content or exceed 250 characters.');
-      const valid = Boolean(name && nameValid && daysValid && monthsValid && descriptionValid);
+      setFieldError('modalHalfLeaveMonthsError', halfMonthsValid ? '' : 'Half-day reset months must be from 1 to 12.');
+      setFieldError('modalHalfLeaveAllowanceError', halfCountValid ? '' : 'Half-days allowed must be from 1 to 365.');
+      setFieldError('modalHalfLeavesPerQuotaDayError', halfConversionValid ? '' : 'Half-days per full day must be from 1 to 24.');
+      const valid = Boolean(name && nameValid && daysValid && monthsValid && descriptionValid && halfMonthsValid && halfCountValid && halfConversionValid);
       const button = document.getElementById('saveLeaveTypeBtn');
       if (button) button.disabled = !valid;
       return valid;
@@ -20031,7 +20224,8 @@ async function fetchMultiLiveDetections() {
 
     function csvEscape(value) {
       let text = String(value ?? '');
-      if (/^[=\+\-@\t\r]/.test(text)) {
+      const dateLike = /^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(:\d{2})?)?$/.test(text.trim());
+      if (dateLike || /^[=\+\-@\t\r]/.test(text)) {
         text = "'" + text;
       }
       if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
@@ -20065,6 +20259,32 @@ async function fetchMultiLiveDetections() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+    }
+
+    async function exportLeaveHolidayPDF() {
+      const button = document.getElementById('leavePdfExportBtn');
+      if (!button) return;
+      const originalHtml = button.innerHTML;
+      button.disabled = true;
+      button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparing PDF...';
+      try {
+        const response = await fetch('/api/leaves/export.pdf');
+        if (!response.ok) throw new Error('Could not generate the Leave & Holidays PDF.');
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `leave-holidays-${new Date().toISOString().slice(0, 10)}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        alert(error.message || 'Could not export Leave & Holidays PDF.');
+      } finally {
+        button.disabled = false;
+        button.innerHTML = originalHtml;
+      }
     }
 
     async function deleteLeaveType(typeId) {
@@ -20516,7 +20736,7 @@ async function fetchMultiLiveDetections() {
             <td class="text-end" style="font-weight:800; color:#047857;">PKR ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td style="max-width:220px; font-size:0.88em; color:#475569;" title="${escapeOtHtml(reasons.join('; '))}">${escapeOtHtml(reasonSummary)}</td>
             <td><div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">${statusBadges}</div></td>
-            <td><small style="color:#64748b;">${escapeOtHtml(approvers.join(', ') || '--')}</small></td>
+            <td><small style="color:#64748b;">${escapeOtHtml(approvers.length ? approvers.map(name => formatByAdminLabel(name)).join(', ') : '--')}</small></td>
             <td>${payrollBadge}</td>
             <td class="text-center"><button class="btn btn-sm btn-outline-primary" onclick="openOtDetailModal(${group.user_id}, null, document.getElementById('otMonthFilter')?.value || '')" title="View this employee's individual overtime records"><i class="fa-solid fa-clock"></i> Complete View</button></td>
           </tr>
@@ -20721,7 +20941,7 @@ async function fetchMultiLiveDetections() {
             const approvalRes = await fetch(`/api/overtime/${data.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'approved', approved_by: 'Admin' })
+              body: JSON.stringify({ status: 'approved', approved_by: getActingAdminDisplayName() })
             });
             const approvalData = await approvalRes.json();
             if (!approvalRes.ok) {
@@ -20768,7 +20988,7 @@ async function fetchMultiLiveDetections() {
       }
       if (!await appConfirm(`Are you sure you want to mark overtime record #${otId} as ${newStatus.toUpperCase()}?`)) return;
       try {
-        const payload = { status: newStatus, approved_by: 'Admin' };
+        const payload = { status: newStatus, approved_by: getActingAdminDisplayName() };
         if (rejectionReason) payload.rejection_reason = rejectionReason;
         const res = await fetch(`/api/overtime/${otId}`, {
           method: 'PUT',
@@ -20953,7 +21173,7 @@ async function fetchMultiLiveDetections() {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: pendingRecs.map(r => r.id), status: 'approved', approved_by: 'Admin' })
+          body: JSON.stringify({ ids: pendingRecs.map(r => r.id), status: 'approved', approved_by: getActingAdminDisplayName() })
         });
         const data = await res.json();
         showOvertimeBulkResult(data, 'Bulk approval complete.');
@@ -20983,7 +21203,7 @@ async function fetchMultiLiveDetections() {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: pendingRecs.map(r => r.id), status: 'rejected', approved_by: 'Admin' })
+          body: JSON.stringify({ ids: pendingRecs.map(r => r.id), status: 'rejected', approved_by: getActingAdminDisplayName() })
         });
         const data = await res.json();
         showOvertimeBulkResult(data, 'Bulk rejection complete.');
@@ -21010,7 +21230,7 @@ async function fetchMultiLiveDetections() {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: pendingRecs.map(r => r.id), status: 'approved', approved_by: 'Admin' })
+          body: JSON.stringify({ ids: pendingRecs.map(r => r.id), status: 'approved', approved_by: getActingAdminDisplayName() })
         });
         const data = await res.json();
         showOvertimeBulkResult(data, 'Overtime review complete.');
@@ -21037,7 +21257,7 @@ async function fetchMultiLiveDetections() {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: pendingRecs.map(r => r.id), status: 'rejected', approved_by: 'Admin' })
+          body: JSON.stringify({ ids: pendingRecs.map(r => r.id), status: 'rejected', approved_by: getActingAdminDisplayName() })
         });
         const data = await res.json();
         showOvertimeBulkResult(data, 'Overtime review complete.');
@@ -21209,7 +21429,7 @@ async function fetchMultiLiveDetections() {
             <td class="text-center" style="font-weight:700; color:#047857;">PKR ${amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
             <td style="font-size:0.88em; color:#475569;" title="${escapeOtHtml(r.reason||'')}">${escapeOtHtml(r.reason||'--')}</td>
             <td class="text-center">${statusBadge}</td>
-            <td style="font-size:0.86em; color:#64748b;">${escapeOtHtml(r.approved_by || '--')}</td>
+            <td style="font-size:0.86em; color:#64748b;">${escapeOtHtml(r.approved_by ? formatByAdminLabel(r.approved_by) : '--')}</td>
             <td class="text-center">${isPending ? `
               <button class="btn btn-sm btn-outline-success me-1" onclick="otDetailApproveSingle(${r.id})" title="Approve overtime record"><i class="fa-solid fa-check"></i></button>
               <button class="btn btn-sm btn-outline-danger me-1" onclick="otDetailRejectSingle(${r.id})" title="Reject overtime record"><i class="fa-solid fa-xmark"></i></button>
@@ -21239,7 +21459,7 @@ async function fetchMultiLiveDetections() {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids, status: 'approved', approved_by: 'Admin' })
+          body: JSON.stringify({ ids, status: 'approved', approved_by: getActingAdminDisplayName() })
         });
         const data = await res.json();
         showOvertimeBulkResult(data, 'Overtime review complete.');
@@ -21257,7 +21477,7 @@ async function fetchMultiLiveDetections() {
       const rejectionReason = inputReason.trim() || undefined;
       if (!await appConfirm(`Reject ${ids.length} selected OT record(s)?\n\nAny approved overtime among them will be excluded from payroll.`)) return;
       try {
-        const payload = { ids, status: 'rejected', approved_by: 'Admin' };
+        const payload = { ids, status: 'rejected', approved_by: getActingAdminDisplayName() };
         if (rejectionReason) payload.rejection_reason = rejectionReason;
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
@@ -21280,7 +21500,7 @@ async function fetchMultiLiveDetections() {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: pending.map(r=>r.id), status: 'approved', approved_by: 'Admin' })
+          body: JSON.stringify({ ids: pending.map(r=>r.id), status: 'approved', approved_by: getActingAdminDisplayName() })
         });
         const data = await res.json();
         showOvertimeBulkResult(data, 'Overtime review complete.');
@@ -21296,7 +21516,7 @@ async function fetchMultiLiveDetections() {
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: [id], status: 'approved', approved_by: 'Admin' })
+          body: JSON.stringify({ ids: [id], status: 'approved', approved_by: getActingAdminDisplayName() })
         });
         const data = await res.json();
         showOvertimeBulkResult(data, 'Overtime approved.');
@@ -21318,7 +21538,7 @@ async function fetchMultiLiveDetections() {
         : 'Reject this overtime record?';
       if (!await appConfirm(confirmMsg)) return;
       try {
-        const payload = { ids: [id], status: 'rejected', approved_by: 'Admin' };
+        const payload = { ids: [id], status: 'rejected', approved_by: getActingAdminDisplayName() };
         if (rejectionReason) payload.rejection_reason = rejectionReason;
         const res = await fetch('/api/overtime/bulk-approve', {
           method: 'POST',

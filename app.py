@@ -2631,6 +2631,64 @@ def get_users():
     return jsonify({'users': users, 'organization_id': current_tenant}), 200
 
 
+@app.route('/api/staff/export.csv', methods=['GET'])
+def api_export_staff_csv():
+    import csv
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator='\r\n')
+    writer.writerow(['Employee ID', 'Name', 'Department', 'Designation', 'Email', 'Phone', 'CNIC', 'Shift', 'Status'])
+    staff = db.get_all_users(
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
+    )
+    for user in staff:
+        writer.writerow([
+            _safe_excel_val(user.get('id')),
+            _safe_excel_val(user.get('name')),
+            _safe_excel_val(user.get('department')),
+            _safe_excel_val(user.get('position')),
+            _safe_excel_val(user.get('email')),
+            _safe_excel_val(user.get('phone')),
+            _safe_excel_val(user.get('cnic')),
+            _safe_excel_val(user.get('shift_name')),
+            _safe_excel_val(user.get('status_today')),
+        ])
+    return Response(
+        '\ufeff' + output.getvalue(),
+        mimetype='text/csv; charset=utf-8',
+        headers={'Content-Disposition': 'attachment; filename=staff-directory.csv'},
+    )
+
+
+@app.route('/api/staff/export.pdf', methods=['GET'])
+def api_export_staff_pdf():
+    from payroll_extensions import simple_pdf_bytes
+
+    staff = db.get_all_users(
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
+    )
+    rows = [
+        f"{user.get('id', '')} | {user.get('name', '')} | {user.get('department', '')} | "
+        f"{user.get('position', '')} | {user.get('email', '')} | {user.get('phone', '')} | "
+        f"{user.get('cnic', '')} | {user.get('shift_name', '')}"
+        for user in staff
+    ]
+    pdf = simple_pdf_bytes('Staff Directory', [
+        f"Generated: {datetime.now().strftime('%d %b %Y, %I:%M %p')}",
+        f"Employees: {len(staff)}",
+        'ID | Name | Department | Designation | Email | Phone | CNIC | Shift',
+        '-' * 96,
+        *rows,
+    ])
+    return send_file(
+        io.BytesIO(pdf),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name='staff-directory.pdf',
+    )
+
+
 # ============================================
 # SHIFT MANAGEMENT ENDPOINTS
 # ============================================
@@ -2938,7 +2996,7 @@ def api_mark_user_present(user_id):
             except (ValueError, TypeError):
                 return jsonify({'error': 'Invalid shift_id'}), 400
 
-        acting_admin = session.get('admin_name') or 'Admin'
+        acting_admin = get_admin_display_name()
 
         success = db.mark_user_present_today(
             user_id, 
@@ -2993,7 +3051,7 @@ def api_edit_attendance():
             except (ValueError, TypeError):
                 return jsonify({'error': 'Invalid shift_id'}), 400
 
-        acting_admin = session.get('admin_name') or 'Admin'
+        acting_admin = get_admin_display_name()
         current_tenant = get_current_tenant_id()
 
         if status == 'absent':
@@ -4409,6 +4467,23 @@ def get_current_branch_id() -> str:
     return 'DEFAULT_BRANCH'
 
 
+def get_admin_display_name(requested_name=None) -> str:
+    requested = str(requested_name or '').strip()
+    if requested and requested.casefold() != 'admin':
+        return requested
+    for key in ('admin_name', 'client_user', 'username'):
+        value = str(session.get(key) or '').strip()
+        if value and value.casefold() != 'admin':
+            return value
+    try:
+        configured = str(db.get_branch_settings().get('admin_name') or '').strip()
+        if configured:
+            return configured
+    except Exception:
+        logger.exception('Could not load configured admin display name')
+    return requested or 'Admin'
+
+
 def payroll_tenant() -> Dict[str, str]:
     return {
         'organization_id': get_current_tenant_id(),
@@ -5591,6 +5666,47 @@ def api_get_leaves():
     return jsonify(db.get_leave_requests(user_id=user_id, status=status, organization_id=current_tenant))
 
 
+@app.route('/api/leaves/export.pdf', methods=['GET'])
+def api_export_leave_holidays_pdf():
+    from payroll_extensions import simple_pdf_bytes
+
+    organization_id = get_current_tenant_id()
+    branch_id = get_current_branch_id()
+    requests_list = db.get_leave_requests(
+        organization_id=organization_id,
+        branch_id=branch_id,
+    )
+    holidays = db.get_company_holidays(
+        year=request.args.get('year', type=int),
+        organization_id=organization_id,
+        branch_id=branch_id,
+    )
+    lines = [
+        f"Generated: {datetime.now().strftime('%d %b %Y, %I:%M %p')}",
+        '',
+        f"LEAVE REQUESTS ({len(requests_list)})",
+    ]
+    for item in requests_list:
+        lines.append(
+            f"{item.get('user_name') or 'Employee'} | {item.get('leave_type_name') or item.get('leave_type') or ''} | "
+            f"{item.get('start_date') or ''} to {item.get('end_date') or ''} | "
+            f"{item.get('status') or ''} | {item.get('reason') or ''}"
+        )
+    lines.extend(['', f"PUBLIC HOLIDAYS ({len(holidays)})"])
+    for item in holidays:
+        date_range = item.get('holiday_date') or ''
+        if item.get('end_date') and item.get('end_date') != date_range:
+            date_range += f" to {item.get('end_date')}"
+        lines.append(f"{date_range} | {item.get('name') or ''} | {item.get('description') or ''}")
+    pdf = simple_pdf_bytes('Leave & Holidays Report', lines)
+    return send_file(
+        io.BytesIO(pdf),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f"leave-holidays-{date.today().isoformat()}.pdf",
+    )
+
+
 @app.route('/api/leaves', methods=['POST'])
 def api_add_leave():
     data = request.get_json() or {}
@@ -6160,7 +6276,7 @@ def api_add_overtime():
 def api_update_overtime(ot_id):
     data = request.get_json() or {}
     new_status = data.get('status', 'approved')
-    approved_by = data.get('approved_by') or session.get('admin_name') or session.get('client_user') or session.get('username') or 'Admin'
+    approved_by = get_admin_display_name(data.get('approved_by'))
 
     if new_status not in ('approved', 'rejected'):
         return jsonify({'success': False, 'error': 'status must be approved or rejected'}), 400
@@ -6229,7 +6345,7 @@ def api_bulk_approve_overtime():
     data = request.get_json() or {}
     ot_ids = data.get('ids', [])
     new_status = data.get('status', 'approved')
-    approved_by = data.get('approved_by') or session.get('admin_name') or session.get('client_user') or session.get('username') or 'Admin'
+    approved_by = get_admin_display_name(data.get('approved_by'))
 
     if new_status not in ('approved', 'rejected'):
         return jsonify({'success': False, 'error': 'status must be approved or rejected'}), 400
@@ -6958,7 +7074,7 @@ def api_save_payroll_adjustment():
         work_date=data.get('work_date'),
         note=str(data.get('note') or ''),
         source_month=data.get('source_month'),
-        created_by=session.get('admin_name') or session.get('username') or 'Admin',
+        created_by=get_admin_display_name(),
         **payroll_tenant(),
     )
     if not saved_id:
@@ -7640,6 +7756,23 @@ def api_update_branch_settings():
     address = data.get('address', current.get('address', '')) or ''
     phone = data.get('phone', current.get('phone', '')) or ''
     email = data.get('email', current.get('email', '')) or ''
+    import re
+    name_pattern = re.compile(r"^(?=.*[A-Za-z])[A-Za-z0-9 .&'()/-]+$")
+    person_name_pattern = re.compile(r"^[A-Za-z][A-Za-z .'-]*$")
+    if len(branch_name) > 120 or not name_pattern.fullmatch(branch_name):
+        return jsonify({'error': 'Organization name must be 1-120 characters and contain a valid name.'}), 400
+    if len(city) > 100 or not person_name_pattern.fullmatch(city):
+        return jsonify({'error': 'City must be a valid name of at most 100 characters.'}), 400
+    if admin_name and (len(admin_name) > 100 or not person_name_pattern.fullmatch(admin_name)):
+        return jsonify({'error': 'Admin name must contain letters, spaces, apostrophes, hyphens, or periods (maximum 100 characters).'}), 400
+    if phone:
+        digits = re.sub(r'\D', '', phone)
+        if len(phone) > 30 or not re.fullmatch(r'\+?[0-9 .()/-]+', phone) or not 7 <= len(digits) <= 15:
+            return jsonify({'error': 'Enter a valid phone number (7-15 digits).'}), 400
+    if len(email) > 120 or (email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email)):
+        return jsonify({'error': 'Enter a valid email address of at most 120 characters.'}), 400
+    if len(str(address)) > 250:
+        return jsonify({'error': 'Address cannot exceed 250 characters.'}), 400
     
     success = db.update_branch_settings(
         branch_name=branch_name,
@@ -7682,6 +7815,8 @@ def api_add_department():
             organization_id=get_current_tenant_id(),
             branch_id=get_current_branch_id()
         )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     except Exception as e:
         logger.exception("Failed to create department '%s'", name)
         return jsonify({'error': f'Failed to create department: {e}'}), 500
@@ -7695,14 +7830,17 @@ def api_update_department(dept_id):
     name = data.get('name')
     if not name:
         return jsonify({'error': 'Department name is required'}), 400
-    success = db.update_department(
-        dept_id=dept_id,
-        name=name,
-        code=data.get('code', ''),
-        description=data.get('description', ''),
-        active=int(data.get('active', 1)),
-        organization_id=get_current_tenant_id()
-    )
+    try:
+        success = db.update_department(
+            dept_id=dept_id,
+            name=name,
+            code=data.get('code', ''),
+            description=data.get('description', ''),
+            active=int(data.get('active', 1)),
+            organization_id=get_current_tenant_id()
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     if success:
         return jsonify({'success': True, 'message': f'Department {name} updated successfully'})
     return jsonify({'error': 'Failed to update department or access denied'}), 404
@@ -7750,13 +7888,16 @@ def api_add_designation():
     if not dept.get('active'):
         return jsonify({'error': f"Department '{dept.get('name')}' is inactive and cannot accept new designations"}), 400
 
-    desig_id = db.add_designation(
-        department_id=dept_id_int,
-        title=str(title).strip(),
-        description=data.get('description', ''),
-        organization_id=current_tenant,
-        branch_id=get_current_branch_id()
-    )
+    try:
+        desig_id = db.add_designation(
+            department_id=dept_id_int,
+            title=str(title).strip(),
+            description=data.get('description', ''),
+            organization_id=current_tenant,
+            branch_id=get_current_branch_id()
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     if desig_id:
         return jsonify({'success': True, 'id': desig_id, 'message': f'Designation {title} created successfully'}), 201
     return jsonify({'error': 'Failed to create designation'}), 500
@@ -7767,13 +7908,16 @@ def api_update_designation(desig_id):
     title = data.get('title')
     if not title:
         return jsonify({'error': 'Designation title is required'}), 400
-    success = db.update_designation(
-        desig_id=desig_id,
-        title=title,
-        description=data.get('description', ''),
-        active=int(data.get('active', 1)),
-        organization_id=get_current_tenant_id()
-    )
+    try:
+        success = db.update_designation(
+            desig_id=desig_id,
+            title=title,
+            description=data.get('description', ''),
+            active=int(data.get('active', 1)),
+            organization_id=get_current_tenant_id()
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     if success:
         return jsonify({'success': True, 'message': 'Designation updated successfully'})
     return jsonify({'error': 'Failed to update designation or access denied'}), 404

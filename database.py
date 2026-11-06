@@ -1687,8 +1687,8 @@ def _validate_staff_fields(name: str, email: Optional[str], phone: Optional[str]
     clean_position = str(position or '').strip()
     clean_notes = str(notes or '').strip()
     clean_cnic = str(cnic or '').strip()
-    if not re.match(r"^[A-Za-z][A-Za-z\s.'-]*$", clean_name):
-        raise ValueError('Full name may contain letters, spaces, hyphens, apostrophes, and periods only')
+    if not re.match(r"^(?=.*[A-Za-z])[A-Za-z0-9\s.'-]+$", clean_name):
+        raise ValueError('Full name must contain letters and may use numbers, spaces, hyphens, apostrophes, and periods only')
     if len(clean_name) > 100:
         raise ValueError('Full name cannot exceed 100 characters')
     if clean_email and (len(clean_email) > 120 or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', clean_email)):
@@ -3350,6 +3350,27 @@ def add_shift(name: str, start_time: str, end_time: str, grace_period_minutes: i
             cursor = conn.cursor()
             norm_org = organization_id or 'DEFAULT_ORG'
             norm_branch = branch_id or 'DEFAULT_BRANCH'
+            normalized_days = _normalize_shift_working_days(working_days)
+            normalized_start = str(start_time or '').strip()[:5]
+            normalized_end = str(end_time or '').strip()[:5]
+            normalized_grace = max(0, int(grace_period_minutes))
+            normalized_checkout_grace = max(0, int(checkout_grace_period_minutes))
+
+            cursor.execute(
+                """SELECT id, start_time, end_time, grace_period_minutes,
+                          checkout_grace_period_minutes, working_days
+                   FROM shifts WHERE active = 1 AND organization_id = ? AND branch_id = ?""",
+                (norm_org, norm_branch),
+            )
+            for existing_shift in cursor.fetchall():
+                if (
+                    str(existing_shift[1] or '')[:5] == normalized_start
+                    and str(existing_shift[2] or '')[:5] == normalized_end
+                    and int(existing_shift[3] or 0) == normalized_grace
+                    and int(existing_shift[4] or 0) == normalized_checkout_grace
+                    and _normalize_shift_working_days(existing_shift[5]) == normalized_days
+                ):
+                    raise ValueError("An active shift already has the same start/end times, weekly holidays, and grace periods.")
 
             # Check if active/inactive shift with this name already exists in this tenant scope
             cursor.execute(
@@ -7231,8 +7252,18 @@ def add_leave_type(
         half_count = int(half_leave_allowance_count or 0)
         half_months = int(half_leave_allowance_months or 12)
         half_conversion = int(half_leaves_per_quota_day or 2)
-        if not 1 <= duration_months <= 12 or half_mode not in ('separate', 'convert') or half_count < 0 or not 1 <= half_months <= 12 or half_conversion < 1:
-            return None
+        if not 1 <= duration_months <= 12:
+            raise ValueError('Renewal period must be from 1 to 12 months.')
+        if half_mode not in ('separate', 'convert'):
+            raise ValueError('Choose a valid half-leave rule.')
+        if not 1 <= half_months <= 12:
+            raise ValueError('Half-leave reset period must be from 1 to 12 months.')
+        if half_leave_enabled and half_mode == 'separate' and not 1 <= half_count <= 365:
+            raise ValueError('Half-days allowed must be from 1 to 365.')
+        if half_leave_enabled and half_mode == 'convert' and not 1 <= half_conversion <= 24:
+            raise ValueError('Half-days per full day must be from 1 to 24.')
+        if half_count < 0 or half_count > 365 or half_conversion < 1 or half_conversion > 24:
+            raise ValueError('Half-day policy values are outside the allowed limits.')
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -7293,8 +7324,18 @@ def update_leave_type(
         half_count = int(half_leave_allowance_count or 0)
         half_months = int(half_leave_allowance_months or 12)
         half_conversion = int(half_leaves_per_quota_day or 2)
-        if not 1 <= duration_months <= 12 or half_mode not in ('separate', 'convert') or half_count < 0 or not 1 <= half_months <= 12 or half_conversion < 1:
-            return False
+        if not 1 <= duration_months <= 12:
+            raise ValueError('Renewal period must be from 1 to 12 months.')
+        if half_mode not in ('separate', 'convert'):
+            raise ValueError('Choose a valid half-leave rule.')
+        if not 1 <= half_months <= 12:
+            raise ValueError('Half-leave reset period must be from 1 to 12 months.')
+        if half_leave_enabled and half_mode == 'separate' and not 1 <= half_count <= 365:
+            raise ValueError('Half-days allowed must be from 1 to 365.')
+        if half_leave_enabled and half_mode == 'convert' and not 1 <= half_conversion <= 24:
+            raise ValueError('Half-days per full day must be from 1 to 24.')
+        if half_count < 0 or half_count > 365 or half_conversion < 1 or half_conversion > 24:
+            raise ValueError('Half-day policy values are outside the allowed limits.')
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -7345,12 +7386,17 @@ def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bo
                 raise ValueError("Cannot delete leave type because historical employee leave records exist for it. Please deactivate the leave type instead.")
             cursor.execute(
                 """SELECT COUNT(*) FROM employee_leave_balances
-                   WHERE leave_type_id = ?""",
+                   WHERE leave_type_id = ?
+                     AND (COALESCE(allocated_days, 0) <> 0 OR COALESCE(used_days, 0) <> 0)""",
                 (type_id,)
             )
             bal_count = cursor.fetchone()[0]
             if bal_count > 0:
-                raise ValueError("Cannot delete leave type because employee leave balances exist for it. Please deactivate the leave type instead.")
+                raise ValueError("Cannot delete leave type because nonzero employee leave balances exist for it. Please deactivate the leave type instead.")
+            cursor.execute(
+                "DELETE FROM employee_leave_balances WHERE leave_type_id = ?",
+                (type_id,)
+            )
             cursor.execute(
                 "DELETE FROM leave_types WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?",
                 (type_id, org),
@@ -13210,6 +13256,11 @@ def add_department(name: str, code: str = '', description: str = '', organizatio
     """Add a new department scoped to organization."""
     if not name or not name.strip():
         return None
+    name = str(name).strip()
+    code = str(code or '').strip()
+    description = str(description or '').strip()
+    if len(name) > 100 or len(code) > 20 or len(description) > 250:
+        raise ValueError('Department name must be at most 100 characters, code 20, and description 250')
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -13219,7 +13270,7 @@ def add_department(name: str, code: str = '', description: str = '', organizatio
             # Check if department with same name already exists in this organization
             cursor.execute(
                 "SELECT id, active FROM departments WHERE LOWER(name) = LOWER(?) AND (organization_id = ? OR (? = 'DEFAULT_ORG' AND (organization_id IS NULL OR organization_id = '')))",
-                (name.strip(), org, org)
+                (name, org, org)
             )
             existing = cursor.fetchone()
             if existing:
@@ -13227,7 +13278,7 @@ def add_department(name: str, code: str = '', description: str = '', organizatio
                 if active == 0:
                     cursor.execute(
                         "UPDATE departments SET active = 1, code = ?, description = ? WHERE id = ?",
-                        (code.strip(), description.strip(), dept_id)
+                        (code, description, dept_id)
                     )
                     conn.commit()
                     logger.info(f"✓ Re-activated existing Department '{name}' for org '{org}' (ID: {dept_id})")
@@ -13237,7 +13288,7 @@ def add_department(name: str, code: str = '', description: str = '', organizatio
 
             cursor.execute(
                 "INSERT INTO departments (name, code, description, organization_id, branch_id) VALUES (?, ?, ?, ?, ?)",
-                (name.strip(), code.strip(), description.strip(), org, br)
+                (name, code, description, org, br)
             )
             conn.commit()
             dept_id = cursor.lastrowid
@@ -13252,6 +13303,11 @@ def add_department(name: str, code: str = '', description: str = '', organizatio
 
 def update_department(dept_id: int, name: str, code: str = '', description: str = '', active: int = 1, organization_id: Optional[str] = None) -> bool:
     """Update department information with tenant check and sync assigned user records."""
+    name = str(name or '').strip()
+    code = str(code or '').strip()
+    description = str(description or '').strip()
+    if not name or len(name) > 100 or len(code) > 20 or len(description) > 250:
+        raise ValueError('Department name, code, or description is invalid or exceeds its character limit')
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -13272,13 +13328,13 @@ def update_department(dept_id: int, name: str, code: str = '', description: str 
                 UPDATE departments
                 SET name = ?, code = ?, description = ?, active = ?
                 WHERE id = ?
-            ''', (name.strip(), code.strip(), description.strip(), active, dept_id))
+            ''', (name, code, description, active, dept_id))
             
-            if old_name and old_name != name.strip():
+            if old_name and old_name != name:
                 if organization_id:
-                    cursor.execute("UPDATE users SET department = ? WHERE department = ? AND organization_id = ?", (name.strip(), old_name, organization_id))
+                    cursor.execute("UPDATE users SET department = ? WHERE department = ? AND organization_id = ?", (name, old_name, organization_id))
                 else:
-                    cursor.execute("UPDATE users SET department = ? WHERE department = ?", (name.strip(), old_name))
+                    cursor.execute("UPDATE users SET department = ? WHERE department = ?", (name, old_name))
                 
             conn.commit()
             logger.info(f"✓ Department ID {dept_id} updated: {name}")
@@ -13375,13 +13431,17 @@ def add_designation(department_id: int, title: str, description: str = '', organ
     """Add a new designation under a specific department, scoped by tenant."""
     if not title or not title.strip() or not department_id:
         return None
+    title = str(title).strip()
+    description = str(description or '').strip()
+    if len(title) > 100 or len(description) > 250:
+        raise ValueError('Designation title must be at most 100 characters and description 250')
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO designations (department_id, title, description, organization_id, branch_id) VALUES (?, ?, ?, ?, ?)",
-                (department_id, title.strip(), description.strip(), organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH')
+                (department_id, title, description, organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH')
             )
             conn.commit()
             desig_id = cursor.lastrowid
@@ -13396,6 +13456,10 @@ def add_designation(department_id: int, title: str, description: str = '', organ
 
 def update_designation(desig_id: int, title: str, description: str = '', active: int = 1, organization_id: Optional[str] = None) -> bool:
     """Update designation title or active status with tenant check."""
+    title = str(title or '').strip()
+    description = str(description or '').strip()
+    if not title or len(title) > 100 or len(description) > 250:
+        raise ValueError('Designation title or description is invalid or exceeds its character limit')
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -13409,7 +13473,7 @@ def update_designation(desig_id: int, title: str, description: str = '', active:
                     return False
             cursor.execute(
                 "UPDATE designations SET title = ?, description = ?, active = ? WHERE id = ?",
-                (title.strip(), description.strip(), active, desig_id)
+                (title, description, active, desig_id)
             )
             conn.commit()
             logger.info(f"✓ Designation ID {desig_id} updated: {title}")
