@@ -4482,19 +4482,30 @@ def get_current_branch_id() -> str:
 
 def get_admin_display_name(requested_name=None) -> str:
     requested = str(requested_name or '').strip()
+    name = ''
     if requested and requested.casefold() != 'admin':
-        return requested
-    for key in ('admin_name', 'client_user', 'username'):
-        value = str(session.get(key) or '').strip()
-        if value and value.casefold() != 'admin':
-            return value
+        name = requested
+    if not name:
+        for key in ('admin_name', 'client_user', 'username'):
+            value = str(session.get(key) or '').strip()
+            if value and value.casefold() != 'admin':
+                name = value
+                break
+    email = ''
     try:
-        configured = str(db.get_branch_settings().get('admin_name') or '').strip()
-        if configured:
-            return configured
+        branch_cfg = db.get_branch_settings() or {}
+        if not name:
+            configured = str(branch_cfg.get('admin_name') or '').strip()
+            if configured:
+                name = configured
+        email = str(branch_cfg.get('email') or '').strip()
     except Exception:
         logger.exception('Could not load configured admin display name')
-    return requested or 'Admin'
+    name = name or requested or 'Admin'
+    # ST-01: include configured admin email in manual attendance source labels.
+    if email and email.casefold() not in name.casefold():
+        return f"{name} ({email})"
+    return name
 
 
 def report_timestamp_pk(fmt: str = '%d %b %Y, %I:%M %p') -> str:

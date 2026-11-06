@@ -3359,29 +3359,27 @@ def add_shift(name: str, start_time: str, end_time: str, grace_period_minutes: i
             # SM-01: reject duplicate configuration even when the shift name is different.
             # At least one of start/end, weekly holidays (working days), or grace must differ.
             cursor.execute(
-                """SELECT id, name, start_time, end_time, grace_period_minutes,
-                          checkout_grace_period_minutes, working_days
+                """SELECT id, name, start_time, end_time, grace_period_minutes, working_days
                    FROM shifts
-                   WHERE active = 1
+                   WHERE COALESCE(active, 1) = 1
                      AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
                      AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
                 (norm_org, norm_branch),
             )
             for existing_shift in cursor.fetchall():
-                existing_days = _normalize_shift_working_days(existing_shift[6])
-                same_timing = (
-                    str(existing_shift[2] or '')[:5] == normalized_start
-                    and str(existing_shift[3] or '')[:5] == normalized_end
-                )
-                same_grace = (
-                    int(existing_shift[4] or 0) == normalized_grace
-                    and int(existing_shift[5] or 0) == normalized_checkout_grace
-                )
+                try:
+                    existing_days = _normalize_shift_working_days(existing_shift[5])
+                except ValueError:
+                    existing_days = _normalize_shift_working_days(None)
+                existing_start = str(existing_shift[2] or '').strip()[:5]
+                existing_end = str(existing_shift[3] or '').strip()[:5]
+                same_timing = existing_start == normalized_start and existing_end == normalized_end
+                same_grace = int(existing_shift[4] or 0) == normalized_grace
                 same_weekdays = existing_days == normalized_days
                 if same_timing and same_grace and same_weekdays:
                     raise ValueError(
                         f"Duplicate shift configuration: '{existing_shift[1]}' already uses the same "
-                        f"start/end times, weekly holidays, and grace periods. Change at least one of those to create a new shift."
+                        f"start/end times, weekly holidays, and grace period. Change at least one of those to create a new shift."
                     )
 
             # Check if active/inactive shift with this name already exists in this tenant scope
@@ -3466,36 +3464,34 @@ def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace
             normalized_start = str(start_time or '').strip()[:5]
             normalized_end = str(end_time or '').strip()[:5]
             normalized_grace = max(0, int(grace_period_minutes))
-            normalized_checkout_grace = max(0, int(checkout_grace_period_minutes))
             if working_days is None:
                 normalized_days = _normalize_shift_working_days(self_row[2])
             else:
                 normalized_days = _normalize_shift_working_days(working_days)
             cursor.execute(
-                """SELECT id, name, start_time, end_time, grace_period_minutes,
-                          checkout_grace_period_minutes, working_days
+                """SELECT id, name, start_time, end_time, grace_period_minutes, working_days
                    FROM shifts
-                   WHERE active = 1
+                   WHERE COALESCE(active, 1) = 1
                      AND id != ?
                      AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
                      AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
                 (shift_id, norm_org, norm_branch),
             )
             for existing_shift in cursor.fetchall():
-                existing_days = _normalize_shift_working_days(existing_shift[6])
+                try:
+                    existing_days = _normalize_shift_working_days(existing_shift[5])
+                except ValueError:
+                    existing_days = _normalize_shift_working_days(None)
                 same_timing = (
-                    str(existing_shift[2] or '')[:5] == normalized_start
-                    and str(existing_shift[3] or '')[:5] == normalized_end
+                    str(existing_shift[2] or '').strip()[:5] == normalized_start
+                    and str(existing_shift[3] or '').strip()[:5] == normalized_end
                 )
-                same_grace = (
-                    int(existing_shift[4] or 0) == normalized_grace
-                    and int(existing_shift[5] or 0) == normalized_checkout_grace
-                )
+                same_grace = int(existing_shift[4] or 0) == normalized_grace
                 same_weekdays = existing_days == normalized_days
                 if same_timing and same_grace and same_weekdays:
                     raise ValueError(
                         f"Duplicate shift configuration: '{existing_shift[1]}' already uses the same "
-                        f"start/end times, weekly holidays, and grace periods. Change at least one of those."
+                        f"start/end times, weekly holidays, and grace period. Change at least one of those."
                     )
 
             if working_days is None:
@@ -7502,17 +7498,26 @@ def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bo
             if not row:
                 return False
             lt_name, lt_code = row[0], row[1]
-            # Ticket LH-10: allow delete when every employee remaining balance is zero.
-            # Remaining = allocated - used. Historical requests do not block when balances are zero.
+            # Ticket LH-10: allow delete only when every employee remaining balance is zero.
+            # Remaining = max(0, allocated - used). Zero-remaining rows are cleaned and do not block.
             cursor.execute(
                 """SELECT COUNT(*) FROM employee_leave_balances
                    WHERE leave_type_id = ?
-                     AND ABS(COALESCE(allocated_days, 0) - COALESCE(used_days, 0)) > 0.0001""",
+                     AND (
+                       CASE
+                         WHEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0)) > 0
+                         THEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0))
+                         ELSE 0
+                       END
+                     ) > 0.0001""",
                 (type_id,)
             )
             bal_count = cursor.fetchone()[0]
             if bal_count > 0:
-                raise ValueError("Cannot delete leave type because nonzero employee leave balances exist for it. Please deactivate the leave type instead.")
+                raise ValueError(
+                    "Cannot delete leave type because one or more employees still have a remaining "
+                    "balance greater than zero. Reduce remaining balances to 0 (or deactivate the type) first."
+                )
             cursor.execute(
                 "DELETE FROM employee_leave_balances WHERE leave_type_id = ?",
                 (type_id,)
@@ -7521,8 +7526,9 @@ def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bo
                 "DELETE FROM leave_types WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?",
                 (type_id, org),
             )
+            deleted = cursor.rowcount > 0
             conn.commit()
-            return cursor.rowcount > 0
+            return deleted
     except ValueError:
         raise
     except Exception as e:
