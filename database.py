@@ -5841,7 +5841,11 @@ def mark_user_present_today(
 
             # Insert check-out log if provided
             if co_clean:
-                timestamp_val_out = f"{actual_date} {co_clean}:00"
+                checkout_date = actual_date
+                # Overnight shifts: when checkout clock time is before check-in, it belongs to the next calendar day.
+                if is_overnight and _to_mins(co_clean) < _to_mins(ci_clean):
+                    checkout_date = (datetime.strptime(actual_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                timestamp_val_out = f"{checkout_date} {co_clean}:00"
                 cursor.execute(
                     "INSERT INTO attendance (user_id, detected_name, confidence, source, timestamp, notes, marked_by, shift_id, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (user_id, name, 1.0, 'manual', timestamp_val_out, notes, marked_by, shift_db_id, user_org, user_branch)

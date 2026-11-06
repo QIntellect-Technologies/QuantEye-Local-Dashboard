@@ -609,12 +609,38 @@
         gap: 16px;
       }
 
-      .page-view .stats-grid .stat-box {
+      .page-view .stats-grid .stat-box,
+      .page-view .payroll-stats-grid .stat-box {
         min-height: 104px;
         padding: 16px;
         border-radius: 12px;
         gap: 14px;
         box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+        background: #ffffff;
+        border: 1px solid #cfe8f7;
+      }
+
+      .page-view .payroll-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+      }
+
+      .page-view .stat-box .stat-value,
+      .page-view .payroll-stats-grid .stat-value {
+        font-size: 1.45rem;
+        font-weight: 800;
+        color: #173042;
+        line-height: 1.1;
+      }
+
+      .page-view .stat-box .stat-label,
+      .page-view .payroll-stats-grid .stat-label {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
       }
 
       .page-view .log-table-wrapper,
@@ -4663,16 +4689,22 @@ async function fetchMultiLiveDetections() {
             <h1><i class="fa-solid fa-clipboard-user" aria-hidden="true" style="color: #3d9fd4;"></i> Attendance Reports</h1>
             <p class="page-subtitle" id="mainReportSubtitle">View and manage employee attendance records.</p>
           </div>
-          <div class="page-header-actions">
+          <div class="page-header-actions" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button id="mainReportRefreshBtn" type="button" onclick="fetchMainReport(true)" class="btn btn-outline" style="width:auto; padding:9px 18px; font-size:0.88em; border-color:#3d9fd4; color:#247eae;">
               <i class="fa-solid fa-rotate"></i> Refresh Data
             </button>
-            <button onclick="exportMainPDF()" class="btn btn-primary shadow" style="width:auto; padding:9px 20px; font-size:0.88em; background:#e11d48; border:none; color:white; font-weight:600;">
-              <i class="fa-solid fa-file-pdf"></i> Export PDF
+            <button type="button" id="mainResetFiltersBtn" onclick="resetMainReportFilters()" class="btn btn-outline-secondary" style="width:auto; padding:9px 18px; font-size:0.88em;">
+              <i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters
             </button>
-            <button onclick="exportMainCSV()" class="btn btn-primary shadow" style="width:auto; padding:9px 20px; font-size:0.88em; background:#0284c7; border:none; color:white; font-weight:600;">
-              <i class="fa-solid fa-file-csv"></i> Export CSV
-            </button>
+            <div class="dropdown">
+              <button id="mainExportDropdownBtn" class="btn btn-primary shadow dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="width:auto; padding:9px 20px; font-size:0.88em; background:#0284c7; border:none; color:white; font-weight:600;">
+                <i class="fa-solid fa-file-export"></i> Export
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end shadow" style="border-radius:10px; border:1px solid #cfe8f7; min-width:180px;">
+                <li><button type="button" class="dropdown-item" id="mainExportPdfItem" onclick="exportMainPDF()"><i class="fa-solid fa-file-pdf me-2 text-danger"></i>Export PDF</button></li>
+                <li><button type="button" class="dropdown-item" id="mainExportCsvItem" onclick="exportMainCSV()"><i class="fa-solid fa-file-csv me-2 text-primary"></i>Export CSV</button></li>
+              </ul>
+            </div>
           </div>
         </div>
 
@@ -4717,7 +4749,7 @@ async function fetchMultiLiveDetections() {
         </div>
 
         <!-- Filter Controls Surface -->
-        <div class="card p-0 mb-4" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; box-shadow:0 6px 18px rgba(61,159,212,0.07); overflow:hidden;">
+        <div class="card p-0 mb-4 leave-filter-bar" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; box-shadow:0 6px 18px rgba(61,159,212,0.07); overflow:hidden; display:block; min-height:auto; padding:0; margin-bottom:16px;">
           <!-- Row 1: Date presets -->
           <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding:14px 18px; border-bottom:1px solid #e8f4fd; background:#f7fbff;">
             <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
@@ -4734,28 +4766,34 @@ async function fetchMultiLiveDetections() {
               </div>
             </div>
             <!-- Custom Date Range Inputs -->
-            <div id="mainCustomRangeGroup" style="display:none; align-items:center; gap:8px;">
-              <input type="date" id="mainStartDate" class="form-control" style="width:auto; padding:5px 10px; font-size:0.82em; min-height:32px;" onchange="handleMainDateRangeChange()" oninput="handleMainDateRangeChange()">
-              <span style="color:#94a3b8; font-size:0.82em;">&#8594;</span>
-              <input type="date" id="mainEndDate" class="form-control" style="width:auto; padding:5px 10px; font-size:0.82em; min-height:32px;" onchange="handleMainDateRangeChange()" oninput="handleMainDateRangeChange()">
-              <button type="button" class="btn btn-sm btn-primary" onclick="fetchMainReport()" style="padding:4px 12px; font-size:0.78em; background:#0284c7; border:none; color:#fff; font-weight:600; min-height:32px; cursor:pointer;">
+            <div id="mainCustomRangeGroup" style="display:none; align-items:center; gap:8px; flex-wrap:wrap;">
+              <label style="display:grid; gap:2px; font-size:0.72em; font-weight:700; color:#64748b; margin:0;">
+                START DATE
+                <input type="date" id="mainStartDate" class="form-control" style="width:auto; padding:5px 10px; font-size:0.82em; min-height:32px;" onchange="handleMainDateRangeChange()" oninput="handleMainDateRangeChange()">
+              </label>
+              <span style="color:#94a3b8; font-size:0.82em; margin-top:14px;">&#8594;</span>
+              <label style="display:grid; gap:2px; font-size:0.72em; font-weight:700; color:#64748b; margin:0;">
+                END DATE
+                <input type="date" id="mainEndDate" class="form-control" style="width:auto; padding:5px 10px; font-size:0.82em; min-height:32px;" disabled onchange="handleMainDateRangeChange()" oninput="handleMainDateRangeChange()">
+              </label>
+              <button type="button" class="btn btn-sm btn-primary" onclick="fetchMainReport()" style="padding:4px 12px; font-size:0.78em; background:#0284c7; border:none; color:#fff; font-weight:600; min-height:32px; cursor:pointer; margin-top:14px;">
                 <i class="fa-solid fa-filter"></i> Apply
               </button>
             </div>
           </div>
           <!-- Row 2: Department, Status, Search -->
-          <div style="display:grid; grid-template-columns:1fr 1fr 2fr; gap:12px; padding:12px 18px; align-items:center;">
+          <div class="leave-filter-bar" style="margin:0; border:0; border-radius:0; background:transparent; box-shadow:none;">
             <!-- Department -->
-            <div style="position:relative;">
-              <i class="fa-solid fa-building" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.78em; pointer-events:none;"></i>
-              <select id="mainDeptFilter" class="form-control" style="padding:7px 12px 7px 30px; font-size:0.83em; min-height:34px; border-radius:8px;" onchange="fetchMainReport()">
+            <div style="position:relative; min-width:180px; flex:1;">
+              <i class="fa-solid fa-building" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.78em; pointer-events:none; z-index:1;"></i>
+              <select id="mainDeptFilter" class="form-select" style="padding-left:30px; min-width:160px;" onchange="fetchMainReport()">
                 <option value="all">All Departments</option>
               </select>
             </div>
-            <!-- Status -->
-            <div style="position:relative;">
-              <i class="fa-solid fa-circle-half-stroke" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.78em; pointer-events:none;"></i>
-              <select id="mainStatusFilter" class="form-control" style="padding:7px 12px 7px 30px; font-size:0.83em; min-height:34px; border-radius:8px;" onchange="fetchMainReport()">
+            <!-- Status (hidden for multi-day ranges) -->
+            <div id="mainStatusFilterWrap" style="position:relative; min-width:160px; flex:1;">
+              <i class="fa-solid fa-circle-half-stroke" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.78em; pointer-events:none; z-index:1;"></i>
+              <select id="mainStatusFilter" class="form-select" style="padding-left:30px; min-width:140px;" onchange="fetchMainReport()">
                 <option value="all">All Statuses</option>
                 <option value="present">Present Only</option>
                 <option value="absent">Absent Only</option>
@@ -4763,10 +4801,16 @@ async function fetchMultiLiveDetections() {
               </select>
             </div>
             <!-- Search -->
-            <div style="position:relative;">
-              <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.8em; pointer-events:none;"></i>
-              <input type="text" id="mainReportSearch" class="form-control" value="" autocomplete="off" placeholder="Search name, ID, department, CNIC..." style="padding:7px 14px 7px 34px; font-size:0.83em; min-height:34px; border-radius:8px; width:100%;" oninput="filterMainTableLocally()" onkeyup="filterMainTableLocally()">
+            <div style="position:relative; flex:2; min-width:220px;">
+              <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.8em; pointer-events:none; z-index:1;"></i>
+              <input type="search" id="mainReportSearch" class="form-control" maxlength="100" value="" autocomplete="off" placeholder="Search name, ID, department, CNIC..." style="padding-left:34px; width:100%;" oninput="onMainReportSearchInput()">
             </div>
+            <select id="mainReportPageSize" class="form-select" style="width:auto; min-width:110px;" onchange="changeMainReportPageSize(this.value)">
+              <option value="10">10 / page</option>
+              <option value="25" selected>25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
           </div>
         </div>
 
@@ -4791,6 +4835,10 @@ async function fetchMultiLiveDetections() {
           <div id="mainReportEmpty" style="padding:40px; text-align:center; color:#64748b; display:none;">
             <i class="fa-solid fa-folder-open" style="font-size:2em; margin-bottom:8px; opacity:0.6;"></i>
             <p>No attendance records match the selected filter criteria.</p>
+          </div>
+          <div id="mainReportPaginationBar" class="app-table-pagination">
+            <div id="mainReportPaginationInfo" class="app-page-info">Showing 0 of 0 records</div>
+            <div id="mainReportPageControls" class="app-page-controls"></div>
           </div>
         </div>
       </div>
@@ -5879,8 +5927,9 @@ async function fetchMultiLiveDetections() {
             </div>
             {% endif %}
             <div class="col-md-6">
-              <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Notes / Remarks</label>
-              <input type="text" class="form-control" id="editNotes" maxlength="500" placeholder="Optional notes or remarks" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Internal Notes / Remarks</label>
+              <input type="text" class="form-control" id="editNotes" maxlength="500" placeholder="Optional internal note for HR (not shown on payslips)" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <small class="text-muted" style="display:block; margin-top:4px;">For internal HR comments only (exceptions, special handling, reminders). Max 500 characters.</small>
             </div>
             <!-- Edit Camera Permissions -->
             <div class="col-md-6">
@@ -5944,6 +5993,19 @@ async function fetchMultiLiveDetections() {
         </div>
       </div>
 
+      <div id="staffBulkActionsBar" style="display:none; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px; padding:12px 16px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px;">
+        <div style="font-weight:700; color:#1e3a8a; font-size:0.9em;">
+          <i class="fa-solid fa-check-double" style="margin-right:6px;"></i>
+          <span id="staffBulkSelectedCount">0</span> staff selected
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm btn-primary" onclick="openBulkCameraModal()" style="background:#0284c7; border:none; font-weight:700;">
+            <i class="fa-solid fa-camera-rotate"></i> Assign Cameras
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearStaffSelection()">Clear Selection</button>
+        </div>
+      </div>
+
       <!-- Metric Summary Cards -->
       <div class="stats-grid" style="margin-bottom: 24px;">
         <div class="stat-box">
@@ -5976,9 +6038,9 @@ async function fetchMultiLiveDetections() {
       </div>
 
       <!-- Filter Controls Surface -->
-      <div class="card p-0 mb-4" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; box-shadow:0 6px 18px rgba(61,159,212,0.07); overflow:hidden;">
-        <div class="staff-directory-filter-row" style="background:#f7fbff;">
-          <div class="staff-directory-search-wrap">
+      <div class="card p-0 mb-4 leave-filter-bar" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; box-shadow:0 6px 18px rgba(61,159,212,0.07); overflow:hidden; display:block; min-height:auto; padding:0;">
+        <div class="leave-filter-bar staff-directory-filter-row" style="background:#f7fbff; margin:0; border:0; border-radius:0;">
+          <div class="staff-directory-search-wrap" style="flex:1; min-width:220px;">
             <i class="fa-solid fa-magnifying-glass" style="color:#3d9fd4; font-size:0.9em;"></i>
             <input type="text" id="tabStaffSearchInput" maxlength="100" placeholder="Search by name, ID, position, CNIC, phone, department..." oninput="filterTabStaffTable()">
           </div>
@@ -7964,12 +8026,13 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="mb-3">
               <label class="form-label" style="font-weight: 600; color: #334155;">Check-In Time *</label>
-              <input type="time" class="form-control" id="manualAttCheckIn" value="09:00" required />
+              <input type="time" class="form-control" id="manualAttCheckIn" value="09:00" required oninput="validateManualAttendanceTimes()" />
             </div>
             <div class="mb-3">
-              <label class="form-label" style="font-weight: 600; color: #334155;">Check-Out Time</label>
-              <input type="time" class="form-control" id="manualAttCheckOut" />
-              <small class="text-muted">Leave blank if the employee hasn't checked out yet.</small>
+              <label class="form-label" style="font-weight: 600; color: #334155;">Check-Out Time <span style="font-weight:500; color:#64748b;">(optional)</span></label>
+              <input type="time" class="form-control" id="manualAttCheckOut" oninput="validateManualAttendanceTimes()" />
+              <small class="text-muted">Leave blank if the employee has not checked out yet. For overnight shifts, next-day checkout times are supported.</small>
+              <small id="manualAttTimeError" class="text-danger" role="alert"></small>
             </div>
             <div class="mb-3">
               <label class="form-label" style="font-weight: 600; color: #334155;">Description / Notes</label>
@@ -9944,7 +10007,8 @@ async function fetchMultiLiveDetections() {
         const department = document.getElementById("enrollDepartment") ? document.getElementById("enrollDepartment").value : "";
         const position = document.getElementById("enrollPosition") ? document.getElementById("enrollPosition").value : "";
         const cnic = document.getElementById("enrollCNIC") ? document.getElementById("enrollCNIC").value : "";
-        const salary = document.getElementById("enrollSalary") ? document.getElementById("enrollSalary").value : 0;
+        const salaryField = document.getElementById("enrollSalary");
+        const salary = salaryField ? salaryField.value : '';
         const join_date = document.getElementById("enrollJoinDate") ? document.getElementById("enrollJoinDate").value : "";
         const notes = document.getElementById("enrollNotes") ? document.getElementById("enrollNotes").value : "";
         const is_veiled = document.getElementById("enrollIsVeiled") ? (document.getElementById("enrollIsVeiled").value === 'true') : false;
@@ -9956,7 +10020,8 @@ async function fetchMultiLiveDetections() {
           showMessage("enrollmentMessage", "Full name is required.", "error");
           return;
         }
-        const enrollmentFields = ['enrollName', 'enrollEmail', 'enrollPhone', 'enrollCNIC', 'enrollSalary'];
+        const enrollmentFields = ['enrollName', 'enrollEmail', 'enrollPhone', 'enrollCNIC'];
+        if (salaryField) enrollmentFields.push('enrollSalary');
         const invalidEnrollmentField = enrollmentFields.map(id => document.getElementById(id)).find(field => field && !field.checkValidity());
         if (invalidEnrollmentField) {
           invalidEnrollmentField.reportValidity();
@@ -9981,10 +10046,12 @@ async function fetchMultiLiveDetections() {
         const restoreBtn = setButtonLoading(btn, 'Registering...');
 
         try {
+          const enrollPayload = { name, email, phone, department, position, cnic, join_date, notes, is_veiled, shift_id, checkin_cameras, checkout_cameras };
+          if (salaryField) enrollPayload.salary = salary;
           const resp = await fetch(`${API_BASE}/enroll/create-user`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, email, phone, department, position, cnic, salary, join_date, notes, is_veiled, shift_id, checkin_cameras, checkout_cameras }),
+            body: JSON.stringify(enrollPayload),
           });
           const data = await resp.json();
 
@@ -11837,6 +11904,11 @@ async function fetchMultiLiveDetections() {
       // ── Main Attendance & Department Reports JS Logic ──
       let currentMainFilterDate = 'today';
       let mainReportData = null;
+      let mainReportFilteredRecords = [];
+      let mainReportPage = 1;
+      let mainReportPageSize = 25;
+      let mainReportFetchController = null;
+      let mainReportFetchSeq = 0;
 
       async function initMainReportsTab() {
         fetchMainDepartments();
@@ -11864,11 +11936,41 @@ async function fetchMultiLiveDetections() {
 
       let currentMainActiveModalUserId = null;
 
+      function isMainMultiDayPreset(preset) {
+        return ['last7', 'this_week', 'this_month', 'last30', 'custom'].includes(preset);
+      }
+
+      function updateMainStatusFilterVisibility() {
+        const wrap = document.getElementById('mainStatusFilterWrap');
+        const status = document.getElementById('mainStatusFilter');
+        const multiDay = isMainMultiDayPreset(currentMainFilterDate);
+        if (wrap) wrap.style.display = multiDay ? 'none' : '';
+        if (multiDay && status) status.value = 'all';
+      }
+
+      function syncMainCustomEndDateConstraints() {
+        const sInput = document.getElementById('mainStartDate');
+        const eInput = document.getElementById('mainEndDate');
+        if (!sInput || !eInput) return;
+        const startVal = sInput.value;
+        if (!startVal) {
+          eInput.value = '';
+          eInput.disabled = true;
+          eInput.removeAttribute('min');
+          return;
+        }
+        eInput.disabled = false;
+        eInput.min = startVal;
+        if (eInput.value && eInput.value < startVal) {
+          eInput.value = '';
+        }
+      }
+
       function handleMainDateRangeChange(force = false) {
         const sInput = document.getElementById('mainStartDate');
         const eInput = document.getElementById('mainEndDate');
-        let s = sInput ? sInput.value : '';
-        let e = eInput ? eInput.value : '';
+        const s = sInput ? sInput.value : '';
+        const e = eInput ? eInput.value : '';
 
         currentMainFilterDate = 'custom';
         document.querySelectorAll('.main-date-preset').forEach(btn => {
@@ -11883,17 +11985,12 @@ async function fetchMultiLiveDetections() {
 
         const customGroup = document.getElementById('mainCustomRangeGroup');
         if (customGroup) customGroup.style.display = 'flex';
+        syncMainCustomEndDateConstraints();
+        updateMainStatusFilterVisibility();
 
-        if (s && e) {
-          if (s > e) {
-            const temp = s;
-            s = e;
-            e = temp;
-            if (sInput) sInput.value = s;
-            if (eInput) eInput.value = e;
-          }
+        if (s && e && e >= s) {
           fetchMainReport();
-        } else if (force) {
+        } else if (force && s && e && e >= s) {
           fetchMainReport();
         }
       }
@@ -11925,22 +12022,58 @@ async function fetchMultiLiveDetections() {
           targetBtn.classList.add('btn-primary', 'active');
         }
 
+        updateMainStatusFilterVisibility();
+
         if (preset === 'custom') {
           if (customGroup) customGroup.style.display = 'flex';
           const sInput = document.getElementById('mainStartDate');
           const eInput = document.getElementById('mainEndDate');
-          if (sInput && eInput && (!sInput.value || !eInput.value)) {
+          if (sInput && !sInput.value) {
             const now = new Date();
             const year = now.getFullYear();
             const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            if (!sInput.value) sInput.value = `${year}-${month}-01`;
-            if (!eInput.value) eInput.value = `${year}-${month}-${day}`;
+            sInput.value = `${year}-${month}-01`;
           }
-          fetchMainReport();
+          syncMainCustomEndDateConstraints();
+          if (sInput?.value && eInput?.value && eInput.value >= sInput.value) {
+            fetchMainReport();
+          }
           return;
         }
         fetchMainReport();
+      }
+
+      function resetMainReportFilters() {
+        const dept = document.getElementById('mainDeptFilter');
+        const status = document.getElementById('mainStatusFilter');
+        const search = document.getElementById('mainReportSearch');
+        const sInput = document.getElementById('mainStartDate');
+        const eInput = document.getElementById('mainEndDate');
+        if (dept) dept.value = 'all';
+        if (status) status.value = 'all';
+        if (search) search.value = '';
+        if (sInput) sInput.value = '';
+        if (eInput) {
+          eInput.value = '';
+          eInput.disabled = true;
+          eInput.removeAttribute('min');
+        }
+        mainReportPage = 1;
+        setMainDateFilter('today');
+      }
+      window.resetMainReportFilters = resetMainReportFilters;
+
+      function updateMainExportAvailability(recordCount) {
+        const disabled = !recordCount;
+        ['mainExportDropdownBtn', 'mainExportPdfItem', 'mainExportCsvItem'].forEach(id => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.disabled = disabled;
+          el.classList.toggle('disabled', disabled);
+          el.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+          if (disabled) el.title = 'No attendance records available for export';
+          else el.removeAttribute('title');
+        });
       }
 
       async function fetchMainReport(showRefreshState = false) {
@@ -11950,25 +12083,30 @@ async function fetchMultiLiveDetections() {
           refreshButton.disabled = true;
           refreshButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Refreshing...';
         }
+
+        updateMainStatusFilterVisibility();
+
         let url = `${API_BASE}/reports/attendance?`;
         const dept = document.getElementById('mainDeptFilter')?.value || 'all';
         const status = document.getElementById('mainStatusFilter')?.value || 'all';
 
         if (dept !== 'all') url += `&department=${encodeURIComponent(dept)}`;
-        if (status !== 'all') url += `&status=${encodeURIComponent(status)}`;
+        if (!isMainMultiDayPreset(currentMainFilterDate) && status !== 'all') {
+          url += `&status=${encodeURIComponent(status)}`;
+        }
 
         const s = document.getElementById('mainStartDate')?.value;
         const e = document.getElementById('mainEndDate')?.value;
 
-        if (currentMainFilterDate === 'custom' || (s && e)) {
-          if (s && e) {
-            url += `&start_date=${s <= e ? s : e}&end_date=${s <= e ? e : s}`;
-          } else if (s) {
-            url += `&start_date=${s}&end_date=${s}`;
-          } else if (e) {
-            url += `&start_date=${e}&end_date=${e}`;
+        if (currentMainFilterDate === 'custom') {
+          if (s && e && e >= s) {
+            url += `&start_date=${encodeURIComponent(s)}&end_date=${encodeURIComponent(e)}`;
           } else {
-            url += '&date=today';
+            if (showRefreshState && refreshButton) {
+              refreshButton.disabled = false;
+              refreshButton.innerHTML = originalButtonHTML;
+            }
+            return;
           }
         } else if (currentMainFilterDate === 'today') {
           url += '&date=today';
@@ -11986,18 +12124,32 @@ async function fetchMultiLiveDetections() {
           url += '&date=today';
         }
 
+        if (mainReportFetchController) {
+          try { mainReportFetchController.abort(); } catch (_) {}
+        }
+        mainReportFetchController = new AbortController();
+        const seq = ++mainReportFetchSeq;
+        const tbody = document.getElementById('mainReportTbody');
+        if (tbody && !showRefreshState) {
+          tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading attendance records...</td></tr>';
+        }
+
         try {
-          const res = await fetch(url, { cache: 'no-store' });
+          const res = await fetch(url, { cache: 'no-store', signal: mainReportFetchController.signal });
           const report = await res.json();
+          if (seq !== mainReportFetchSeq) return;
           if (!res.ok) throw new Error(report.error || `Attendance report request failed (${res.status}).`);
           if (!report || !Array.isArray(report.records)) throw new Error('Attendance report returned an invalid response.');
           mainReportData = report;
+          mainReportPage = 1;
           renderMainReportUI(mainReportData);
         } catch (err) {
+          if (err && err.name === 'AbortError') return;
+          if (seq !== mainReportFetchSeq) return;
           console.error("Failed to fetch main report:", err);
           if (typeof showAppToast === 'function') showAppToast(err.message || 'Failed to refresh attendance report.', 'error');
         } finally {
-          if (showRefreshState && refreshButton) {
+          if (showRefreshState && refreshButton && seq === mainReportFetchSeq) {
             refreshButton.disabled = false;
             refreshButton.innerHTML = originalButtonHTML;
           }
@@ -12067,7 +12219,13 @@ async function fetchMultiLiveDetections() {
         }
 
         const elSubtitle = document.getElementById('mainReportSubtitle');
-        if (elSubtitle) elSubtitle.textContent = `Report Period: ${data.date_label || 'Today'} • Sync: ${new Date().toLocaleTimeString()}`;
+        if (elSubtitle) {
+          const generated = new Date().toLocaleString('en-GB', {
+            day: '2-digit', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+          });
+          elSubtitle.textContent = `Period: ${data.date_label || 'Today'}  |  Generated: ${generated}`;
+        }
 
         // Render Department Grid
         const grid = document.getElementById('mainDeptGrid');
@@ -12107,20 +12265,33 @@ async function fetchMultiLiveDetections() {
           }
         }
 
+        updateMainStatusFilterVisibility();
         // Re-apply the live search so a background refresh doesn't clear the user's filter
-        const liveQuery = document.getElementById('mainReportSearch')?.value.trim() || '';
-        if (liveQuery) {
-          filterMainTableLocally();
-        } else {
-          renderMainTableRows(data.records || [], isMultiDay);
-        }
+        filterMainTableLocally(false);
       }
 
-      function filterMainTableLocally() {
+      function onMainReportSearchInput() {
+        mainReportPage = 1;
+        filterMainTableLocally();
+      }
+      window.onMainReportSearchInput = onMainReportSearchInput;
+
+      function changeMainReportPageSize(value) {
+        mainReportPageSize = Math.max(1, parseInt(value, 10) || 25);
+        mainReportPage = 1;
+        renderMainReportPage();
+      }
+      window.changeMainReportPageSize = changeMainReportPageSize;
+
+      function filterMainTableLocally(resetPage = true) {
         const query = document.getElementById('mainReportSearch')?.value.toLowerCase().trim() || '';
-        if (!mainReportData || !mainReportData.records) return;
-        const isMultiDay = Boolean(mainReportData.is_multi_day);
-        const filtered = mainReportData.records.filter(r => {
+        if (!mainReportData || !mainReportData.records) {
+          mainReportFilteredRecords = [];
+          updateMainExportAvailability(0);
+          renderMainReportPage();
+          return;
+        }
+        mainReportFilteredRecords = mainReportData.records.filter(r => {
           if (!query) return true;
           return (r.name && r.name.toLowerCase().includes(query)) ||
                  (r.department && r.department.toLowerCase().includes(query)) ||
@@ -12130,15 +12301,58 @@ async function fetchMultiLiveDetections() {
                  (r.phone && r.phone.toLowerCase().includes(query)) ||
                  (r.user_id && String(r.user_id).includes(query));
         });
-        renderMainTableRows(filtered, isMultiDay);
+        updateMainExportAvailability(mainReportFilteredRecords.length);
+        if (resetPage) mainReportPage = 1;
+        renderMainReportPage();
       }
 
-      function renderMainTableRows(records, isMultiDay) {
+      function renderMainReportPagination(totalItems) {
+        const info = document.getElementById('mainReportPaginationInfo');
+        const controls = document.getElementById('mainReportPageControls');
+        const totalPages = Math.max(1, Math.ceil(totalItems / mainReportPageSize) || 1);
+        mainReportPage = Math.max(1, Math.min(mainReportPage, totalPages));
+        const start = totalItems === 0 ? 0 : ((mainReportPage - 1) * mainReportPageSize) + 1;
+        const end = Math.min(totalItems, mainReportPage * mainReportPageSize);
+        if (info) info.textContent = `Showing ${start}-${end} of ${totalItems} records`;
+        if (!controls) return;
+        controls.innerHTML = '';
+        const prev = document.createElement('button');
+        prev.className = 'app-page-btn';
+        prev.innerHTML = '<i class="fa-solid fa-chevron-left"></i> Prev';
+        prev.disabled = mainReportPage <= 1;
+        prev.onclick = () => { mainReportPage -= 1; renderMainReportPage(); };
+        controls.appendChild(prev);
+        for (let page = 1; page <= totalPages && page <= 8; page++) {
+          const btn = document.createElement('button');
+          btn.className = `app-page-btn ${page === mainReportPage ? 'active' : ''}`;
+          btn.textContent = page;
+          btn.onclick = () => { mainReportPage = page; renderMainReportPage(); };
+          controls.appendChild(btn);
+        }
+        const next = document.createElement('button');
+        next.className = 'app-page-btn';
+        next.innerHTML = 'Next <i class="fa-solid fa-chevron-right"></i>';
+        next.disabled = mainReportPage >= totalPages;
+        next.onclick = () => { mainReportPage += 1; renderMainReportPage(); };
+        controls.appendChild(next);
+      }
+
+      function renderMainReportPage() {
+        const isMultiDay = Boolean(mainReportData?.is_multi_day);
+        const total = mainReportFilteredRecords.length;
+        renderMainReportPagination(total);
+        const startIdx = (mainReportPage - 1) * mainReportPageSize;
+        const pageRecords = mainReportFilteredRecords.slice(startIdx, startIdx + mainReportPageSize);
+        renderMainTableRows(pageRecords, isMultiDay, total);
+      }
+
+      function renderMainTableRows(records, isMultiDay, totalFiltered = null) {
         const thead = document.getElementById('mainReportThead');
         const tbody = document.getElementById('mainReportTbody');
         const emptyState = document.getElementById('mainReportEmpty');
         if (!tbody) return;
         tbody.innerHTML = '';
+        const totalCount = totalFiltered == null ? (records || []).length : totalFiltered;
 
         if (thead) {
           const table = thead.parentElement;
@@ -12183,9 +12397,11 @@ async function fetchMultiLiveDetections() {
 
         if (!records || records.length === 0) {
           if (emptyState) emptyState.style.display = 'block';
+          updateMainExportAvailability(totalCount);
           return;
         }
         if (emptyState) emptyState.style.display = 'none';
+        updateMainExportAvailability(totalCount);
 
         records.forEach(r => {
           const tr = document.createElement('tr');
@@ -12477,11 +12693,46 @@ async function fetchMultiLiveDetections() {
         const opt = select.options[select.selectedIndex];
         if (opt) {
           const start = opt.getAttribute('data-start');
-          const end = opt.getAttribute('data-end');
           if (start) document.getElementById('manualAttCheckIn').value = start.slice(0, 5);
-          if (end) document.getElementById('manualAttCheckOut').value = end.slice(0, 5);
+          // Keep checkout blank by default so users can leave it empty when not checked out.
+          const out = document.getElementById('manualAttCheckOut');
+          if (out && !out.value) out.value = '';
+          validateManualAttendanceTimes();
         }
       }
+
+      function validateManualAttendanceTimes() {
+        const err = document.getElementById('manualAttTimeError');
+        const checkIn = document.getElementById('manualAttCheckIn')?.value || '';
+        const checkOut = document.getElementById('manualAttCheckOut')?.value || '';
+        if (err) err.textContent = '';
+        if (!checkIn || !checkOut) return true;
+        const select = document.getElementById('manualAttShiftSelect');
+        const opt = select?.options[select.selectedIndex];
+        const shiftStart = (opt?.getAttribute('data-start') || '09:00').slice(0, 5);
+        const shiftEnd = (opt?.getAttribute('data-end') || '17:00').slice(0, 5);
+        const toMins = (t) => {
+          const [h, m] = String(t).split(':').map(Number);
+          return (h * 60) + m;
+        };
+        const isOvernight = toMins(shiftEnd) < toMins(shiftStart);
+        const ci = toMins(checkIn);
+        let co = toMins(checkOut);
+        if (isOvernight) {
+          if (co < ci) co += 24 * 60;
+          if (co <= ci) {
+            if (err) err.textContent = 'For overnight shifts, checkout must be after check-in (next-day times allowed).';
+            return false;
+          }
+          return true;
+        }
+        if (co <= ci) {
+          if (err) err.textContent = 'Check-out time must be after check-in time.';
+          return false;
+        }
+        return true;
+      }
+      window.validateManualAttendanceTimes = validateManualAttendanceTimes;
 
       function formatTimeToHHMM(timeStr) {
         if (!timeStr || timeStr === '-' || timeStr === '--:--' || timeStr === 'None') return '';
@@ -12513,7 +12764,10 @@ async function fetchMultiLiveDetections() {
         const select = document.getElementById('manualAttShiftSelect');
         const opt = select?.options[select.selectedIndex];
         document.getElementById('manualAttCheckIn').value = opt?.getAttribute('data-start')?.slice(0, 5) || '09:00';
-        document.getElementById('manualAttCheckOut').value = opt?.getAttribute('data-end')?.slice(0, 5) || '';
+        document.getElementById('manualAttCheckOut').value = '';
+        const timeErr = document.getElementById('manualAttTimeError');
+        if (timeErr) timeErr.textContent = '';
+        updateManualNotesCounter();
 
         new bootstrap.Modal(document.getElementById('manualAttendanceModal')).show();
       }
@@ -12536,7 +12790,10 @@ async function fetchMultiLiveDetections() {
         const opt = select?.options[select.selectedIndex];
         
         document.getElementById('manualAttCheckIn').value = inHHMM || opt?.getAttribute('data-start')?.slice(0, 5) || '09:00';
-        document.getElementById('manualAttCheckOut').value = outHHMM || opt?.getAttribute('data-end')?.slice(0, 5) || '';
+        document.getElementById('manualAttCheckOut').value = outHHMM || '';
+        const timeErr = document.getElementById('manualAttTimeError');
+        if (timeErr) timeErr.textContent = '';
+        updateManualNotesCounter();
 
         new bootstrap.Modal(document.getElementById('manualAttendanceModal')).show();
       }
@@ -12557,6 +12814,10 @@ async function fetchMultiLiveDetections() {
         
         if (!checkIn) {
             showAppToast('Check-In time is required', 'error');
+            return;
+        }
+        if (!validateManualAttendanceTimes()) {
+            showAppToast(document.getElementById('manualAttTimeError')?.textContent || 'Invalid check-in / check-out times.', 'error');
             return;
         }
         
@@ -12836,7 +13097,7 @@ async function fetchMultiLiveDetections() {
         const search = document.getElementById('mainReportSearch')?.value.trim() || '';
 
         if (dept !== 'all') params.append('department', dept);
-        if (status !== 'all') params.append('status', status);
+        if (!isMainMultiDayPreset(currentMainFilterDate) && status !== 'all') params.append('status', status);
         if (search) params.append('search', search);
 
         const s = document.getElementById('mainStartDate')?.value;
@@ -12880,11 +13141,19 @@ async function fetchMultiLiveDetections() {
       }
 
       function exportMainCSV() {
+        if (!mainReportFilteredRecords.length) {
+          showAppToast('No attendance records available to export.', 'warning');
+          return;
+        }
         const query = buildMainExportQuery();
         window.location.href = `${API_BASE}/reports/export/csv?${query}`;
       }
 
       function exportMainPDF() {
+        if (!mainReportFilteredRecords.length) {
+          showAppToast('No attendance records available to export.', 'warning');
+          return;
+        }
         const query = buildMainExportQuery();
         window.location.href = `${API_BASE}/reports/export/pdf?${query}`;
       }
@@ -13342,7 +13611,20 @@ async function fetchMultiLiveDetections() {
             summaryEl.innerHTML = `<strong>All ${tabAllStaff.length}</strong> staff members will receive this camera assignment.`;
           }
         }
+        const bar = document.getElementById('staffBulkActionsBar');
+        const countEl = document.getElementById('staffBulkSelectedCount');
+        if (countEl) countEl.textContent = String(selectedStaffIds.size);
+        if (bar) bar.style.display = selectedStaffIds.size > 0 ? 'flex' : 'none';
       }
+
+      function clearStaffSelection() {
+        selectedStaffIds.clear();
+        document.querySelectorAll('.staff-row-checkbox').forEach(cb => { cb.checked = false; });
+        const selectAll = document.getElementById('selectAllStaffCheck');
+        if (selectAll) selectAll.checked = false;
+        updateBulkButtonBadge();
+      }
+      window.clearStaffSelection = clearStaffSelection;
 
       function openBulkCameraModal() {
         populateCameraAssignmentDropdowns();

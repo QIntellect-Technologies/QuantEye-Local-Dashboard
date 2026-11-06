@@ -37,7 +37,11 @@ from typing import Dict, List, Optional, Tuple, Any
 import sqlite3
 import uuid
 import numpy as np
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover
+    ZoneInfo = None  # type: ignore
 from pathlib import Path
 import mimetypes
 import cv2
@@ -1010,12 +1014,21 @@ def create_user():
     department = data.get('department', '')
     position = data.get('position', data.get('designation', ''))
     cnic = data.get('cnic', '')
+    payroll_required = True
+    if is_client_browser_session():
+        payroll_required = bool(licensed_module_flags(session_licensed_modules()).get('payroll'))
+    salary_raw = data.get('salary', None)
     try:
-        salary = db.parse_salary_amount(data.get('salary', 0))
+        if salary_raw is None or str(salary_raw).strip() == '':
+            salary = 0.0 if not payroll_required else None
+        else:
+            salary = db.parse_salary_amount(salary_raw)
     except ValueError as salary_err:
         return jsonify({'error': str(salary_err), 'field': 'salary'}), 400
-    if salary <= 0:
+    if payroll_required and (salary is None or salary <= 0):
         return jsonify({'error': 'Basic salary must be greater than 0.', 'field': 'salary'}), 400
+    if salary is None:
+        salary = 0.0
     if salary > 50_000_000:
         return jsonify({'error': 'Basic salary cannot exceed 50,000,000.', 'field': 'salary'}), 400
     join_date = str(data.get('join_date') or '').strip()
@@ -4484,6 +4497,16 @@ def get_admin_display_name(requested_name=None) -> str:
     return requested or 'Admin'
 
 
+def report_timestamp_pk(fmt: str = '%d %b %Y, %I:%M %p') -> str:
+    """Attendance report timestamps in Pakistan Standard Time (UTC+5)."""
+    try:
+        if ZoneInfo is not None:
+            return datetime.now(ZoneInfo('Asia/Karachi')).strftime(fmt)
+    except Exception:
+        pass
+    return (datetime.now(timezone.utc) + timedelta(hours=5)).strftime(fmt)
+
+
 def payroll_tenant() -> Dict[str, str]:
     return {
         'organization_id': get_current_tenant_id(),
@@ -5362,7 +5385,7 @@ def api_reports_export_pdf():
         'status': status_disp,
         'shift': shift_disp,
         'search': search or 'None',
-        'generated_at': datetime.now().strftime('%d %b %Y, %I:%M %p')
+        'generated_at': report_timestamp_pk()
     }
 
     pdf_data = attendance_report_pdf_bytes(report, filter_info, org_name)
@@ -5413,7 +5436,7 @@ def api_reports_export_csv():
     dept_disp = department if department and department.lower() != 'all' else 'All Departments'
     shift_disp_filter = str(shift_id) if shift_id and str(shift_id).lower() != 'all' else 'All Shifts'
     status_disp_filter = status.upper() if status and status.lower() != 'all' else 'All Statuses'
-    gen_time = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    gen_time = report_timestamp_pk()
 
     # KPI counts strictly from matching records
     tot = len(records)
@@ -5596,7 +5619,7 @@ def api_reports_export_employee_csv():
 
     writer.writerow(['QIntellect Technologies - Employee Attendance History'])
     writer.writerow([f'Employee: {emp_name} ({emp_id_disp}) | Department: {dept} | Designation: {designation} | Shift: {shift}'])
-    writer.writerow([f'Reporting Period: {date_label} | Generated At: {datetime.now().strftime("%d %b %Y, %I:%M %p")}'])
+    writer.writerow([f'Reporting Period: {date_label} | Generated At: {report_timestamp_pk()}'])
     
     pres_disp = emp_record.get('present_display', f"{emp_record.get('present_days', 0)} / {emp_record.get('working_days', 0)}")
     rate_disp = f"{emp_record.get('attendance_rate', 0.0)}%"

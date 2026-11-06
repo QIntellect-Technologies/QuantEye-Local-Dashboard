@@ -1207,7 +1207,13 @@ def attendance_report_pdf_bytes(report: Dict[str, Any], filter_info: Optional[Di
     shift_filter = filters.get('shift') or 'All'
     camera_filter = filters.get('camera') or 'All'
     search_filter = filters.get('search') or ''
-    gen_time = datetime.now().strftime('%d %b %Y, %I:%M %p')
+    gen_time = str(filters.get('generated_at') or '').strip()
+    if not gen_time:
+        try:
+            from zoneinfo import ZoneInfo
+            gen_time = datetime.now(ZoneInfo('Asia/Karachi')).strftime('%d %b %Y, %I:%M %p')
+        except Exception:
+            gen_time = (datetime.utcnow() + timedelta(hours=5)).strftime('%d %b %Y, %I:%M %p')
 
     def rgb_fill(ops: List[str], r: float, g: float, b: float, x: float, y: float, w: float, h: float) -> None:
         ops.append("{:.3f} {:.3f} {:.3f} rg {:.1f} {:.1f} {:.1f} {:.1f} re f".format(r, g, b, x, y, w, h))
@@ -1233,8 +1239,10 @@ def attendance_report_pdf_bytes(report: Dict[str, Any], filter_info: Optional[Di
         rgb_fill(ops, 0.09, 0.19, 0.26, 36, 786, 523, 36)
         text_at(ops, 48, 804, str(org_name)[:45], 13, True, (1, 1, 1))
         text_at(ops, 48, 792, "ATTENDANCE REPORT", 8, True, (0.24, 0.62, 0.83))
-        text_at(ops, 350, 804, f"Period: {date_label}", 7, True, (1, 1, 1))
-        text_at(ops, 380, 792, f"Generated: {gen_time}", 8, False, (0.7, 0.8, 0.85))
+        # Keep Period + Generated right-aligned and stacked with matching left edges
+        meta_x = 320
+        text_at(ops, meta_x, 804, f"Period: {str(date_label)[:42]}", 8, True, (1, 1, 1))
+        text_at(ops, meta_x, 792, f"Generated: {gen_time}", 8, False, (0.7, 0.8, 0.85))
 
         # Table header
         table_top = 746
