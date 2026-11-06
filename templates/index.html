@@ -3898,19 +3898,23 @@
               <div class="row g-3 mb-2">
                 <div class="col-md-6">
                   <label class="form-label" for="enrollName">Full Name *</label>
-                  <input type="text" class="form-control" id="enrollName" maxlength="100" pattern="(?=.*[A-Za-z])[A-Za-z0-9 .'-]+" placeholder="Full name" required autocomplete="name" />
+                  <input type="text" class="form-control" id="enrollName" maxlength="100" placeholder="Full name" required autocomplete="name" />
+                  <div id="enrollNameError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
                 </div>
                 <div class="col-md-6">
                   <label class="form-label" for="enrollEmail">Email Address</label>
                   <input type="email" class="form-control" id="enrollEmail" maxlength="120" placeholder="name@company.com" autocomplete="email" />
+                  <div id="enrollEmailError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
                 </div>
                 <div class="col-md-6">
                   <label class="form-label" for="enrollPhone">Phone Number</label>
-                  <input type="text" class="form-control" id="enrollPhone" maxlength="30" pattern="\+?[0-9 .()\-]{7,30}" placeholder="03xx-xxxxxxx" autocomplete="tel" />
+                  <input type="text" class="form-control" id="enrollPhone" maxlength="30" placeholder="03xx-xxxxxxx" autocomplete="tel" />
+                  <div id="enrollPhoneError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
                 </div>
                 <div class="col-md-6">
                   <label class="form-label" for="enrollCNIC">CNIC / National ID</label>
-                  <input type="text" class="form-control" id="enrollCNIC" maxlength="15" pattern="[0-9]{5}-?[0-9]{7}-?[0-9]" placeholder="xxxxx-xxxxxxx-x" />
+                  <input type="text" class="form-control" id="enrollCNIC" maxlength="15" placeholder="xxxxx-xxxxxxx-x" inputmode="numeric" />
+                  <div id="enrollCNICError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
                 </div>
               </div>
             </div>
@@ -3976,7 +3980,7 @@
             </div>
 
             <div class="enrollment-actions">
-              <button class="btn btn-primary" type="button" onclick="createEnrollUser()">
+              <button id="enrollSubmitBtn" class="btn btn-primary" type="button" onclick="createEnrollUser()" disabled>
                 <i class="fa-solid fa-user-plus"></i> Register Staff
               </button>
             </div>
@@ -4738,9 +4742,6 @@ async function fetchMultiLiveDetections() {
             <button id="mainReportRefreshBtn" type="button" onclick="fetchMainReport(true)" class="btn btn-outline" style="width:auto; padding:9px 18px; font-size:0.88em; border-color:#3d9fd4; color:#247eae;">
               <i class="fa-solid fa-rotate"></i> Refresh Data
             </button>
-            <button type="button" id="mainResetFiltersBtn" onclick="resetMainReportFilters()" class="btn btn-outline-secondary" style="width:auto; padding:9px 18px; font-size:0.88em;">
-              <i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters
-            </button>
             <div class="dropdown">
               <button id="mainExportDropdownBtn" class="btn btn-primary shadow dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="width:auto; padding:9px 20px; font-size:0.88em; background:#0284c7; border:none; color:white; font-weight:600;">
                 <i class="fa-solid fa-file-export"></i> Export
@@ -4856,6 +4857,9 @@ async function fetchMultiLiveDetections() {
               <option value="50">50 / page</option>
               <option value="100">100 / page</option>
             </select>
+            <button type="button" id="mainResetFiltersBtn" onclick="resetMainReportFilters()" class="btn btn-outline-secondary btn-sm" style="width:auto; padding:8px 14px; font-weight:700; white-space:nowrap;">
+              <i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters
+            </button>
           </div>
         </div>
 
@@ -5342,6 +5346,7 @@ async function fetchMultiLiveDetections() {
             <option value="100">100 / page</option>
           </select>
           <button class="btn btn-outline-secondary btn-sm" onclick="loadLeaveRequests()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetLeaveRequestFilters()"><i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters</button>
           <button id="leaveExportBtn" class="btn btn-outline-secondary btn-sm" onclick="exportLeaveRequests()" disabled><i class="fa-solid fa-file-export"></i> Export</button>
           <button class="btn btn-primary btn-sm ms-auto" onclick="openFileLeaveModal()"><i class="fa-solid fa-plus"></i> File Leave Request</button>
         </div>
@@ -5402,6 +5407,7 @@ async function fetchMultiLiveDetections() {
             <option value="100">100 / page</option>
           </select>
           <button class="btn btn-outline-secondary btn-sm" onclick="loadLeaveBalances()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetLeaveBalanceFilters()"><i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters</button>
         </div>
         <div class="card p-0" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; box-shadow:0 6px 18px rgba(61,159,212,0.07); overflow:hidden;">
         <div class="log-table-wrapper" style="overflow-x:auto; border:0; border-radius:0; background:#ffffff;">
@@ -5796,6 +5802,9 @@ async function fetchMultiLiveDetections() {
             <select id="shiftFilterCurrentShift" onchange="filterShiftStaffTable()" class="form-select" style="font-size:0.82em; font-weight:600; border:1px solid #cfe8f7; border-radius:8px; padding:6px 28px 6px 10px;">
               <option value="all">All Assigned Shifts</option>
             </select>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetShiftStaffFilters()" style="font-weight:700; white-space:nowrap;">
+              <i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters
+            </button>
           </div>
         </div>
 
@@ -5923,15 +5932,18 @@ async function fetchMultiLiveDetections() {
           <div class="row g-3 mb-3">
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Full Name *</label>
-              <input type="text" class="form-control" id="editName" maxlength="100" pattern="(?=.*[A-Za-z])[A-Za-z0-9 .'-]+" placeholder="e.g. Imran Khalid" required style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="text" class="form-control" id="editName" maxlength="100" placeholder="e.g. Imran Khalid" required style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <div id="editNameError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Email Address</label>
               <input type="email" class="form-control" id="editEmail" maxlength="120" placeholder="e.g. imran@example.com" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <div id="editEmailError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Phone Number</label>
-              <input type="text" class="form-control" id="editPhone" maxlength="30" pattern="\+?[0-9 .()\-]{7,30}" placeholder="e.g. 0300-1234567" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="text" class="form-control" id="editPhone" maxlength="30" placeholder="e.g. 0300-1234567" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <div id="editPhoneError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Department *</label>
@@ -5947,7 +5959,8 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">CNIC / National ID</label>
-              <input type="text" class="form-control" id="editCNIC" maxlength="15" pattern="[0-9]{5}-?[0-9]{7}-?[0-9]" placeholder="e.g. 35202-1234567-1" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <input type="text" class="form-control" id="editCNIC" maxlength="15" placeholder="e.g. 35202-1234567-1" inputmode="numeric" style="border-color: #cfe8f7; font-size: 0.9em;" />
+              <div id="editCNICError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
             </div>
             {% if not is_client_session or client_module_entitlements.payroll %}
             <div class="col-md-6 payroll-only-ui">
@@ -5971,11 +5984,6 @@ async function fetchMultiLiveDetections() {
               </select>
             </div>
             {% endif %}
-            <div class="col-md-6">
-              <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Internal Notes / Remarks</label>
-              <input type="text" class="form-control" id="editNotes" maxlength="500" placeholder="Optional internal note for HR (not shown on payslips)" style="border-color: #cfe8f7; font-size: 0.9em;" />
-              <small class="text-muted" style="display:block; margin-top:4px;">For internal HR comments only (exceptions, special handling, reminders). Max 500 characters.</small>
-            </div>
             <!-- Edit Camera Permissions -->
             <div class="col-md-6">
               <label style="font-weight: 700; color: #173042; font-size: 0.85em; margin-bottom: 6px; display: block;">
@@ -6004,7 +6012,7 @@ async function fetchMultiLiveDetections() {
 
         <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 22px; display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0;">
           <button type="button" class="btn btn-secondary" onclick="closeEditModal()" style="font-weight: 600; padding: 8px 18px; font-size: 0.88em;">Cancel</button>
-          <button type="button" class="btn btn-primary" onclick="saveUserProfile()" style="background: #3d9fd4; border: none; font-weight: 700; padding: 8px 20px; font-size: 0.88em;">
+          <button type="button" id="editSaveProfileBtn" class="btn btn-primary" onclick="saveUserProfile()" style="background: #3d9fd4; border: none; font-weight: 700; padding: 8px 20px; font-size: 0.88em;">
             <i class="fa-solid fa-floppy-disk"></i> Save Profile Details
           </button>
         </div>
@@ -6046,6 +6054,9 @@ async function fetchMultiLiveDetections() {
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button type="button" class="btn btn-sm btn-primary" onclick="openBulkCameraModal()" style="background:#0284c7; border:none; font-weight:700;">
             <i class="fa-solid fa-camera-rotate"></i> Assign Cameras
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteSelectedStaffMembers()" style="font-weight:700;">
+            <i class="fa-solid fa-trash"></i> Delete Selected
           </button>
           <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearStaffSelection()">Clear Selection</button>
         </div>
@@ -6094,6 +6105,9 @@ async function fetchMultiLiveDetections() {
             <select id="tabStaffDeptFilter" onchange="filterTabStaffTable()" style="background:#ffffff; border:1px solid #cfe8f7; color:#173042; padding:8px 14px; border-radius:10px; font-size:0.88em; outline:none; font-weight:600; cursor:pointer;">
               <option value="all">All Departments</option>
             </select>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetStaffDirectoryFilters()" style="font-weight:700; white-space:nowrap;">
+              <i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters
+            </button>
           </div>
         </div>
       </div>
@@ -10041,6 +10055,134 @@ async function fetchMultiLiveDetections() {
         elem.innerHTML = `<div class="${type}"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${message}</span></div>`;
       }
 
+      function staffFieldError(msg) {
+        return String(msg || '').trim();
+      }
+      function validateStaffNameValue(value, required = true) {
+        const v = String(value || '').trim();
+        if (!v) return required ? 'Full name is required.' : '';
+        if (!/^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(v)) {
+          return 'Name may only contain letters, spaces, hyphens, and apostrophes.';
+        }
+        return '';
+      }
+      function validateStaffEmailValue(value) {
+        const v = String(value || '').trim();
+        if (!v) return '';
+        if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(v)) {
+          return 'Enter a valid email address (example@domain.com).';
+        }
+        return '';
+      }
+      function validateStaffPhoneValue(value) {
+        const v = String(value || '').trim();
+        if (!v) return '';
+        if (!/^\+?[0-9 .()\-]+$/.test(v)) {
+          return 'Phone may only include digits and + ( ) . - characters.';
+        }
+        const digits = v.replace(/\D/g, '');
+        if (digits.length < 10 || digits.length > 15) {
+          return 'Enter a valid phone number (10–15 digits).';
+        }
+        return '';
+      }
+      function formatPakistanCnic(raw) {
+        const digits = String(raw || '').replace(/\D/g, '').slice(0, 13);
+        if (digits.length <= 5) return digits;
+        if (digits.length <= 12) return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+        return `${digits.slice(0, 5)}-${digits.slice(5, 12)}-${digits.slice(12)}`;
+      }
+      function validateStaffCnicValue(value) {
+        const v = String(value || '').trim();
+        if (!v) return '';
+        const normalized = formatPakistanCnic(v);
+        if (!/^\d{5}-\d{7}-\d$/.test(normalized)) {
+          return 'CNIC must follow Pakistani format: XXXXX-XXXXXXX-X.';
+        }
+        return '';
+      }
+      function setStaffFieldFeedback(inputId, errorId, message) {
+        const input = document.getElementById(inputId);
+        const err = document.getElementById(errorId);
+        const msg = staffFieldError(message);
+        if (input) {
+          input.classList.toggle('is-invalid', Boolean(msg));
+          input.classList.toggle('is-valid', !msg && Boolean(String(input.value || '').trim()));
+        }
+        if (err) {
+          err.textContent = msg;
+          err.style.setProperty('display', msg ? 'block' : 'none', 'important');
+        }
+        return !msg;
+      }
+      function syncEnrollSubmitEnabled() {
+        const btn = document.getElementById('enrollSubmitBtn');
+        if (!btn) return;
+        const nameOk = !validateStaffNameValue(document.getElementById('enrollName')?.value || '', true);
+        const emailOk = !validateStaffEmailValue(document.getElementById('enrollEmail')?.value || '');
+        const phoneOk = !validateStaffPhoneValue(document.getElementById('enrollPhone')?.value || '');
+        const cnicOk = !validateStaffCnicValue(document.getElementById('enrollCNIC')?.value || '');
+        const deptOk = Boolean((document.getElementById('enrollDepartment')?.value || '').trim());
+        const posOk = Boolean((document.getElementById('enrollPosition')?.value || '').trim());
+        const joinOk = Boolean((document.getElementById('enrollJoinDate')?.value || '').trim());
+        btn.disabled = !(nameOk && emailOk && phoneOk && cnicOk && deptOk && posOk && joinOk);
+      }
+      function syncEditSubmitEnabled() {
+        const btn = document.getElementById('editSaveProfileBtn');
+        if (!btn) return;
+        const nameOk = !validateStaffNameValue(document.getElementById('editName')?.value || '', true);
+        const emailOk = !validateStaffEmailValue(document.getElementById('editEmail')?.value || '');
+        const phoneOk = !validateStaffPhoneValue(document.getElementById('editPhone')?.value || '');
+        const cnicOk = !validateStaffCnicValue(document.getElementById('editCNIC')?.value || '');
+        const deptOk = Boolean((document.getElementById('editDepartment')?.value || '').trim());
+        const posOk = Boolean((document.getElementById('editPosition')?.value || '').trim());
+        btn.disabled = !(nameOk && emailOk && phoneOk && cnicOk && deptOk && posOk);
+      }
+      function bindStaffLiveValidation() {
+        const wire = (inputId, errorId, validator, opts = {}) => {
+          const input = document.getElementById(inputId);
+          if (!input || input.dataset.liveValidationBound === '1') return;
+          input.dataset.liveValidationBound = '1';
+          const run = () => {
+            if (opts.formatCnic) {
+              const formatted = formatPakistanCnic(input.value);
+              if (formatted !== input.value) input.value = formatted;
+            }
+            setStaffFieldFeedback(inputId, errorId, validator(input.value));
+            if (opts.onSync) opts.onSync();
+          };
+          input.addEventListener('input', run);
+          input.addEventListener('blur', run);
+        };
+        wire('enrollName', 'enrollNameError', (v) => validateStaffNameValue(v, true), { onSync: syncEnrollSubmitEnabled });
+        wire('enrollEmail', 'enrollEmailError', validateStaffEmailValue, { onSync: syncEnrollSubmitEnabled });
+        wire('enrollPhone', 'enrollPhoneError', validateStaffPhoneValue, { onSync: syncEnrollSubmitEnabled });
+        wire('enrollCNIC', 'enrollCNICError', validateStaffCnicValue, { formatCnic: true, onSync: syncEnrollSubmitEnabled });
+        ['enrollDepartment', 'enrollPosition', 'enrollJoinDate'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el && el.dataset.liveValidationBound !== '1') {
+            el.dataset.liveValidationBound = '1';
+            el.addEventListener('change', syncEnrollSubmitEnabled);
+            el.addEventListener('input', syncEnrollSubmitEnabled);
+          }
+        });
+        wire('editName', 'editNameError', (v) => validateStaffNameValue(v, true), { onSync: syncEditSubmitEnabled });
+        wire('editEmail', 'editEmailError', validateStaffEmailValue, { onSync: syncEditSubmitEnabled });
+        wire('editPhone', 'editPhoneError', validateStaffPhoneValue, { onSync: syncEditSubmitEnabled });
+        wire('editCNIC', 'editCNICError', validateStaffCnicValue, { formatCnic: true, onSync: syncEditSubmitEnabled });
+        ['editDepartment', 'editPosition'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el && el.dataset.liveValidationBound !== '1') {
+            el.dataset.liveValidationBound = '1';
+            el.addEventListener('change', syncEditSubmitEnabled);
+          }
+        });
+        syncEnrollSubmitEnabled();
+        syncEditSubmitEnabled();
+      }
+      document.addEventListener('DOMContentLoaded', bindStaffLiveValidation);
+      if (document.readyState !== 'loading') setTimeout(bindStaffLiveValidation, 0);
+
       // Create User Profile
       async function createEnrollUser() {
         const name = document.getElementById("enrollName").value.trim();
@@ -10048,25 +10190,26 @@ async function fetchMultiLiveDetections() {
         const phone = document.getElementById("enrollPhone") ? document.getElementById("enrollPhone").value : "";
         const department = document.getElementById("enrollDepartment") ? document.getElementById("enrollDepartment").value : "";
         const position = document.getElementById("enrollPosition") ? document.getElementById("enrollPosition").value : "";
-        const cnic = document.getElementById("enrollCNIC") ? document.getElementById("enrollCNIC").value : "";
+        const cnic = document.getElementById("enrollCNIC") ? formatPakistanCnic(document.getElementById("enrollCNIC").value) : "";
         const salaryField = document.getElementById("enrollSalary");
         const salary = salaryField ? salaryField.value : '';
         const join_date = document.getElementById("enrollJoinDate") ? document.getElementById("enrollJoinDate").value : "";
-        const notes = document.getElementById("enrollNotes") ? document.getElementById("enrollNotes").value : "";
         const is_veiled = document.getElementById("enrollIsVeiled") ? (document.getElementById("enrollIsVeiled").value === 'true') : false;
         const shift_id = document.getElementById("enrollShiftId") ? parseInt(document.getElementById("enrollShiftId").value) : 1;
         const checkin_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("enrollCheckinCameras")) : 'all';
         const checkout_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("enrollCheckoutCameras")) : 'all';
 
-        if (!name) {
-          showMessage("enrollmentMessage", "Full name is required.", "error");
-          return;
-        }
-        const enrollmentFields = ['enrollName', 'enrollEmail', 'enrollPhone', 'enrollCNIC'];
-        if (salaryField) enrollmentFields.push('enrollSalary');
-        const invalidEnrollmentField = enrollmentFields.map(id => document.getElementById(id)).find(field => field && !field.checkValidity());
-        if (invalidEnrollmentField) {
-          invalidEnrollmentField.reportValidity();
+        const nameErr = validateStaffNameValue(name, true);
+        const emailErr = validateStaffEmailValue(email);
+        const phoneErr = validateStaffPhoneValue(phone);
+        const cnicErr = validateStaffCnicValue(cnic);
+        setStaffFieldFeedback('enrollName', 'enrollNameError', nameErr);
+        setStaffFieldFeedback('enrollEmail', 'enrollEmailError', emailErr);
+        setStaffFieldFeedback('enrollPhone', 'enrollPhoneError', phoneErr);
+        setStaffFieldFeedback('enrollCNIC', 'enrollCNICError', cnicErr);
+        syncEnrollSubmitEnabled();
+        if (nameErr || emailErr || phoneErr || cnicErr) {
+          showMessage("enrollmentMessage", nameErr || emailErr || phoneErr || cnicErr, "error");
           return;
         }
 
@@ -10084,11 +10227,11 @@ async function fetchMultiLiveDetections() {
           }
         }
 
-        const btn = document.querySelector('button[onclick="createEnrollUser()"]');
+        const btn = document.getElementById('enrollSubmitBtn') || document.querySelector('button[onclick="createEnrollUser()"]');
         const restoreBtn = setButtonLoading(btn, 'Registering...');
 
         try {
-          const enrollPayload = { name, email, phone, department, position, cnic, join_date, notes, is_veiled, shift_id, checkin_cameras, checkout_cameras };
+          const enrollPayload = { name, email, phone, department, position, cnic, join_date, notes: '', is_veiled, shift_id, checkin_cameras, checkout_cameras };
           if (salaryField) enrollPayload.salary = salary;
           const resp = await fetch(`${API_BASE}/enroll/create-user`, {
             method: "POST",
@@ -10104,12 +10247,23 @@ async function fetchMultiLiveDetections() {
             showAppToast(data.message || `Staff profile '${name}' registered.`, 'success', 5000);
             ["enrollName", "enrollEmail", "enrollPhone", "enrollCNIC", "enrollSalary", "enrollJoinDate"].forEach((id) => {
               const field = document.getElementById(id);
-              if (field) field.value = "";
+              if (field) {
+                field.value = "";
+                field.classList.remove('is-valid', 'is-invalid');
+              }
+            });
+            ['enrollNameError', 'enrollEmailError', 'enrollPhoneError', 'enrollCNICError'].forEach(id => {
+              const err = document.getElementById(id);
+              if (err) {
+                err.textContent = '';
+                err.style.setProperty('display', 'none', 'important');
+              }
             });
             const dept = document.getElementById("enrollDepartment");
             const pos = document.getElementById("enrollPosition");
             if (dept) dept.value = "";
             if (pos) { pos.innerHTML = '<option value="">Select department first</option>'; }
+            syncEnrollSubmitEnabled();
             if (typeof loadStaffDirectory === 'function') loadStaffDirectory();
           } else {
             showMessage("enrollmentMessage", data.error || 'Failed to register staff.', "error");
@@ -10120,6 +10274,7 @@ async function fetchMultiLiveDetections() {
           showAppToast(`Error: ${e.message}`, 'error');
         } finally {
           restoreBtn();
+          syncEnrollSubmitEnabled();
         }
       }
 
@@ -11264,9 +11419,8 @@ async function fetchMultiLiveDetections() {
         document.getElementById("editEmail").value = user.email || "";
         document.getElementById("editDepartment").value = user.department || "";
         document.getElementById("editPhone").value = user.phone || "";
-        document.getElementById("editNotes").value = user.notes || "";
         document.getElementById("editPosition").value = cleanVal(user.position);
-        document.getElementById("editCNIC").value = cleanVal(user.cnic);
+        document.getElementById("editCNIC").value = formatPakistanCnic(cleanVal(user.cnic));
         if (document.getElementById("editSalary")) {
           document.getElementById("editSalary").value = Number(user.salary) > 0 ? user.salary : "";
         }
@@ -11277,6 +11431,12 @@ async function fetchMultiLiveDetections() {
         }
 
         document.getElementById("editModalMessage").innerHTML = "";
+        if (typeof bindStaffLiveValidation === 'function') bindStaffLiveValidation();
+        ['editName', 'editEmail', 'editPhone', 'editCNIC'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        if (typeof syncEditSubmitEnabled === 'function') syncEditSubmitEnabled();
 
         const modal = document.getElementById("editUserModal");
         modal.style.display = "flex";
@@ -11372,9 +11532,8 @@ async function fetchMultiLiveDetections() {
         const email = document.getElementById("editEmail").value.trim();
         const department = document.getElementById("editDepartment").value.trim();
         const phone = document.getElementById("editPhone").value.trim();
-        const notes = document.getElementById("editNotes").value.trim();
         const position = document.getElementById("editPosition").value.trim();
-        const cnic = document.getElementById("editCNIC").value.trim();
+        const cnic = formatPakistanCnic(document.getElementById("editCNIC").value.trim());
         const salary = document.getElementById("editSalary") ? document.getElementById("editSalary").value : "";
         const join_date = document.getElementById("editJoinDate").value;
         const exit_date = document.getElementById("editExitDate") ? document.getElementById("editExitDate").value : "";
@@ -11382,14 +11541,21 @@ async function fetchMultiLiveDetections() {
         const checkin_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("editCheckinCameras")) : 'all';
         const checkout_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("editCheckoutCameras")) : 'all';
 
-        if (!name) {
-          showMessage("editModalMessage", "Name is required", "error");
+        const nameErr = validateStaffNameValue(name, true);
+        const emailErr = validateStaffEmailValue(email);
+        const phoneErr = validateStaffPhoneValue(phone);
+        const cnicErr = validateStaffCnicValue(cnic);
+        setStaffFieldFeedback('editName', 'editNameError', nameErr);
+        setStaffFieldFeedback('editEmail', 'editEmailError', emailErr);
+        setStaffFieldFeedback('editPhone', 'editPhoneError', phoneErr);
+        setStaffFieldFeedback('editCNIC', 'editCNICError', cnicErr);
+        syncEditSubmitEnabled();
+        if (nameErr || emailErr || phoneErr || cnicErr) {
+          showMessage("editModalMessage", nameErr || emailErr || phoneErr || cnicErr, "error");
           return;
         }
-        const editFields = ['editName', 'editEmail', 'editPhone', 'editCNIC', 'editSalary', 'editNotes'];
-        const invalidEditField = editFields.map(id => document.getElementById(id)).find(field => field && !field.checkValidity());
-        if (invalidEditField) {
-          invalidEditField.reportValidity();
+        if (!department || !position) {
+          showMessage("editModalMessage", "Department and designation are required.", "error");
           return;
         }
 
@@ -11419,13 +11585,13 @@ async function fetchMultiLiveDetections() {
           return;
         }
 
-        const btn = document.querySelector('#editUserModal button.btn-primary');
+        const btn = document.getElementById('editSaveProfileBtn') || document.querySelector('#editUserModal button.btn-primary');
         const restoreBtn = setButtonLoading(btn, 'Saving...');
         try {
           const resp = await fetch(`${API_BASE}/users/${userId}/update`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, email, department, phone, notes, position, cnic, salary, join_date, exit_date, shift_id, checkin_cameras, checkout_cameras }),
+            body: JSON.stringify({ name, email, department, phone, position, cnic, salary, join_date, exit_date, shift_id, checkin_cameras, checkout_cameras }),
           });
           const data = await resp.json();
           if (resp.ok) {
@@ -11444,6 +11610,7 @@ async function fetchMultiLiveDetections() {
           showAppToast(`Error: ${e.message}`, 'error');
         } finally {
           restoreBtn();
+          syncEditSubmitEnabled();
         }
       }
 
@@ -12093,14 +12260,20 @@ async function fetchMultiLiveDetections() {
         const search = document.getElementById('mainReportSearch');
         const sInput = document.getElementById('mainStartDate');
         const eInput = document.getElementById('mainEndDate');
+        const pageSize = document.getElementById('mainReportPageSize');
         if (dept) dept.value = 'all';
         if (status) status.value = 'all';
         if (search) search.value = '';
+        if (pageSize) pageSize.value = '25';
+        mainReportPageSize = 25;
         if (sInput) sInput.value = '';
         if (eInput) {
           eInput.value = '';
           eInput.disabled = true;
           eInput.removeAttribute('min');
+        }
+        if (typeof refreshAppCameraSelect === 'function') {
+          [dept, status, pageSize].forEach(el => { if (el) refreshAppCameraSelect(el); });
         }
         mainReportPage = 1;
         setMainDateFilter('today');
@@ -12174,7 +12347,10 @@ async function fetchMultiLiveDetections() {
         mainReportFetchController = new AbortController();
         const seq = ++mainReportFetchSeq;
         const tbody = document.getElementById('mainReportTbody');
-        if (tbody && !showRefreshState) {
+        const emptyEl = document.getElementById('mainReportEmpty');
+        if (emptyEl) emptyEl.style.display = 'none';
+        // Ticket 12: always show loading state on refresh so stale empty/filter UI is cleared.
+        if (tbody) {
           tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading attendance records...</td></tr>';
         }
 
@@ -12191,6 +12367,9 @@ async function fetchMultiLiveDetections() {
           if (err && err.name === 'AbortError') return;
           if (seq !== mainReportFetchSeq) return;
           console.error("Failed to fetch main report:", err);
+          if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="12" class="text-center text-danger p-4"><i class="fa-solid fa-circle-exclamation"></i> ${err.message || 'Failed to load attendance records.'}</td></tr>`;
+          }
           if (typeof showAppToast === 'function') showAppToast(err.message || 'Failed to refresh attendance report.', 'error');
         } finally {
           if (showRefreshState && refreshButton && seq === mainReportFetchSeq) {
@@ -12738,11 +12917,22 @@ async function fetchMultiLiveDetections() {
         if (!select) return;
         const opt = select.options[select.selectedIndex];
         if (opt) {
-          const start = opt.getAttribute('data-start');
-          if (start) document.getElementById('manualAttCheckIn').value = start.slice(0, 5);
-          // Keep checkout blank by default so users can leave it empty when not checked out.
+          const start = (opt.getAttribute('data-start') || '').slice(0, 5);
+          const end = (opt.getAttribute('data-end') || '').slice(0, 5);
+          if (start) document.getElementById('manualAttCheckIn').value = start;
           const out = document.getElementById('manualAttCheckOut');
-          if (out && !out.value) out.value = '';
+          if (out) {
+            // Prefill overnight shift end so next-day checkout is visible and editable.
+            const toMins = (t) => {
+              const [h, m] = String(t || '0:0').split(':').map(Number);
+              return (h * 60) + m;
+            };
+            if (start && end && toMins(end) < toMins(start)) {
+              out.value = end;
+            } else if (!out.value) {
+              out.value = '';
+            }
+          }
           validateManualAttendanceTimes();
         }
       }
@@ -12806,11 +12996,7 @@ async function fetchMultiLiveDetections() {
           } catch (e) {}
         }
         await populateManualShiftDropdown(assignedShiftId);
-        
-        const select = document.getElementById('manualAttShiftSelect');
-        const opt = select?.options[select.selectedIndex];
-        document.getElementById('manualAttCheckIn').value = opt?.getAttribute('data-start')?.slice(0, 5) || '09:00';
-        document.getElementById('manualAttCheckOut').value = '';
+        onManualShiftChange();
         const timeErr = document.getElementById('manualAttTimeError');
         if (timeErr) timeErr.textContent = '';
         updateManualNotesCounter();
@@ -13815,6 +14001,43 @@ async function fetchMultiLiveDetections() {
       }
       window.clearStaffSelection = clearStaffSelection;
 
+      function resetStaffDirectoryFilters() {
+        const search = document.getElementById('tabStaffSearchInput');
+        const dept = document.getElementById('tabStaffDeptFilter');
+        if (search) search.value = '';
+        if (dept) dept.value = 'all';
+        if (typeof refreshAppCameraSelect === 'function' && dept) refreshAppCameraSelect(dept);
+        filterTabStaffTable();
+      }
+      window.resetStaffDirectoryFilters = resetStaffDirectoryFilters;
+
+      async function deleteSelectedStaffMembers() {
+        const ids = Array.from(selectedStaffIds);
+        if (!ids.length) {
+          showAppToast('Select at least one staff member to delete.', 'error');
+          return;
+        }
+        if (!await appConfirm(`Permanently delete ${ids.length} selected staff member(s)? This cannot be undone.`)) return;
+        let okCount = 0;
+        let failCount = 0;
+        for (const userId of ids) {
+          try {
+            const res = await fetch(`${API_BASE}/users/${userId}/delete`, { method: 'POST' });
+            const json = await res.json().catch(() => ({}));
+            if (res.ok || json.success) okCount += 1;
+            else failCount += 1;
+          } catch (_) {
+            failCount += 1;
+          }
+        }
+        clearStaffSelection();
+        if (typeof loadTabStaffDirectory === 'function') loadTabStaffDirectory();
+        if (typeof loadStaffDirectory === 'function') loadStaffDirectory();
+        if (okCount) showAppToast(`Deleted ${okCount} staff member(s)${failCount ? `, ${failCount} failed` : ''}.`, failCount ? 'error' : 'success');
+        else showAppToast('Could not delete the selected staff members.', 'error');
+      }
+      window.deleteSelectedStaffMembers = deleteSelectedStaffMembers;
+
       function openBulkCameraModal() {
         populateCameraAssignmentDropdowns();
         updateBulkButtonBadge();
@@ -14038,12 +14261,19 @@ async function fetchMultiLiveDetections() {
         } else if (document.getElementById('editPosition')) {
           document.getElementById('editPosition').value = user.position || '';
         }
-        if (document.getElementById('editCNIC')) document.getElementById('editCNIC').value = user.cnic || '';
+        if (document.getElementById('editCNIC')) document.getElementById('editCNIC').value = formatPakistanCnic(user.cnic || '');
         if (document.getElementById('editSalary')) document.getElementById('editSalary').value = user.salary || '';
         if (document.getElementById('editJoinDate')) document.getElementById('editJoinDate').value = user.join_date || '';
         if (document.getElementById('editExitDate')) document.getElementById('editExitDate').value = user.exit_date || '';
         if (document.getElementById('editShiftId')) document.getElementById('editShiftId').value = user.shift_id || 1;
-        if (document.getElementById('editNotes')) document.getElementById('editNotes').value = user.notes || '';
+        if (typeof bindStaffLiveValidation === 'function') bindStaffLiveValidation();
+        if (typeof syncEditSubmitEnabled === 'function') {
+          ['editName', 'editEmail', 'editPhone', 'editCNIC'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.dispatchEvent(new Event('input', { bubbles: true }));
+          });
+          syncEditSubmitEnabled();
+        }
 
         setMultiSelectValues('editCheckinCamerasWrapper', user.checkin_cameras || 'all');
         setMultiSelectValues('editCheckoutCamerasWrapper', user.checkout_cameras || 'all');
@@ -14216,6 +14446,20 @@ async function fetchMultiLiveDetections() {
         if (resetPage) shiftStaffCurrentPage = 1;
         renderShiftStaffPage(shiftStaffCurrentPage);
       }
+
+      function resetShiftStaffFilters() {
+        const search = document.getElementById('shiftStaffSearch');
+        const dept = document.getElementById('shiftFilterDept');
+        const shift = document.getElementById('shiftFilterCurrentShift');
+        if (search) search.value = '';
+        if (dept) dept.value = 'all';
+        if (shift) shift.value = 'all';
+        if (typeof refreshAppCameraSelect === 'function') {
+          [dept, shift].forEach(el => { if (el) refreshAppCameraSelect(el); });
+        }
+        filterShiftStaffTable(true);
+      }
+      window.resetShiftStaffFilters = resetShiftStaffFilters;
 
       function shiftStaffGoToPage(pageNum) {
         shiftStaffCurrentPage = pageNum;
@@ -19025,6 +19269,29 @@ async function fetchMultiLiveDetections() {
     }
     window.onLeaveFilterChange = onLeaveFilterChange;
 
+    function resetLeaveRequestFilters() {
+      const search = document.getElementById('leaveSearch');
+      const status = document.getElementById('leaveStatusFilter');
+      const dateFilter = document.getElementById('leaveDateFilter');
+      const monthFilter = document.getElementById('leaveMonthFilter');
+      const pageSize = document.getElementById('leavePageSize');
+      if (search) search.value = '';
+      if (status) status.value = 'all';
+      if (dateFilter) dateFilter.value = '';
+      if (pageSize) pageSize.value = '25';
+      _leavePageSize = 25;
+      _leavePage = 1;
+      if (monthFilter) {
+        const d = new Date();
+        monthFilter.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      }
+      if (typeof refreshAppCameraSelect === 'function') {
+        [status, pageSize].forEach(el => { if (el) refreshAppCameraSelect(el); });
+      }
+      filterLeavesTable();
+    }
+    window.resetLeaveRequestFilters = resetLeaveRequestFilters;
+
     function changeLeavePageSize(size) {
       _leavePageSize = parseInt(size, 10) || 25;
       _leavePage = 1;
@@ -19721,6 +19988,18 @@ async function fetchMultiLiveDetections() {
       filterLeaveBalancesTable();
     }
     window.onLeaveBalanceSearchInput = onLeaveBalanceSearchInput;
+
+    function resetLeaveBalanceFilters() {
+      const search = document.getElementById('leaveBalanceSearch');
+      const pageSize = document.getElementById('leaveBalancePageSize');
+      if (search) search.value = '';
+      if (pageSize) pageSize.value = '25';
+      _leaveBalPageSize = 25;
+      _leaveBalPage = 1;
+      if (typeof refreshAppCameraSelect === 'function' && pageSize) refreshAppCameraSelect(pageSize);
+      filterLeaveBalancesTable();
+    }
+    window.resetLeaveBalanceFilters = resetLeaveBalanceFilters;
 
     function changeLeaveBalancePageSize(size) {
       _leaveBalPageSize = parseInt(size, 10) || 25;

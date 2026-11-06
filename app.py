@@ -5500,9 +5500,10 @@ def api_reports_export_csv():
                 r.get('position') or 'Staff Member',
                 shift_disp,
                 date_label,
-                r.get('present_display', f"{r.get('present_days', 0)} / {r.get('working_days', 0)}"),
-                r.get('absent_display', f"{r.get('absent_days', 0)} / {r.get('working_days', 0)}"),
-                r.get('late_days', 0),
+                # Ticket 8: export numeric day counts, not "present / working" display strings.
+                int(r.get('present_days', 0) or 0),
+                int(r.get('absent_days', 0) or 0),
+                int(r.get('late_days', 0) or 0),
                 f"{r.get('attendance_rate', 0.0)}%",
                 marking_method
             ])

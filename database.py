@@ -4712,9 +4712,14 @@ def get_detailed_attendance_report(
             cursor.execute("SELECT id, name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes, working_days FROM shifts")
             all_shifts_lookup = {r['id']: dict(r) for r in cursor.fetchall()}
 
-            # ATT-01: Sargable range query using indexed timestamp boundaries with strict tenant & camera isolation
+            # ATT-01: Sargable range query using indexed timestamp boundaries with strict tenant & camera isolation.
+            # Include +1 calendar day so overnight shift check-outs (next morning) are available for pairing.
+            try:
+                _end_plus = (datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+            except (TypeError, ValueError):
+                _end_plus = end_date
             start_ts = f"{start_date} 00:00:00"
-            end_ts = f"{end_date} 23:59:59.999999"
+            end_ts = f"{_end_plus} 23:59:59.999999"
 
             att_conditions = [
                 f"user_id IN ({placeholders})",
@@ -4900,6 +4905,8 @@ def get_detailed_attendance_report(
             total_paid_leave_days_all = 0
             total_unpaid_leave_days_all = 0
             attended_users_count = 0
+            # Overnight check-outs that live on the next calendar day and must not count as that day's check-in.
+            overnight_checkout_consumed = set()
 
             for u in users:
                 uid = u['id']
@@ -4921,6 +4928,30 @@ def get_detailed_attendance_report(
                         effective_shift = shift_history[history_index]
                         history_index += 1
                     att = att_map.get((uid, cur_date))
+                    # If this calendar day only holds a previous overnight checkout, do not treat it as attendance.
+                    if att and (uid, cur_date) in overnight_checkout_consumed:
+                        try:
+                            _fs = str(att.get('first_seen') or '')
+                            _fs_mins = parse_time_to_minutes(
+                                _fs.split(' ')[-1] if ' ' in _fs else _fs.split('T')[-1]
+                            )
+                            _ls = str(att.get('last_seen') or _fs)
+                            _ls_mins = parse_time_to_minutes(
+                                _ls.split(' ')[-1] if ' ' in _ls else _ls.split('T')[-1]
+                            )
+                            # Determine this day's shift start for residue detection (best-effort before full resolve below).
+                            _probe_start = '09:00'
+                            if att.get('record_shift_id') and att['record_shift_id'] in all_shifts_lookup:
+                                _probe_start = all_shifts_lookup[att['record_shift_id']].get('start_time') or _probe_start
+                            elif effective_shift is not None:
+                                _probe_start = effective_shift.get('start_time') or _probe_start
+                            elif u.get('shift_id') and u.get('shift_id') in all_shifts_lookup:
+                                _probe_start = all_shifts_lookup[u['shift_id']].get('start_time') or _probe_start
+                            _probe_start_mins = parse_time_to_minutes(_probe_start)
+                            if _ls_mins < _probe_start_mins:
+                                att = None
+                        except Exception:
+                            att = None
                     schedule_known = False
                     if att and att.get('record_shift_id') and att['record_shift_id'] in all_shifts_lookup:
                         rec_shift = all_shifts_lookup[att['record_shift_id']]
@@ -4963,6 +4994,30 @@ def get_detailed_attendance_report(
                     grace_deadline_mins = start_mins + grace_mins
                     dt_obj = datetime.strptime(cur_date, "%Y-%m-%d")
                     day_name = dt_obj.strftime("%a")
+                    shift_end_mins_raw = parse_time_to_minutes(shift_end)
+                    is_overnight_shift = shift_end_mins_raw < start_mins
+                    # Tickets 21/22: pair next-morning overnight check-out with this shift day.
+                    if is_overnight_shift and att:
+                        next_date = (dt_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+                        next_att = att_map.get((uid, next_date))
+                        if next_att:
+                            try:
+                                nf = str(next_att.get('first_seen') or '')
+                                nf_mins = parse_time_to_minutes(
+                                    nf.split(' ')[-1] if ' ' in nf else nf.split('T')[-1]
+                                )
+                            except Exception:
+                                nf_mins = None
+                            # Next-day punch before the following shift start = overnight checkout.
+                            if nf_mins is not None and nf_mins < start_mins:
+                                att = dict(att)
+                                checkout_ts = next_att.get('last_seen') or next_att.get('first_seen')
+                                if checkout_ts and str(checkout_ts) != str(att.get('first_seen')):
+                                    att['last_seen'] = checkout_ts
+                                    att['log_count'] = int(att.get('log_count') or 1) + int(next_att.get('log_count') or 1)
+                                    att['checkout_location'] = next_att.get('checkout_location') or next_att.get('checkin_location') or att.get('checkout_location')
+                                    att['checkout_camera'] = next_att.get('checkout_camera') or next_att.get('checkin_camera') or att.get('checkout_camera')
+                                    overnight_checkout_consumed.add((uid, next_date))
                     override_type = _resolve_calendar_override(
                         calendar_overrides, cur_date, uid, shift_id_for_day
                     )
@@ -5889,6 +5944,16 @@ def mark_user_present_today(
 
             # Delete old attendance logs for this user on this day so we have clean manual records
             cursor.execute('DELETE FROM attendance WHERE user_id = ? AND date(timestamp) = ?', (user_id, actual_date))
+            # Also clear prior overnight check-out residue on the next calendar morning.
+            if is_overnight:
+                next_day = (datetime.strptime(actual_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                cursor.execute(
+                    """DELETE FROM attendance
+                       WHERE user_id = ? AND date(timestamp) = ?
+                         AND CAST(strftime('%H', timestamp) AS INTEGER) * 60
+                           + CAST(strftime('%M', timestamp) AS INTEGER) < ?""",
+                    (user_id, next_day, _to_mins(shift_start)),
+                )
 
             # Insert check-in log
             timestamp_val_in = f"{actual_date} {ci_clean}:00"
