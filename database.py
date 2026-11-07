@@ -2693,6 +2693,26 @@ def _normalize_shift_working_days(working_days: Any = None) -> List[int]:
         raise ValueError(str(exc)) from exc
 
 
+def _normalize_shift_clock(value: Any) -> str:
+    """Normalize HH:MM / HH:MM:SS / H:MM into zero-padded HH:MM for comparisons."""
+    text = str(value or '').strip()
+    if not text:
+        return '00:00'
+    if 'T' in text:
+        text = text.split('T', 1)[1]
+    if ' ' in text:
+        text = text.split(' ')[-1]
+    parts = text.split(':')
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1]) if len(parts) > 1 else 0
+    except (TypeError, ValueError):
+        return text[:5]
+    hour = max(0, min(23, hour))
+    minute = max(0, min(59, minute))
+    return f"{hour:02d}:{minute:02d}"
+
+
 def _normalize_shift_effective_date(effective_from: Optional[str] = None) -> str:
     effective_date = effective_from or datetime.now().date().isoformat()
     try:
@@ -3351,28 +3371,27 @@ def add_shift(name: str, start_time: str, end_time: str, grace_period_minutes: i
             norm_org = organization_id or 'DEFAULT_ORG'
             norm_branch = branch_id or 'DEFAULT_BRANCH'
             normalized_days = _normalize_shift_working_days(working_days)
-            normalized_start = str(start_time or '').strip()[:5]
-            normalized_end = str(end_time or '').strip()[:5]
+            normalized_start = _normalize_shift_clock(start_time)
+            normalized_end = _normalize_shift_clock(end_time)
             normalized_grace = max(0, int(grace_period_minutes))
             normalized_checkout_grace = max(0, int(checkout_grace_period_minutes))
 
             # SM-01: reject duplicate configuration even when the shift name is different.
-            # At least one of start/end, weekly holidays (working days), or grace must differ.
+            # Scope by organization (any branch) so tenant duplicates cannot slip through.
             cursor.execute(
                 """SELECT id, name, start_time, end_time, grace_period_minutes, working_days
                    FROM shifts
                    WHERE COALESCE(active, 1) = 1
-                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
-                (norm_org, norm_branch),
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
+                (norm_org,),
             )
             for existing_shift in cursor.fetchall():
                 try:
                     existing_days = _normalize_shift_working_days(existing_shift[5])
                 except ValueError:
                     existing_days = _normalize_shift_working_days(None)
-                existing_start = str(existing_shift[2] or '').strip()[:5]
-                existing_end = str(existing_shift[3] or '').strip()[:5]
+                existing_start = _normalize_shift_clock(existing_shift[2])
+                existing_end = _normalize_shift_clock(existing_shift[3])
                 same_timing = existing_start == normalized_start and existing_end == normalized_end
                 same_grace = int(existing_shift[4] or 0) == normalized_grace
                 same_weekdays = existing_days == normalized_days
@@ -3406,8 +3425,8 @@ def add_shift(name: str, start_time: str, end_time: str, grace_period_minutes: i
             else:
                 cursor.execute(
                     'INSERT INTO shifts (name, start_time, end_time, grace_period_minutes, checkout_grace_period_minutes, working_days, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    (clean_name, start_time, end_time, max(0, int(grace_period_minutes)), max(0, int(checkout_grace_period_minutes)),
-                     json.dumps(_normalize_shift_working_days(working_days)), norm_org, norm_branch)
+                    (clean_name, normalized_start, normalized_end, normalized_grace, normalized_checkout_grace,
+                     json.dumps(normalized_days), norm_org, norm_branch)
                 )
                 conn.commit()
                 shift_id = cursor.lastrowid
@@ -3460,9 +3479,8 @@ def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace
             if not self_row:
                 return False
             norm_org = (organization_id or self_row[0] or 'DEFAULT_ORG')
-            norm_branch = self_row[1] or 'DEFAULT_BRANCH'
-            normalized_start = str(start_time or '').strip()[:5]
-            normalized_end = str(end_time or '').strip()[:5]
+            normalized_start = _normalize_shift_clock(start_time)
+            normalized_end = _normalize_shift_clock(end_time)
             normalized_grace = max(0, int(grace_period_minutes))
             if working_days is None:
                 normalized_days = _normalize_shift_working_days(self_row[2])
@@ -3473,9 +3491,8 @@ def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace
                    FROM shifts
                    WHERE COALESCE(active, 1) = 1
                      AND id != ?
-                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
-                (shift_id, norm_org, norm_branch),
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
+                (shift_id, norm_org),
             )
             for existing_shift in cursor.fetchall():
                 try:
@@ -3483,8 +3500,8 @@ def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace
                 except ValueError:
                     existing_days = _normalize_shift_working_days(None)
                 same_timing = (
-                    str(existing_shift[2] or '').strip()[:5] == normalized_start
-                    and str(existing_shift[3] or '').strip()[:5] == normalized_end
+                    _normalize_shift_clock(existing_shift[2]) == normalized_start
+                    and _normalize_shift_clock(existing_shift[3]) == normalized_end
                 )
                 same_grace = int(existing_shift[4] or 0) == normalized_grace
                 same_weekdays = existing_days == normalized_days
@@ -3497,13 +3514,13 @@ def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace
             if working_days is None:
                 cursor.execute(
                     'UPDATE shifts SET name = ?, start_time = ?, end_time = ?, grace_period_minutes = ?, checkout_grace_period_minutes = ? WHERE id = ?',
-                    (clean_name, start_time, end_time, max(0, int(grace_period_minutes)), max(0, int(checkout_grace_period_minutes)), shift_id)
+                    (clean_name, normalized_start, normalized_end, normalized_grace, max(0, int(checkout_grace_period_minutes)), shift_id)
                 )
             else:
                 cursor.execute(
                     'UPDATE shifts SET name = ?, start_time = ?, end_time = ?, grace_period_minutes = ?, checkout_grace_period_minutes = ?, working_days = ? WHERE id = ?',
-                    (clean_name, start_time, end_time, max(0, int(grace_period_minutes)), max(0, int(checkout_grace_period_minutes)),
-                     json.dumps(_normalize_shift_working_days(working_days)), shift_id)
+                    (clean_name, normalized_start, normalized_end, normalized_grace, max(0, int(checkout_grace_period_minutes)),
+                     json.dumps(normalized_days), shift_id)
                 )
             updated = cursor.rowcount > 0
             if updated:
@@ -7325,7 +7342,19 @@ def get_leave_types(
                    ORDER BY id ASC""",
                 (org,),
             )
-            return [dict(r) for r in cursor.fetchall()]
+            rows = [dict(r) for r in cursor.fetchall()]
+            # LH-10: delete is allowed only when nobody has taken leave (used_days > 0).
+            for row in rows:
+                cursor.execute(
+                    """SELECT COUNT(*) FROM employee_leave_balances
+                       WHERE leave_type_id = ?
+                         AND COALESCE(used_days, 0) > 0.0001""",
+                    (row.get('id'),),
+                )
+                has_usage = (cursor.fetchone()[0] or 0) > 0
+                row['has_usage'] = has_usage
+                row['can_delete'] = not has_usage
+            return rows
     except Exception as e:
         logger.error(f"Get leave types error: {e}")
         return []
@@ -7498,26 +7527,25 @@ def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bo
             if not row:
                 return False
             lt_name, lt_code = row[0], row[1]
-            # Ticket LH-10: allow delete only when every employee remaining balance is zero.
-            # Remaining = max(0, allocated - used). Zero-remaining rows are cleaned and do not block.
+            # Ticket LH-10: allow delete when no employee has taken leave from this type.
+            # Allocated-but-unused quotas do NOT block delete. Hide delete in UI when used > 0.
             cursor.execute(
                 """SELECT COUNT(*) FROM employee_leave_balances
                    WHERE leave_type_id = ?
-                     AND (
-                       CASE
-                         WHEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0)) > 0
-                         THEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0))
-                         ELSE 0
-                       END
-                     ) > 0.0001""",
+                     AND COALESCE(used_days, 0) > 0.0001""",
                 (type_id,)
             )
-            bal_count = cursor.fetchone()[0]
-            if bal_count > 0:
+            used_count = cursor.fetchone()[0]
+            if used_count > 0:
                 raise ValueError(
-                    "Cannot delete leave type because one or more employees still have a remaining "
-                    "balance greater than zero. Reduce remaining balances to 0 (or deactivate the type) first."
+                    "Cannot delete leave type because one or more employees have already taken leave "
+                    "from it. Deactivate the leave type instead."
                 )
+            # Clear self-references from other leave policies that deduct against this type.
+            cursor.execute(
+                "UPDATE leave_types SET half_leave_quota_type_id = NULL WHERE half_leave_quota_type_id = ?",
+                (type_id,),
+            )
             cursor.execute(
                 "DELETE FROM employee_leave_balances WHERE leave_type_id = ?",
                 (type_id,)

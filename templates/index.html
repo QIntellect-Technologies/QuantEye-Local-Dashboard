@@ -12751,8 +12751,7 @@ async function fetchMultiLiveDetections() {
             const loc = String(r.location || '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             const pos = String(r.position || r.email || r.phone || 'Staff Member').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-            const markedBy = r.marked_by || (r.source === 'manual' ? (typeof getActingAdminDisplayName === 'function' ? getActingAdminDisplayName() : 'Admin') : 'System');
-            const source = r.source === 'manual' ? `Manual by ${markedBy}` : 'Auto by System';
+            const source = r.source === 'manual' ? 'Manual' : 'Auto by System';
             const notesText = r.notes ? `<span title="${escapeHtml(r.notes)}" style="font-size:0.8em; color:#475569;">${escapeHtml(r.notes)}</span>` : '<span style="color:#94a3b8;">—</span>';
             const sourceBadge = `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
               <span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${r.source === 'manual' ? '#e0f2fe' : '#f1f5f9'}; color:${r.source === 'manual' ? '#0369a1' : '#475569'};">${escapeHtml(source)}</span>
@@ -13272,8 +13271,7 @@ async function fetchMultiLiveDetections() {
 
                 const checkInTime = formatMainTime(d.first_seen);
                 const checkOutTime = formatMainTime(d.last_seen);
-                const markedBy = d.marked_by || (d.source === 'manual' ? (typeof getActingAdminDisplayName === 'function' ? getActingAdminDisplayName() : 'Admin') : 'System');
-                const source = d.source === 'manual' ? `Manual by ${markedBy}` : 'Auto by System';
+                const source = d.source === 'manual' ? 'Manual' : 'Auto by System';
                 const sourceBadge = `<span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${d.source === 'manual' ? '#e0f2fe' : '#f1f5f9'}; color:${d.source === 'manual' ? '#0369a1' : '#475569'};">${source}</span>`;
                 const notesText = d.notes ? `<div style="font-size:0.75em; color:#64748b; margin-top:2px;">${escapeHtml(d.notes)}</div>` : '';
 
@@ -13761,7 +13759,9 @@ async function fetchMultiLiveDetections() {
           'desigDeptFilter', 'modalDesigDeptId', 'modalCameraType',
           'enrollShiftId', 'enrollDepartment', 'enrollPosition',
           'modalLeaveDeptSelect', 'modalLeaveUserSelect', 'modalLeaveTypeSelect',
-          'modalLeaveDurationSelect', 'modalExcessTreatment'
+          'modalLeaveDurationSelect', 'modalExcessTreatment',
+          'modalLeaveTypeIsPaid', 'modalLeaveTypePeriod', 'modalHalfLeaveMode',
+          'modalHalfLeaveQuotaType'
         ];
         ids.forEach(id => {
           const el = document.getElementById(id);
@@ -14998,16 +14998,31 @@ async function fetchMultiLiveDetections() {
         }
 
         // SM-01: client-side duplicate config check (timing + weekdays + grace).
-        const normDays = [...working_days].map(Number).sort((a, b) => a - b).join(',');
-        const normStart = String(start_time || '').slice(0, 5);
-        const normEnd = String(end_time || '').slice(0, 5);
+        const padClock = (value) => {
+          const raw = String(value || '').trim();
+          const timePart = raw.includes('T') ? raw.split('T').pop() : (raw.includes(' ') ? raw.split(' ').pop() : raw);
+          const parts = String(timePart || '').split(':');
+          const hour = Math.max(0, Math.min(23, parseInt(parts[0], 10) || 0));
+          const minute = Math.max(0, Math.min(59, parseInt(parts[1], 10) || 0));
+          return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+        };
+        const parseDaysKey = (days) => {
+          let list = days;
+          if (typeof list === 'string') {
+            try { list = JSON.parse(list); } catch (_) { list = String(list).split(','); }
+          }
+          if (!Array.isArray(list)) list = [];
+          return list.map(Number).filter(n => Number.isInteger(n)).sort((a, b) => a - b).join(',');
+        };
+        const normDays = parseDaysKey(working_days);
+        const normStart = padClock(start_time);
+        const normEnd = padClock(end_time);
         const duplicateShift = (allShiftsCache || []).find(s => {
           if (id && String(s.id) === String(id)) return false;
-          const sDays = (Array.isArray(s.working_days) ? s.working_days : []).map(Number).sort((a, b) => a - b).join(',');
-          return String(s.start_time || '').slice(0, 5) === normStart
-            && String(s.end_time || '').slice(0, 5) === normEnd
+          return padClock(s.start_time) === normStart
+            && padClock(s.end_time) === normEnd
             && Number(s.grace_period_minutes || 0) === Number(grace_period_minutes || 0)
-            && sDays === normDays;
+            && parseDaysKey(s.working_days) === normDays;
         });
         if (duplicateShift) {
           const msg = `Duplicate shift configuration: '${duplicateShift.name}' already uses the same start/end times, weekly holidays, and grace period. Change at least one of those to create a new shift.`;
@@ -20204,6 +20219,7 @@ async function fetchMultiLiveDetections() {
               ? `Every ${lt.half_leaves_per_quota_day} half leave(s) charges 1 ${quotaTarget?.name || 'quota'} day (${halfLeaveMonths}-month cycle)`
               : `${lt.half_leave_allowance_count} half leave(s) per ${halfLeaveMonths}-month cycle`;
           const isActive = Number(lt.active ?? 1) === 1;
+          const canDelete = lt.can_delete !== false && !lt.has_usage;
           return `
           <tr>
             <td style="font-weight:700; color:#173042;">${escapeHtml(lt.name)} ${isActive ? '' : '<span class="badge bg-secondary-subtle text-secondary ms-1">Inactive</span>'}</td>
@@ -20218,7 +20234,7 @@ async function fetchMultiLiveDetections() {
             <td>
               <button class="btn btn-sm btn-outline-primary py-0 px-2 me-1" onclick="editLeaveType(${lt.id})" title="Edit Type"><i class="fa-solid fa-pen"></i></button>
               <button class="btn btn-sm btn-outline-warning py-0 px-2 me-1" onclick="toggleLeaveTypeActive(${lt.id})" title="${isActive ? 'Deactivate' : 'Reactivate'} Type"><i class="fa-solid fa-${isActive ? 'ban' : 'rotate-left'}"></i></button>
-              <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteLeaveType(${lt.id})" title="Delete Type"><i class="fa-solid fa-trash"></i></button>
+              ${canDelete ? `<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteLeaveType(${lt.id})" title="Delete Type"><i class="fa-solid fa-trash"></i></button>` : ''}
             </td>
           </tr>
         `;}).join('');
@@ -20760,6 +20776,8 @@ async function fetchMultiLiveDetections() {
         .filter(lt => String(lt.id) !== current)
         .map(lt => `<option value="${escapeHtml(String(lt.id))}">${escapeHtml(lt.name)}</option>`)
         .join('');
+      if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(select);
+      else if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(select);
     }
 
     function updateHalfLeavePolicyFields() {
@@ -20771,6 +20789,9 @@ async function fetchMultiLiveDetections() {
       if (fields) fields.style.display = enabled ? 'block' : 'none';
       if (separateFields) separateFields.style.display = enabled && mode !== 'convert' ? 'block' : 'none';
       if (convertFields) convertFields.style.display = enabled && mode === 'convert' ? 'block' : 'none';
+      if (enabled && typeof upgradeLeaveTypeModalSelects === 'function') {
+        setTimeout(upgradeLeaveTypeModalSelects, 0);
+      }
     }
 
     function resetLeaveTypeModalFields() {
@@ -20808,11 +20829,21 @@ async function fetchMultiLiveDetections() {
       updateHalfLeavePolicyFields();
     }
 
+    function upgradeLeaveTypeModalSelects() {
+      ['modalLeaveTypeIsPaid', 'modalLeaveTypePeriod', 'modalHalfLeaveMode', 'modalHalfLeaveQuotaType'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(el);
+        else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(el);
+      });
+    }
+
     function openAddLeaveTypeModal() {
       const modal = document.getElementById('leaveTypeModal');
       if (!modal) return;
       resetLeaveTypeModalFields();
       modal.style.display = 'flex';
+      setTimeout(upgradeLeaveTypeModalSelects, 0);
     }
 
     function editLeaveType(typeId) {
@@ -20849,6 +20880,7 @@ async function fetchMultiLiveDetections() {
       validateLeaveTypeForm();
       updateHalfLeavePolicyFields();
       modal.style.display = 'flex';
+      setTimeout(upgradeLeaveTypeModalSelects, 0);
     }
 
     function collectLeaveTypePayload() {
@@ -21087,7 +21119,7 @@ async function fetchMultiLiveDetections() {
     }
 
     async function deleteLeaveType(typeId) {
-      if (!await appConfirm("Delete this leave category? This is allowed only when every employee remaining balance for this type is zero.")) return;
+      if (!await appConfirm("Delete this leave category? Allowed only when no employee has taken leave from this type.")) return;
       try {
         const res = await fetch(`/api/leave-types/${typeId}`, { method: 'DELETE' });
         const data = await res.json().catch(() => ({}));
@@ -21098,7 +21130,7 @@ async function fetchMultiLiveDetections() {
           loadLeaveTypes();
           loadLeaveBalances();
         } else {
-          const msg = data.message || data.error || 'Leave type could not be deleted. Remaining balances must be zero for every employee, or deactivate the type instead.';
+          const msg = data.message || data.error || 'Leave type could not be deleted. If employees have taken leave from it, deactivate instead.';
           if (typeof showAppToast === 'function') showAppToast(msg, 'error');
           else alert(msg);
         }
