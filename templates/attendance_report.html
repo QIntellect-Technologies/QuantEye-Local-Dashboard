@@ -1923,7 +1923,7 @@
                         <td><span style="font-size: 0.82rem; color: #cbd5e1;"><i class="fa-solid fa-video" style="color: var(--primary-cyan); margin-right: 4px;"></i>${checkinCam}</span></td>
                         <td><i class="fa-solid fa-arrow-right-from-bracket" style="color: var(--text-muted); margin-right: 4px;"></i>${lastTime}</td>
                         <td><span style="font-size: 0.82rem; color: #cbd5e1;"><i class="fa-solid fa-video" style="color: #f59e0b; margin-right: 4px;"></i>${checkoutCam}</span></td>
-                        <td><span class="badge ${r.source === 'manual' ? 'bg-warning text-dark' : 'bg-secondary'}">${r.source === 'manual' ? 'Manual' : (r.source ? 'Auto by System' : '-')}</span></td>
+                        <td><span class="badge ${String(r.source || '').toLowerCase().includes('manual') ? 'bg-warning text-dark' : 'bg-secondary'}">${String(r.source || '').toLowerCase().includes('manual') ? 'Manual' : (r.source ? 'Auto by System' : '-')}</span></td>
                         <td><span style="color: #cbd5e1; font-size: 0.82rem;">${r.marked_by || (r.source === 'manual' ? 'Admin' : (r.source ? 'System' : '-'))}</span></td>
                         <td><span style="color: #cbd5e1; font-size: 0.82rem;">${r.notes || '-'}</span></td>
                         <td style="text-align: center;">${actionBtn}</td>
@@ -2018,7 +2018,7 @@
                     const checkOutTime = d.last_seen ? formatTime(d.last_seen) : '-';
                     const checkInCam = d.checkin_camera_name || d.checkin_camera || d.location || '-';
                     const checkOutCam = d.checkout_camera_name || d.checkout_camera || d.checkout_location || '-';
-                    const sourceText = d.source === 'manual' ? 'Manual' : (d.source ? 'Auto by System' : '-');
+                    const sourceText = String(d.source || '').toLowerCase().includes('manual') ? 'Manual' : (d.source ? 'Auto by System' : '-');
                     const markedByText = d.marked_by || (d.source === 'manual' ? 'Admin' : (d.source ? 'System' : '-'));
 
                     tr.innerHTML = `

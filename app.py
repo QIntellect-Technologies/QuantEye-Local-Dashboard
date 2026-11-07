@@ -2825,12 +2825,15 @@ def api_delete_shift(shift_id):
     """Delete a custom shift (default shift ID 1 cannot be deleted) with tenant check."""
     try:
         if shift_id == 1:
-            return jsonify({'error': 'Cannot delete default Morning Shift'}), 400
+            return jsonify({'error': 'Cannot delete the default shift'}), 400
             
         current_tenant = get_current_tenant_id()
         success = db.delete_shift(shift_id, organization_id=current_tenant)
         if success:
-            return jsonify({'success': True, 'message': 'Shift deleted successfully'}), 200
+            return jsonify({
+                'success': True,
+                'message': 'Shift deleted successfully. Assigned employees were moved to the default shift.'
+            }), 200
         else:
             return jsonify({'error': 'Shift not found or deletion failed'}), 404
     except Exception as e:

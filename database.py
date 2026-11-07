@@ -3544,9 +3544,9 @@ def update_shift(shift_id: int, name: str, start_time: str, end_time: str, grace
 
 
 def delete_shift(shift_id: int, organization_id: Optional[str] = None) -> bool:
-    """Delete shift (reassigns users of this shift back to shift ID 1), ensuring tenant authorization."""
+    """Delete shift and reassign affected users to the organization default shift."""
     if shift_id == 1:
-        logger.warning("Cannot delete the shared template Morning Shift")
+        logger.warning("Cannot delete the shared template default shift")
         return False
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -3573,11 +3573,26 @@ def delete_shift(shift_id: int, organization_id: Optional[str] = None) -> bool:
                     return False
             cursor.execute("SELECT id FROM users WHERE shift_id = ?", (shift_id,))
             reassigned_users = [row[0] for row in cursor.fetchall()]
+            # Prefer the marked default shift for this org; otherwise first remaining active shift.
             fallback_id = 1
             if organization_id and organization_id != 'all':
                 cursor.execute(
-                    "SELECT id FROM shifts WHERE organization_id = ? AND id != ? ORDER BY id ASC LIMIT 1",
+                    """SELECT id FROM shifts
+                       WHERE organization_id = ? AND id != ? AND COALESCE(active, 1) = 1
+                       ORDER BY CASE WHEN COALESCE(is_default, 0) = 1 THEN 0 ELSE 1 END, id ASC
+                       LIMIT 1""",
                     (organization_id, shift_id),
+                )
+                fallback = cursor.fetchone()
+                if fallback:
+                    fallback_id = fallback[0]
+            else:
+                cursor.execute(
+                    """SELECT id FROM shifts
+                       WHERE id != ? AND COALESCE(active, 1) = 1
+                       ORDER BY CASE WHEN COALESCE(is_default, 0) = 1 THEN 0 ELSE 1 END, id ASC
+                       LIMIT 1""",
+                    (shift_id,),
                 )
                 fallback = cursor.fetchone()
                 if fallback:
@@ -7343,17 +7358,25 @@ def get_leave_types(
                 (org,),
             )
             rows = [dict(r) for r in cursor.fetchall()]
-            # LH-10: delete is allowed only when nobody has taken leave (used_days > 0).
+            # LH-10: delete only when every employee remaining balance is zero.
+            # Remaining = max(0, allocated - used). Deactivate-only when anyone still has balance > 0.
             for row in rows:
                 cursor.execute(
                     """SELECT COUNT(*) FROM employee_leave_balances
                        WHERE leave_type_id = ?
-                         AND COALESCE(used_days, 0) > 0.0001""",
+                         AND (
+                           CASE
+                             WHEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0)) > 0
+                             THEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0))
+                             ELSE 0
+                           END
+                         ) > 0.0001""",
                     (row.get('id'),),
                 )
-                has_usage = (cursor.fetchone()[0] or 0) > 0
-                row['has_usage'] = has_usage
-                row['can_delete'] = not has_usage
+                has_positive_balance = (cursor.fetchone()[0] or 0) > 0
+                row['has_positive_balance'] = has_positive_balance
+                row['has_usage'] = has_positive_balance
+                row['can_delete'] = not has_positive_balance
             return rows
     except Exception as e:
         logger.error(f"Get leave types error: {e}")
@@ -7527,19 +7550,24 @@ def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bo
             if not row:
                 return False
             lt_name, lt_code = row[0], row[1]
-            # Ticket LH-10: allow delete when no employee has taken leave from this type.
-            # Allocated-but-unused quotas do NOT block delete. Hide delete in UI when used > 0.
+            # Ticket LH-10: block delete when any employee still has remaining balance > 0.
             cursor.execute(
                 """SELECT COUNT(*) FROM employee_leave_balances
                    WHERE leave_type_id = ?
-                     AND COALESCE(used_days, 0) > 0.0001""",
+                     AND (
+                       CASE
+                         WHEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0)) > 0
+                         THEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0))
+                         ELSE 0
+                       END
+                     ) > 0.0001""",
                 (type_id,)
             )
-            used_count = cursor.fetchone()[0]
-            if used_count > 0:
+            bal_count = cursor.fetchone()[0]
+            if bal_count > 0:
                 raise ValueError(
-                    "Cannot delete leave type because one or more employees have already taken leave "
-                    "from it. Deactivate the leave type instead."
+                    "Cannot delete leave type because one or more employees still have a leave balance "
+                    "greater than zero. Deactivate the leave type instead."
                 )
             # Clear self-references from other leave policies that deduct against this type.
             cursor.execute(
