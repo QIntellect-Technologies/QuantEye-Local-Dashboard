@@ -7122,12 +7122,37 @@ def get_leave_requests(user_id: Optional[int] = None, status: Optional[str] = No
             query += " ORDER BY created_at DESC"
             cursor.execute(query, params)
             requests = [dict(r) for r in cursor.fetchall()]
+            # Resolve leave_type codes/ids to human-readable leave type names for UI chips/complete view.
+            type_name_by_key = {}
+            try:
+                if organization_id and organization_id != 'all':
+                    cursor.execute(
+                        """SELECT id, code, name FROM leave_types
+                           WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
+                        (organization_id if organization_id != 'DEFAULT_ORG' else 'DEFAULT_ORG',),
+                    )
+                else:
+                    cursor.execute("SELECT id, code, name FROM leave_types")
+                for lt_row in cursor.fetchall():
+                    type_name_by_key[str(lt_row['id'])] = lt_row['name']
+                    type_name_by_key[str(lt_row['code'] or '').strip().lower()] = lt_row['name']
+                    type_name_by_key[str(lt_row['name'] or '').strip().lower()] = lt_row['name']
+            except Exception:
+                type_name_by_key = {}
             for leave_request in requests:
                 requested_days = 1 if leave_request.get('leave_duration') == 'half' else _count_scheduled_leave_days(
                     cursor, leave_request['user_id'], leave_request['start_date'], leave_request['end_date']
                 )
                 leave_request['requested_days'] = requested_days
                 leave_type_raw = str(leave_request.get('leave_type') or '').lower()
+                leave_type_key = str(leave_request.get('leave_type') or '').strip()
+                leave_request['leave_type_name'] = (
+                    type_name_by_key.get(leave_type_key)
+                    or type_name_by_key.get(leave_type_key.lower())
+                    or leave_request.get('leave_type_name')
+                    or leave_request.get('leave_type')
+                    or 'Leave'
+                )
                 pd = leave_request.get('paid_days')
                 ud = leave_request.get('unpaid_days')
                 # Normalize: fix NULL or both-zero when the leave type is paid
@@ -7358,12 +7383,13 @@ def get_leave_types(
                 (org,),
             )
             rows = [dict(r) for r in cursor.fetchall()]
-            # LH-10: delete only when every employee remaining balance is zero.
-            # Remaining = max(0, allocated - used). Deactivate-only when anyone still has balance > 0.
+            # LH-10: hide delete when any employee still has remaining balance after leave taken.
+            # Unused auto-allocations (used_days = 0) do not count — those are wiped on delete.
             for row in rows:
                 cursor.execute(
                     """SELECT COUNT(*) FROM employee_leave_balances
                        WHERE leave_type_id = ?
+                         AND COALESCE(used_days, 0) > 0.0001
                          AND (
                            CASE
                              WHEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0)) > 0
@@ -7545,15 +7571,26 @@ def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bo
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             org = _tenant_ids(organization_id)[0]
-            cursor.execute("SELECT name, code FROM leave_types WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?", (type_id, org))
+            cursor.execute(
+                """SELECT id, name, code FROM leave_types
+                   WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
+                (type_id, org),
+            )
             row = cursor.fetchone()
             if not row:
-                return False
-            lt_name, lt_code = row[0], row[1]
-            # Ticket LH-10: block delete when any employee still has remaining balance > 0.
+                raise ValueError("Leave type not found for this organization.")
+            # Wipe unused allocations first (used_days = 0). They are not real taken leave.
+            cursor.execute(
+                """DELETE FROM employee_leave_balances
+                   WHERE leave_type_id = ?
+                     AND COALESCE(used_days, 0) <= 0.0001""",
+                (type_id,),
+            )
+            # Block only when someone took leave and still has remaining balance > 0.
             cursor.execute(
                 """SELECT COUNT(*) FROM employee_leave_balances
                    WHERE leave_type_id = ?
+                     AND COALESCE(used_days, 0) > 0.0001
                      AND (
                        CASE
                          WHEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0)) > 0
@@ -7569,7 +7606,6 @@ def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bo
                     "Cannot delete leave type because one or more employees still have a leave balance "
                     "greater than zero. Deactivate the leave type instead."
                 )
-            # Clear self-references from other leave policies that deduct against this type.
             cursor.execute(
                 "UPDATE leave_types SET half_leave_quota_type_id = NULL WHERE half_leave_quota_type_id = ?",
                 (type_id,),
@@ -7584,12 +7620,14 @@ def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bo
             )
             deleted = cursor.rowcount > 0
             conn.commit()
-            return deleted
+            if not deleted:
+                raise ValueError("Leave type could not be deleted.")
+            return True
     except ValueError:
         raise
     except Exception as e:
         logger.error(f"Delete leave type error: {e}")
-        return False
+        raise ValueError(f"Leave type could not be deleted: {e}") from e
 
 
 def get_company_holidays(
@@ -7878,16 +7916,9 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
                             except Exception:
                                 pass
                     else:
+                        # Virtual entitlement only — do NOT persist rows here.
+                        # Persisting unused allocations blocked LH-10 delete of brand-new leave types.
                         alloc = policy_allowance
-                        if allowance_period in ('yearly', 'annual', '') or not allowance_period:
-                            try:
-                                cursor.execute(
-                                    "INSERT OR IGNORE INTO employee_leave_balances (user_id, leave_type_id, year, allocated_days, used_days) VALUES (?, ?, ?, ?, ?)",
-                                    (u['id'], lt['id'], year, alloc, 0.0)
-                                )
-                                conn.commit()
-                            except Exception:
-                                pass
                     
                     reference_month = datetime.now().month if year == datetime.now().year else 12
                     cycle_start, cycle_end = _leave_allowance_cycle_window(

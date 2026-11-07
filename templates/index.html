@@ -12711,6 +12711,14 @@ async function fetchMultiLiveDetections() {
             const isLeaveToday = ['on_leave', 'on_leave_unpaid'].includes(st) && !hasAttendance;
             const dayType = r.day_type_raw || r.day_type;
             const holidayName = r.holiday_name || ((r.day_classification === 'holiday' || r.calendar_override === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday') ? (dayType && dayType !== 'Public Holiday' && dayType !== 'public_holiday' ? dayType : '') : (dayType && !['Leave Day', 'Rest Day', 'Regular Working Day', 'leave_day', 'rest_day', 'regular_working_day'].includes(dayType) ? dayType : ''));
+            const isPublicHolidayDay = Boolean(holidayName)
+              || r.day_classification === 'holiday'
+              || r.calendar_override === 'holiday'
+              || dayType === 'Public Holiday'
+              || dayType === 'public_holiday'
+              || st === 'holiday';
+            // Allow manual mark when the person is on leave AND the day is also a public holiday.
+            const allowLeaveHolidayManualMark = isLeaveToday && isPublicHolidayDay;
             const isPresentType = ['present', 'late', 'checked_out'].includes(st) || hasAttendance;
             let dayTypeSuffix = '';
             if (isPresentType) {
@@ -12791,13 +12799,18 @@ async function fetchMultiLiveDetections() {
             `;
 
             const actionCell = tr.lastElementChild;
-            if (isLeaveToday) {
+            if (isLeaveToday && !allowLeaveHolidayManualMark) {
               const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
               actionCell.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px; color:#1d4ed8; font-size:0.76em; font-weight:700; white-space:nowrap;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
-            } else if (!hasAttendance && st !== 'not_employed') {
+            } else if ((!hasAttendance && st !== 'not_employed') || allowLeaveHolidayManualMark) {
               const btn = document.createElement('button');
               btn.style.cssText = 'padding:4px 10px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #16a34a; color:#15803d; background:#f0fdf4; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
-              btn.innerHTML = '<i class="fa-solid fa-check"></i> Mark Present';
+              btn.innerHTML = allowLeaveHolidayManualMark
+                ? '<i class="fa-solid fa-check"></i> Mark Present (Holiday)'
+                : '<i class="fa-solid fa-check"></i> Mark Present';
+              btn.title = allowLeaveHolidayManualMark
+                ? 'Public holiday with leave — manual attendance is allowed'
+                : 'Mark present manually';
               btn.addEventListener('mouseenter', function() { this.style.background = '#dcfce7'; });
               btn.addEventListener('mouseleave', function() { this.style.background = '#f0fdf4'; });
               btn.addEventListener('click', function() { markMainUserPresent(r.user_id, targetDate, r.name, this); });
@@ -19238,6 +19251,28 @@ async function fetchMultiLiveDetections() {
 
     let _allLeaveRequests = [];
     let _allLeaveTypes = [];
+
+    function resolveLeaveTypeLabel(reqOrType) {
+      if (!reqOrType) return 'Leave';
+      if (typeof reqOrType === 'string') {
+        const raw = reqOrType.trim();
+        const match = (_allLeaveTypes || []).find(lt =>
+          String(lt.code || '').toLowerCase() === raw.toLowerCase()
+          || String(lt.name || '').toLowerCase() === raw.toLowerCase()
+          || String(lt.id) === raw
+        );
+        return match?.name || raw.replace(/_/g, ' ');
+      }
+      if (reqOrType.leave_type_name) return String(reqOrType.leave_type_name);
+      const raw = String(reqOrType.leave_type || reqOrType.code || reqOrType.name || '').trim();
+      const match = (_allLeaveTypes || []).find(lt =>
+        String(lt.code || '').toLowerCase() === raw.toLowerCase()
+        || String(lt.name || '').toLowerCase() === raw.toLowerCase()
+        || String(lt.id) === raw
+      );
+      return match?.name || raw.replace(/_/g, ' ') || 'Leave';
+    }
+    window.resolveLeaveTypeLabel = resolveLeaveTypeLabel;
     let _filteredLeaveExportRows = [];
     let _leaveRequestDisplayData = new Map();
     let _leavePage = 1;
@@ -19387,6 +19422,11 @@ async function fetchMultiLiveDetections() {
       }
       tbody.innerHTML = (window.leaveModuleLoader || ((c) => `<tr><td colspan="${c}" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.35rem; color:#0d9488;"></i></td></tr>`))(7);
       try {
+        if (!(_allLeaveTypes || []).length) {
+          const typeRes = await fetch('/api/leave-types');
+          const types = await typeRes.json().catch(() => []);
+          _allLeaveTypes = Array.isArray(types) ? types : [];
+        }
         const res = await fetch('/api/leaves');
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
@@ -19536,7 +19576,7 @@ async function fetchMultiLiveDetections() {
       tbody.innerHTML = pagedGroups.map((group, gIdx) => {
         const uid = String(group.user_id || gIdx);
         const reqs = group.requests || [];
-        const types = Array.from(new Set(reqs.map(r => r.leave_type || 'annual'))).map(t => escapeHtml(String(t).replace(/_/g, ' '))).join(', ');
+        const types = Array.from(new Set(reqs.map(r => resolveLeaveTypeLabel(r)))).map(t => escapeHtml(String(t))).join(', ');
         const totalDays = reqs.reduce((sum, r) => sum + (Number(r.requested_days) || 1), 0);
         const totalPaid = reqs.reduce((sum, r) => sum + (Number(r.paid_days != null ? r.paid_days : (r.leave_type === 'unpaid' ? 0 : r.requested_days)) || 0), 0);
         const totalUnpaid = reqs.reduce((sum, r) => sum + (Number(r.unpaid_days != null ? r.unpaid_days : (r.leave_type === 'unpaid' ? r.requested_days : 0)) || 0), 0);
@@ -19655,19 +19695,20 @@ async function fetchMultiLiveDetections() {
       for (const req of requests) {
         const requestedDays = Number(req.requested_days || 0);
         totalRequestedDays += requestedDays;
-        const leaveType = String(req.leave_type || 'annual').replace(/_/g, ' ');
-        distinctTypes.add(leaveType.replace(/\b\w/g, char => char.toUpperCase()));
+        const leaveTypeCode = String(req.leave_type || 'annual');
+        const leaveType = resolveLeaveTypeLabel(req);
+        distinctTypes.add(leaveType);
         if (req.approved_by) approvers.add(req.approved_by);
         if (req.start_date) allDates.push(req.start_date);
         if (req.end_date) allDates.push(req.end_date);
 
-        const paidDays = Number(req.paid_days != null ? req.paid_days : (leaveType.toLowerCase() === 'unpaid' ? 0 : requestedDays));
+        const paidDays = Number(req.paid_days != null ? req.paid_days : (leaveTypeCode.toLowerCase() === 'unpaid' ? 0 : requestedDays));
         totalPaidDays += paidDays;
-        const unpaidDays = Number(req.unpaid_days != null ? req.unpaid_days : (leaveType.toLowerCase() === 'unpaid' ? requestedDays : 0));
+        const unpaidDays = Number(req.unpaid_days != null ? req.unpaid_days : (leaveTypeCode.toLowerCase() === 'unpaid' ? requestedDays : 0));
         totalUnpaidDays += unpaidDays;
-        const quotaDays = Number(req.quota_days != null ? req.quota_days : (leaveType.toLowerCase() === 'unpaid' ? 0 : requestedDays));
+        const quotaDays = Number(req.quota_days != null ? req.quota_days : (leaveTypeCode.toLowerCase() === 'unpaid' ? 0 : requestedDays));
         totalQuotaDays += quotaDays;
-        const requestTypeLabel = leaveType.replace(/\b\w/g, char => char.toUpperCase());
+        const requestTypeLabel = leaveType;
         const quotaThroughDate = req.quota_through_date || req.paid_through_date;
 
         const reqPrefix = isMulti ? `Request #${req.id} · ` : '';
@@ -19675,6 +19716,7 @@ async function fetchMultiLiveDetections() {
         if (Array.isArray(req.child_requests) && req.child_requests.length) {
           req.child_requests.forEach(child => {
             const childType = String(child.leave_type || '').toLowerCase();
+            const childLabel = resolveLeaveTypeLabel(child);
             const isHalfLeave = child.leave_duration === 'half';
             const days = isHalfLeave ? 1 : Number(child.requested_days || 0);
             const isUnpaid = childType === 'unpaid' || Number(child.unpaid_days || 0) > 0;
@@ -19682,8 +19724,8 @@ async function fetchMultiLiveDetections() {
               id: Number(child.id),
               portion: isUnpaid ? 'unpaid' : 'paid',
               label: isHalfLeave
-                ? `${reqPrefix}${childType.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())} Half Leave`
-                : `${reqPrefix}${childType === 'excess_paid' ? 'Paid Leave (Quota Override)' : childType === 'unpaid' ? 'Unpaid Leave' : `${childType.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())} Leave`}`,
+                ? `${reqPrefix}${childLabel} Half Leave`
+                : `${reqPrefix}${childType === 'excess_paid' ? 'Paid Leave (Quota Override)' : childType === 'unpaid' ? 'Unpaid Leave' : `${childLabel}`}`,
               start: child.start_date,
               end: child.end_date,
               reason: child.reason || req.reason || '',
@@ -19697,7 +19739,7 @@ async function fetchMultiLiveDetections() {
         } else {
           let segAdded = false;
           if (req.leave_duration === 'half') {
-            const isUnpaid = leaveType.toLowerCase() === 'unpaid';
+            const isUnpaid = leaveTypeCode.toLowerCase() === 'unpaid';
             const st = req.status === 'approved' ? 'approved' : ((isUnpaid ? req.unpaid_status : req.paid_status) || req.status || 'pending');
             allSegments.push({
               id: Number(req.id),
@@ -21142,15 +21184,17 @@ async function fetchMultiLiveDetections() {
           if (typeof showAppToast === 'function') {
             showAppToast("Leave policy category deleted.", "success");
           }
-          loadLeaveTypes();
-          loadLeaveBalances();
+          await loadLeaveTypes();
+          await loadLeaveBalances();
         } else {
           const msg = data.message || data.error || 'Leave type could not be deleted. If any employee still has a balance greater than zero, deactivate instead.';
           if (typeof showAppToast === 'function') showAppToast(msg, 'error');
           else alert(msg);
+          await loadLeaveTypes();
         }
       } catch (e) {
         alert("Error deleting leave type.");
+        await loadLeaveTypes();
       }
     }
 

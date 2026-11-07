@@ -6095,8 +6095,12 @@ def api_delete_leave_type(type_id):
     try:
         ok = db.delete_leave_type(type_id, organization_id=get_current_tenant_id())
     except ValueError as exc:
-        return jsonify({'success': False, 'message': str(exc)}), 409
-    return jsonify({'success': ok, 'message': 'Leave type not found.' if not ok else ''}), 404 if not ok else 200
+        message = str(exc)
+        status = 404 if 'not found' in message.lower() else 409
+        return jsonify({'success': False, 'message': message}), status
+    if not ok:
+        return jsonify({'success': False, 'message': 'Leave type not found.'}), 404
+    return jsonify({'success': True, 'message': 'Leave type deleted.'}), 200
 
 
 @app.route('/api/leaves/balances', methods=['GET'])
