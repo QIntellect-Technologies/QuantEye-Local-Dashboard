@@ -20389,7 +20389,8 @@ async function fetchMultiLiveDetections() {
               ? `Every ${lt.half_leaves_per_quota_day} half leave(s) charges 1 ${quotaTarget?.name || 'quota'} day (${halfLeaveMonths}-month cycle)`
               : `${lt.half_leave_allowance_count} half leave(s) per ${halfLeaveMonths}-month cycle`;
           const isActive = Number(lt.active ?? 1) === 1;
-          const canDelete = Boolean(lt.can_delete) && !lt.has_positive_balance && !lt.has_usage;
+          // LH-10: Delete only when every employee remaining balance is 0; otherwise deactivate only.
+          const canDelete = Boolean(lt.can_delete) && !lt.has_positive_balance;
           return `
           <tr>
             <td style="font-weight:700; color:#173042;">${escapeHtml(lt.name)} ${isActive ? '' : '<span class="badge bg-secondary-subtle text-secondary ms-1">Inactive</span>'}</td>

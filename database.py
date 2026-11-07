@@ -7448,13 +7448,12 @@ def get_leave_types(
                 (org,),
             )
             rows = [dict(r) for r in cursor.fetchall()]
-            # LH-10: hide delete when any employee still has remaining balance after leave taken.
-            # Unused auto-allocations (used_days = 0) do not count — those are wiped on delete.
+            # LH-10: show Delete only when every employee remaining balance is 0
+            # (allocated - used). Any remaining > 0 → deactivate only, no delete icon.
             for row in rows:
                 cursor.execute(
                     """SELECT COUNT(*) FROM employee_leave_balances
                        WHERE leave_type_id = ?
-                         AND COALESCE(used_days, 0) > 0.0001
                          AND (
                            CASE
                              WHEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0)) > 0
@@ -7654,18 +7653,10 @@ def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bo
             row = cursor.fetchone()
             if not row:
                 raise ValueError("Leave type not found for this organization.")
-            # Wipe unused allocations first (used_days = 0). They are not real taken leave.
-            cursor.execute(
-                """DELETE FROM employee_leave_balances
-                   WHERE leave_type_id = ?
-                     AND COALESCE(used_days, 0) <= 0.0001""",
-                (type_id,),
-            )
-            # Block only when someone took leave and still has remaining balance > 0.
+            # LH-10: remaining quota (allocated - used) must be 0 for every employee.
             cursor.execute(
                 """SELECT COUNT(*) FROM employee_leave_balances
                    WHERE leave_type_id = ?
-                     AND COALESCE(used_days, 0) > 0.0001
                      AND (
                        CASE
                          WHEN (COALESCE(allocated_days, 0) - COALESCE(used_days, 0)) > 0
@@ -7685,6 +7676,7 @@ def delete_leave_type(type_id: int, organization_id: Optional[str] = None) -> bo
                 "UPDATE leave_types SET half_leave_quota_type_id = NULL WHERE half_leave_quota_type_id = ?",
                 (type_id,),
             )
+            # Safe to clear zero-remaining balance rows (fully used or zero allocation).
             cursor.execute(
                 "DELETE FROM employee_leave_balances WHERE leave_type_id = ?",
                 (type_id,)
