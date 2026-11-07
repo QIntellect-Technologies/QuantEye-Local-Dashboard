@@ -509,16 +509,15 @@ def mirror_attendance_event(event: Dict[str, Any]) -> None:
 
 
 def _map_leave_type(raw: str) -> str:
-    value = str(raw or "casual").strip().lower()
-    if value in {"annual", "sick", "casual", "unpaid"}:
-        return value
-    if "sick" in value:
-        return "sick"
-    if "annual" in value or "vacation" in value:
-        return "annual"
-    if "unpaid" in value:
-        return "unpaid"
-    return "casual"
+    """Preserve custom leave-type codes. Do not collapse names like 'nnn' into casual/annual."""
+    value = str(raw or "casual").strip()
+    if not value:
+        return "casual"
+    lowered = value.lower()
+    if lowered in {"annual", "sick", "casual", "unpaid", "excess_paid"}:
+        return lowered
+    # Keep original custom codes/names (e.g. nnn, test_leave) so Local UI can resolve the real type name.
+    return value[:64]
 
 
 def mirror_leave(row: Dict[str, Any]) -> None:

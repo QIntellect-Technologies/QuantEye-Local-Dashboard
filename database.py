@@ -5126,6 +5126,9 @@ def get_detailed_attendance_report(
 
                     is_manual_absent = (uid, cur_date) in absent_set
                     leave_info = leave_map.get((uid, cur_date))
+                    # Resolve holiday early so leave-on-holiday can keep leave status + Mark Present.
+                    cur_holiday_name = holiday_names.get(cur_date) or ''
+                    is_public_holiday = bool(override_type == 'holiday' or cur_holiday_name)
                     half_leave_active = False
                     if leave_info and leave_info['is_half_leave'] and att:
                         now = datetime.now()
@@ -5230,7 +5233,9 @@ def get_detailed_attendance_report(
                             emp_present_days += 1
                         if is_scheduled_workday:
                             emp_working_days += 1
-                    elif is_scheduled_workday and leave_info:
+                    elif leave_info and (is_scheduled_workday or is_public_holiday):
+                        # Leave wins the status label even on a public holiday so the UI can
+                        # show On Leave + Mark Present (Holiday) together.
                         if leave_info.get('is_half_leave'):
                             if leave_info.get('is_paid'):
                                 emp_leave_days += 0.5
@@ -5251,14 +5256,15 @@ def get_detailed_attendance_report(
                         dev = '-'
                         checkin_cam = '-'
                         checkout_cam = '-'
-                        emp_working_days += 1
+                        if is_scheduled_workday:
+                            emp_working_days += 1
                     else:
                         # No attendance record
                         if not is_scheduled_workday:
                             if status_if_no_attendance == 'not_employed':
                                 status = 'not_employed'
                             else:
-                                status = 'schedule_unknown' if not schedule_known else ('holiday' if override_type == 'holiday' else (
+                                status = 'schedule_unknown' if not schedule_known else ('holiday' if (override_type == 'holiday' or is_public_holiday) else (
                                     'off_day' if override_type == 'off_day' else 'weekend'
                                 ))
                             first_seen = None
@@ -5280,9 +5286,8 @@ def get_detailed_attendance_report(
                             emp_working_days += 1
 
                     # ATT-05: Determine Day Type from existing sources and structured labels
-                    cur_holiday_name = holiday_names.get(cur_date) or ''
                     day_type = None
-                    if override_type == 'holiday' or cur_holiday_name:
+                    if is_public_holiday:
                         day_type = cur_holiday_name if cur_holiday_name else 'Public Holiday'
                     elif (
                         (uid, cur_date) in leave_map
@@ -5357,6 +5362,15 @@ def get_detailed_attendance_report(
                             'non_working_day' if schedule_known else 'schedule_unknown'
                         ),
                         'status_display': status_display_val,
+                        'is_public_holiday': is_public_holiday,
+                        'allow_manual_mark': bool(
+                            att is None
+                            and status != 'not_employed'
+                            and (
+                                status in ('absent', 'holiday', 'weekend', 'off_day', 'schedule_unknown')
+                                or (status in ('on_leave', 'on_leave_unpaid') and is_public_holiday)
+                            )
+                        ),
                         'half_leave_count': 1 if (half_leave_active or (leave_info and leave_info.get('is_half_leave'))) else 0,
                         'half_leave_type': leave_info.get('leave_type') if (leave_info and leave_info.get('is_half_leave')) else None,
                         'is_half_leave': bool(half_leave_active or (leave_info and leave_info.get('is_half_leave'))),
@@ -5523,6 +5537,10 @@ def get_detailed_attendance_report(
                         'status': st_val,
                         'attendance_status': st_val,
                         'holiday_name': day_entry.get('holiday_name'),
+                        'is_public_holiday': day_entry.get('is_public_holiday'),
+                        'allow_manual_mark': day_entry.get('allow_manual_mark'),
+                        'calendar_override': day_entry.get('calendar_override'),
+                        'day_classification': day_entry.get('day_classification'),
                         'day_type': day_entry.get('day_type'),
                         'day_type_raw': day_entry.get('day_type_raw') or day_entry.get('day_type'),
                         'day_type_normalized': day_entry.get('day_type_normalized'),
@@ -7144,13 +7162,7 @@ def add_leave_requests(user_id: int, user_name: str, requests: List[Tuple[str, s
 
 def get_leave_requests(user_id: Optional[int] = None, status: Optional[str] = None, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict]:
     """Get list of leave requests optionally filtered by user_id, status, organization_id, and branch_id."""
-    if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
-        if postgres_is_configured():
-            try:
-                import postgres_mirror as cloud_pg
-                cloud_pg.fetch_pg_leave_requests(organization_id, branch_id, user_id, status)
-            except Exception as error:
-                logger.warning("Postgres unreachable for leave requests; falling back to SQLite cache: %s", error)
+    # Layer 4: do not overwrite local leave_type codes from Postgres while reading the portal list.
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -7206,9 +7218,25 @@ def get_leave_requests(user_id: Optional[int] = None, status: Optional[str] = No
                 leave_request['requested_days'] = requested_days
                 leave_type_raw = str(leave_request.get('leave_type') or '').lower()
                 leave_type_key = str(leave_request.get('leave_type') or '').strip()
-                leave_request['leave_type_name'] = (
+                resolved_name = (
                     type_name_by_key.get(leave_type_key)
                     or type_name_by_key.get(leave_type_key.lower())
+                )
+                if not resolved_name and leave_type_key:
+                    # Fallback: match across org if tenant map missed a renamed/shared code.
+                    cursor.execute(
+                        """SELECT name FROM leave_types
+                           WHERE LOWER(TRIM(code)) = LOWER(TRIM(?))
+                              OR LOWER(TRIM(name)) = LOWER(TRIM(?))
+                              OR CAST(id AS TEXT) = ?
+                           ORDER BY id DESC LIMIT 1""",
+                        (leave_type_key, leave_type_key, leave_type_key),
+                    )
+                    hit = cursor.fetchone()
+                    if hit:
+                        resolved_name = hit['name'] if hasattr(hit, 'keys') else hit[0]
+                leave_request['leave_type_name'] = (
+                    resolved_name
                     or leave_request.get('leave_type_name')
                     or leave_request.get('leave_type')
                     or 'Leave'

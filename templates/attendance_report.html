@@ -1895,9 +1895,23 @@
                     const safeNotes = (r.notes || '').replace(/'/g, "\\'");
                     const editBtn = `<button class="btn-toggle-status" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); margin-right:4px;" onclick="openEditAttendanceModal(${r.user_id}, '${safeName}', '${r.date || 'today'}', '${r.first_seen || ''}', '${r.last_seen || ''}', ${r.shift_id || 'null'}, '${safeNotes}', '${st}')"><i class="fa-solid fa-pen-to-square"></i> Edit</button>`;
                     let actionBtn = editBtn;
-                    if (st === 'absent') {
-                        actionBtn += `<button class="btn-toggle-status btn-toggle-present" onclick="markUserPresent(${r.user_id})"><i class="fa-solid fa-check"></i> Mark Present</button>`;
-                    } else {
+                    const isLeaveToday = ['on_leave', 'on_leave_unpaid'].includes(st) && !['present', 'late', 'checked_out'].includes(st);
+                    const isPublicHolidayDay = Boolean(r.is_public_holiday || r.holiday_name || holidayName)
+                      || r.day_classification === 'holiday'
+                      || r.calendar_override === 'holiday'
+                      || dayType === 'Public Holiday'
+                      || dayType === 'public_holiday'
+                      || st === 'holiday';
+                    const allowLeaveHolidayManualMark = isLeaveToday && isPublicHolidayDay;
+                    const allowManualMark = (typeof r.allow_manual_mark === 'boolean')
+                      ? Boolean(r.allow_manual_mark)
+                      : (st === 'absent' || st === 'holiday' || allowLeaveHolidayManualMark);
+                    if (allowManualMark || allowLeaveHolidayManualMark) {
+                        const markLabel = (allowLeaveHolidayManualMark || (isLeaveToday && isPublicHolidayDay))
+                          ? 'Mark Present (Holiday)'
+                          : 'Mark Present';
+                        actionBtn += `<button class="btn-toggle-status btn-toggle-present" onclick="markUserPresent(${r.user_id})"><i class="fa-solid fa-check"></i> ${markLabel}</button>`;
+                    } else if (['present', 'late', 'checked_out'].includes(st)) {
                         actionBtn += `<button class="btn-toggle-status btn-toggle-absent" onclick="markUserAbsent(${r.user_id})"><i class="fa-solid fa-xmark"></i> Mark Absent</button>`;
                     }
 

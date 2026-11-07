@@ -5771,11 +5771,19 @@ def api_add_leave():
         branch_id=get_current_branch_id(),
     )
     matched_leave_type = next(
-        (item for item in leave_types if str(item.get('code')) == str(leave_type) or str(item.get('id')) == str(leave_type)),
+        (
+            item for item in leave_types
+            if str(item.get('code')) == str(leave_type)
+            or str(item.get('id')) == str(leave_type)
+            or str(item.get('name') or '').strip().lower() == str(leave_type or '').strip().lower()
+        ),
         None,
     )
     if matched_leave_type and int(matched_leave_type.get('active', 1) or 0) != 1:
         return jsonify({'success': False, 'message': 'This leave type is inactive and cannot be used for new requests.'}), 400
+    # Always persist the canonical leave-type code so list/chips/complete-view resolve the real name.
+    if matched_leave_type and matched_leave_type.get('code'):
+        leave_type = str(matched_leave_type.get('code')).strip()
 
     try:
         d1 = datetime.strptime(start_date, '%Y-%m-%d')

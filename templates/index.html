@@ -12806,14 +12806,19 @@ async function fetchMultiLiveDetections() {
             const isLeaveToday = ['on_leave', 'on_leave_unpaid'].includes(st) && !hasAttendance;
             const dayType = r.day_type_raw || r.day_type;
             const holidayName = r.holiday_name || ((r.day_classification === 'holiday' || r.calendar_override === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday') ? (dayType && dayType !== 'Public Holiday' && dayType !== 'public_holiday' ? dayType : '') : (dayType && !['Leave Day', 'Rest Day', 'Regular Working Day', 'leave_day', 'rest_day', 'regular_working_day'].includes(dayType) ? dayType : ''));
-            const isPublicHolidayDay = Boolean(holidayName)
+            const isPublicHolidayDay = Boolean(r.is_public_holiday)
+              || Boolean(holidayName)
               || r.day_classification === 'holiday'
               || r.calendar_override === 'holiday'
+              || r.day_type_normalized === 'public_holiday'
               || dayType === 'Public Holiday'
               || dayType === 'public_holiday'
               || st === 'holiday';
             // Allow manual mark when the person is on leave AND the day is also a public holiday.
             const allowLeaveHolidayManualMark = isLeaveToday && isPublicHolidayDay;
+            const allowManualMark = (typeof r.allow_manual_mark === 'boolean')
+              ? Boolean(r.allow_manual_mark)
+              : ((!hasAttendance && st !== 'not_employed') || allowLeaveHolidayManualMark);
             const isPresentType = ['present', 'late', 'checked_out'].includes(st) || hasAttendance;
             let dayTypeSuffix = '';
             if (isPresentType) {
@@ -12894,16 +12899,16 @@ async function fetchMultiLiveDetections() {
             `;
 
             const actionCell = tr.lastElementChild;
-            if (isLeaveToday && !allowLeaveHolidayManualMark) {
+            if (isLeaveToday && !allowLeaveHolidayManualMark && !allowManualMark) {
               const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
               actionCell.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px; color:#1d4ed8; font-size:0.76em; font-weight:700; white-space:nowrap;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
-            } else if ((!hasAttendance && st !== 'not_employed') || allowLeaveHolidayManualMark) {
+            } else if (allowManualMark || allowLeaveHolidayManualMark) {
               const btn = document.createElement('button');
               btn.style.cssText = 'padding:4px 10px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #16a34a; color:#15803d; background:#f0fdf4; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
-              btn.innerHTML = allowLeaveHolidayManualMark
+              btn.innerHTML = (allowLeaveHolidayManualMark || (isLeaveToday && isPublicHolidayDay))
                 ? '<i class="fa-solid fa-check"></i> Mark Present (Holiday)'
                 : '<i class="fa-solid fa-check"></i> Mark Present';
-              btn.title = allowLeaveHolidayManualMark
+              btn.title = (allowLeaveHolidayManualMark || (isLeaveToday && isPublicHolidayDay))
                 ? 'Public holiday with leave — manual attendance is allowed'
                 : 'Mark present manually';
               btn.addEventListener('mouseenter', function() { this.style.background = '#dcfce7'; });
@@ -19504,14 +19509,18 @@ async function fetchMultiLiveDetections() {
         );
         return match?.name || raw.replace(/_/g, ' ');
       }
-      if (reqOrType.leave_type_name) return String(reqOrType.leave_type_name);
+      const named = String(reqOrType.leave_type_name || '').trim();
       const raw = String(reqOrType.leave_type || reqOrType.code || reqOrType.name || '').trim();
       const match = (_allLeaveTypes || []).find(lt =>
         String(lt.code || '').toLowerCase() === raw.toLowerCase()
         || String(lt.name || '').toLowerCase() === raw.toLowerCase()
         || String(lt.id) === raw
+        || (named && String(lt.name || '').toLowerCase() === named.toLowerCase())
       );
-      return match?.name || raw.replace(/_/g, ' ') || 'Leave';
+      // Prefer live leave-types catalog over a stale/generic leave_type_name.
+      if (match?.name) return String(match.name);
+      if (named && !/^(casual|annual|sick|unpaid)$/i.test(named)) return named;
+      return raw.replace(/_/g, ' ') || 'Leave';
     }
     window.resolveLeaveTypeLabel = resolveLeaveTypeLabel;
     let _filteredLeaveExportRows = [];
@@ -19673,12 +19682,13 @@ async function fetchMultiLiveDetections() {
       }
       tbody.innerHTML = (window.leaveModuleLoader || ((c) => `<tr><td colspan="${c}" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.35rem; color:#0d9488;"></i></td></tr>`))(7);
       try {
-        if (!(_allLeaveTypes || []).length) {
-          const typeRes = await fetch('/api/leave-types');
+        // Always refresh leave types so request chips/complete-view resolve the latest names.
+        try {
+          const typeRes = await fetch('/api/leave-types', { cache: 'no-store' });
           const types = await typeRes.json().catch(() => []);
-          _allLeaveTypes = Array.isArray(types) ? types : [];
-        }
-        const res = await fetch('/api/leaves');
+          if (Array.isArray(types)) _allLeaveTypes = types;
+        } catch (_) {}
+        const res = await fetch('/api/leaves', { cache: 'no-store' });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.error || `HTTP ${res.status}`);
@@ -20012,7 +20022,7 @@ async function fetchMultiLiveDetections() {
               allSegments.push({
                 id: Number(req.id),
                 portion: 'paid',
-                label: `${reqPrefix}${requestTypeLabel} Leave`,
+                label: `${reqPrefix}${requestTypeLabel}`,
                 start: req.start_date,
                 end: quotaThroughDate || req.end_date,
                 reason: req.reason || '',
@@ -20030,7 +20040,7 @@ async function fetchMultiLiveDetections() {
               allSegments.push({
                 id: Number(req.id),
                 portion: 'paid',
-                label: `${reqPrefix}${requestTypeLabel} Leave (Paid Override)`,
+                label: `${reqPrefix}${requestTypeLabel} (Paid Override)`,
                 start: nextIsoDate(quotaThroughDate, req.start_date),
                 end: req.end_date,
                 reason: req.reason || '',
@@ -20047,7 +20057,7 @@ async function fetchMultiLiveDetections() {
               allSegments.push({
                 id: Number(req.id),
                 portion: 'unpaid',
-                label: `${reqPrefix}${requestTypeLabel} Leave (Unpaid)`,
+                label: `${reqPrefix}${requestTypeLabel} (Unpaid)`,
                 start: nextIsoDate(quotaThroughDate, req.start_date),
                 end: req.end_date,
                 reason: req.reason || '',
@@ -20064,7 +20074,7 @@ async function fetchMultiLiveDetections() {
             allSegments.push({
               id: Number(req.id),
               portion: 'all',
-              label: `${reqPrefix}${requestTypeLabel} Leave`,
+              label: `${reqPrefix}${requestTypeLabel}`,
               start: req.start_date,
               end: req.end_date,
               reason: req.reason || '',
@@ -20726,12 +20736,16 @@ async function fetchMultiLiveDetections() {
         const types = await tRes.json();
         _allLeaveTypes = Array.isArray(types) ? types : [];
         if (Array.isArray(types) && types.length > 0 && typeSelect) {
-          typeSelect.innerHTML = types.filter(t => Number(t.active ?? 1) === 1).map(t => {
+          const activeTypes = types.filter(t => Number(t.active ?? 1) === 1);
+          typeSelect.innerHTML = activeTypes.map(t => {
             const periodTag = t.allowance_period === 'monthly' ? 'Month' : (t.allowance_period === 'half_yearly' ? '6-Month' : 'Year');
             const durationMonths = Number(t.allowance_months || (t.allowance_period === 'monthly' ? 1 : (t.allowance_period === 'half_yearly' ? 6 : 12)));
-            return `<option value="${escapeHtml(t.code)}" data-id="${t.id}" data-half="${t.half_leave_enabled ? '1' : '0'}">${escapeHtml(t.name)} (${t.yearly_allowance} Days/${periodTag}, ${durationMonths} month${durationMonths === 1 ? '' : 's'} - ${t.is_paid ? 'Paid' : 'Unpaid'})</option>`;
+            const codeVal = String(t.code || t.id || '').trim();
+            return `<option value="${escapeHtml(codeVal)}" data-id="${t.id}" data-name="${escapeHtml(t.name || codeVal)}" data-half="${t.half_leave_enabled ? '1' : '0'}">${escapeHtml(t.name)} (${t.yearly_allowance} Days/${periodTag}, ${durationMonths} month${durationMonths === 1 ? '' : 's'} - ${t.is_paid ? 'Paid' : 'Unpaid'})</option>`;
           }).join('');
+          if (activeTypes.length) typeSelect.value = String(activeTypes[0].code || activeTypes[0].id || '');
           if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(typeSelect);
+          else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(typeSelect);
         }
       } catch (e) {}
       ['modalLeaveDurationSelect', 'modalExcessTreatment'].forEach(id => {
@@ -20971,14 +20985,23 @@ async function fetchMultiLiveDetections() {
     async function submitLeaveRequest() {
       if (!validateLeaveRequestForm()) return;
       const userId = document.getElementById('modalLeaveUserSelect').value;
-      let leaveType = document.getElementById('modalLeaveTypeSelect').value;
+      const typeSelect = document.getElementById('modalLeaveTypeSelect');
+      const selectedOpt = typeSelect?.options?.[typeSelect.selectedIndex];
+      let leaveType = (selectedOpt?.value || typeSelect?.value || '').trim();
+      // Prefer canonical code from loaded leave types (never a stale default like annual/casual).
+      const matchedType = (_allLeaveTypes || []).find(lt =>
+        String(lt.code || '') === leaveType
+        || String(lt.id) === leaveType
+        || String(lt.name || '').toLowerCase() === String(selectedOpt?.dataset?.name || '').toLowerCase()
+      );
+      if (matchedType?.code) leaveType = String(matchedType.code).trim();
       const startDate = document.getElementById('modalLeaveStartDate').value;
       const endDate = document.getElementById('modalLeaveEndDate').value;
       const leaveDuration = document.getElementById('modalLeaveDurationSelect').value || 'full';
       const reason = document.getElementById('modalLeaveReason').value;
 
-      if (!userId || !startDate || !endDate) {
-        alert("Please select employee, start date, and end date.");
+      if (!userId || !leaveType || !startDate || !endDate) {
+        alert("Please select employee, leave type, start date, and end date.");
         return;
       }
 
