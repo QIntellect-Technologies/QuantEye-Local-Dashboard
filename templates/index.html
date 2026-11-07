@@ -20851,6 +20851,7 @@ async function fetchMultiLiveDetections() {
         else if (typeof refresh === 'function') refresh(el);
       });
     }
+    window.upgradeLeaveTypeModalSelects = upgradeLeaveTypeModalSelects;
 
     function openAddLeaveTypeModal() {
       const modal = document.getElementById('leaveTypeModal');
