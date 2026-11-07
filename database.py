@@ -4500,13 +4500,8 @@ def get_detailed_attendance_report(
             except Exception:
                 pass
 
-            if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
-                if postgres_is_configured():
-                    try:
-                        import postgres_mirror as cloud_pg
-                        cloud_pg.fetch_pg_attendance_logs(organization_id, branch_id, limit=500)
-                    except Exception as error:
-                        logger.warning("Postgres unreachable for attendance logs in report: %s", error)
+            # AR-3 / Layer 4: do not block attendance reports on Postgres pull.
+            # Local SQLite is the portal source of truth until Layer 4 is opened.
 
             # Determine query date parameters
             if target_date == 'today' or (not target_date and not start_date):
@@ -8543,22 +8538,8 @@ def check_leave_quota(
 
             if duration == 'half':
                 rule_res = resolve_half_leave_rule(cursor, user_id, lt_dict, reference_date)
-                if not rule_res['allowed']:
-                    return {
-                        'allowed': False,
-                        'reason_code': rule_res['reason_code'],
-                        'message': rule_res['message'],
-                        'requested_days': 1,
-                        'quota_days_requested': 0,
-                        'remaining_days': rule_res['remaining_count'],
-                        'leave_type_name': leave_name,
-                        'half_leave_enabled': rule_res['half_leave_enabled'],
-                        'half_leave_mode': rule_res.get('half_leave_mode'),
-                        'half_leave_count': rule_res['used_count'],
-                        'half_leave_allowance_count': rule_res['allowance'],
-                    }
 
-                # Check if employee still has full-day quota for paid leave
+                # LH-5: compute full-day remaining the same way for half and full requests.
                 allocated = float(lt_dict.get('yearly_allowance', 10.0))
                 if user_id:
                     cursor.execute(
@@ -8596,6 +8577,25 @@ def check_leave_quota(
                             already_used += 1.0
 
                 remaining_full = max(0.0, allocated - already_used)
+
+                if not rule_res['allowed']:
+                    return {
+                        'allowed': False,
+                        'reason_code': rule_res['reason_code'],
+                        'message': rule_res['message'],
+                        'requested_days': 1,
+                        'quota_days_requested': 0,
+                        'remaining_days': remaining_full,
+                        'half_leave_remaining': rule_res['remaining_count'],
+                        'allocated_days': allocated,
+                        'used_days': already_used,
+                        'leave_type_name': leave_name,
+                        'half_leave_enabled': rule_res['half_leave_enabled'],
+                        'half_leave_mode': rule_res.get('half_leave_mode'),
+                        'half_leave_count': rule_res['used_count'],
+                        'half_leave_allowance_count': rule_res['allowance'],
+                    }
+
                 if is_paid == 1 and remaining_full <= 0:
                     rem_str = int(remaining_full) if remaining_full.is_integer() else remaining_full
                     return {

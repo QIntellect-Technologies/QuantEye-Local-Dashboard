@@ -7781,6 +7781,56 @@ def api_manage_overtime_holiday_premium_rule(holiday_id):
     })
 
 
+def _safe_plain_text_error(value, field_label, allow_empty=False):
+    """ST-2 / ST-3: reject leading special chars and HTML/script tags."""
+    import re
+    text = str(value or '').strip()
+    if not text:
+        return None if allow_empty else f'{field_label} is required.'
+    if text[0] in '=+-@!#$%^*<>/\\|`~':
+        return f'{field_label} cannot start with a special character.'
+    if re.search(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', text, re.IGNORECASE):
+        return f'HTML or script tags are not allowed in {field_label}.'
+    return None
+
+
+def _push_branch_cameras_to_main(organization_id=None, branch_id=None):
+    """LE-1: push latest portal cameras into Main cache so EXE sees renames immediately."""
+    org_id = (organization_id or get_current_tenant_id() or '').strip()
+    br_id = (branch_id or get_current_branch_id() or '').strip()
+    if not org_id or not br_id or org_id in ('DEFAULT_ORG', 'all'):
+        return
+    integration_key = os.environ.get('LOCAL_DASHBOARD_API_KEY', '').strip()
+    if len(integration_key) < 32:
+        return
+    main_url = os.environ.get(
+        'MAIN_DASHBOARD_URL',
+        'https://quanteye-main-dashboard-production.up.railway.app',
+    ).rstrip('/')
+    cameras = db.get_all_cameras(active_only=True, organization_id=org_id, branch_id=br_id)
+    payload = {
+        'organization_id': org_id,
+        'branch_id': br_id,
+        'cameras': cameras,
+    }
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            f'{main_url}/api/integration/portal/cameras',
+            data=json.dumps(payload).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'X-Integration-Key': integration_key,
+                'User-Agent': 'QuantEye-Local-Dashboard',
+            },
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            resp.read()
+    except Exception as error:
+        logger.warning('Could not push branch cameras to Main Dashboard: %s', error)
+
+
 @app.route('/api/settings/branch', methods=['GET'])
 def api_get_branch_settings():
     return jsonify(db.get_branch_settings())
@@ -7801,14 +7851,10 @@ def api_update_branch_settings():
     import re
     name_pattern = re.compile(r"^(?=.*[A-Za-z])[A-Za-z0-9 .&'()/-]+$")
     person_name_pattern = re.compile(r"^[A-Za-z][A-Za-z .'-]*$")
-    leading_special = set('=+-@!#$%^*<>/\\|`~')
-    html_or_script = re.compile(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', re.IGNORECASE)
-    if branch_name and branch_name[0] in leading_special:
-        return jsonify({'error': 'Organization name cannot start with a special character.'}), 400
-    if city and city[0] in leading_special:
-        return jsonify({'error': 'City cannot start with a special character.'}), 400
-    if html_or_script.search(branch_name) or html_or_script.search(city):
-        return jsonify({'error': 'HTML or script tags are not allowed in Name or City.'}), 400
+    unsafe_org = _safe_plain_text_error(branch_name, 'Organization name')
+    unsafe_city = _safe_plain_text_error(city, 'City')
+    if unsafe_org or unsafe_city:
+        return jsonify({'error': unsafe_org or unsafe_city}), 400
     if len(branch_name) > 120 or not name_pattern.fullmatch(branch_name):
         return jsonify({'error': 'Organization name must be 1-120 characters and contain a valid name.'}), 400
     if len(city) > 100 or not person_name_pattern.fullmatch(city):
@@ -7860,6 +7906,10 @@ def api_add_department():
     name = data.get('name')
     if not name:
         return jsonify({'error': 'Department name is required'}), 400
+    unsafe_name = _safe_plain_text_error(name, 'Department name')
+    unsafe_desc = _safe_plain_text_error(data.get('description', ''), 'Department description', allow_empty=True)
+    if unsafe_name or unsafe_desc:
+        return jsonify({'error': unsafe_name or unsafe_desc}), 400
     try:
         dept_id = db.add_department(
             name=name,
@@ -7883,6 +7933,10 @@ def api_update_department(dept_id):
     name = data.get('name')
     if not name:
         return jsonify({'error': 'Department name is required'}), 400
+    unsafe_name = _safe_plain_text_error(name, 'Department name')
+    unsafe_desc = _safe_plain_text_error(data.get('description', ''), 'Department description', allow_empty=True)
+    if unsafe_name or unsafe_desc:
+        return jsonify({'error': unsafe_name or unsafe_desc}), 400
     try:
         success = db.update_department(
             dept_id=dept_id,
@@ -7929,6 +7983,10 @@ def api_add_designation():
     title = data.get('title')
     if dept_id is None or title is None or not str(title).strip():
         return jsonify({'error': 'Department and designation title are required'}), 400
+    unsafe_title = _safe_plain_text_error(title, 'Designation title')
+    unsafe_desc = _safe_plain_text_error(data.get('description', ''), 'Designation description', allow_empty=True)
+    if unsafe_title or unsafe_desc:
+        return jsonify({'error': unsafe_title or unsafe_desc}), 400
     try:
         dept_id_int = int(dept_id)
     except (ValueError, TypeError):
@@ -7961,6 +8019,10 @@ def api_update_designation(desig_id):
     title = data.get('title')
     if not title:
         return jsonify({'error': 'Designation title is required'}), 400
+    unsafe_title = _safe_plain_text_error(title, 'Designation title')
+    unsafe_desc = _safe_plain_text_error(data.get('description', ''), 'Designation description', allow_empty=True)
+    if unsafe_title or unsafe_desc:
+        return jsonify({'error': unsafe_title or unsafe_desc}), 400
     try:
         success = db.update_designation(
             desig_id=desig_id,
@@ -8084,6 +8146,11 @@ def api_add_camera():
     )
     if cam_db_id:
         threading.Thread(target=reload_all_camera_streams, daemon=True).start()
+        threading.Thread(
+            target=_push_branch_cameras_to_main,
+            args=(current_tenant, current_branch),
+            daemon=True,
+        ).start()
         return jsonify({'success': True, 'id': cam_db_id, 'camera_id': camera_id, 'message': f'Camera {name} configured successfully'}), 201
     return jsonify({'error': f'Camera ID {camera_id} already exists or configuration failed'}), 409
 
@@ -8104,6 +8171,7 @@ def api_update_camera(cam_id):
         return jsonify({'error': conn_error}), 400
     
     current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
     success = db.update_camera(
         cam_db_id=cam_id,
         camera_id=camera_id,
@@ -8116,15 +8184,26 @@ def api_update_camera(cam_id):
     )
     if success:
         threading.Thread(target=reload_all_camera_streams, daemon=True).start()
+        threading.Thread(
+            target=_push_branch_cameras_to_main,
+            args=(current_tenant, current_branch),
+            daemon=True,
+        ).start()
         return jsonify({'success': True, 'message': f'Camera {name} updated successfully'})
     return jsonify({'error': 'Failed to update camera or access denied'}), 404
 
 @app.route('/api/cameras/<int:cam_id>', methods=['DELETE'])
 def api_delete_camera(cam_id):
     current_tenant = get_current_tenant_id()
+    current_branch = get_current_branch_id()
     success = db.delete_camera(cam_id, organization_id=current_tenant)
     if success:
         threading.Thread(target=reload_all_camera_streams, daemon=True).start()
+        threading.Thread(
+            target=_push_branch_cameras_to_main,
+            args=(current_tenant, current_branch),
+            daemon=True,
+        ).start()
         return jsonify({'success': True, 'message': 'Camera deleted successfully'})
     return jsonify({'error': 'Failed to delete camera or access denied'}), 404
 
