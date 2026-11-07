@@ -2018,8 +2018,8 @@
                     const checkOutTime = d.last_seen ? formatTime(d.last_seen) : '-';
                     const checkInCam = d.checkin_camera_name || d.checkin_camera || d.location || '-';
                     const checkOutCam = d.checkout_camera_name || d.checkout_camera || d.checkout_location || '-';
-                    const sourceText = String(d.source || '').toLowerCase().includes('manual') ? 'Manual' : (d.source ? 'Auto by System' : '-');
-                    const markedByText = d.marked_by || (d.source === 'manual' ? 'Admin' : (d.source ? 'System' : '-'));
+                    const isManualSource = String(d.source || '').toLowerCase().includes('manual');
+                    const sourceText = isManualSource ? 'Manual' : (d.source ? 'Auto by System' : '-');
 
                     tr.innerHTML = `
                         <td><strong style="color: #ffffff;">${d.date_formatted || d.date}</strong></td>
@@ -2029,7 +2029,7 @@
                         <td><span style="font-size: 0.82rem; color: #cbd5e1;"><i class="fa-solid fa-video" style="color: var(--primary-cyan); margin-right: 4px;"></i>${checkInCam}</span></td>
                         <td><i class="fa-solid fa-arrow-right-from-bracket" style="color: var(--text-muted); margin-right: 4px;"></i>${checkOutTime}</td>
                         <td><span style="font-size: 0.82rem; color: #cbd5e1;"><i class="fa-solid fa-video" style="color: #f59e0b; margin-right: 4px;"></i>${checkOutCam}</span></td>
-                        <td><div style="display:flex; align-items:center; gap:6px; flex-wrap:nowrap; white-space:nowrap;"><span class="badge ${d.source === 'manual' ? 'bg-warning text-dark' : 'bg-secondary'}">${sourceText}</span><span style="color: #cbd5e1; font-size: 0.82rem;">By: ${markedByText}</span></div></td>
+                        <td><span class="badge ${isManualSource ? 'bg-warning text-dark' : 'bg-secondary'}">${sourceText}</span></td>
                         <td><span style="color: #cbd5e1; font-size: 0.82rem;">${d.notes || '-'}</span></td>
                         <td><span style="color: #cbd5e1; font-size: 0.82rem;">${d.shift_name || emp.shift_name || 'General'}</span></td>
                     `;
