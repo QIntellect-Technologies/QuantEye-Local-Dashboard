@@ -4773,6 +4773,47 @@ def get_detailed_attendance_report(
                     att_conditions.append("(branch_id = ? OR branch_id IS NULL)")
                     att_params.append(branch_id)
 
+            # AR-1: resolve camera IDs to camera name + location (room_name).
+            camera_by_token = {}
+            try:
+                cam_clauses = ["1=1"]
+                cam_params: List[Any] = []
+                if report_org and report_org != 'all':
+                    if report_org == 'DEFAULT_ORG':
+                        cam_clauses.append("(organization_id = 'DEFAULT_ORG' OR organization_id IS NULL OR organization_id = '')")
+                    else:
+                        cam_clauses.append("organization_id = ?")
+                        cam_params.append(report_org)
+                cursor.execute(
+                    f"SELECT camera_id, id, name, room_name FROM cameras WHERE {' AND '.join(cam_clauses)}",
+                    cam_params,
+                )
+                for cam_id, cam_pk, cam_name, room_name in cursor.fetchall():
+                    info = {
+                        'name': str(cam_name or '').strip() or str(cam_id or cam_pk or '').strip(),
+                        'location': str(room_name or '').strip() or '—',
+                    }
+                    for token in (cam_id, cam_pk, cam_name):
+                        key = str(token or '').strip().lower()
+                        if key:
+                            camera_by_token[key] = info
+            except Exception as cam_err:
+                logger.warning("Camera name lookup failed for attendance report: %s", cam_err)
+
+            def _resolve_camera_label(raw_id: Any, fallback_location: Any = None) -> Tuple[str, str]:
+                text = str(raw_id or '').strip()
+                if not text or text in ('-', '—', 'Manual', 'N/A'):
+                    loc = str(fallback_location or '').strip()
+                    return (text or 'N/A'), (loc or '—')
+                info = camera_by_token.get(text.lower())
+                if info:
+                    loc = info['location']
+                    if (not loc or loc == '—') and fallback_location:
+                        loc = str(fallback_location).strip() or loc
+                    return info['name'], loc or '—'
+                loc = str(fallback_location or '').strip()
+                return text, (loc or '—')
+
             att_where_sql = " AND ".join(att_conditions)
             cursor.execute(
                 f'''
@@ -4789,6 +4830,11 @@ def get_detailed_attendance_report(
                 ts = str(raw['timestamp'] or '')
                 log_date = ts.split('T', 1)[0].split(' ', 1)[0][:10]
                 key = (raw['user_id'], log_date)
+                checkin_name, checkin_loc = _resolve_camera_label(raw['device_id'], raw['location'])
+                checkout_name, checkout_loc = _resolve_camera_label(
+                    raw['checkout_camera_id'] or raw['device_id'],
+                    raw['checkout_location'] or raw['location'],
+                )
                 rec = att_map.get(key)
                 if rec is None:
                     att_map[key] = {
@@ -4797,10 +4843,10 @@ def get_detailed_attendance_report(
                         'first_seen': raw['timestamp'],
                         'last_seen': raw['timestamp'],
                         'log_count': 1,
-                        'checkin_location': raw['location'],
-                        'checkin_camera': raw['device_id'],
-                        'checkout_location': raw['checkout_location'] or raw['location'],
-                        'checkout_camera': raw['checkout_camera_id'] or raw['device_id'],
+                        'checkin_location': checkin_loc,
+                        'checkin_camera': checkin_name,
+                        'checkout_location': checkout_loc,
+                        'checkout_camera': checkout_name,
                         'source': raw['source'],
                         'notes': raw['notes'],
                         'marked_by': raw['marked_by'],
@@ -4809,8 +4855,8 @@ def get_detailed_attendance_report(
                 else:
                     rec['last_seen'] = raw['timestamp']
                     rec['log_count'] += 1
-                    rec['checkout_location'] = raw['checkout_location'] or raw['location'] or rec.get('checkout_location')
-                    rec['checkout_camera'] = raw['checkout_camera_id'] or raw['device_id'] or rec.get('checkout_camera')
+                    rec['checkout_location'] = checkout_loc or rec.get('checkout_location')
+                    rec['checkout_camera'] = checkout_name or rec.get('checkout_camera')
                     if rec.get('record_shift_id') is None and raw['shift_id'] is not None:
                         rec['record_shift_id'] = raw['shift_id']
 
@@ -4821,7 +4867,8 @@ def get_detailed_attendance_report(
             )
             absent_set = set((r[0], r[1]) for r in cursor.fetchall())
 
-            # Retrieve approved leaves with leave_type & is_paid lookup
+            # Retrieve approved leaves with leave_type & is_paid lookup.
+            # Include cancelled_worked so AR-2 can still label “present on leave day”.
             cursor.execute(f'''
                   SELECT lr.id, lr.user_id, lr.start_date, lr.end_date, lr.leave_type, lr.leave_duration,
                       lr.paid_days, lr.unpaid_days, lr.paid_through_date, lr.paid_status, lr.unpaid_status,
@@ -4830,12 +4877,19 @@ def get_detailed_attendance_report(
                 FROM leave_requests lr
                 LEFT JOIN leave_types lt ON lt.code = lr.leave_type OR lt.name = lr.leave_type
                 WHERE lr.user_id IN ({placeholders})
-                  AND (lr.status = 'approved' OR lr.paid_status = 'approved' OR lr.unpaid_status = 'approved')
+                  AND (
+                    lr.status IN ('approved', 'partially_approved', 'cancelled_worked')
+                    OR lr.paid_status IN ('approved', 'cancelled_worked')
+                    OR lr.unpaid_status IN ('approved', 'cancelled_worked')
+                  )
                   AND lr.end_date >= ? AND lr.start_date <= ?
             ''', (*user_ids, start_date, end_date))
             leave_rows = cursor.fetchall()
             leave_map = {}
             approved_leave_dates = set()
+            # AR-2: calendar leave-day markers (includes restored / cancelled_worked dates)
+            # so Present on a leave day still shows “Leave Day” in multi-day Complete View.
+            leave_calendar_dates = set()
             for lr in leave_rows:
                 l_uid, l_start, l_end, l_type = lr['user_id'], lr['start_date'], lr['end_date'], lr['leave_type']
                 is_half_leave = lr['leave_duration'] == 'half'
@@ -4851,8 +4905,13 @@ def get_detailed_attendance_report(
 
                 restored_dates_raw = lr['restored_dates'] if 'restored_dates' in lr.keys() else ''
                 restored_set = set(d.strip() for d in (restored_dates_raw or '').split(',') if d.strip())
+                lr_status_lower = str(lr['status'] or '').lower()
+                was_leave_request = lr_status_lower in (
+                    'approved', 'partially_approved', 'cancelled_worked'
+                ) or str(lr['paid_status'] or '').lower() in ('approved', 'cancelled_worked') \
+                    or str(lr['unpaid_status'] or '').lower() in ('approved', 'cancelled_worked')
 
-                is_overall_approved = (str(lr['status']).lower() == 'approved')
+                is_overall_approved = (lr_status_lower == 'approved')
                 p_status = (lr['paid_status'] or ('approved' if is_overall_approved else 'pending')).lower()
                 if is_overall_approved and p_status == 'pending':
                     p_status = 'approved'
@@ -4865,6 +4924,8 @@ def get_detailed_attendance_report(
                     end_l = datetime.strptime(l_end, "%Y-%m-%d")
                     while cur_l <= end_l:
                         current_date = cur_l.strftime("%Y-%m-%d")
+                        if was_leave_request:
+                            leave_calendar_dates.add((l_uid, current_date))
                         if is_overall_approved or p_status == 'approved' or up_status == 'approved':
                             approved_leave_dates.add((l_uid, current_date))
                         if current_date in restored_set:
@@ -5228,7 +5289,11 @@ def get_detailed_attendance_report(
                     day_type = None
                     if override_type == 'holiday' or cur_holiday_name:
                         day_type = cur_holiday_name if cur_holiday_name else 'Public Holiday'
-                    elif (uid, cur_date) in leave_map or (uid, cur_date) in approved_leave_dates:
+                    elif (
+                        (uid, cur_date) in leave_map
+                        or (uid, cur_date) in approved_leave_dates
+                        or (uid, cur_date) in leave_calendar_dates
+                    ):
                         day_type = 'Leave Day'
                     elif not is_scheduled_workday or override_type == 'off_day':
                         day_type = 'Rest Day'
@@ -7539,6 +7604,7 @@ def update_leave_type(
             raise ValueError('Half-day policy values are outside the allowed limits.')
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            org = _tenant_ids(organization_id)[0]
             cursor.execute(
                 """UPDATE leave_types SET name = ?, yearly_allowance = ?, is_paid = ?, description = ?, active = ?,
                    allowance_period = ?, allowance_months = ?, half_leave_enabled = ?, half_leave_mode = ?,
@@ -7547,17 +7613,26 @@ def update_leave_type(
                    WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
                 (clean_name, allowance, is_paid, clean_desc, active, allowance_period, duration_months,
                  int(bool(half_leave_enabled)), half_mode, half_count, half_months, half_conversion,
-                 half_leave_quota_type_id, type_id, _tenant_ids(organization_id)[0])
+                 half_leave_quota_type_id, type_id, org)
             )
+            updated = cursor.rowcount > 0
+            # Keep existing balance rows in sync when present. Do not treat zero matching
+            # balance rows as a failed leave-type update (LH-6).
             cursor.execute(
                 """UPDATE employee_leave_balances SET allocated_days = ?
                    WHERE leave_type_id = ? AND user_id IN (
                        SELECT id FROM users WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
                    )""",
-                (allowance, type_id, _tenant_ids(organization_id)[0])
+                (allowance, type_id, org)
             )
             conn.commit()
-            return cursor.rowcount > 0
+            if updated:
+                return True
+            cursor.execute(
+                "SELECT id FROM leave_types WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?",
+                (type_id, org),
+            )
+            return cursor.fetchone() is not None
     except ValueError:
         raise
     except Exception as e:
@@ -8555,7 +8630,10 @@ def check_leave_quota(
                         'message': 'OK',
                         'requested_days': 1,
                         'quota_days_requested': 0,
-                        'remaining_days': rule_res['remaining_count'],
+                        # LH-5: keep remaining_days as full leave quota (same as full-day),
+                        # and expose half-occurrence remaining separately.
+                        'remaining_days': remaining_full,
+                        'half_leave_remaining': rule_res['remaining_count'],
                         'leave_type_name': leave_name,
                         'is_paid': is_paid,
                         'half_leave_enabled': True,
@@ -8625,7 +8703,9 @@ def check_leave_quota(
                     'message': 'OK',
                     'requested_days': 1,
                     'quota_days_requested': int(charge_next),
-                    'remaining_days': target_quota.get('remaining_days', 0),
+                    # LH-5: remaining_days = full leave quota; half occurrence remaining separate.
+                    'remaining_days': remaining_full,
+                    'half_leave_remaining': rule_res.get('remaining_count'),
                     'leave_type_name': leave_name,
                     'is_paid': is_paid,
                     'half_leave_enabled': True,
@@ -13344,9 +13424,30 @@ def get_branch_settings() -> Dict:
         'email': ''
     }
 
+def _reject_unsafe_plain_text(value: str, field_label: str, *, allow_empty: bool = False, max_len: int = 250) -> str:
+    """ST-2/ST-3: reject leading specials, HTML/script tags; allow normal punctuation."""
+    text = str(value or '').strip()
+    if not text:
+        if allow_empty:
+            return ''
+        raise ValueError(f"{field_label} is required")
+    if len(text) > max_len:
+        raise ValueError(f"{field_label} cannot exceed {max_len} characters")
+    if text[0] in ('=', '+', '-', '@', '!', '#', '$', '%', '^', '*', '<', '>', '/', '\\', '|', '`', '~'):
+        raise ValueError(f"{field_label} cannot start with a special character")
+    if re.search(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', text, re.IGNORECASE):
+        raise ValueError(f"HTML or script tags are not allowed in {field_label}")
+    return text
+
+
 def update_branch_settings(branch_name: str, city: str, company_name: str = '', address: str = '', phone: str = '', email: str = '', admin_name: str = 'Mr. Junaid') -> bool:
     """Update branch and organization settings."""
     try:
+        clean_branch = _reject_unsafe_plain_text(branch_name, 'Organization name', max_len=120)
+        clean_city = _reject_unsafe_plain_text(city, 'City', max_len=100)
+        clean_company = _reject_unsafe_plain_text(company_name or clean_branch, 'Company name', allow_empty=True, max_len=120) or clean_branch
+        clean_address = _reject_unsafe_plain_text(address, 'Address', allow_empty=True, max_len=250)
+        clean_admin = _reject_unsafe_plain_text(admin_name or 'Mr. Junaid', 'Admin name', allow_empty=True, max_len=100) or 'Mr. Junaid'
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -13361,10 +13462,12 @@ def update_branch_settings(branch_name: str, city: str, company_name: str = '', 
                 email=excluded.email,
                 admin_name=excluded.admin_name,
                 updated_at=CURRENT_TIMESTAMP
-            ''', (branch_name.strip(), city.strip(), company_name.strip(), address.strip(), phone.strip(), email.strip(), admin_name.strip() or 'Mr. Junaid'))
+            ''', (clean_branch, clean_city, clean_company, clean_address, phone.strip(), email.strip(), clean_admin))
             conn.commit()
-            logger.info(f"✓ Branch settings updated: {branch_name} ({city}) | Admin: {admin_name}")
+            logger.info(f"✓ Branch settings updated: {clean_branch} ({clean_city}) | Admin: {clean_admin}")
             return True
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Failed to update branch settings: {e}")
         return False
@@ -13469,9 +13572,9 @@ def add_department(name: str, code: str = '', description: str = '', organizatio
     """Add a new department scoped to organization."""
     if not name or not name.strip():
         return None
-    name = str(name).strip()
-    code = str(code or '').strip()
-    description = str(description or '').strip()
+    name = _reject_unsafe_plain_text(name, 'Department name', max_len=100)
+    code = _reject_unsafe_plain_text(code, 'Department code', allow_empty=True, max_len=20)
+    description = _reject_unsafe_plain_text(description, 'Department description', allow_empty=True, max_len=250)
     if len(name) > 100 or len(code) > 20 or len(description) > 250:
         raise ValueError('Department name must be at most 100 characters, code 20, and description 250')
     try:
@@ -13516,9 +13619,9 @@ def add_department(name: str, code: str = '', description: str = '', organizatio
 
 def update_department(dept_id: int, name: str, code: str = '', description: str = '', active: int = 1, organization_id: Optional[str] = None) -> bool:
     """Update department information with tenant check and sync assigned user records."""
-    name = str(name or '').strip()
-    code = str(code or '').strip()
-    description = str(description or '').strip()
+    name = _reject_unsafe_plain_text(name, 'Department name', max_len=100)
+    code = _reject_unsafe_plain_text(code, 'Department code', allow_empty=True, max_len=20)
+    description = _reject_unsafe_plain_text(description, 'Department description', allow_empty=True, max_len=250)
     if not name or len(name) > 100 or len(code) > 20 or len(description) > 250:
         raise ValueError('Department name, code, or description is invalid or exceeds its character limit')
     try:
@@ -13644,8 +13747,8 @@ def add_designation(department_id: int, title: str, description: str = '', organ
     """Add a new designation under a specific department, scoped by tenant."""
     if not title or not title.strip() or not department_id:
         return None
-    title = str(title).strip()
-    description = str(description or '').strip()
+    title = _reject_unsafe_plain_text(title, 'Designation title', max_len=100)
+    description = _reject_unsafe_plain_text(description, 'Designation description', allow_empty=True, max_len=250)
     if len(title) > 100 or len(description) > 250:
         raise ValueError('Designation title must be at most 100 characters and description 250')
     try:
@@ -13669,8 +13772,8 @@ def add_designation(department_id: int, title: str, description: str = '', organ
 
 def update_designation(desig_id: int, title: str, description: str = '', active: int = 1, organization_id: Optional[str] = None) -> bool:
     """Update designation title or active status with tenant check."""
-    title = str(title or '').strip()
-    description = str(description or '').strip()
+    title = _reject_unsafe_plain_text(title, 'Designation title', max_len=100)
+    description = _reject_unsafe_plain_text(description, 'Designation description', allow_empty=True, max_len=250)
     if not title or len(title) > 100 or len(description) > 250:
         raise ValueError('Designation title or description is invalid or exceeds its character limit')
     try:

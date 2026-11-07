@@ -7801,6 +7801,14 @@ def api_update_branch_settings():
     import re
     name_pattern = re.compile(r"^(?=.*[A-Za-z])[A-Za-z0-9 .&'()/-]+$")
     person_name_pattern = re.compile(r"^[A-Za-z][A-Za-z .'-]*$")
+    leading_special = set('=+-@!#$%^*<>/\\|`~')
+    html_or_script = re.compile(r'<[^>]*>|(?:javascript|vbscript|data:text/html):|\bon\w+\s*=', re.IGNORECASE)
+    if branch_name and branch_name[0] in leading_special:
+        return jsonify({'error': 'Organization name cannot start with a special character.'}), 400
+    if city and city[0] in leading_special:
+        return jsonify({'error': 'City cannot start with a special character.'}), 400
+    if html_or_script.search(branch_name) or html_or_script.search(city):
+        return jsonify({'error': 'HTML or script tags are not allowed in Name or City.'}), 400
     if len(branch_name) > 120 or not name_pattern.fullmatch(branch_name):
         return jsonify({'error': 'Organization name must be 1-120 characters and contain a valid name.'}), 400
     if len(city) > 100 or not person_name_pattern.fullmatch(city):
@@ -7816,15 +7824,18 @@ def api_update_branch_settings():
     if len(str(address)) > 250:
         return jsonify({'error': 'Address cannot exceed 250 characters.'}), 400
     
-    success = db.update_branch_settings(
-        branch_name=branch_name,
-        city=city,
-        company_name=company_name,
-        address=address,
-        phone=phone,
-        email=email,
-        admin_name=admin_name
-    )
+    try:
+        success = db.update_branch_settings(
+            branch_name=branch_name,
+            city=city,
+            company_name=company_name,
+            address=address,
+            phone=phone,
+            email=email,
+            admin_name=admin_name
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     if success:
         return jsonify({'success': True, 'message': 'Branch settings updated successfully'})
     return jsonify({'error': 'Failed to update branch settings'}), 500
