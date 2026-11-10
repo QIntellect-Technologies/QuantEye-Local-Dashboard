@@ -5029,6 +5029,7 @@ async function fetchMultiLiveDetections() {
                     <th style="padding:10px 14px; text-align:left;">Shift</th>
                     <th style="padding:10px 14px; text-align:left;">Camera / Location</th>
                     <th style="padding:10px 14px; text-align:left;">Source / Notes</th>
+                    <th style="padding:10px 14px; text-align:right;">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="mainModalDailyTbody">
@@ -6343,15 +6344,19 @@ async function fetchMultiLiveDetections() {
             <div style="font-weight:700; color:#173042;">Half-day leave</div>
             <div id="halfLeaveQuotaDescription" style="font-size:0.82em; color:#64748b;">How should half-day leave be counted? Only one rule applies. Winner order: one person → department → company setting. If the company setting is “use each leave type’s own rules”, the leave type is used after that.</div>
           </div>
-          <select id="halfLeaveQuotaMode" class="form-select" style="max-width:280px;" onchange="updateHalfLeaveQuotaModeUI(); savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle')?.checked)">
+          <select id="halfLeaveQuotaMode" class="form-select" style="max-width:280px;" onchange="updateHalfLeaveQuotaModeUI()">
             <option value="category">Use each leave type’s own rules</option>
             <option value="monthly_cap">Set a monthly limit</option>
             <option value="monthly_convert">Count two half days as one full day</option>
           </select>
           <label for="halfLeavesPerQuotaDay" style="display:flex; align-items:center; gap:8px; margin:0; font-size:0.86em; font-weight:700; color:#475569;">
             Occurrences per month
-            <input id="halfLeavesPerQuotaDay" class="form-control" type="number" min="1" step="1" value="2" style="width:90px;" oninput="updateHalfLeaveQuotaModeUI()" onchange="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle')?.checked)">
+            <input id="halfLeavesPerQuotaDay" class="form-control" type="number" min="1" step="1" value="2" style="width:90px;" oninput="updateHalfLeaveQuotaModeUI()">
           </label>
+          <button type="button" id="saveLeaveSettingsBtn" class="btn btn-primary btn-sm" onclick="saveLeaveSettings()" style="background:#0d9488; border:none; font-weight:700; min-height:38px;">
+            <i class="fa-solid fa-floppy-disk me-1"></i> Save Leave Settings
+          </button>
+          <div id="leaveSettingsMessage" style="flex-basis:100%; font-size:0.82em; color:#64748b; min-height:1.2em;"></div>
           <div style="flex-basis: 100%; margin-top:16px; padding-top:12px; border-top:1px solid #dbe5ec;">
             <div style="font-weight:700; color:#173042; margin-bottom:8px;">Half-day leave for one group</div>
             <div style="font-size:0.82em; color:#64748b; margin-bottom:10px;">A person rule beats a department rule. A department rule beats the company setting above. The winning rule is used instead of the others, not added on top.</div>
@@ -12834,7 +12839,8 @@ async function fetchMultiLiveDetections() {
             const isRestDayToday = (st === 'weekend' || st === 'off_day' || dayType === 'Rest Day' || dayType === 'rest_day') && !hasAttendance;
             if (isLeaveToday) {
               const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
-              statusBadge = `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
+              const leaveHolidayBit = isPublicHolidayDay ? ` — ${holidayName || 'Public Holiday'}` : '';
+              statusBadge = `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}${leaveHolidayBit}</span>`;
             } else if (isHolidayToday) {
               const hLabel = holidayName || 'Public Holiday';
               statusBadge = `<span class="badge" style="background:#f0fdf4; color:#0d9488; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-gifts"></i> ${hLabel}</span>`;
@@ -13338,7 +13344,7 @@ async function fetchMultiLiveDetections() {
             dailyTbody.innerHTML = '';
             const dailyRecords = emp.daily_records || [];
             if (dailyRecords.length === 0) {
-              dailyTbody.innerHTML = '<tr><td colspan="7" style="padding:20px; text-align:center; color:#64748b;">No daily attendance records found in this date range.</td></tr>';
+              dailyTbody.innerHTML = '<tr><td colspan="9" style="padding:20px; text-align:center; color:#64748b;">No daily attendance records found in this date range.</td></tr>';
             } else {
               dailyRecords.forEach(d => {
                 const tr = document.createElement('tr');
@@ -13349,6 +13355,19 @@ async function fetchMultiLiveDetections() {
                 const dayTypeNorm = d.day_type_normalized || '';
                 const holidayName = d.holiday_name || ((d.day_classification === 'holiday' || d.calendar_override === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday') ? (dayType && dayType !== 'Public Holiday' && dayType !== 'public_holiday' ? dayType : '') : (dayType && !['Leave Day', 'Rest Day', 'Regular Working Day', 'leave_day', 'rest_day', 'regular_working_day'].includes(dayType) ? dayType : ''));
                 const isPresentType = ['present', 'late', 'checked_out'].includes(st);
+                const isLeaveDay = ['on_leave', 'on_leave_unpaid'].includes(st) && !isPresentType;
+                const isPublicHolidayDay = Boolean(d.is_public_holiday)
+                  || Boolean(holidayName)
+                  || d.day_classification === 'holiday'
+                  || d.calendar_override === 'holiday'
+                  || dayTypeNorm === 'public_holiday'
+                  || dayType === 'Public Holiday'
+                  || dayType === 'public_holiday'
+                  || st === 'holiday';
+                const allowLeaveHolidayManualMark = isLeaveDay && isPublicHolidayDay;
+                const allowManualMark = (typeof d.allow_manual_mark === 'boolean')
+                  ? Boolean(d.allow_manual_mark)
+                  : ((!isPresentType && st !== 'not_employed') || allowLeaveHolidayManualMark);
                 // AR-2: prefer backend status_display (includes Present — Leave Day).
                 const statusDisplay = String(d.status_display || d.day_type_label || '').trim();
                 let dayTypeSuffix = '';
@@ -13363,6 +13382,9 @@ async function fetchMultiLiveDetections() {
                     dayTypeSuffix = ' — Rest Day';
                   }
                 }
+                const leaveHolidaySuffix = (isLeaveDay && isPublicHolidayDay)
+                  ? ` — ${holidayName || 'Public Holiday'}`
+                  : '';
                 let stBadge = '';
                 if (statusDisplay && isPresentType && /leave day|public holiday|rest day|half leave/i.test(statusDisplay)) {
                   const icon = st === 'late' ? 'fa-clock' : (st === 'checked_out' ? 'fa-right-from-bracket' : 'fa-circle-check');
@@ -13376,15 +13398,15 @@ async function fetchMultiLiveDetections() {
                   stBadge = `<span class="badge" style="background:#fef7e0; color:#b06000; border:1px solid #f9e29c; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-clock"></i> Late${dayTypeSuffix}</span>`;
                 } else if (st === 'checked_out') {
                   stBadge = `<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-right-from-bracket"></i> Checked Out${dayTypeSuffix}</span>`;
+                } else if (st === 'on_leave') {
+                  stBadge = `<span class="badge" style="background:#ccfbf1; color:#0f766e; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-envelope-open-text"></i> On Leave${leaveHolidaySuffix}</span>`;
+                } else if (st === 'on_leave_unpaid') {
+                  stBadge = `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-plane-slash"></i> Unpaid Leave${leaveHolidaySuffix}</span>`;
                 } else if (st === 'holiday' || Boolean(holidayName)) {
                   const hLabel = holidayName || 'Public Holiday';
                   stBadge = `<span class="badge" style="background:#f0fdf4; color:#0d9488; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-gifts"></i> ${hLabel}</span>`;
                 } else if (st === 'weekend' || st === 'off_day') {
                   stBadge = '<span class="badge" style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-bed"></i> Weekend / Off</span>';
-                } else if (st === 'on_leave') {
-                  stBadge = '<span class="badge" style="background:#ccfbf1; color:#0f766e; border:1px solid #99f6e4; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-envelope-open-text"></i> On Leave</span>';
-                } else if (st === 'on_leave_unpaid') {
-                  stBadge = '<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-plane-slash"></i> Unpaid Leave</span>';
                 } else if (st === 'not_employed') {
                   stBadge = '<span class="badge" style="background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; padding:3px 9px; font-size:0.76em;"><i class="fa-solid fa-user-slash"></i> Not Employed</span>';
                 } else {
@@ -13400,6 +13422,10 @@ async function fetchMultiLiveDetections() {
                 const source = isManualSource ? 'Manual' : 'Auto by System';
                 const sourceBadge = `<span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${isManualSource ? '#e0f2fe' : '#f1f5f9'}; color:${isManualSource ? '#0369a1' : '#475569'};">${source}</span>`;
                 const notesText = d.notes ? `<div style="font-size:0.75em; color:#64748b; margin-top:2px;">${escapeHtml(d.notes)}</div>` : '';
+                const showMarkPresent = Boolean(allowManualMark || allowLeaveHolidayManualMark);
+                const markLabel = (allowLeaveHolidayManualMark || (isLeaveDay && isPublicHolidayDay))
+                  ? 'Mark Present (Holiday)'
+                  : 'Mark Present';
 
                 tr.innerHTML = `
                   <td style="padding:8px 12px; font-weight:600; color:#0f172a;">${d.date_formatted || d.date}</td>
@@ -13416,7 +13442,23 @@ async function fetchMultiLiveDetections() {
                     ${sourceBadge}
                     ${notesText}
                   </td>
+                  <td style="padding:8px 12px; text-align:right;"></td>
                 `;
+                const actionCell = tr.lastElementChild;
+                if (showMarkPresent) {
+                  const btn = document.createElement('button');
+                  btn.style.cssText = 'padding:4px 10px; font-size:0.72em; font-weight:700; border-radius:6px; border:1.5px solid #16a34a; color:#15803d; background:#f0fdf4; cursor:pointer; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;';
+                  btn.innerHTML = `<i class="fa-solid fa-check"></i> ${markLabel}`;
+                  btn.title = (allowLeaveHolidayManualMark || (isLeaveDay && isPublicHolidayDay))
+                    ? 'Public holiday with leave — manual attendance is allowed'
+                    : 'Mark present manually';
+                  btn.addEventListener('click', function() {
+                    markMainUserPresent(emp.user_id, d.date, emp.name, this);
+                  });
+                  actionCell.appendChild(btn);
+                } else {
+                  actionCell.innerHTML = '<span style="color:#94a3b8; font-size:0.75em;">—</span>';
+                }
                 dailyTbody.appendChild(tr);
               });
             }
@@ -15614,6 +15656,7 @@ async function fetchMultiLiveDetections() {
       async function loadPayrollSettings() {
         const toggle = document.getElementById('deductUnpaidLeaveToggle');
         const message = document.getElementById('payrollSettingsMessage');
+        const leaveMessage = document.getElementById('leaveSettingsMessage');
         const quotaMode = document.getElementById('halfLeaveQuotaMode');
         const conversionCount = document.getElementById('halfLeavesPerQuotaDay');
         const holidayPremium = document.getElementById('holidayOtPremiumPercent');
@@ -15621,16 +15664,18 @@ async function fetchMultiLiveDetections() {
         const overtimeMaxHours = document.getElementById('overtimeMaxHours');
         const overtimeMaxPeriod = document.getElementById('overtimeMaxPeriod');
         const overtimeLimitMessage = document.getElementById('overtimeLimitSettingsMessage');
-        if (!toggle && !overtimeMaxHours && !document.getElementById('payrollRuleForm')) return;
+        // Leave Settings tab only has half-day controls — still load so Save works without payroll UI.
+        if (!toggle && !overtimeMaxHours && !document.getElementById('payrollRuleForm') && !quotaMode) return;
         if (toggle) toggle.disabled = true;
-        if (toggle) {
-          loadHalfLeaveSpecificRules();
-          updateHalfLeaveRuleScopeOptions();
+        if (quotaMode || toggle) {
+          if (typeof loadHalfLeaveSpecificRules === 'function') loadHalfLeaveSpecificRules();
+          if (typeof updateHalfLeaveRuleScopeOptions === 'function') updateHalfLeaveRuleScopeOptions();
         }
         try {
           const response = await fetch(`${API_BASE}/settings/payroll`, { cache: 'no-store' });
           const settings = await response.json();
           if (!response.ok) throw new Error(settings.error || 'Failed to load payroll settings');
+          window._payrollSettings = settings;
           if (toggle) {
             toggle.checked = Boolean(settings.deduct_unpaid_leave);
             toggle.dataset.saved = String(toggle.checked);
@@ -15639,7 +15684,13 @@ async function fetchMultiLiveDetections() {
           if (conversionCount) {
             conversionCount.value = settings.half_leaves_per_quota_day || 2;
           }
-          updateHalfLeaveQuotaModeUI();
+          if (typeof updateHalfLeaveQuotaModeUI === 'function') updateHalfLeaveQuotaModeUI();
+          if (leaveMessage) leaveMessage.textContent = '';
+          // Leave Settings-only pages: stop after half-day fields (payroll controls may be absent).
+          if (!toggle && !overtimeMaxHours && !document.getElementById('payrollRuleForm')) {
+            if (message) message.textContent = '';
+            return;
+          }
           if (holidayPremium) {
             holidayPremium.value = settings.holiday_ot_premium_percent ?? 0;
             holidayPremium.dataset.saved = holidayPremium.value;
@@ -17289,19 +17340,79 @@ async function fetchMultiLiveDetections() {
         showAppToast('Pay method switched to days present. Recalculate the current month to preview.', 'success');
       }
 
+      async function saveLeaveSettings() {
+        const btn = document.getElementById('saveLeaveSettingsBtn');
+        const message = document.getElementById('leaveSettingsMessage');
+        const quotaMode = document.getElementById('halfLeaveQuotaMode');
+        const conversionCount = document.getElementById('halfLeavesPerQuotaDay');
+        if (btn) btn.disabled = true;
+        try {
+          let current = window._payrollSettings;
+          if (!current || typeof current.deduct_unpaid_leave === 'undefined') {
+            const getRes = await fetch(`${API_BASE}/settings/payroll`, { cache: 'no-store' });
+            current = await getRes.json();
+            if (!getRes.ok) throw new Error(current.error || 'Failed to load leave settings');
+            window._payrollSettings = current;
+          }
+          const toggle = document.getElementById('deductUnpaidLeaveToggle');
+          const deduct = toggle
+            ? Boolean(toggle.checked)
+            : Boolean(current.deduct_unpaid_leave);
+          const payload = {
+            ...current,
+            deduct_unpaid_leave: deduct,
+            half_leave_quota_mode: quotaMode?.value || current.half_leave_quota_mode || 'category',
+            half_leaves_per_quota_day: Math.max(
+              1,
+              parseInt(conversionCount?.value || current.half_leaves_per_quota_day || '2', 10) || 1
+            )
+          };
+          const response = await fetch(`${API_BASE}/settings/payroll`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const result = await response.json();
+          if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save leave settings');
+          window._payrollSettings = result.settings || payload;
+          if (quotaMode) quotaMode.value = result.settings?.half_leave_quota_mode || quotaMode.value;
+          if (conversionCount) {
+            conversionCount.value = result.settings?.half_leaves_per_quota_day || conversionCount.value;
+          }
+          if (typeof updateHalfLeaveQuotaModeUI === 'function') updateHalfLeaveQuotaModeUI();
+          if (message) {
+            message.style.color = '#15803d';
+            message.textContent = 'Leave settings saved.';
+          }
+          showAppToast('Leave settings saved.', 'success');
+        } catch (error) {
+          if (message) {
+            message.style.color = '#b91c1c';
+            message.textContent = error.message || 'Failed to save leave settings';
+          }
+          showAppToast(error.message || 'Failed to save leave settings', 'error');
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      }
+      window.saveLeaveSettings = saveLeaveSettings;
+
       async function savePayrollSettings(deductUnpaidLeave) {
         const toggle = document.getElementById('deductUnpaidLeaveToggle');
         const message = document.getElementById('payrollSettingsMessage');
         const quotaMode = document.getElementById('halfLeaveQuotaMode');
         const conversionCount = document.getElementById('halfLeavesPerQuotaDay');
-        const previousValue = toggle ? toggle.dataset.saved === 'true' : Boolean(deductUnpaidLeave);
+        const resolvedDeduct = (typeof deductUnpaidLeave === 'boolean')
+          ? deductUnpaidLeave
+          : Boolean(toggle?.checked ?? window._payrollSettings?.deduct_unpaid_leave);
+        const previousValue = toggle ? toggle.dataset.saved === 'true' : resolvedDeduct;
         if (toggle) toggle.disabled = true;
         try {
           const response = await fetch(`${API_BASE}/settings/payroll`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              deduct_unpaid_leave: Boolean(deductUnpaidLeave),
+              deduct_unpaid_leave: resolvedDeduct,
               half_leave_quota_mode: quotaMode?.value || 'category',
               half_leaves_per_quota_day: Math.max(1, parseInt(conversionCount?.value || '2', 10) || 1),
               holiday_ot_premium_percent: Number(document.getElementById('holidayOtPremiumPercent')?.value || 0) || 0,
@@ -17339,8 +17450,9 @@ async function fetchMultiLiveDetections() {
           });
           const result = await response.json();
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save payroll settings');
+          window._payrollSettings = result.settings || window._payrollSettings;
           if (toggle) {
-            toggle.checked = Boolean(result.settings?.deduct_unpaid_leave ?? deductUnpaidLeave);
+            toggle.checked = Boolean(result.settings?.deduct_unpaid_leave ?? resolvedDeduct);
             toggle.dataset.saved = String(toggle.checked);
           }
           window._payrollCurrencyCode = result.settings?.currency_code || 'PKR';
@@ -17354,6 +17466,11 @@ async function fetchMultiLiveDetections() {
           updateHalfLeaveQuotaModeUI();
           updatePayrollFeatureSectionsVisibility(result.settings);
           if (message) message.textContent = 'Saved.';
+          const leaveMessage = document.getElementById('leaveSettingsMessage');
+          if (leaveMessage) {
+            leaveMessage.style.color = '#15803d';
+            leaveMessage.textContent = 'Leave settings saved.';
+          }
           showAppToast('Payroll settings saved.', 'success');
           if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
             await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
@@ -19935,6 +20052,7 @@ async function fetchMultiLiveDetections() {
       if (!requests || !requests.length) return;
       const statusFilter = document.getElementById('leaveStatusFilter')?.value || 'all';
       const firstReq = requests[0];
+      window._leaveCompleteUserId = firstReq.user_id;
       const isMulti = requests.length > 1;
 
       let totalRequestedDays = 0;
@@ -20293,19 +20411,59 @@ async function fetchMultiLiveDetections() {
         if (inputReason === null) return;
         rejectionReason = inputReason.trim() || undefined;
       }
-      if (!await appConfirm(`Are you sure you want to ${status} ${items.length} pending leave portion(s)?`)) return;
+      // Coalesce duplicate leave IDs so paid+unpaid (or repeated paid rows) become one PUT.
+      // Parallel PUTs on the same leave_id race and leave portions stale in other list views.
+      const byId = new Map();
+      for (const item of items) {
+        const leaveId = Number(item.id);
+        if (!Number.isFinite(leaveId) || leaveId <= 0) continue;
+        const portion = String(item.portion || 'all').toLowerCase();
+        if (!byId.has(leaveId)) {
+          byId.set(leaveId, new Set([portion]));
+        } else {
+          byId.get(leaveId).add(portion);
+        }
+      }
+      const coalesced = Array.from(byId.entries()).map(([id, portions]) => {
+        let portion = 'all';
+        if (portions.has('all') || (portions.has('paid') && portions.has('unpaid'))) {
+          portion = 'all';
+        } else if (portions.has('unpaid')) {
+          portion = 'unpaid';
+        } else if (portions.has('paid')) {
+          portion = 'paid';
+        }
+        return { id, portion };
+      });
+      if (!coalesced.length) return;
+      if (!await appConfirm(`Are you sure you want to ${status} ${coalesced.length} leave request(s)?`)) return;
+      const reopenUserId = window._leaveCompleteUserId;
       try {
-        const responses = await Promise.all(items.map(item => fetch(`/api/leaves/${item.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status, portion: item.portion, approved_by: getActingAdminDisplayName(), rejection_reason: rejectionReason })
-        })));
-        const results = await Promise.all(responses.map(response => response.json()));
-        const failed = responses.some((response, index) => !response.ok || !results[index].success);
+        const failures = [];
+        for (const item of coalesced) {
+          const payload = { status, portion: item.portion, approved_by: getActingAdminDisplayName() };
+          if (rejectionReason) payload.rejection_reason = rejectionReason;
+          const response = await fetch(`/api/leaves/${item.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || result.success === false) {
+            failures.push(result.message || result.error || `Leave #${item.id}`);
+          }
+        }
         closeLeaveCompleteView();
         await loadLeaveRequests();
         await loadLeaveBalances();
-        showAppToast(failed ? 'Some leave request portions could not be updated.' : `Leave request portions ${status}.`, failed ? 'error' : 'success');
+        if (reopenUserId != null && typeof openEmployeeCompleteView === 'function') {
+          openEmployeeCompleteView(reopenUserId);
+        }
+        if (failures.length) {
+          showAppToast(`Some leave request portions could not be updated: ${failures[0]}`, 'error');
+        } else {
+          showAppToast(`Leave request portions ${status}.`, 'success');
+        }
       } catch (e) {
         closeLeaveCompleteView();
         await loadLeaveRequests();

@@ -2788,7 +2788,10 @@ def _get_company_holiday_for_date(
         query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
         params.append(organization_id)
     if branch_id is not None:
-        query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+        query += """ AND (
+            COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+            OR COALESCE(NULLIF(TRIM(branch_id), ''), 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+        )"""
         params.append(branch_id)
     query += " ORDER BY holiday_date, id"
     cursor.execute(query, params)
@@ -4591,12 +4594,18 @@ def get_detailed_attendance_report(
             date_list = [(d1_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(total_days)]
             report_org = organization_id or 'DEFAULT_ORG'
             report_branch = branch_id or 'DEFAULT_BRANCH'
+            # Branch match includes org-wide rows (NULL / empty / DEFAULT_BRANCH) so a
+            # public holiday created for the company still applies on every branch.
             cursor.execute(
                 """SELECT calendar_date, override_type, scope_type, scope_id
                    FROM special_date_overrides
                    WHERE calendar_date >= ? AND calendar_date <= ?
                      AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                     AND (? IS NULL OR COALESCE(branch_id, 'DEFAULT_BRANCH') = ?)""",
+                     AND (
+                       ? IS NULL
+                       OR COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                       OR COALESCE(NULLIF(TRIM(branch_id), ''), 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+                     )""",
                 (start_date, end_date, report_org, branch_id, report_branch),
             )
             calendar_overrides = {
@@ -4608,7 +4617,11 @@ def get_detailed_attendance_report(
             cursor.execute(
                 """SELECT name, holiday_date, end_date, is_recurring FROM company_holidays
                    WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                     AND (? IS NULL OR COALESCE(branch_id, 'DEFAULT_BRANCH') = ?)""",
+                     AND (
+                       ? IS NULL
+                       OR COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                       OR COALESCE(NULLIF(TRIM(branch_id), ''), 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+                     )""",
                 (report_org, branch_id, report_branch),
             )
             holiday_names = {}
@@ -5321,10 +5334,18 @@ def get_detailed_attendance_report(
                     else:
                         if half_leave_active or (leave_info and leave_info.get('is_half_leave')):
                             status_display_val = f"{status.replace('_', ' ').title()} + Half Leave"
+                            if is_public_holiday:
+                                status_display_val = f"{status_display_val} — {cur_holiday_name or 'Public Holiday'}"
                         elif status == 'on_leave':
-                            status_display_val = 'On Leave'
+                            status_display_val = (
+                                f"On Leave — {cur_holiday_name or 'Public Holiday'}"
+                                if is_public_holiday else 'On Leave'
+                            )
                         elif status == 'on_leave_unpaid':
-                            status_display_val = 'Unpaid Leave'
+                            status_display_val = (
+                                f"Unpaid Leave — {cur_holiday_name or 'Public Holiday'}"
+                                if is_public_holiday else 'Unpaid Leave'
+                            )
                         elif status == 'holiday' or override_type == 'holiday' or cur_holiday_name:
                             status_display_val = cur_holiday_name or 'Holiday'
                         elif status in ('weekend', 'off_day'):
@@ -7360,8 +7381,29 @@ def update_leave_status(
             
             current_paid_status = leave['paid_status'] or ('approved' if leave['status'] == 'approved' else 'pending')
             current_unpaid_status = leave['unpaid_status'] or ('approved' if leave['status'] == 'approved' else 'pending')
-            paid_days = int(leave['paid_days'] or 0) if leave['paid_days'] is not None else (0 if leave['leave_type'] == 'unpaid' else 1)
-            unpaid_days = int(leave['unpaid_days'] or 0) if leave['unpaid_days'] is not None else (1 if leave['leave_type'] == 'unpaid' else 0)
+            try:
+                paid_days = int(float(leave['paid_days'])) if leave['paid_days'] is not None else (0 if leave['leave_type'] == 'unpaid' else 1)
+            except (TypeError, ValueError):
+                paid_days = 0 if leave['leave_type'] == 'unpaid' else 1
+            try:
+                unpaid_days = int(float(leave['unpaid_days'])) if leave['unpaid_days'] is not None else (1 if leave['leave_type'] == 'unpaid' else 0)
+            except (TypeError, ValueError):
+                unpaid_days = 1 if leave['leave_type'] == 'unpaid' else 0
+
+            # Idempotent: portion already at the requested status — treat as success.
+            if norm_portion == 'paid' and str(current_paid_status).lower() == norm_status:
+                conn.commit()
+                return True
+            if norm_portion == 'unpaid' and str(current_unpaid_status).lower() == norm_status:
+                conn.commit()
+                return True
+            if (
+                norm_portion == 'all'
+                and str(current_paid_status).lower() == norm_status
+                and str(current_unpaid_status).lower() == norm_status
+            ):
+                conn.commit()
+                return True
 
             if norm_portion == 'paid':
                 new_paid_status = norm_status
@@ -7746,7 +7788,11 @@ def get_company_holidays(
                 query += " AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"
                 params.append(organization_id)
             if branch_id and branch_id != 'all':
-                query += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+                # Include org-wide holidays (NULL / empty / DEFAULT_BRANCH) for every branch.
+                query += """ AND (
+                    COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                    OR COALESCE(NULLIF(TRIM(branch_id), ''), 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+                )"""
                 params.append(branch_id)
             query += " ORDER BY holiday_date ASC"
             cursor.execute(query, params)
@@ -8145,7 +8191,10 @@ def _count_scheduled_leave_days(cursor, user_id: int, start_date: str, end_date:
         """SELECT holiday_date FROM company_holidays
            WHERE holiday_date >= ? AND holiday_date <= ?
              AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-             AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+             AND (
+               COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+               OR COALESCE(NULLIF(TRIM(branch_id), ''), 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+             )""",
         (start_date, end_date, org_id, branch_id),
     )
     holidays = {r['holiday_date'] for r in cursor.fetchall()}
@@ -8154,7 +8203,10 @@ def _count_scheduled_leave_days(cursor, user_id: int, start_date: str, end_date:
         """SELECT calendar_date, override_type FROM special_date_overrides
            WHERE calendar_date >= ? AND calendar_date <= ?
              AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-             AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+             AND (
+               COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+               OR COALESCE(NULLIF(TRIM(branch_id), ''), 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+             )
              AND (scope_type = 'all' OR (scope_type = 'employee' AND scope_id = ?))""",
         (start_date, end_date, org_id, branch_id, user_id),
     )

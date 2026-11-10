@@ -1233,6 +1233,7 @@
                                 <th>Marked By</th>
                                 <th>Notes</th>
                                 <th>Shift</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="modalDailyTableBody">
@@ -1874,9 +1875,11 @@
                     } else if (st === 'checked_out') {
                         statusBadge = `<span class="status-pill present" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3);"><i class="fa-solid fa-arrow-right-from-bracket"></i> Checked Out${dayTypeSuffix}</span>`;
                     } else if (st === 'on_leave') {
-                        statusBadge = `<span class="status-pill" style="background:rgba(20,184,166,0.15); color:#2dd4bf; border:1px solid rgba(20,184,166,0.3);"><i class="fa-solid fa-envelope-open-text"></i> On Leave</span>`;
+                        const leaveHolidayBit = (r.is_public_holiday || holidayName) ? ` — ${holidayName || 'Public Holiday'}` : '';
+                        statusBadge = `<span class="status-pill" style="background:rgba(20,184,166,0.15); color:#2dd4bf; border:1px solid rgba(20,184,166,0.3);"><i class="fa-solid fa-envelope-open-text"></i> On Leave${leaveHolidayBit}</span>`;
                     } else if (st === 'on_leave_unpaid') {
-                        statusBadge = `<span class="status-pill" style="background:rgba(244,63,94,0.15); color:#fb7185; border:1px solid rgba(244,63,94,0.3);"><i class="fa-solid fa-envelope-open-text"></i> Unpaid Leave</span>`;
+                        const leaveHolidayBit = (r.is_public_holiday || holidayName) ? ` — ${holidayName || 'Public Holiday'}` : '';
+                        statusBadge = `<span class="status-pill" style="background:rgba(244,63,94,0.15); color:#fb7185; border:1px solid rgba(244,63,94,0.3);"><i class="fa-solid fa-envelope-open-text"></i> Unpaid Leave${leaveHolidayBit}</span>`;
                     } else if (st === 'holiday' || Boolean(holidayName)) {
                         const hLabel = holidayName || 'Holiday';
                         statusBadge = `<span class="status-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-umbrella-beach"></i> ${hLabel}</span>`;
@@ -1996,6 +1999,17 @@
                     const dayType = d.day_type_raw || d.day_type;
                     const holidayName = d.holiday_name || ((d.day_classification === 'holiday' || d.calendar_override === 'holiday' || dayType === 'Public Holiday' || dayType === 'public_holiday') ? (dayType && dayType !== 'Public Holiday' && dayType !== 'public_holiday' ? dayType : '') : (dayType && !['Leave Day', 'Rest Day', 'Regular Working Day', 'leave_day', 'rest_day', 'regular_working_day'].includes(dayType) ? dayType : ''));
                     const isPresentType = ['present', 'late', 'checked_out'].includes(st);
+                    const isLeaveDay = ['on_leave', 'on_leave_unpaid'].includes(st) && !isPresentType;
+                    const isPublicHolidayDay = Boolean(d.is_public_holiday || d.holiday_name || holidayName)
+                      || d.day_classification === 'holiday'
+                      || d.calendar_override === 'holiday'
+                      || dayType === 'Public Holiday'
+                      || dayType === 'public_holiday'
+                      || st === 'holiday';
+                    const allowLeaveHolidayManualMark = isLeaveDay && isPublicHolidayDay;
+                    const allowManualMark = (typeof d.allow_manual_mark === 'boolean')
+                      ? Boolean(d.allow_manual_mark)
+                      : (st === 'absent' || st === 'holiday' || allowLeaveHolidayManualMark);
 
                     let dayTypeSuffix = '';
                     if (isPresentType) {
@@ -2007,6 +2021,9 @@
                             dayTypeSuffix = ` — ${dayType}`;
                         }
                     }
+                    const leaveHolidaySuffix = (isLeaveDay && isPublicHolidayDay)
+                      ? ` — ${holidayName || 'Public Holiday'}`
+                      : '';
                     let stBadge = '';
 
                     if (st === 'present') {
@@ -2015,15 +2032,15 @@
                         stBadge = `<span class="status-pill late"><i class="fa-solid fa-clock"></i> Late${dayTypeSuffix}</span>`;
                     } else if (st === 'checked_out') {
                         stBadge = `<span class="status-pill present" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3);"><i class="fa-solid fa-arrow-right-from-bracket"></i> Checked Out${dayTypeSuffix}</span>`;
+                    } else if (st === 'on_leave') {
+                        stBadge = `<span class="status-pill" style="background:rgba(20,184,166,0.15); color:#2dd4bf; border:1px solid rgba(20,184,166,0.3);"><i class="fa-solid fa-envelope-open-text"></i> On Leave${leaveHolidaySuffix}</span>`;
+                    } else if (st === 'on_leave_unpaid') {
+                        stBadge = `<span class="status-pill" style="background:rgba(244,63,94,0.15); color:#fb7185; border:1px solid rgba(244,63,94,0.3);"><i class="fa-solid fa-envelope-open-text"></i> Unpaid Leave${leaveHolidaySuffix}</span>`;
                     } else if (st === 'weekend' || st === 'off_day') {
                         stBadge = `<span class="status-pill" style="background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3);"><i class="fa-solid fa-bed"></i> Weekend / Off</span>`;
                     } else if (st === 'holiday' || Boolean(holidayName)) {
                         const hLabel = holidayName || 'Holiday';
                         stBadge = `<span class="status-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-umbrella-beach"></i> ${hLabel}</span>`;
-                    } else if (st === 'on_leave') {
-                        stBadge = `<span class="status-pill" style="background:rgba(20,184,166,0.15); color:#2dd4bf; border:1px solid rgba(20,184,166,0.3);"><i class="fa-solid fa-envelope-open-text"></i> On Leave</span>`;
-                    } else if (st === 'on_leave_unpaid') {
-                        stBadge = `<span class="status-pill" style="background:rgba(244,63,94,0.15); color:#fb7185; border:1px solid rgba(244,63,94,0.3);"><i class="fa-solid fa-envelope-open-text"></i> Unpaid Leave</span>`;
                     } else {
                         stBadge = `<span class="status-pill absent"><i class="fa-solid fa-circle-xmark"></i> Absent</span>`;
                     }
@@ -2034,6 +2051,13 @@
                     const checkOutCam = d.checkout_camera_name || d.checkout_camera || d.checkout_location || '-';
                     const isManualSource = String(d.source || '').toLowerCase().includes('manual');
                     const sourceText = isManualSource ? 'Manual' : (d.source ? 'Auto by System' : '-');
+                    const showMarkPresent = Boolean(allowManualMark || allowLeaveHolidayManualMark);
+                    const markLabel = (allowLeaveHolidayManualMark || (isLeaveDay && isPublicHolidayDay))
+                      ? 'Mark Present (Holiday)'
+                      : 'Mark Present';
+                    const actionHtml = showMarkPresent
+                      ? `<button class="btn-toggle-status btn-toggle-present" onclick="markUserPresentOnDate(${emp.user_id}, '${d.date}')"><i class="fa-solid fa-check"></i> ${markLabel}</button>`
+                      : '<span style="color:#64748b;">—</span>';
 
                     tr.innerHTML = `
                         <td><strong style="color: #ffffff;">${d.date_formatted || d.date}</strong></td>
@@ -2046,6 +2070,7 @@
                         <td><span class="badge ${isManualSource ? 'bg-warning text-dark' : 'bg-secondary'}">${sourceText}</span></td>
                         <td><span style="color: #cbd5e1; font-size: 0.82rem;">${d.notes || '-'}</span></td>
                         <td><span style="color: #cbd5e1; font-size: 0.82rem;">${d.shift_name || emp.shift_name || 'General'}</span></td>
+                        <td>${actionHtml}</td>
                     `;
                     dailyTbody.appendChild(tr);
                 });
@@ -2180,16 +2205,23 @@
         }
 
         async function markUserPresent(userId) {
+            return markUserPresentOnDate(userId, reportData?.start_date || null);
+        }
+
+        async function markUserPresentOnDate(userId, targetDate) {
             try {
-                const targetDate = reportData?.start_date || null;
                 const res = await fetch(`/api/users/${userId}/mark-present`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ date: targetDate })
+                    body: JSON.stringify({ date: targetDate || reportData?.start_date || null })
                 });
                 const json = await res.json();
                 if (json.success) {
-                    fetchReport();
+                    const reopenId = activeModalUserId;
+                    await fetchReport();
+                    if (reopenId != null && typeof openCompleteView === 'function') {
+                        openCompleteView(reopenId);
+                    }
                 } else {
                     alert("Failed to mark present: " + (json.error || json.message));
                 }
