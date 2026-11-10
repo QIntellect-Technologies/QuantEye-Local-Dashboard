@@ -100,7 +100,7 @@
         overflow-x: hidden;
       }
 
-      /* Sidebar Navigation - QIntellect Leads shell */
+      /* Sidebar Navigation - Frost */
       .sidebar {
         width: 236px;
         position: fixed;
@@ -110,68 +110,30 @@
         display: flex;
         flex-direction: column;
         padding: 16px 12px 12px;
-        border: 0;
-        border-radius: 22px;
+        border: 1px solid #e2e7f6;
+        border-radius: 20px;
         background:
-          radial-gradient(110% 90% at 92% 0%, rgba(90, 85, 222, 0.2), transparent 55%),
-          radial-gradient(70% 70% at 0% 100%, rgba(29, 154, 102, 0.1), transparent 60%),
-          #101116;
-        box-shadow: 0 24px 60px -32px rgba(8, 9, 22, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
+          radial-gradient(90% 60% at 0% 0%, rgba(148, 133, 255, 0.16), transparent 62%),
+          radial-gradient(85% 60% at 100% 100%, rgba(60, 196, 170, 0.14), transparent 62%),
+          linear-gradient(165deg, #f8f9ff 0%, #f4f7fd 55%, #f2fbf8 100%);
+        box-shadow: 0 1px 2px rgba(20, 24, 40, 0.03), 0 22px 46px -32px rgba(60, 70, 140, 0.38);
         font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-        color: #ffffff;
+        color: #1b2430;
         z-index: 100;
         transition: width 0.25s ease, padding 0.25s ease, background 0.25s ease;
       }
-      /* Faint 38px grid, masked from the top-right. */
-      .sidebar::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-radius: inherit;
-        pointer-events: none;
-        background-image:
-          linear-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.7) 1px, transparent 1px);
-        background-size: 38px 38px;
-        -webkit-mask-image: radial-gradient(ellipse at 72% 20%, #000, transparent 72%);
-        mask-image: radial-gradient(ellipse at 72% 20%, #000, transparent 72%);
-        opacity: 0.045;
-      }
-      /* Top hairline highlight. */
       .sidebar::before {
         content: "";
         position: absolute;
         top: 0;
-        left: 32px;
-        right: 32px;
+        left: 20px;
+        right: 20px;
         height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.95), transparent);
         z-index: 2;
       }
-      .sidebar-toggle {
-        position: absolute;
-        top: 18px;
-        right: -13px;
-        width: 26px;
-        height: 26px;
-        min-height: 26px;
-        padding: 0;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 50%;
-        background: #1a1b23;
-        color: rgba(255, 255, 255, 0.55);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        z-index: 3;
-        font-size: 10px;
-        box-shadow: 0 6px 18px rgba(8, 9, 22, 0.5);
-        transition: transform 0.25s ease, background 0.2s ease, color 0.2s ease;
-      }
-      .sidebar-toggle:hover {
-        background: #262830;
-        color: #ffffff;
+      .sidebar::after {
+        content: none;
       }
       .sidebar-brand {
         position: relative;
@@ -186,15 +148,15 @@
         flex-shrink: 0;
       }
       .sidebar-brand i {
-        width: 31px;
-        height: 31px;
+        width: 32px;
+        height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.09);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-        color: #c9c6ff;
+        border-radius: 11px;
+        background: #1b2430;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 8px 16px -12px rgba(20, 24, 40, 0.9);
+        color: #ffffff;
         font-size: 13px;
         flex-shrink: 0;
       }
@@ -213,7 +175,7 @@
         font-weight: 600;
         line-height: 1.35;
         letter-spacing: -0.035em;
-        color: #ffffff;
+        color: #1b2430;
       }
       .sidebar-brand-text em {
         display: block;
@@ -222,11 +184,11 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         font-style: normal;
-        font-size: 10px;
-        font-weight: 500;
+        font-size: 9.5px;
+        font-weight: 600;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.35);
+        color: #8c94a8;
       }
       .sidebar-menu {
         position: relative;
@@ -234,7 +196,7 @@
         list-style: none;
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 3px;
         flex: 1;
         margin: 20px 0 0;
         padding: 0;
@@ -249,8 +211,8 @@
         content: "Workspace";
         flex: 0 0 auto;
         padding: 0 10px;
-        margin-bottom: 6px;
-        color: rgba(255, 255, 255, 0.25);
+        margin-bottom: 8px;
+        color: #969eb2;
         font-size: 9.5px;
         font-weight: 600;
         text-transform: uppercase;
@@ -262,11 +224,11 @@
         align-items: center;
         gap: 10px;
         flex-shrink: 0;
-        height: 36px;
+        height: 38px;
         padding: 0 10px;
         border: 0;
-        border-radius: 10px;
-        color: rgba(255, 255, 255, 0.55) !important;
+        border-radius: 12px;
+        color: #5b6379 !important;
         font-size: 13.5px;
         font-weight: 500;
         letter-spacing: -0.006em;
@@ -274,29 +236,16 @@
         transition: background-color 0.16s ease, color 0.16s ease;
       }
       .menu-item:hover {
-        color: rgba(255, 255, 255, 0.9) !important;
-        background: rgba(255, 255, 255, 0.05);
+        color: #1b2430 !important;
+        background: rgba(255, 255, 255, 0.75);
       }
       .menu-item.active {
         color: #ffffff !important;
-        background: rgba(255, 255, 255, 0.09);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        background: #1b2430;
+        box-shadow: 0 10px 20px -14px rgba(20, 24, 40, 0.95);
       }
       .menu-item::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: 50%;
-        width: 3px;
-        height: 16px;
-        transform: translateY(-50%);
-        border-radius: 0 999px 999px 0;
-        background: #aaa5ff;
-        opacity: 0;
-        transition: opacity 0.16s ease;
-      }
-      .menu-item.active::before {
-        opacity: 1;
+        content: none;
       }
       .menu-item i {
         width: 16px;
@@ -307,18 +256,18 @@
         flex-shrink: 0;
         background: transparent;
         border-radius: 0;
-        color: rgba(255, 255, 255, 0.45);
+        color: #8c94a8;
         font-size: 13px;
         text-align: center;
         transition: color 0.16s ease;
       }
       .menu-item:hover i {
         background: transparent;
-        color: rgba(255, 255, 255, 0.7);
+        color: #48506a;
       }
       .menu-item.active i {
         background: transparent;
-        color: #bbb7ff;
+        color: #cfd6ea;
       }
       .sidebar-footer {
         position: relative;
@@ -326,7 +275,7 @@
         flex-shrink: 0;
         margin-top: auto;
         padding: 12px 0 0;
-        border-top: 1px solid rgba(255, 255, 255, 0.07);
+        border-top: 1px solid rgba(160, 172, 205, 0.28);
         background: transparent;
         border-radius: 0;
         font-size: 12px;
@@ -336,16 +285,16 @@
         align-items: center;
         gap: 7px;
         padding: 0 10px 8px;
-        color: rgba(255, 255, 255, 0.4);
+        color: #67708a;
         font-size: 11px;
         font-weight: 500;
       }
       .status-pulse {
         width: 6px;
         height: 6px;
-        background: #1d9a66;
+        background: #17a67b;
         border-radius: 50%;
-        box-shadow: 0 0 0 3px rgba(29, 154, 102, 0.16);
+        box-shadow: 0 0 0 3px rgba(23, 166, 123, 0.14);
         animation: pulse-ring 2s infinite;
       }
       .sidebar-branch {
@@ -353,13 +302,13 @@
         align-items: center;
         gap: 7px;
         padding: 0 10px;
-        margin-bottom: 8px;
-        color: rgba(255, 255, 255, 0.45);
+        margin-bottom: 10px;
+        color: #6f7890;
         font-size: 11.5px;
         font-weight: 500;
       }
       .sidebar-branch i {
-        color: rgba(255, 255, 255, 0.35);
+        color: #98a0b4;
         font-size: 11px;
       }
       .sidebar-branch span {
@@ -371,12 +320,15 @@
         display: flex;
         align-items: center;
         gap: 9px;
-        padding: 6px 8px;
-        border-radius: 11px;
-        transition: background-color 0.16s ease;
+        padding: 8px;
+        border: 1px solid #e7eaf6;
+        border-radius: 14px;
+        background: #ffffff;
+        box-shadow: 0 1px 2px rgba(20, 24, 40, 0.04);
+        transition: border-color 0.16s ease;
       }
       .sidebar-user:hover {
-        background: rgba(255, 255, 255, 0.05);
+        border-color: #d4daea;
       }
       .sidebar-avatar {
         width: 28px;
@@ -386,9 +338,9 @@
         align-items: center;
         justify-content: center;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.1);
-        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
-        color: rgba(255, 255, 255, 0.85);
+        background: #eef1fb;
+        box-shadow: 0 0 0 1px #dde3f5;
+        color: #3a4566;
         font-size: 11.5px;
         font-weight: 600;
       }
@@ -401,28 +353,28 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        color: rgba(255, 255, 255, 0.85);
+        color: #1b2430;
         font-size: 13px;
         font-weight: 500;
       }
       .sidebar-user-sub {
         display: block;
-        color: rgba(255, 255, 255, 0.35);
+        color: #8c94a8;
         font-size: 11.5px;
       }
       .sidebar-logout {
-        justify-content: flex-start;
         display: flex;
+        justify-content: flex-start;
         align-items: center;
         gap: 10px;
         width: 100%;
         height: 36px;
-        margin-top: 2px;
+        margin-top: 6px;
         padding: 0 10px;
         border: 0;
-        border-radius: 10px;
+        border-radius: 12px;
         background: transparent;
-        color: rgba(255, 255, 255, 0.55);
+        color: #5b6379;
         font-family: inherit;
         font-size: 13.5px;
         font-weight: 500;
@@ -431,13 +383,44 @@
         transition: background-color 0.16s ease, color 0.16s ease;
       }
       .sidebar-logout:hover {
-        background: rgba(255, 255, 255, 0.05);
-        color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.75);
+        color: #1b2430;
       }
       .sidebar-logout i {
         width: 16px;
         font-size: 13px;
-        color: rgba(255, 255, 255, 0.45);
+        color: #8c94a8;
+      }
+      /* Collapse control lives in the footer, not on the card edge. */
+      .sidebar-toggle {
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        height: 34px;
+        margin-top: 4px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 12px;
+        background: transparent;
+        color: #6f7890;
+        font-family: inherit;
+        font-size: 12.5px;
+        font-weight: 500;
+        text-align: left;
+        cursor: pointer;
+        transition: background-color 0.16s ease, color 0.16s ease;
+      }
+      .sidebar-toggle:hover {
+        background: rgba(255, 255, 255, 0.75);
+        color: #1b2430;
+      }
+      .sidebar-toggle i {
+        width: 16px;
+        font-size: 12px;
+        color: #98a0b4;
+        transition: transform 0.25s ease, color 0.16s ease;
       }
 
       @keyframes pulse-ring {
@@ -460,48 +443,93 @@
         transition: margin-left 0.25s ease, width 0.25s ease;
       }
 
+      /* Icon rail: the sidebar stays put and only the labels fold away. */
       body.sidebar-collapsed .sidebar {
-        width: 0;
-        padding: 0;
-        top: 0;
-        left: 0;
-        height: 100vh;
-        background: transparent;
-        box-shadow: none;
-        border: 0;
-        border-radius: 0;
-        overflow: visible;
+        width: 72px;
+        padding: 16px 8px 12px;
       }
       body.sidebar-collapsed .main-panel {
-        width: 100%;
-        margin-left: 0;
+        width: calc(100% - 88px);
+        margin-left: 88px;
+      }
+      body.sidebar-collapsed .sidebar-brand {
+        justify-content: center;
+        padding: 0;
+      }
+      body.sidebar-collapsed .sidebar-brand-text {
+        display: none;
+      }
+      body.sidebar-collapsed .sidebar-menu::before {
+        content: none;
+      }
+      body.sidebar-collapsed .menu-item {
+        justify-content: center;
+        gap: 0;
+        padding: 0;
+      }
+      body.sidebar-collapsed .menu-item > span {
+        display: none;
+      }
+      body.sidebar-collapsed .connection-status {
+        justify-content: center;
+        padding: 0 0 8px;
+      }
+      body.sidebar-collapsed .connection-status .status-label {
+        display: none;
+      }
+      body.sidebar-collapsed .sidebar-branch {
+        justify-content: center;
+        padding: 0;
+        margin-bottom: 8px;
+      }
+      body.sidebar-collapsed .sidebar-branch > span {
+        display: none;
+      }
+      body.sidebar-collapsed .sidebar-user {
+        justify-content: center;
+        padding: 6px 0;
+        border-color: transparent;
+        background: transparent;
+        box-shadow: none;
+      }
+      body.sidebar-collapsed .sidebar-user-text {
+        display: none;
+      }
+      body.sidebar-collapsed .sidebar-logout {
+        justify-content: center;
+        gap: 0;
+        padding: 0;
+      }
+      body.sidebar-collapsed .sidebar-logout > span {
+        display: none;
       }
       body.sidebar-collapsed .sidebar-toggle {
-        position: fixed;
-        top: 20px;
-        left: 14px;
-        right: auto;
-        transform: rotate(180deg);
+        justify-content: center;
+        gap: 0;
+        padding: 0;
       }
-      body.sidebar-collapsed .sidebar::before,
-      body.sidebar-collapsed .sidebar::after,
-      body.sidebar-collapsed .sidebar-brand,
-      body.sidebar-collapsed .sidebar-menu,
-      body.sidebar-collapsed .sidebar-footer {
+      body.sidebar-collapsed .sidebar-toggle-label {
         display: none;
+      }
+      body.sidebar-collapsed .sidebar-toggle i {
+        transform: rotate(180deg);
       }
 
       @media (max-width: 768px) {
-        .main-panel,
-        body.sidebar-collapsed .main-panel {
+        .main-panel {
           width: 100%;
           margin-left: 0;
           padding: 24px 16px;
         }
 
+        body.sidebar-collapsed .main-panel {
+          width: calc(100% - 88px);
+          margin-left: 88px;
+        }
+
         body:not(.sidebar-collapsed) .sidebar {
           z-index: 1200;
-          box-shadow: 0 24px 60px -20px rgba(8, 9, 22, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.07);
+          box-shadow: 0 24px 60px -22px rgba(20, 24, 40, 0.45);
         }
       }
 
@@ -527,6 +555,27 @@
       }
 
       /* Consistent Global Application Topbar */
+      .app-global-header #headerBranchBadge {
+        background: rgba(139, 123, 247, 0.1) !important;
+        border: 1px solid rgba(139, 123, 247, 0.26) !important;
+        color: #4c3fb0 !important;
+        border-radius: 8px !important;
+      }
+      .app-global-header #headerBranchBadge i {
+        color: #7a68ee !important;
+      }
+      .app-global-header .header-current-page {
+        color: #2b3547;
+      }
+      .app-global-header .header-company-name {
+        color: #1d2733;
+      }
+      .app-global-header .header-separator {
+        color: #d5dcee;
+      }
+      .app-global-header .header-company-name i {
+        color: #7a68ee !important;
+      }
       .app-global-header {
         background: #ffffff;
         border: 1px solid #cfe8f7;
@@ -3781,6 +3830,957 @@
         justify-content:center; align-items:center; padding:24px;
         background:#0b1220 !important; backdrop-filter:none !important;
       }
+      /* ============ Attendance reports — Frost premium surface ============ */
+      body {
+        background:
+          radial-gradient(70% 52% at 6% -8%, rgba(148, 133, 255, 0.24), transparent 62%),
+          radial-gradient(62% 52% at 102% 104%, rgba(60, 196, 170, 0.22), transparent 64%),
+          linear-gradient(168deg, #f7f8fe 0%, #f5f7fd 52%, #f1faf6 100%);
+        background-attachment: fixed;
+      }
+
+      /* Global top bar joins the same glass family */
+      .app-global-header {
+        padding: 10px 16px;
+        margin-bottom: 18px;
+        border: 1px solid rgba(226, 231, 246, 0.9);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.58);
+        box-shadow: 0 1px 2px rgba(20, 24, 40, 0.04);
+        -webkit-backdrop-filter: blur(16px) saturate(1.1);
+        backdrop-filter: blur(16px) saturate(1.1);
+      }
+
+      #reports-view {
+        --ink: #151b25;
+        --ink-2: #2b3547;
+        --txt: #3d4757;
+        --mut: #6b7488;
+        --faint: #98a0b4;
+        --line: #e3e8f5;
+        --line-soft: #edf0f9;
+        --glass: rgba(255, 255, 255, 0.62);
+        --lilac: #8b7bf7;
+        --mint: #3cc4aa;
+        --r: 22px;
+        --shadow: 0 1px 2px rgba(20, 24, 40, 0.04), 0 26px 54px -42px rgba(52, 62, 120, 0.6);
+        display: grid;
+        gap: 16px;
+        padding-bottom: 6px;
+        color: var(--ink);
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+
+      /* ---------- Hero ---------- */
+      #reports-view .rpt-hero {
+        position: relative;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 22px;
+        flex-wrap: wrap;
+        padding: 22px 24px 20px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: var(--r);
+        overflow: hidden;
+        color: #ffffff;
+        background:
+          radial-gradient(48% 88% at 100% 0%, rgba(139, 123, 247, 0.45), transparent 62%),
+          radial-gradient(46% 76% at 0% 104%, rgba(60, 196, 170, 0.3), transparent 66%),
+          linear-gradient(135deg, #141922 0%, #1b2130 46%, #212b3d 100%);
+        box-shadow: 0 1px 2px rgba(20, 24, 40, 0.22), 0 34px 64px -46px rgba(18, 24, 44, 0.9);
+      }
+      #reports-view .rpt-hero::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+        background-size: 34px 34px;
+        -webkit-mask-image: radial-gradient(78% 130% at 12% 0%, #000 28%, transparent 78%);
+        mask-image: radial-gradient(78% 130% at 12% 0%, #000 28%, transparent 78%);
+        pointer-events: none;
+      }
+      #reports-view .rpt-hero::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 26px;
+        right: 26px;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+        pointer-events: none;
+      }
+      #reports-view .rpt-hero-copy {
+        position: relative;
+        z-index: 1;
+        min-width: 260px;
+      }
+      #reports-view .rpt-hero-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        height: 24px;
+        padding: 0 10px;
+        margin-bottom: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+      #reports-view .rpt-hero-eyebrow i {
+        font-size: 9px;
+        color: #b7aeff;
+      }
+      #reports-view .rpt-hero-title {
+        margin: 0;
+        font-size: 26px;
+        line-height: 1.12;
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        color: #ffffff;
+      }
+      #reports-view .rpt-hero-sub {
+        margin: 8px 0 0;
+        max-width: 640px;
+        font-size: 12.5px;
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.58);
+      }
+      #reports-view .rpt-hero-actions {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      /* ---------- Buttons ---------- */
+      #reports-view .rpt-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 36px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--ink-2);
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease,
+          box-shadow 0.16s ease, transform 0.16s ease;
+      }
+      #reports-view .rpt-btn i {
+        font-size: 11px;
+      }
+      #reports-view .rpt-btn:active {
+        transform: translateY(1px);
+      }
+      #reports-view .rpt-btn:disabled,
+      #reports-view .rpt-btn.disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      #reports-view .rpt-btn-dark {
+        border-color: rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.07);
+        color: rgba(255, 255, 255, 0.88);
+      }
+      #reports-view .rpt-btn-dark:hover {
+        border-color: rgba(255, 255, 255, 0.28);
+        background: rgba(255, 255, 255, 0.12);
+        color: #ffffff;
+      }
+      #reports-view .rpt-btn-light {
+        border-color: rgba(255, 255, 255, 0.9);
+        background: #f7f8ff;
+        color: #151b25;
+        box-shadow: 0 10px 22px -16px rgba(0, 0, 0, 0.9);
+      }
+      #reports-view .rpt-btn-light:hover {
+        background: #ffffff;
+        border-color: #ffffff;
+      }
+      #reports-view .rpt-menu {
+        min-width: 190px;
+        padding: 6px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 0 24px 48px -22px rgba(16, 24, 40, 0.4);
+      }
+      #reports-view .rpt-menu .dropdown-item {
+        padding: 8px 10px;
+        border-radius: 8px;
+        color: var(--ink-2);
+        font-size: 12px;
+        font-weight: 500;
+      }
+      #reports-view .rpt-menu .dropdown-item:hover,
+      #reports-view .rpt-menu .dropdown-item:focus {
+        background: rgba(139, 123, 247, 0.08);
+        color: var(--ink);
+      }
+
+      /* ---------- Metric rail ---------- */
+      #reports-view .rpt-rail {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--line);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      #reports-view .rpt-metric {
+        position: relative;
+        padding: 15px 18px 16px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.62));
+        -webkit-backdrop-filter: blur(16px);
+        backdrop-filter: blur(16px);
+      }
+      #reports-view .rpt-metric-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      #reports-view .rpt-metric-label {
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      #reports-view .rpt-metric-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        font-size: 11px;
+      }
+      #reports-view .rpt-metric-icon.tone-lilac {
+        background: rgba(139, 123, 247, 0.12);
+        color: #6a5cd6;
+      }
+      #reports-view .rpt-metric-icon.tone-mint {
+        background: rgba(60, 196, 170, 0.14);
+        color: #1f8d77;
+      }
+      #reports-view .rpt-metric-icon.tone-coral {
+        background: rgba(214, 96, 88, 0.12);
+        color: #b4382f;
+      }
+      #reports-view .rpt-metric-icon.tone-amber {
+        background: rgba(196, 138, 44, 0.14);
+        color: #9a6710;
+      }
+      #reports-view .rpt-metric-value {
+        display: block;
+        margin-top: 8px;
+        font-size: 26px;
+        font-weight: 600;
+        line-height: 1.05;
+        letter-spacing: -0.04em;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+      }
+      #reports-view .rpt-metric-foot {
+        display: block;
+        margin-top: 4px;
+        min-height: 15px;
+        font-size: 11px;
+        color: var(--faint);
+      }
+
+      /* ---------- Filters ---------- */
+      #reports-view .rpt-filters {
+        padding: 14px 16px;
+        border: 1px solid rgba(220, 227, 244, 0.95);
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.56));
+        box-shadow: var(--shadow);
+        -webkit-backdrop-filter: blur(18px) saturate(1.08);
+        backdrop-filter: blur(18px) saturate(1.08);
+      }
+      #reports-view .rpt-filters-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      #reports-view .rpt-presets {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        flex-wrap: wrap;
+        padding: 3px;
+        border: 1px solid var(--line-soft);
+        border-radius: 11px;
+        background: rgba(245, 247, 253, 0.9);
+      }
+      #reports-view .rpt-preset {
+        height: 28px;
+        padding: 0 11px;
+        border: 0 !important;
+        border-radius: 8px !important;
+        background: transparent !important;
+        color: var(--mut) !important;
+        font-family: inherit;
+        font-size: 11.5px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        box-shadow: none !important;
+        transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+      }
+      #reports-view .rpt-preset:hover {
+        background: rgba(255, 255, 255, 0.9) !important;
+        color: var(--ink) !important;
+      }
+      #reports-view .rpt-preset.active {
+        background: #ffffff !important;
+        color: var(--ink) !important;
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.1), 0 8px 18px -14px rgba(52, 62, 120, 0.8) !important;
+      }
+      #reports-view #mainCustomRangeGroup {
+        display: none;
+        align-items: flex-end;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      #reports-view .rpt-range-field {
+        display: grid;
+        gap: 4px;
+        margin: 0;
+      }
+      #reports-view .rpt-range-field > span {
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      #reports-view .rpt-range-field input[type="date"] {
+        height: 32px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--ink-2);
+        font-family: inherit;
+        font-size: 11.5px;
+      }
+      #reports-view .rpt-range-sep {
+        display: inline-flex;
+        align-items: center;
+        height: 32px;
+        color: var(--faint);
+        font-size: 9.5px;
+      }
+      #reports-view .rpt-filters-body {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding-top: 12px;
+      }
+      #reports-view .rpt-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 166px;
+      }
+      #reports-view .rpt-field-label {
+        padding-left: 2px;
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      #reports-view .rpt-field--grow {
+        flex: 1 1 250px;
+      }
+      #reports-view .rpt-search {
+        position: relative;
+      }
+      #reports-view .rpt-search i {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 10.5px;
+        color: var(--faint);
+        pointer-events: none;
+      }
+      #reports-view .rpt-search input[type="search"],
+      #reports-view .rpt-range-field input[type="date"] {
+        height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--ink-2);
+        font-family: inherit;
+        font-size: 12px;
+        box-shadow: none;
+        transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+      }
+      #reports-view .rpt-search input[type="search"] {
+        padding: 0 12px 0 32px;
+      }
+      #reports-view .rpt-search input[type="search"]::placeholder {
+        color: var(--faint);
+      }
+      #reports-view .rpt-search input[type="search"]:focus {
+        border-color: rgba(139, 123, 247, 0.5);
+        box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.12);
+        outline: none;
+      }
+      #reports-view .rpt-field .app-camera-select {
+        width: 100%;
+      }
+      #reports-view .rpt-field .app-camera-select-trigger {
+        height: 36px;
+        min-height: 36px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: none;
+        transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+      }
+      #reports-view .rpt-field .app-camera-select-trigger:hover {
+        border-color: rgba(139, 123, 247, 0.35);
+        background: #ffffff;
+      }
+      #reports-view .rpt-field .app-camera-select-trigger.active {
+        border-color: rgba(139, 123, 247, 0.55);
+        background: #ffffff;
+        box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.12);
+      }
+      #reports-view .rpt-field .app-camera-select-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--ink-2);
+      }
+      #reports-view .rpt-field .app-camera-select-chip {
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        color: var(--ink-2) !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        line-height: 1.3;
+      }
+      #reports-view .rpt-field .app-camera-select-trigger > i {
+        color: var(--faint) !important;
+        font-size: 9px !important;
+      }
+
+      /* ---------- Section heading ---------- */
+      #reports-view .rpt-section-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      #reports-view .rpt-section-title {
+        margin: 0;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--mut);
+        white-space: nowrap;
+      }
+      #reports-view .rpt-section-rule {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, var(--line), rgba(227, 232, 245, 0.2));
+      }
+      #reports-view .rpt-section-sub {
+        margin: 0;
+        font-size: 11px;
+        color: var(--faint);
+        white-space: nowrap;
+      }
+
+      /* ---------- Department tiles ---------- */
+      #reports-view .rpt-dept-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+        gap: 10px;
+      }
+      #reports-view .rpt-dept {
+        padding: 13px 15px;
+        border: 1px solid rgba(220, 227, 244, 0.95);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.58));
+        box-shadow: 0 1px 2px rgba(20, 24, 40, 0.03);
+        -webkit-backdrop-filter: blur(14px);
+        backdrop-filter: blur(14px);
+        transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+      }
+      #reports-view .rpt-dept:hover {
+        border-color: rgba(139, 123, 247, 0.34);
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 16px 32px -26px rgba(52, 62, 120, 0.7);
+      }
+      #reports-view .rpt-dept-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      #reports-view .rpt-dept-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      #reports-view .rpt-dept-count {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 3px;
+        padding: 2px 8px;
+        border: 1px solid var(--line-soft);
+        border-radius: 999px;
+        background: rgba(246, 247, 253, 0.9);
+        color: var(--ink-2);
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      #reports-view .rpt-dept-count span {
+        font-size: 8.5px;
+        font-weight: 500;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      #reports-view .rpt-dept-meter {
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(227, 232, 245, 0.9);
+        overflow: hidden;
+      }
+      #reports-view .rpt-dept-meter span {
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+        transition: width 0.4s ease;
+      }
+      #reports-view .rpt-dept-foot {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 9px;
+        font-size: 11px;
+      }
+      #reports-view .rpt-dept-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-weight: 500;
+      }
+      #reports-view .rpt-dept-tag i {
+        font-size: 8px;
+      }
+      #reports-view .rpt-dept-tag.is-ok {
+        color: #1f8d77;
+      }
+      #reports-view .rpt-dept-tag.is-bad {
+        color: #b4382f;
+      }
+      #reports-view .rpt-dept-rate {
+        margin-left: auto;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ---------- Records sheet ---------- */
+      #reports-view .rpt-sheet {
+        border: 1px solid rgba(220, 227, 244, 0.95);
+        border-radius: var(--r);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.7));
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        -webkit-backdrop-filter: blur(18px) saturate(1.08);
+        backdrop-filter: blur(18px) saturate(1.08);
+      }
+      #reports-view .rpt-sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 15px 18px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      #reports-view .rpt-sheet-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+      }
+      #reports-view .rpt-sheet-sub {
+        margin: 3px 0 0;
+        font-size: 11px;
+        color: var(--faint);
+      }
+      #reports-view .rpt-sheet-tools {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #reports-view .rpt-tool-label {
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      #reports-view .rpt-sheet-tools .app-camera-select {
+        width: 118px;
+      }
+      #reports-view .rpt-sheet-tools .app-camera-select-trigger {
+        height: 32px;
+        min-height: 32px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: none;
+      }
+      #reports-view .rpt-sheet-tools .app-camera-select-trigger:hover {
+        border-color: rgba(139, 123, 247, 0.35);
+        background: #ffffff;
+      }
+      #reports-view .rpt-sheet-tools .app-camera-select-label {
+        font-size: 11.5px;
+        font-weight: 500;
+      }
+      #reports-view .rpt-sheet-tools .app-camera-select-chip {
+        padding: 0;
+        background: transparent;
+        color: var(--ink-2);
+        font-size: 11.5px;
+        font-weight: 500;
+      }
+      #reports-view .rpt-table-scroll {
+        overflow: auto;
+        max-height: 640px;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(139, 123, 247, 0.36) transparent;
+      }
+      #reports-view .rpt-table-scroll::-webkit-scrollbar {
+        width: 9px;
+        height: 9px;
+      }
+      #reports-view .rpt-table-scroll::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #reports-view .rpt-table-scroll::-webkit-scrollbar-thumb {
+        background: rgba(139, 123, 247, 0.3);
+        border: 2px solid transparent;
+        background-clip: padding-box;
+        border-radius: 999px;
+      }
+      #reports-view .rpt-table-scroll::-webkit-scrollbar-thumb:hover {
+        background: rgba(139, 123, 247, 0.55);
+        background-clip: padding-box;
+      }
+      #reports-view .rpt-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      #reports-view .rpt-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        height: auto !important;
+        padding: 9px 12px !important;
+        border: 0 !important;
+        border-bottom: 1px solid var(--line) !important;
+        background: rgba(248, 249, 254, 0.99) !important;
+        color: var(--mut) !important;
+        font-size: 9px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.1em !important;
+        text-transform: uppercase;
+        white-space: nowrap;
+        vertical-align: middle;
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
+      }
+      #reports-view .rpt-table tbody tr {
+        background: transparent;
+      }
+      #reports-view .rpt-table tbody td {
+        height: auto !important;
+        min-height: 0 !important;
+        padding: 9px 12px !important;
+        border-bottom: 1px solid #e9edf7 !important;
+        background: transparent !important;
+        color: var(--txt);
+        font-size: 12px !important;
+        line-height: 1;
+        vertical-align: middle;
+      }
+      #reports-view .rpt-table tbody td > div {
+        line-height: 1.35;
+      }
+      #reports-view .rpt-table tbody tr:hover td {
+        background: rgba(139, 123, 247, 0.055) !important;
+      }
+      #reports-view .rpt-table tbody tr:last-child td {
+        border-bottom: 0 !important;
+      }
+      #reports-view .rpt-table tbody td:nth-child(1) {
+        min-width: 58px;
+        white-space: nowrap;
+        color: var(--faint) !important;
+        font-size: 11px !important;
+      }
+      #reports-view .rpt-table tbody td:nth-child(2) {
+        min-width: 188px;
+      }
+      #reports-view .rpt-table tbody td:nth-child(3),
+      #reports-view .rpt-table tbody td:nth-child(4),
+      #reports-view .rpt-table tbody td:nth-child(6),
+      #reports-view .rpt-table tbody td:nth-child(7) {
+        white-space: nowrap;
+      }
+      #reports-view .rpt-table tbody td:nth-child(3) span {
+        color: #4f46b8 !important;
+        font-weight: 500 !important;
+      }
+      #reports-view .rpt-table tbody td:nth-child(5) {
+        min-width: 152px;
+        white-space: nowrap;
+      }
+      #reports-view .rpt-table tbody td:nth-child(8) {
+        min-width: 156px;
+      }
+      #reports-view .rpt-table tbody td:nth-child(9) {
+        min-width: 108px;
+      }
+      #reports-view .rpt-table tbody td:nth-child(2) > div > div:first-child {
+        width: 32px !important;
+        height: 32px !important;
+        border: 1px solid rgba(139, 123, 247, 0.22) !important;
+        background: rgba(139, 123, 247, 0.1) !important;
+        color: #4f46b8 !important;
+        font-size: 11px !important;
+        font-weight: 600 !important;
+      }
+      #reports-view .rpt-table tbody td:nth-child(2) > div > div:last-child {
+        line-height: 1.3;
+      }
+      #reports-view .rpt-table td img {
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 50%;
+        object-fit: cover;
+        box-shadow: 0 0 0 1px rgba(139, 123, 247, 0.22);
+      }
+      #reports-view .rpt-table .badge {
+        padding: 4px 9px !important;
+        border-radius: 999px !important;
+        font-size: 10px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.01em;
+        line-height: 1.35;
+        white-space: nowrap;
+        box-shadow: none;
+      }
+      #reports-view .rpt-table thead th:last-child {
+        padding-left: 26px !important;
+      }
+      #reports-view .rpt-table tbody td:last-child {
+        position: static !important;
+        padding-left: 26px !important;
+        right: auto !important;
+        z-index: auto !important;
+        width: 150px;
+        min-width: 150px;
+        text-align: right;
+        white-space: nowrap;
+        line-height: 0;
+        box-shadow: none !important;
+      }
+      #reports-view .rpt-table tbody td:last-child button {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 4px !important;
+        height: 28px !important;
+        min-height: 0 !important;
+        padding: 0 10px !important;
+        border-radius: 8px !important;
+        font-family: inherit;
+        font-size: 10px !important;
+        font-weight: 600 !important;
+        line-height: 1.2 !important;
+        white-space: nowrap;
+        vertical-align: middle;
+        cursor: pointer;
+        border: 1px solid rgba(139, 123, 247, 0.4) !important;
+        background: rgba(139, 123, 247, 0.09) !important;
+        color: #5847c8 !important;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
+      }
+      #reports-view .rpt-table tbody td:last-child button:hover {
+        background: rgba(139, 123, 247, 0.18) !important;
+        border-color: rgba(139, 123, 247, 0.66) !important;
+        color: #4a39b8 !important;
+      }
+      #reports-view .rpt-table tbody td:last-child button + button {
+        margin-left: 5px;
+      }
+      /* Empty table: drop the header row and scroll gutter */
+      #reports-view .rpt-table thead:has(+ #mainReportTbody:empty) {
+        display: none;
+      }
+      #reports-view .rpt-table-scroll:has(#mainReportTbody:empty) {
+        overflow: hidden;
+      }
+      #reports-view .rpt-empty {
+        padding: 56px 24px !important;
+        text-align: center;
+        color: var(--mut);
+      }
+      #reports-view .rpt-empty i {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 42px;
+        height: 42px;
+        margin-bottom: 12px !important;
+        border: 1px solid var(--line-soft);
+        border-radius: 12px;
+        background: rgba(246, 247, 253, 0.9);
+        color: var(--faint);
+        font-size: 14px !important;
+        opacity: 1 !important;
+      }
+      #reports-view .rpt-empty p {
+        margin: 0;
+        font-size: 12px;
+      }
+      #reports-view .rpt-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 11px 16px;
+        border-top: 1px solid var(--line-soft);
+        background: rgba(255, 255, 255, 0.4);
+        font-size: 11.5px !important;
+      }
+      #reports-view .rpt-pagination .app-page-info {
+        color: var(--mut);
+        font-weight: 500;
+      }
+      #reports-view .rpt-pagination .app-page-btn {
+        min-width: 30px;
+        height: 30px !important;
+        min-height: 0 !important;
+        padding: 0 9px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--ink-2);
+        font-family: inherit;
+        font-size: 11px;
+        font-weight: 500;
+        box-shadow: none;
+      }
+      #reports-view .rpt-pagination .app-page-btn:hover:not(:disabled) {
+        border-color: rgba(139, 123, 247, 0.4);
+        background: #ffffff;
+        color: var(--ink);
+      }
+      #reports-view .rpt-pagination .app-page-btn.active {
+        border-color: #1b2430;
+        background: #1b2430;
+        color: #ffffff;
+        font-weight: 600;
+        box-shadow: 0 8px 16px -12px rgba(20, 24, 40, 0.95);
+      }
+      #reports-view .rpt-pagination .app-page-btn:disabled {
+        opacity: 0.4;
+        background: rgba(255, 255, 255, 0.6);
+        color: var(--faint);
+      }
+
+      @media (max-width: 1100px) {
+        #reports-view .rpt-rail {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 900px) {
+        #reports-view .rpt-filters-top {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        #reports-view .rpt-presets {
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          scrollbar-width: none;
+        }
+        #reports-view .rpt-presets::-webkit-scrollbar {
+          display: none;
+        }
+        #reports-view .rpt-field,
+        #reports-view .rpt-field--grow {
+          flex: 1 1 100%;
+        }
+        #reports-view .rpt-hero {
+          padding: 18px 18px 16px;
+        }
+      }
+      @media (max-width: 620px) {
+        #reports-view .rpt-rail {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        #reports-view .rpt-hero-title {
+          font-size: 21px;
+        }
+        #reports-view .rpt-hero-actions {
+          width: 100%;
+        }
+        #reports-view .rpt-hero-actions .rpt-btn {
+          flex: 1;
+        }
+      }
+
     </style>
   </head>
   <body class="{% if not is_authenticated %}auth-required{% endif %}">
@@ -3801,15 +4801,6 @@
 
     <!-- Left Persistent Sidebar Panel -->
     <div class="sidebar">
-      <button
-        class="sidebar-toggle"
-        type="button"
-        onclick="toggleSidebar()"
-        aria-label="Collapse navigation"
-        title="Collapse navigation"
-      >
-        <i class="fa-solid fa-chevron-left"></i>
-      </button>
       <div class="sidebar-brand">
         <i class="fa-solid fa-circle-nodes"></i>
         <div class="sidebar-brand-text">
@@ -3985,6 +4976,16 @@
         >
           <i class="fa-solid fa-right-from-bracket"></i>
           <span>Logout</span>
+        </button>
+        <button
+          class="sidebar-toggle"
+          type="button"
+          onclick="toggleSidebar()"
+          aria-label="Collapse navigation"
+          title="Collapse navigation"
+        >
+          <i class="fa-solid fa-angles-left"></i>
+          <span class="sidebar-toggle-label">Collapse</span>
         </button>
       </div>
     </div>
@@ -4971,147 +5972,149 @@ async function fetchMultiLiveDetections() {
 
       <!-- ================= PAGE: ATTENDANCE & DEPARTMENT REPORTS TAB ================= -->
       <div id="reports-view" class="page-view active">
-        <div class="page-header">
-          <div class="page-header-text">
-            <h1><i class="fa-solid fa-clipboard-user" aria-hidden="true" style="color: #3d9fd4;"></i> Attendance Reports</h1>
-            <p class="page-subtitle" id="mainReportSubtitle">View and manage employee attendance records.</p>
+        <section class="rpt-hero">
+          <div class="rpt-hero-copy">
+            <span class="rpt-hero-eyebrow"><i class="fa-solid fa-clipboard-user" aria-hidden="true"></i> Attendance</span>
+            <h1 class="rpt-hero-title">Attendance Reports</h1>
+            <p class="rpt-hero-sub" id="mainReportSubtitle">View and manage employee attendance records.</p>
           </div>
-          <div class="page-header-actions" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <button id="mainReportRefreshBtn" type="button" onclick="fetchMainReport(true)" class="btn btn-outline" style="width:auto; padding:9px 18px; font-size:0.88em; border-color:#3d9fd4; color:#247eae;">
-              <i class="fa-solid fa-rotate"></i> Refresh Data
+          <div class="rpt-hero-actions">
+            <button id="mainReportRefreshBtn" type="button" onclick="fetchMainReport(true)" class="rpt-btn rpt-btn-dark">
+              <i class="fa-solid fa-rotate"></i><span>Refresh</span>
             </button>
             <div class="dropdown">
-              <button id="mainExportDropdownBtn" class="btn btn-primary shadow dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="width:auto; padding:9px 20px; font-size:0.88em; background:#0284c7; border:none; color:white; font-weight:600;">
-                <i class="fa-solid fa-file-export"></i> Export
+              <button id="mainExportDropdownBtn" class="rpt-btn rpt-btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fa-solid fa-arrow-up-from-bracket"></i><span>Export</span>
               </button>
-              <ul class="dropdown-menu dropdown-menu-end shadow" style="border-radius:10px; border:1px solid #cfe8f7; min-width:180px;">
-                <li><button type="button" class="dropdown-item" id="mainExportPdfItem" onclick="exportMainPDF()"><i class="fa-solid fa-file-pdf me-2 text-danger"></i>Export PDF</button></li>
-                <li><button type="button" class="dropdown-item" id="mainExportCsvItem" onclick="exportMainCSV()"><i class="fa-solid fa-file-csv me-2 text-primary"></i>Export CSV</button></li>
+              <ul class="dropdown-menu dropdown-menu-end rpt-menu">
+                <li><button type="button" class="dropdown-item" id="mainExportPdfItem" onclick="exportMainPDF()"><i class="fa-solid fa-file-pdf me-2 text-danger"></i>Export as PDF</button></li>
+                <li><button type="button" class="dropdown-item" id="mainExportCsvItem" onclick="exportMainCSV()"><i class="fa-solid fa-file-csv me-2 text-primary"></i>Export as CSV</button></li>
               </ul>
             </div>
           </div>
-        </div>
+        </section>
 
-        <!-- Metric Summary Cards -->
-        <div class="stats-grid" style="margin-bottom: 24px;">
-          <div class="stat-box">
-            <div class="stat-icon" style="background:#e5f5ff; color:#3d9fd4;">
-              <i class="fa-solid fa-users"></i>
+        <section class="rpt-rail" aria-label="Attendance summary">
+          <article class="rpt-metric">
+            <div class="rpt-metric-head">
+              <span class="rpt-metric-label">Total Enrolled</span>
+              <span class="rpt-metric-icon tone-lilac"><i class="fa-solid fa-users"></i></span>
             </div>
-            <div class="stat-content">
-              <div class="stat-value" id="mainStatTotal">--</div>
-              <div class="stat-label">Total Enrolled</div>
+            <strong class="rpt-metric-value" id="mainStatTotal">--</strong>
+            <span class="rpt-metric-foot">Staff in the selected scope</span>
+          </article>
+          <article class="rpt-metric">
+            <div class="rpt-metric-head">
+              <span class="rpt-metric-label">Present</span>
+              <span class="rpt-metric-icon tone-mint"><i class="fa-solid fa-user-check"></i></span>
             </div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-icon green" style="background:#e6f4ea; color:#1e8e3e;">
-              <i class="fa-solid fa-user-check"></i>
+            <strong class="rpt-metric-value" id="mainStatPresent">--</strong>
+            <span class="rpt-metric-foot" id="mainStatPresentLabel">Present Today</span>
+          </article>
+          <article class="rpt-metric">
+            <div class="rpt-metric-head">
+              <span class="rpt-metric-label">Absent</span>
+              <span class="rpt-metric-icon tone-coral"><i class="fa-solid fa-user-xmark"></i></span>
             </div>
-            <div class="stat-content">
-              <div class="stat-value" id="mainStatPresent" style="color:#1e8e3e;">--</div>
-              <div class="stat-label" id="mainStatPresentLabel">Present Today</div>
+            <strong class="rpt-metric-value" id="mainStatAbsent">--</strong>
+            <span class="rpt-metric-foot" id="mainStatAbsentLabel">Absent Today</span>
+          </article>
+          <article class="rpt-metric">
+            <div class="rpt-metric-head">
+              <span class="rpt-metric-label">Late Arrivals</span>
+              <span class="rpt-metric-icon tone-amber"><i class="fa-solid fa-clock"></i></span>
             </div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-icon orange" style="background:#fce8e6; color:#d93025;">
-              <i class="fa-solid fa-user-xmark"></i>
-            </div>
-            <div class="stat-content">
-              <div class="stat-value" id="mainStatAbsent" style="color:#d93025;">--</div>
-              <div class="stat-label" id="mainStatAbsentLabel">Absent Today</div>
-            </div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-icon" style="background:#fef7e0; color:#b06000;">
-              <i class="fa-solid fa-clock"></i>
-            </div>
-            <div class="stat-content">
-              <div class="stat-value" id="mainStatLate" style="color:#b06000;">--</div>
-              <div class="stat-label">Late Arrivals</div>
-            </div>
-          </div>
-        </div>
+            <strong class="rpt-metric-value" id="mainStatLate">--</strong>
+            <span class="rpt-metric-foot">Late check-ins in this period</span>
+          </article>
+        </section>
 
-        <!-- Filter Controls Surface -->
-        <div class="card p-0 mb-4 leave-filter-bar app-camera-select-host" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; box-shadow:0 6px 18px rgba(61,159,212,0.07); overflow:visible; display:block; min-height:auto; padding:0; margin-bottom:16px;">
-          <!-- Row 1: Date presets -->
-          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding:14px 18px; border-bottom:1px solid #e8f4fd; background:#f7fbff;">
-            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <i class="fa-solid fa-calendar-days" style="color:#3d9fd4; font-size:0.85em;"></i>
-              <span style="font-size:0.74em; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-right:4px;">Period</span>
-              <div style="display:flex; gap:4px; background:#eaf5ff; padding:3px; border-radius:8px; border:1px solid #cfe8f7; flex-wrap:wrap;">
-                <button class="btn btn-sm btn-primary main-date-preset active" id="mBtnToday" onclick="setMainDateFilter('today')" style="padding:5px 14px; font-size:0.78em; min-height:30px;">Today</button>
-                <button class="btn btn-sm btn-outline main-date-preset" id="mBtnYesterday" onclick="setMainDateFilter('yesterday')" style="padding:5px 14px; font-size:0.78em; min-height:30px;">Yesterday</button>
-                <button class="btn btn-sm btn-outline main-date-preset" id="mBtnLast7" onclick="setMainDateFilter('last7')" style="padding:5px 14px; font-size:0.78em; min-height:30px;">Last 7 Days</button>
-                <button class="btn btn-sm btn-outline main-date-preset" id="mBtnThisWeek" onclick="setMainDateFilter('this_week')" style="padding:5px 14px; font-size:0.78em; min-height:30px;">This Week</button>
-                <button class="btn btn-sm btn-outline main-date-preset" id="mBtnThisMonth" onclick="setMainDateFilter('this_month')" style="padding:5px 14px; font-size:0.78em; min-height:30px;">This Month</button>
-                <button class="btn btn-sm btn-outline main-date-preset" id="mBtnLast30" onclick="setMainDateFilter('last30')" style="padding:5px 14px; font-size:0.78em; min-height:30px;">Last 30 Days</button>
-                <button class="btn btn-sm btn-outline main-date-preset" id="mBtnCustom" onclick="setMainDateFilter('custom')" style="padding:5px 14px; font-size:0.78em; min-height:30px;">Custom Range</button>
-              </div>
+        <section class="rpt-filters app-camera-select-host" aria-label="Report filters">
+          <div class="rpt-filters-top">
+            <div class="rpt-presets" role="group" aria-label="Date range">
+              <button type="button" class="rpt-preset active" id="mBtnToday" onclick="setMainDateFilter('today')">Today</button>
+              <button type="button" class="rpt-preset" id="mBtnYesterday" onclick="setMainDateFilter('yesterday')">Yesterday</button>
+              <button type="button" class="rpt-preset" id="mBtnLast7" onclick="setMainDateFilter('last7')">Last 7 days</button>
+              <button type="button" class="rpt-preset" id="mBtnThisWeek" onclick="setMainDateFilter('this_week')">This week</button>
+              <button type="button" class="rpt-preset" id="mBtnThisMonth" onclick="setMainDateFilter('this_month')">This month</button>
+              <button type="button" class="rpt-preset" id="mBtnLast30" onclick="setMainDateFilter('last30')">Last 30 days</button>
+              <button type="button" class="rpt-preset" id="mBtnCustom" onclick="setMainDateFilter('custom')">Custom range</button>
             </div>
-            <!-- Custom Date Range Inputs -->
-            <div id="mainCustomRangeGroup" style="display:none; align-items:center; gap:8px; flex-wrap:wrap;">
-              <label style="display:grid; gap:2px; font-size:0.72em; font-weight:700; color:#64748b; margin:0;">
-                START DATE
-                <input type="date" id="mainStartDate" class="form-control" style="width:auto; padding:5px 10px; font-size:0.82em; min-height:32px;" onchange="handleMainDateRangeChange()" oninput="handleMainDateRangeChange()">
+            <div id="mainCustomRangeGroup" class="rpt-range">
+              <label class="rpt-range-field">
+                <span>Start date</span>
+                <input type="date" id="mainStartDate" class="form-control" onchange="handleMainDateRangeChange()" oninput="handleMainDateRangeChange()">
               </label>
-              <span style="color:#94a3b8; font-size:0.82em; margin-top:14px;">&#8594;</span>
-              <label style="display:grid; gap:2px; font-size:0.72em; font-weight:700; color:#64748b; margin:0;">
-                END DATE
-                <input type="date" id="mainEndDate" class="form-control" style="width:auto; padding:5px 10px; font-size:0.82em; min-height:32px;" disabled onchange="handleMainDateRangeChange()" oninput="handleMainDateRangeChange()">
+              <span class="rpt-range-sep"><i class="fa-solid fa-arrow-right"></i></span>
+              <label class="rpt-range-field">
+                <span>End date</span>
+                <input type="date" id="mainEndDate" class="form-control" disabled onchange="handleMainDateRangeChange()" oninput="handleMainDateRangeChange()">
               </label>
-              <button type="button" class="btn btn-sm btn-primary" onclick="fetchMainReport()" style="padding:4px 12px; font-size:0.78em; background:#0284c7; border:none; color:#fff; font-weight:600; min-height:32px; cursor:pointer; margin-top:14px;">
-                <i class="fa-solid fa-filter"></i> Apply
+              <button type="button" class="rpt-btn" onclick="fetchMainReport()" style="height:32px;">
+                <i class="fa-solid fa-check"></i> Apply
               </button>
             </div>
           </div>
-          <!-- Row 2: Department, Status, Search -->
-          <div class="leave-filter-bar" style="margin:0; border:0; border-radius:0; background:transparent; box-shadow:none;">
-            <!-- Department -->
-            <div style="position:relative; min-width:180px; flex:1;">
-              <i class="fa-solid fa-building" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.78em; pointer-events:none; z-index:1;"></i>
-              <select id="mainDeptFilter" class="form-select" style="padding-left:30px; min-width:160px;" onchange="fetchMainReport()">
+          <div class="rpt-filters-body">
+            <div class="rpt-field">
+              <span class="rpt-field-label">Department</span>
+              <select id="mainDeptFilter" class="form-select" onchange="fetchMainReport()">
                 <option value="all">All Departments</option>
               </select>
             </div>
-            <!-- Status (hidden for multi-day ranges) -->
-            <div id="mainStatusFilterWrap" style="position:relative; min-width:160px; flex:1;">
-              <i class="fa-solid fa-circle-half-stroke" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.78em; pointer-events:none; z-index:1;"></i>
-              <select id="mainStatusFilter" class="form-select" style="padding-left:30px; min-width:140px;" onchange="fetchMainReport()">
+            <div class="rpt-field" id="mainStatusFilterWrap">
+              <span class="rpt-field-label">Status</span>
+              <select id="mainStatusFilter" class="form-select" onchange="fetchMainReport()">
                 <option value="all">All Statuses</option>
                 <option value="present">Present Only</option>
                 <option value="absent">Absent Only</option>
                 <option value="late">Late Only</option>
               </select>
             </div>
-            <!-- Search -->
-            <div style="position:relative; flex:2; min-width:220px;">
-              <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.8em; pointer-events:none; z-index:1;"></i>
-              <input type="search" id="mainReportSearch" class="form-control" maxlength="100" value="" autocomplete="off" placeholder="Search name, ID, department, CNIC..." style="padding-left:34px; width:100%;" oninput="onMainReportSearchInput()">
+            <div class="rpt-field rpt-field--grow">
+              <span class="rpt-field-label">Search</span>
+              <div class="rpt-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="mainReportSearch" class="form-control" maxlength="100" value="" autocomplete="off" placeholder="Search name, ID, department, CNIC..." oninput="onMainReportSearchInput()">
+              </div>
             </div>
-            <select id="mainReportPageSize" class="form-select" style="width:auto; min-width:110px;" onchange="changeMainReportPageSize(this.value)">
-              <option value="10">10 / page</option>
-              <option value="25" selected>25 / page</option>
-              <option value="50">50 / page</option>
-              <option value="100">100 / page</option>
-            </select>
-            <button type="button" id="mainResetFiltersBtn" onclick="resetMainReportFilters()" class="btn btn-outline-secondary btn-sm" style="width:auto; padding:8px 14px; font-weight:700; white-space:nowrap;">
-              <i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters
-            </button>
+            <div class="rpt-field" style="min-width:auto;">
+              <span class="rpt-field-label">&nbsp;</span>
+              <button type="button" id="mainResetFiltersBtn" onclick="resetMainReportFilters()" class="rpt-btn" style="height:36px;">
+                <i class="fa-solid fa-filter-circle-xmark"></i> Reset
+              </button>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <!-- Department Breakdown Summary Cards -->
-        <div style="margin-bottom: 20px;">
-          <h2 style="font-size:1.1em; font-weight:700; color:#173042; margin-bottom:12px;"><i class="fa-solid fa-sitemap" style="color:#3d9fd4; margin-right:6px;"></i> Department Breakdown</h2>
-          <div id="mainDeptGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px;"></div>
-        </div>
+        <section>
+          <div class="rpt-section-head">
+            <h2 class="rpt-section-title">Department breakdown</h2>
+            <span class="rpt-section-rule"></span>
+            <p class="rpt-section-sub">Attendance rate per department</p>
+          </div>
+          <div id="mainDeptGrid" class="rpt-dept-grid"></div>
+        </section>
 
-        <!-- Detailed Master Attendance Records Table -->
-        <div class="card p-0" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; overflow:hidden; box-shadow:0 8px 24px rgba(61,159,212,0.08);">
-          <div class="log-table-wrapper">
-            <table class="log-table attendance-report-table" style="width:100%; border-collapse:collapse;">
-              <thead id="mainReportThead" style="background:#f2faff; border-bottom:1px solid #cfe8f7;">
+        <section class="rpt-sheet">
+          <div class="rpt-sheet-head">
+            <div>
+              <h2 class="rpt-sheet-title">Attendance records</h2>
+              <p class="rpt-sheet-sub">One row per employee for multi-day ranges, one row per day otherwise</p>
+            </div>
+            <div class="rpt-sheet-tools">
+              <span class="rpt-tool-label">Rows</span>
+              <select id="mainReportPageSize" class="form-select" onchange="changeMainReportPageSize(this.value)">
+                <option value="10">10 / page</option>
+                <option value="25" selected>25 / page</option>
+                <option value="50">50 / page</option>
+                <option value="100">100 / page</option>
+              </select>
+            </div>
+          </div>
+          <div class="rpt-table-scroll">
+            <table class="log-table rpt-table attendance-report-table">
+              <thead id="mainReportThead">
                 <!-- Populated dynamically based on Single-Day vs Multi-Day -->
               </thead>
               <tbody id="mainReportTbody">
@@ -5119,15 +6122,15 @@ async function fetchMultiLiveDetections() {
               </tbody>
             </table>
           </div>
-          <div id="mainReportEmpty" style="padding:40px; text-align:center; color:#64748b; display:none;">
-            <i class="fa-solid fa-folder-open" style="font-size:2em; margin-bottom:8px; opacity:0.6;"></i>
+          <div id="mainReportEmpty" class="rpt-empty" style="display:none;">
+            <i class="fa-solid fa-folder-open"></i>
             <p>No attendance records match the selected filter criteria.</p>
           </div>
-          <div id="mainReportPaginationBar" class="app-table-pagination">
+          <div id="mainReportPaginationBar" class="app-table-pagination rpt-pagination">
             <div id="mainReportPaginationInfo" class="app-page-info">Showing 0 of 0 records</div>
             <div id="mainReportPageControls" class="app-page-controls"></div>
           </div>
-        </div>
+        </section>
       </div>
 
       <!-- Complete View Modal (Dedicated Employee Attendance Detail View) -->
@@ -10254,6 +11257,8 @@ async function fetchMultiLiveDetections() {
           "title",
           collapsed ? "Expand navigation" : "Collapse navigation",
         );
+        const toggleLabel = toggle.querySelector(".sidebar-toggle-label");
+        if (toggleLabel) toggleLabel.textContent = collapsed ? "Expand" : "Collapse";
         localStorage.setItem("qintellect-sidebar-collapsed", collapsed);
       }
 
@@ -12740,19 +13745,19 @@ async function fetchMultiLiveDetections() {
               const absText = dept.absent_days !== undefined ? `${dept.absent_days} Days` : `${dept.absent || 0} Absent`;
 
               const card = document.createElement('div');
-              card.style.cssText = 'background:#ffffff; border:1px solid #cfe8f7; border-radius:12px; padding:14px; box-shadow:0 4px 14px rgba(61,159,212,0.06);';
+              card.className = 'rpt-dept';
               card.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                  <strong style="color:#173042; font-size:0.92em;">${dept.department}</strong>
-                  <span style="font-size:0.75em; color:#64748b; background:#f0f7fc; padding:2px 8px; border-radius:6px; font-weight:700;">${staffCount} Headcount</span>
+                <div class="rpt-dept-top">
+                  <span class="rpt-dept-name" title="${dept.department}">${dept.department}</span>
+                  <span class="rpt-dept-count">${staffCount}<span>headcount</span></span>
                 </div>
-                <div style="display:flex; justify-content:space-between; font-size:0.8em; margin-bottom:6px;">
-                  <span style="color:#1e8e3e; font-weight:600;"><i class="fa-solid fa-check"></i> ${presText}</span>
-                  <span style="color:#d93025; font-weight:600;"><i class="fa-solid fa-xmark"></i> ${absText}</span>
-                  <span style="font-weight:800; color:#173042;">${rate}%</span>
+                <div class="rpt-dept-meter">
+                  <span style="width:${rate}%; background:${barColor};"></span>
                 </div>
-                <div style="width:100%; height:6px; background:#e2e8f0; border-radius:10px; overflow:hidden;">
-                  <div style="height:100%; width:${rate}%; background:${barColor}; border-radius:10px; transition:width 0.4s ease;"></div>
+                <div class="rpt-dept-foot">
+                  <span class="rpt-dept-tag is-ok"><i class="fa-solid fa-check"></i>${presText}</span>
+                  <span class="rpt-dept-tag is-bad"><i class="fa-solid fa-xmark"></i>${absText}</span>
+                  <span class="rpt-dept-rate" style="color:${barColor};">${rate}%</span>
                 </div>
               `;
               grid.appendChild(card);
