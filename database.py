@@ -3913,7 +3913,9 @@ def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> 
     """
     LV-05: When an employee with approved leave is subsequently recorded as present on that date,
     restore their leave entitlement unless payroll for that month is already finalized.
+    Includes half-day leave: presence on that leave day restores the half-day balance.
     Safe against duplicate calls (idempotent via restored_dates tracking).
+    Returns True when at least one leave row was restored for this date.
     """
     try:
         month_str = log_date[:7]
@@ -3930,6 +3932,7 @@ def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> 
               AND start_date <= ? AND end_date >= ?
         """, (user_id, log_date, log_date))
         rows = cursor.fetchall()
+        restored_any = False
         for lr in rows:
             if isinstance(lr, (tuple, list)):
                 leave_id = lr[0]
@@ -3938,7 +3941,6 @@ def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> 
                 lr_end = lr[4]
                 lr_status = lr[5]
                 lr_restored_dates = lr[8]
-                lr_reason = lr[9]
             else:
                 leave_id = lr['id']
                 lr_duration = lr['leave_duration']
@@ -3946,37 +3948,47 @@ def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> 
                 lr_end = lr['end_date']
                 lr_status = lr['status']
                 lr_restored_dates = lr['restored_dates']
-                lr_reason = lr['reason']
-
-            if str(lr_duration).lower() == 'half':
-                continue
 
             restored = [d.strip() for d in str(lr_restored_dates or '').split(',') if d.strip()]
-            if log_date not in restored:
-                restored.append(log_date)
-                restored_str = ','.join(sorted(restored))
-                all_restored = False
-                try:
+            if log_date in restored:
+                continue
+
+            restored.append(log_date)
+            restored_str = ','.join(sorted(restored))
+            is_half = str(lr_duration or '').lower() == 'half'
+            all_restored = False
+            try:
+                if is_half:
+                    # Half-day leave is a single calendar day — restoring that day restores the whole request.
+                    all_restored = True
+                else:
                     s_dt = datetime.strptime(lr_start, '%Y-%m-%d')
                     e_dt = datetime.strptime(lr_end, '%Y-%m-%d')
                     total_req_days = (e_dt - s_dt).days + 1
                     all_restored = len(restored) >= total_req_days
-                except Exception:
-                    pass
-                new_status = 'cancelled_worked' if all_restored else lr_status
-                cursor.execute("""
-                    UPDATE leave_requests
-                    SET restored_dates = ?,
-                        status = ?,
-                        paid_status = CASE WHEN ? = 'cancelled_worked' THEN 'cancelled_worked' ELSE paid_status END,
-                        unpaid_status = CASE WHEN ? = 'cancelled_worked' THEN 'cancelled_worked' ELSE unpaid_status END,
-                        reason = CASE WHEN reason IS NULL OR reason = ''
-                                      THEN '[Leave entitlement restored: employee worked on ' || ? || ']'
-                                      ELSE reason || ' [Entitlement restored for ' || ? || ']' END
-                    WHERE id = ?
-                """, (restored_str, new_status, new_status, new_status, log_date, log_date, leave_id))
-                logger.info(f"LV-05: Restored leave entitlement for user #{user_id} on {log_date} (leave request #{leave_id})")
-        return True
+            except Exception:
+                all_restored = is_half
+            new_status = 'cancelled_worked' if all_restored else lr_status
+            cursor.execute("""
+                UPDATE leave_requests
+                SET restored_dates = ?,
+                    status = ?,
+                    paid_status = CASE WHEN ? = 'cancelled_worked' THEN 'cancelled_worked' ELSE paid_status END,
+                    unpaid_status = CASE WHEN ? = 'cancelled_worked' THEN 'cancelled_worked' ELSE unpaid_status END,
+                    reason = CASE WHEN reason IS NULL OR reason = ''
+                                  THEN '[Leave entitlement restored: employee worked on ' || ? || ']'
+                                  ELSE reason || ' [Entitlement restored for ' || ? || ']' END
+                WHERE id = ?
+            """, (restored_str, new_status, new_status, new_status, log_date, log_date, leave_id))
+            restored_any = True
+            logger.info(
+                "LV-05: Restored %s leave entitlement for user #%s on %s (leave request #%s)",
+                'half-day' if is_half else 'full-day',
+                user_id,
+                log_date,
+                leave_id,
+            )
+        return restored_any
     except Exception as e:
         logger.error(f"Error checking leave restoration for user {user_id} on {log_date}: {e}")
         return False
@@ -5176,10 +5188,10 @@ def get_detailed_attendance_report(
                         emp_absent_days += 1
                         emp_working_days += 1
                     elif att:
-                        # LV-05: If employee actually worked on an approved leave day, ensure entitlement is restored
-                        # Do NOT restore half-day leave when employee works, as half-day leave expects them to work the other half (QA-45)
-                        if leave_info and not leave_info.get('is_half_leave'):
-                            _restore_worked_leave_if_applicable(cursor, uid, cur_date)
+                        # LV-05: Presence on an approved leave day restores entitlement,
+                        # including half-day leave (full day worked cancels the half leave charge).
+                        if leave_info and _restore_worked_leave_if_applicable(cursor, uid, cur_date):
+                            leave_info = None
                         first_seen = att['first_seen']
                         raw_last_seen = att['last_seen']
                         last_seen = None
@@ -8101,6 +8113,10 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
                           AND half_leave_quota_charge = 1 AND half_leave_quota_type_id = ?
                           AND (leave_type != ? AND leave_type != ?)
                           AND end_date >= ? AND start_date <= ?
+                          AND (
+                            restored_dates IS NULL OR TRIM(restored_dates) = ''
+                            OR INSTR(',' || REPLACE(restored_dates, ' ', '') || ',', ',' || start_date || ',') = 0
+                          )
                     """, (u['id'], lt['id'], lt['code'], lt['name'], cycle_start, cycle_end))
                     external_half_quota_charges = int(cursor.fetchone()[0] or 0)
                     actual_used += external_half_quota_charges
@@ -8449,18 +8465,28 @@ def resolve_half_leave_rule(
             ref_dt, 'custom', winning_rule.get('months', 12)
         )
 
+    # Exclude cancelled_worked and half-leaves whose start_date was restored after the employee worked.
+    half_restore_guard = """
+              AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'approved', 'partially_approved')
+              AND (
+                restored_dates IS NULL OR TRIM(restored_dates) = ''
+                OR INSTR(',' || REPLACE(restored_dates, ' ', '') || ',', ',' || start_date || ',') = 0
+              )
+    """
     if winning_rule['mode'] == 'monthly_cap':
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COUNT(*) FROM leave_requests
-            WHERE user_id = ? AND leave_duration = 'half' AND LOWER(status) IN ('pending', 'approved')
+            WHERE user_id = ? AND leave_duration = 'half'
               AND end_date >= ? AND start_date <= ?
+              {half_restore_guard}
         """, (user_id, cycle_start, cycle_end))
     else:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COUNT(*) FROM leave_requests
             WHERE user_id = ? AND (leave_type = ? OR leave_type = ?)
-              AND leave_duration = 'half' AND LOWER(status) IN ('pending', 'approved')
+              AND leave_duration = 'half'
               AND end_date >= ? AND start_date <= ?
+              {half_restore_guard}
         """, (user_id, lt_code, leave_name, cycle_start, cycle_end))
 
     used_count = int(cursor.fetchone()[0] or 0)
@@ -8865,6 +8891,10 @@ def check_leave_quota(
                       AND half_leave_quota_charge = 1 AND half_leave_quota_type_id = ?
                       AND leave_type != ? AND leave_type != ?
                       AND end_date >= ? AND start_date <= ?
+                      AND (
+                        restored_dates IS NULL OR TRIM(restored_dates) = ''
+                        OR INSTR(',' || REPLACE(restored_dates, ' ', '') || ',', ',' || start_date || ',') = 0
+                      )
                 """, (user_id, lt_dict['id'], lt_dict['code'], lt_dict['name'], cycle_start, cycle_end))
                 already_used += int(cursor.fetchone()[0] or 0)
             quota_days_requested = requested_days

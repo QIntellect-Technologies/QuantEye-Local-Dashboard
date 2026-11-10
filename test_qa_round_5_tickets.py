@@ -341,7 +341,7 @@ class TestQARound5Tickets(unittest.TestCase):
     # QA-45: Half-Day Leave in Attendance Reports & Payroll
     # =========================================================================
     def test_qa_45_attendance_and_payroll_half_leave(self):
-        """QA-45: Half day attended produces 0.5 present + 0.5 leave without restoring entitlement."""
+        """QA-45 (updated): Presence on a half-leave day restores the half-day entitlement."""
         emp_id = db.add_user(name="QA45 Emp", email="qa45@example.com", department="Dev", salary=60000.0, organization_id=self.org_id, branch_id=self.branch_id)
         shift_id = db.add_shift("Standard Shift", "09:00", "17:00", 15, 0, [0, 1, 2, 3, 4], self.org_id, self.branch_id)
         db.update_user(emp_id, "QA45 Emp", shift_id=shift_id)
@@ -377,7 +377,7 @@ class TestQARound5Tickets(unittest.TestCase):
             attendance_time=datetime(2026, 10, 5, 13, 0, 0),
         )
 
-        # Check detailed attendance report
+        # Check detailed attendance report — restored half leave counts as full present day
         report = db.get_detailed_attendance_report(
             start_date="2026-10-01",
             end_date="2026-10-31",
@@ -387,12 +387,13 @@ class TestQARound5Tickets(unittest.TestCase):
         records = report["records"]
         emp_report = next((r for r in records if r["user_id"] == emp_id), None)
         self.assertIsNotNone(emp_report)
-        self.assertEqual(emp_report["present_days"], 0.5)
-        self.assertEqual(emp_report["paid_leave_days"], 0.5)
+        self.assertEqual(emp_report["present_days"], 1.0)
+        self.assertEqual(emp_report["paid_leave_days"], 0.0)
 
-        # Verify entitlement was NOT restored
+        # Verify half-day entitlement was restored
         leave_record = db.get_leave_by_id(leave_id)
-        self.assertNotEqual(leave_record["status"], "cancelled_worked")
+        self.assertEqual(leave_record["status"], "cancelled_worked")
+        self.assertIn("2026-10-05", str(leave_record.get("restored_dates") or ""))
 
     # =========================================================================
     # QA-46: Group Leave Requests by Employee
