@@ -309,21 +309,36 @@ def check_module_entitlement_for_request():
         if path.startswith('/api/users') and not path.endswith('/assign-shift'):
             return _forbidden_module_response('attendance')
 
-    # 2. Payroll module routes (including Settings payroll tabs)
-    if path.startswith('/api/settings/payroll'):
+    # 2. Leave-owned half-day rules (must run before the payroll blanket)
+    if path.startswith('/api/payroll-settings/scoped-rules/half-leave'):
+        if not has_leave:
+            return _forbidden_module_response('leave')
+    # Payroll module routes (including Settings payroll tabs)
+    elif path.startswith('/api/settings/payroll'):
         overtime_settings = 'overtime' in path
         if overtime_settings and not has_overtime:
             return _forbidden_module_response('overtime')
         if not overtime_settings and not has_payroll:
-            return _forbidden_module_response('payroll')
+            # Leave module may read/write company half-day leave settings without payroll.
+            if not (has_leave and path.rstrip('/') == '/api/settings/payroll'):
+                return _forbidden_module_response('payroll')
     if not has_payroll:
-        if path in {'/payroll', '/payroll-view'} or path.startswith('/api/payroll') or path.startswith('/api/salary') or path.startswith('/api/payroll-settings'):
+        # Note: '/api/payroll-settings/...' also starts with '/api/payroll' — exclude
+        # leave-owned half-day rule routes explicitly.
+        payroll_blocked = (
+            path in {'/payroll', '/payroll-view', '/api/payroll'}
+            or path.startswith('/api/payroll/')
+            or path.startswith('/api/salary')
+            or (
+                path.startswith('/api/payroll-settings')
+                and not path.startswith('/api/payroll-settings/scoped-rules/half-leave')
+            )
+        )
+        if payroll_blocked:
             return _forbidden_module_response('payroll')
-    elif path.startswith('/api/payroll-settings/scoped-rules/half-leave') and not has_leave:
-        return _forbidden_module_response('leave')
-    elif path.startswith('/api/payroll-settings/scoped-rules/overtime-limit') and not has_overtime:
+    if has_payroll and path.startswith('/api/payroll-settings/scoped-rules/overtime-limit') and not has_overtime:
         return _forbidden_module_response('overtime')
-    elif path.startswith('/api/payroll-settings/scoped-rules/overtime-premium') and not has_overtime:
+    if has_payroll and path.startswith('/api/payroll-settings/scoped-rules/overtime-premium') and not has_overtime:
         return _forbidden_module_response('overtime')
 
     # 3. Leave Management module routes

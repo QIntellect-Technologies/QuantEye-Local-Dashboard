@@ -7315,9 +7315,9 @@ def get_leave_by_id(leave_id: int, organization_id: Optional[str] = None) -> Opt
     try:
         import postgres_mirror as cloud_pg
         if cloud_pg.postgres_is_configured():
-            pg_res = cloud_pg.fetch_pg_leave(leave_id, organization_id)
-            if pg_res is False:
-                return None
+            # Best-effort refresh only. A PG miss must NOT authorize a local delete —
+            # SQLite remains authoritative for leaves that are not mirrored yet.
+            cloud_pg.fetch_pg_leave(leave_id, organization_id)
     except Exception as e:
         logger.warning("Postgres unreachable for get_leave_by_id; falling back to SQLite cache: %s", e)
     try:

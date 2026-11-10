@@ -1487,13 +1487,15 @@ def fetch_pg_leave(leave_id: int, organization_id: Optional[str] = None) -> Any:
             )
             row = cur.fetchone()
         if not row:
-            try:
-                with sqlite3.connect(_sqlite_path()) as s_conn:
-                    s_conn.execute("DELETE FROM leave_requests WHERE id = ? AND organization_id = ?", (leave_id, org_id))
-                    s_conn.commit()
-            except Exception:
-                pass
-            return False
+            # Do NOT delete the local SQLite leave when Postgres has no row.
+            # Local leave IDs often exist before (or without) a PG mirror; deleting
+            # them made approve/reject return 404 and wiped pending leaves from the UI.
+            logger.info(
+                "Postgres has no leave id=%s org=%s; keeping SQLite row as local authority",
+                leave_id,
+                org_id,
+            )
+            return None
         with sqlite3.connect(_sqlite_path()) as sqlite_conn:
             sqlite_cur = sqlite_conn.cursor()
             raw_st = str(row.get("status") or "pending").strip().lower()
@@ -1617,8 +1619,7 @@ def fetch_pg_leave_requests(organization_id: str, branch_id: Optional[str] = Non
                     params.append(st)
             cur.execute(query, params)
             rows = list(cur.fetchall() or [])
-        
-        pg_ids = set()
+
         with sqlite3.connect(_sqlite_path()) as sqlite_conn:
             sqlite_cur = sqlite_conn.cursor()
             for r in rows:
@@ -1626,7 +1627,6 @@ def fetch_pg_leave_requests(organization_id: str, branch_id: Optional[str] = Non
                     lid = int(str(r.get("id") or "").strip())
                 except (ValueError, TypeError):
                     continue
-                pg_ids.add(lid)
                 try:
                     uid = int(str(r.get("employee_id") or "").strip())
                 except (ValueError, TypeError):
@@ -1704,18 +1704,8 @@ def fetch_pg_leave_requests(organization_id: str, branch_id: Optional[str] = Non
                             r.get("branch_id") or branch_id or "DEFAULT_BRANCH",
                         ),
                     )
-            # Prune phantom leave requests in SQLite only during an UNFILTERED fetch for the tenant
-            if not user_id and not status:
-                sqlite_query = "SELECT id FROM leave_requests WHERE organization_id = ?"
-                sq_params = [organization_id]
-                if branch_id and branch_id != 'all':
-                    sqlite_query += " AND branch_id = ?"
-                    sq_params.append(branch_id)
-                sqlite_cur.execute(sqlite_query, sq_params)
-                cached_ids = [row[0] for row in sqlite_cur.fetchall()]
-                for cid in cached_ids:
-                    if cid not in pg_ids:
-                        sqlite_cur.execute("DELETE FROM leave_requests WHERE id = ? AND organization_id = ?", (cid, organization_id))
+            # Do not prune local-only leave rows. Local IDs often exist before PG mirror
+            # catches up; deleting them wiped pending/approved leaves from the portal list.
             sqlite_conn.commit()
         return len(rows)
     except Exception as error:
