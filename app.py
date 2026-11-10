@@ -7878,7 +7878,8 @@ def api_update_branch_settings():
     email = data.get('email', current.get('email', '')) or ''
     import re
     name_pattern = re.compile(r"^(?=.*[A-Za-z])[A-Za-z0-9 .&'()/-]+$")
-    person_name_pattern = re.compile(r"^[A-Za-z][A-Za-z .'-]*$")
+    # Multi-word place/person names: "Rahim Yar Khan", "New York", "St. Louis"
+    person_name_pattern = re.compile(r"^[A-Za-z]+(?:[ .'\-]+[A-Za-z]+)*$")
     unsafe_org = _safe_plain_text_error(branch_name, 'Organization name')
     unsafe_city = _safe_plain_text_error(city, 'City')
     if unsafe_org or unsafe_city:
@@ -7886,7 +7887,7 @@ def api_update_branch_settings():
     if len(branch_name) > 120 or not name_pattern.fullmatch(branch_name):
         return jsonify({'error': 'Organization name must be 1-120 characters and contain a valid name.'}), 400
     if len(city) > 100 or not person_name_pattern.fullmatch(city):
-        return jsonify({'error': 'City must be a valid name of at most 100 characters.'}), 400
+        return jsonify({'error': 'City must be a valid name of at most 100 characters (letters, spaces, periods, apostrophes, hyphens).'}), 400
     if admin_name and (len(admin_name) > 100 or not person_name_pattern.fullmatch(admin_name)):
         return jsonify({'error': 'Admin name must contain letters, spaces, apostrophes, hyphens, or periods (maximum 100 characters).'}), 400
     if phone:

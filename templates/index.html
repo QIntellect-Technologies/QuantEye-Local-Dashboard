@@ -16,7 +16,7 @@
     <!-- Premium Fonts & Icons -->
 
     <link
-      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap"
       rel="stylesheet"
     />
     <link
@@ -100,173 +100,344 @@
         overflow-x: hidden;
       }
 
-      /* Sidebar Navigation */
+      /* Sidebar Navigation - QIntellect Leads shell */
       .sidebar {
-        width: 260px;
-        background: #ffffff;
-        border-right: 1px solid #cfe8f7;
+        width: 236px;
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        height: calc(100vh - 16px);
         display: flex;
         flex-direction: column;
-        padding: 22px 14px 18px;
-        position: fixed;
-        height: 100vh;
-        left: 0;
-        top: 0;
+        padding: 16px 12px 12px;
+        border: 0;
+        border-radius: 22px;
+        background:
+          radial-gradient(110% 90% at 92% 0%, rgba(90, 85, 222, 0.2), transparent 55%),
+          radial-gradient(70% 70% at 0% 100%, rgba(29, 154, 102, 0.1), transparent 60%),
+          #101116;
+        box-shadow: 0 24px 60px -32px rgba(8, 9, 22, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: #ffffff;
         z-index: 100;
-        box-shadow: 8px 0 28px rgba(15, 23, 42, 0.04);
-        transition: width 0.25s ease, padding 0.25s ease;
+        transition: width 0.25s ease, padding 0.25s ease, background 0.25s ease;
+      }
+      /* Faint 38px grid, masked from the top-right. */
+      .sidebar::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.7) 1px, transparent 1px);
+        background-size: 38px 38px;
+        -webkit-mask-image: radial-gradient(ellipse at 72% 20%, #000, transparent 72%);
+        mask-image: radial-gradient(ellipse at 72% 20%, #000, transparent 72%);
+        opacity: 0.045;
+      }
+      /* Top hairline highlight. */
+      .sidebar::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 32px;
+        right: 32px;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+        z-index: 2;
       }
       .sidebar-toggle {
         position: absolute;
-        top: 20px;
+        top: 18px;
         right: -13px;
         width: 26px;
         height: 26px;
         min-height: 26px;
         padding: 0;
-        border: 1px solid #d7e2eb;
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 50%;
-        background: #ffffff;
-        color: #238b86;
+        background: #1a1b23;
+        color: rgba(255, 255, 255, 0.55);
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        z-index: 2;
-        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
-        transition: transform 0.25s ease, background 0.2s ease;
+        z-index: 3;
+        font-size: 10px;
+        box-shadow: 0 6px 18px rgba(8, 9, 22, 0.5);
+        transition: transform 0.25s ease, background 0.2s ease, color 0.2s ease;
       }
       .sidebar-toggle:hover {
-        background: #e9f8f6;
-      }
-      .sidebar::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: linear-gradient(
-          90deg,
-          #3aafa9 0%,
-          #2ee8c0 60%,
-          #3aafa9 100%
-        );
+        background: #262830;
+        color: #ffffff;
       }
       .sidebar-brand {
+        position: relative;
+        z-index: 1;
         display: flex;
         align-items: center;
         gap: 10px;
-        margin: 4px 4px 30px;
-        padding: 10px 8px;
-        border-bottom: 1px solid #e6ebf2;
+        height: 44px;
+        padding: 0 6px;
+        margin: 0;
+        border-bottom: 0;
+        flex-shrink: 0;
       }
-
       .sidebar-brand i {
-        width: 34px;
-        height: 34px;
+        width: 31px;
+        height: 31px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 9px;
-        background: #e5f5ff;
-        color: #3d9fd4;
-        font-size: 1.05em;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.09);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+        color: #c9c6ff;
+        font-size: 13px;
+        flex-shrink: 0;
+      }
+      .sidebar-brand-text {
+        flex: 1;
+        min-width: 0;
+        display: block;
       }
       .sidebar-brand span {
-        font-size: 0.95em;
-        font-weight: 800;
-        color: #1a1d2e;
-        letter-spacing: -0.2px;
-        white-space: normal;
-        line-height: 1.25;
+        display: block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.35;
+        letter-spacing: -0.035em;
+        color: #ffffff;
       }
-      .sidebar-brand span em {
+      .sidebar-brand-text em {
+        display: block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         font-style: normal;
-        color: #3d9fd4;
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.35);
       }
       .sidebar-menu {
+        position: relative;
+        z-index: 1;
         list-style: none;
         display: flex;
         flex-direction: column;
-        gap: 5px;
+        gap: 2px;
         flex: 1;
+        margin: 20px 0 0;
+        padding: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: none;
       }
-
+      .sidebar-menu::-webkit-scrollbar {
+        display: none;
+      }
       .sidebar-menu::before {
-        content: "WORKSPACE";
-        padding: 0 12px 8px;
-        color: #94a3b8;
-        font-size: 0.64em;
-        font-weight: 800;
-        letter-spacing: 1.1px;
+        content: "Workspace";
+        flex: 0 0 auto;
+        padding: 0 10px;
+        margin-bottom: 6px;
+        color: rgba(255, 255, 255, 0.25);
+        font-size: 9.5px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
       }
-
       .menu-item {
+        position: relative;
         display: flex;
         align-items: center;
-        gap: 11px;
-        padding: 10px 12px;
-        color: #64748b !important;
-        border-radius: 9px;
-        font-weight: 600;
-        font-size: 0.82em;
+        gap: 10px;
+        flex-shrink: 0;
+        height: 36px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 10px;
+        color: rgba(255, 255, 255, 0.55) !important;
+        font-size: 13.5px;
+        font-weight: 500;
+        letter-spacing: -0.006em;
         cursor: pointer;
-        transition: all 0.2s ease;
-        border: 1px solid transparent;
-        position: relative;
+        transition: background-color 0.16s ease, color 0.16s ease;
       }
       .menu-item:hover {
-        color: #247eae;
-        background: #f0faff;
-        border-color: #cfe8f7;
+        color: rgba(255, 255, 255, 0.9) !important;
+        background: rgba(255, 255, 255, 0.05);
       }
       .menu-item.active {
-        color: #247eae;
-        background: #e5f5ff;
-        border-color: #b9def2;
-        box-shadow: 0 3px 10px rgba(61, 159, 212, 0.1);
+        color: #ffffff !important;
+        background: rgba(255, 255, 255, 0.09);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
       }
-
+      .menu-item::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        width: 3px;
+        height: 16px;
+        transform: translateY(-50%);
+        border-radius: 0 999px 999px 0;
+        background: #aaa5ff;
+        opacity: 0;
+        transition: opacity 0.16s ease;
+      }
+      .menu-item.active::before {
+        opacity: 1;
+      }
       .menu-item i {
-        width: 28px;
-        height: 28px;
-        display: flex;
+        width: 16px;
+        height: 16px;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        border-radius: 7px;
-        background: #f1f5f9;
-        color: #64748b;
-        font-size: 0.83em;
+        flex-shrink: 0;
+        background: transparent;
+        border-radius: 0;
+        color: rgba(255, 255, 255, 0.45);
+        font-size: 13px;
         text-align: center;
+        transition: color 0.16s ease;
       }
-      .menu-item:hover i,
+      .menu-item:hover i {
+        background: transparent;
+        color: rgba(255, 255, 255, 0.7);
+      }
       .menu-item.active i {
-        background: #ffffff;
-        color: #3d9fd4;
+        background: transparent;
+        color: #bbb7ff;
       }
       .sidebar-footer {
-        padding: 12px 13px;
-        margin: 18px 4px 0;
-        background: #f0faff;
-        border: 1px solid #cfe8f7;
-        border-radius: 10px;
-        font-size: 0.78em;
+        position: relative;
+        z-index: 1;
+        flex-shrink: 0;
+        margin-top: auto;
+        padding: 12px 0 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
+        background: transparent;
+        border-radius: 0;
+        font-size: 12px;
       }
-
       .connection-status {
         display: flex;
         align-items: center;
-        gap: 8px;
-        color: #334155;
-        font-weight: 700;
+        gap: 7px;
+        padding: 0 10px 8px;
+        color: rgba(255, 255, 255, 0.4);
+        font-size: 11px;
+        font-weight: 500;
       }
       .status-pulse {
-        width: 8px;
-        height: 8px;
-        background: #22c55e;
+        width: 6px;
+        height: 6px;
+        background: #1d9a66;
         border-radius: 50%;
+        box-shadow: 0 0 0 3px rgba(29, 154, 102, 0.16);
         animation: pulse-ring 2s infinite;
+      }
+      .sidebar-branch {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 0 10px;
+        margin-bottom: 8px;
+        color: rgba(255, 255, 255, 0.45);
+        font-size: 11.5px;
+        font-weight: 500;
+      }
+      .sidebar-branch i {
+        color: rgba(255, 255, 255, 0.35);
+        font-size: 11px;
+      }
+      .sidebar-branch span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .sidebar-user {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 6px 8px;
+        border-radius: 11px;
+        transition: background-color 0.16s ease;
+      }
+      .sidebar-user:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .sidebar-avatar {
+        width: 28px;
+        height: 28px;
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 11.5px;
+        font-weight: 600;
+      }
+      .sidebar-user-text {
+        min-width: 0;
+        display: block;
+      }
+      .sidebar-user-name {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .sidebar-user-sub {
+        display: block;
+        color: rgba(255, 255, 255, 0.35);
+        font-size: 11.5px;
+      }
+      .sidebar-logout {
+        justify-content: flex-start;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        height: 36px;
+        margin-top: 2px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.55);
+        font-family: inherit;
+        font-size: 13.5px;
+        font-weight: 500;
+        text-align: left;
+        cursor: pointer;
+        transition: background-color 0.16s ease, color 0.16s ease;
+      }
+      .sidebar-logout:hover {
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .sidebar-logout i {
+        width: 16px;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.45);
       }
 
       @keyframes pulse-ring {
@@ -281,8 +452,8 @@
         }
       }
       .main-panel {
-        width: calc(100% - 260px);
-        margin-left: 260px;
+        width: calc(100% - 252px);
+        margin-left: 252px;
         min-height: 100vh;
         padding: 32px 24px;
         overflow-y: auto;
@@ -291,10 +462,14 @@
 
       body.sidebar-collapsed .sidebar {
         width: 0;
-        padding-left: 0;
-        padding-right: 0;
-        border-right: 0;
+        padding: 0;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        background: transparent;
         box-shadow: none;
+        border: 0;
+        border-radius: 0;
         overflow: visible;
       }
       body.sidebar-collapsed .main-panel {
@@ -309,6 +484,7 @@
         transform: rotate(180deg);
       }
       body.sidebar-collapsed .sidebar::before,
+      body.sidebar-collapsed .sidebar::after,
       body.sidebar-collapsed .sidebar-brand,
       body.sidebar-collapsed .sidebar-menu,
       body.sidebar-collapsed .sidebar-footer {
@@ -325,7 +501,7 @@
 
         body:not(.sidebar-collapsed) .sidebar {
           z-index: 1200;
-          box-shadow: 10px 0 32px rgba(15, 23, 42, 0.16);
+          box-shadow: 0 24px 60px -20px rgba(8, 9, 22, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.07);
         }
       }
 
@@ -3636,7 +3812,10 @@
       </button>
       <div class="sidebar-brand">
         <i class="fa-solid fa-circle-nodes"></i>
-        <span>QIntellect Technologies</span>
+        <div class="sidebar-brand-text">
+          <span>QIntellect Technologies</span>
+          <em>Attendance</em>
+        </div>
       </div>
 
       <ul class="sidebar-menu">
@@ -3787,25 +3966,23 @@
           <span class="status-pulse"></span>
           <span class="status-label">System Online</span>
         </div>
-        <div id="sidebarBranchNameBox" style="font-size:0.78em; color:#0284c7; margin-top:6px; font-weight:700; display:flex; align-items:center; gap:6px; background:rgba(2,132,199,0.08); padding:4px 8px; border-radius:6px; border:1px solid rgba(2,132,199,0.15);">
-          <i class="fa-solid fa-building" style="color:#3d9fd4; font-size:0.95em;"></i>
-          <span id="sidebarBranchNameText" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ active_organization_name }}{% if active_organization_name and active_branch_name %} &bull; {% endif %}{{ active_branch_name }}</span>
+        <div class="sidebar-branch" id="sidebarBranchNameBox">
+          <i class="fa-solid fa-building"></i>
+          <span id="sidebarBranchNameText">{{ active_organization_name }}{% if active_organization_name and active_branch_name %} &bull; {% endif %}{{ active_branch_name }}</span>
         </div>
-        <div
-          style="
-            font-size: 0.8em;
-            color: var(--text-secondary);
-            margin-top: 6px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 7px;
-          "
+        <div class="sidebar-user">
+          <span class="sidebar-avatar" id="sidebarUserInitial">{{ (active_user_name or 'U')[:1]|upper }}</span>
+          <span class="sidebar-user-text">
+            <span class="sidebar-user-name" id="sidebarUserName">{{ active_user_name }}</span>
+            <span class="sidebar-user-sub">Signed in</span>
+          </span>
+        </div>
+        <button
+          id="sidebarLogoutBtn"
+          class="sidebar-logout"
+          onclick="handleClientLogout()"
+          title="Logout"
         >
-          <i class="fa-solid fa-user-tie" style="color: #3d9fd4; font-size: 1.05em;"></i>
-          <span id="sidebarUserName">{{ active_user_name }}</span>
-        </div>
-        <button id="sidebarLogoutBtn" onclick="handleClientLogout()" title="Logout" style="width:100%; margin-top:8px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#dc2626; border-radius:6px; padding:6px 10px; font-size:0.8rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; transition:all 0.2s;">
           <i class="fa-solid fa-right-from-bracket"></i>
           <span>Logout</span>
         </button>
@@ -6436,7 +6613,7 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">City *</label>
-              <input type="text" id="settingCity" class="form-control" maxlength="80" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="e.g. New York" required style="border-radius: 8px;">
+              <input type="text" id="settingCity" class="form-control" maxlength="100" pattern="[A-Za-z]+(?:[ .'\-]+[A-Za-z]+)*" title="Use letters; spaces, periods, apostrophes, and hyphens are allowed (e.g. Rahim Yar Khan)" placeholder="e.g. Rahim Yar Khan" required style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Contact Phone</label>
@@ -6444,7 +6621,7 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Admin / User Display Name</label>
-              <input type="text" id="settingAdminName" class="form-control" maxlength="100" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="e.g. Mr. Junaid" style="border-radius: 8px;">
+              <input type="text" id="settingAdminName" class="form-control" maxlength="100" pattern="[A-Za-z]+(?:[ .'\-]+[A-Za-z]+)*" title="Use letters; spaces, periods, apostrophes, and hyphens are allowed" placeholder="e.g. Mr. Junaid" style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Official Email</label>
@@ -18262,6 +18439,8 @@ async function fetchMultiLiveDetections() {
         document.querySelectorAll('#headerUserName, #sidebarUserName, .header-user-name').forEach(el => {
           el.textContent = displayName;
         });
+        const sidebarInitial = document.getElementById('sidebarUserInitial');
+        if (sidebarInitial) sidebarInitial.textContent = (displayName || 'U').trim().charAt(0).toUpperCase() || 'U';
         window.__activeAdminDisplayName = displayName;
         const emailFromArg = (adminEmail || document.getElementById('settingEmail')?.value || '').trim();
         if (emailFromArg) window.__activeAdminEmail = emailFromArg;
@@ -18310,21 +18489,29 @@ async function fetchMultiLiveDetections() {
           let firstError = '';
           for (const input of inputs) {
             const allowEmpty = allowEmptyIds.includes(input.id) || (!requiredIds.includes(input.id) && !input.required);
+            // Clear sticky customValidity first — otherwise checkValidity() stays false
+            // even after the user types a valid multi-word city like "Rahim Yar Khan".
+            input.setCustomValidity('');
             const err = validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty });
             if (err) {
-              firstError = err;
+              firstError = firstError || err;
               input.setCustomValidity(err);
-            } else if (input.pattern && input.value.trim() && !input.checkValidity()) {
-              firstError = `${labels[input.id] || 'Field'} format is invalid.`;
-              input.setCustomValidity(firstError);
-            } else {
-              input.setCustomValidity('');
+              continue;
+            }
+            const value = String(input.value || '').trim();
+            if (input.pattern && value && !input.checkValidity()) {
+              const label = labels[input.id] || 'Field';
+              const msg = input.title || `${label} format is invalid.`;
+              firstError = firstError || msg;
+              input.setCustomValidity(msg);
             }
           }
           const allOk = !firstError && inputs.every(input => {
             const allowEmpty = allowEmptyIds.includes(input.id) || (!requiredIds.includes(input.id) && !input.required);
             if (!allowEmpty && !String(input.value || '').trim()) return false;
-            return !validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty }) && (!input.pattern || !input.value.trim() || input.checkValidity());
+            input.setCustomValidity('');
+            if (validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty })) return false;
+            return !input.pattern || !String(input.value || '').trim() || input.checkValidity();
           });
           setSaveButtonEnabled(btn, allOk);
           if (msgEl) {
