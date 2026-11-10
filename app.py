@@ -3045,7 +3045,17 @@ def api_mark_user_present(user_id):
         if success:
             restore_live_detection_for_user(user_id)
             mark_logged_today_in_memory(user_id, 'manual')
-            return jsonify({'success': True, 'message': f'User ID {user_id} attendance saved successfully'}), 200
+            result = success if isinstance(success, dict) else {'success': True}
+            base_msg = f"User ID {user_id} attendance saved successfully"
+            ot_msg = result.get('overtime_message')
+            message = f"{base_msg} {ot_msg}".strip() if ot_msg else base_msg
+            return jsonify({
+                'success': True,
+                'message': message,
+                'overtime_hours': result.get('overtime_hours', 0),
+                'overtime_created': bool(result.get('overtime_created')),
+                'overtime_message': ot_msg,
+            }), 200
         else:
             return jsonify({'error': 'Failed to save attendance'}), 400
     except ValueError as ve:
@@ -3110,7 +3120,17 @@ def api_edit_attendance():
         if success:
             restore_live_detection_for_user(user_id)
             mark_logged_today_in_memory(user_id, 'manual')
-            return jsonify({'success': True, 'message': f'Attendance for user {user_id} saved successfully'}), 200
+            result = success if isinstance(success, dict) else {'success': True}
+            base_msg = f'Attendance for user {user_id} saved successfully'
+            ot_msg = result.get('overtime_message')
+            message = f'{base_msg}. {ot_msg}'.strip() if ot_msg else base_msg
+            return jsonify({
+                'success': True,
+                'message': message,
+                'overtime_hours': result.get('overtime_hours', 0),
+                'overtime_created': bool(result.get('overtime_created')),
+                'overtime_message': ot_msg,
+            }), 200
         else:
             return jsonify({'error': 'Failed to save attendance'}), 400
     except ValueError as ve:
@@ -6653,22 +6673,25 @@ def api_delete_salary(user_id):
 def api_auto_ot_rates():
     try:
         data = request.get_json(silent=True) or {}
-        divisor = float(data.get('divisor', 208.0) or 208.0)
-        settings = db.get_payroll_settings(
+        # QA-96: rates come from each person's shift; divisor/hours box is ignored.
+        overwrite_manual = bool(data.get('overwrite_manual', True))
+        result = db.auto_calculate_ot_rates(
             organization_id=get_current_tenant_id(),
             branch_id=get_current_branch_id(),
+            overwrite_manual=overwrite_manual,
         )
-        if 'divisor' not in data:
-            divisor = float(settings.get('ot_hour_divisor') or 208.0)
-        count = db.auto_calculate_ot_rates(
-            rate_divisor=divisor,
-            organization_id=get_current_tenant_id(),
-            branch_id=get_current_branch_id(),
-        )
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'message': result.get('message') or 'Failed to calculate OT rates',
+                'updated_count': 0,
+                'skipped_count': result.get('skipped', 0),
+            }), 500
         return jsonify({
             'success': True,
-            'message': f'Successfully updated standard overtime rates for {count} active staff members',
-            'updated_count': count
+            'message': result.get('message'),
+            'updated_count': result.get('updated', 0),
+            'skipped_count': result.get('skipped', 0),
         }), 200
     except Exception as e:
         logger.exception("Failed to auto-calculate OT rates")
@@ -6724,6 +6747,7 @@ def _parse_payroll_month_arg(value: Optional[str] = None) -> Tuple[str, int, int
 
 
 def _bonus_rows_from_workbook(file_storage) -> List[Dict[str, Any]]:
+    """Parse bonus Excel rows. QA-85: required headers must be present and unchanged."""
     import openpyxl
     import re
     if isinstance(file_storage, (bytes, bytearray)):
@@ -6735,22 +6759,67 @@ def _bonus_rows_from_workbook(file_storage) -> List[Dict[str, Any]]:
     finally:
         workbook.close()
     if not rows:
-        return []
-    aliases = {
-        'employee_id': 'employee_id', 'user_id': 'employee_id', 'id': 'employee_id',
-        'emp_id': 'employee_id', 'staff_id': 'employee_id', 'emp': 'employee_id',
-        'employee_name': 'name', 'name': 'name', 'employee': 'name', 'full_name': 'name',
-        'email': 'email', 'email_address': 'email',
-        'amount': 'amount', 'bonus': 'amount', 'bonus_amount': 'amount',
-        'note': 'note', 'notes': 'note', 'remarks': 'note', 'comment': 'note',
+        raise ValueError('The workbook is empty. Download the bonus template and fill employee amounts.')
+
+    # Canonical template headers (order flexible; names must match after normalize).
+    required_headers = {
+        'employee_id': {'employee_id', 'employee id', 'user_id', 'id', 'emp_id', 'staff_id'},
+        'name': {'employee_name', 'employee name', 'name', 'full_name', 'full name'},
+        'email': {'email', 'email_address', 'email address'},
+        'amount': {'amount', 'bonus', 'bonus_amount', 'bonus amount'},
+        'note': {'note', 'notes', 'remarks', 'comment'},
     }
-    def _clean_header(val):
+    aliases = {}
+    for canonical, names in required_headers.items():
+        for n in names:
+            aliases[n.replace(' ', '_')] = canonical
+            aliases[n] = canonical
+
+    def _normalize_header(val):
         h = str(val or '').strip().lower()
         h = re.sub(r'\(.*?\)', '', h)
         h = h.replace(' ', '_').replace('-', '_').strip('_')
-        return aliases.get(h, aliases.get(h.replace('_', '')))
+        return h
 
-    headers = [_clean_header(cell) for cell in rows[0]]
+    raw_headers = [str(cell or '').strip() for cell in rows[0]]
+    if not any(raw_headers):
+        raise ValueError('The first row has no headers. Use columns: Employee ID, Employee Name, Email, Amount, Note.')
+
+    normalized = [_normalize_header(h) for h in raw_headers]
+    mapped = []
+    unknown = []
+    for raw, norm in zip(raw_headers, normalized):
+        if not norm:
+            mapped.append(None)
+            continue
+        key = aliases.get(norm) or aliases.get(norm.replace('_', ''))
+        if not key:
+            unknown.append(raw or norm)
+            mapped.append(None)
+        else:
+            mapped.append(key)
+
+    # QA-85: refuse changed/unknown headers and missing required ones.
+    if unknown:
+        raise ValueError(
+            f"Unrecognized header(s): {', '.join(unknown)}. "
+            "Required headers are: Employee ID, Employee Name, Email, Amount, Note."
+        )
+    present = {k for k in mapped if k}
+    missing = [label for label, canon in (
+        ('Employee ID', 'employee_id'),
+        ('Employee Name', 'name'),
+        ('Email', 'email'),
+        ('Amount', 'amount'),
+        ('Note', 'note'),
+    ) if canon not in present]
+    if missing:
+        raise ValueError(
+            f"Missing required header(s): {', '.join(missing)}. "
+            "Download the bonus template and keep the header row unchanged."
+        )
+
+    headers = mapped
     parsed: List[Dict[str, Any]] = []
     instruction_keywords = (
         'instruction', 'instructions', 'match employees', 'amount is the bonus',
@@ -6762,20 +6831,20 @@ def _bonus_rows_from_workbook(file_storage) -> List[Dict[str, Any]]:
         first_cell_str = str(row[0] or '').strip().lower()
         if any(first_cell_str.startswith(kw) for kw in instruction_keywords):
             continue
-        # Also check if any cell in the row starts with instructions
         if any(str(c or '').strip().lower().startswith(('instructions', 'match employees by')) for c in row):
             continue
-        item: Dict[str, Any] = {}
+        item: Dict[str, Any] = {'_row_number': len(parsed) + 2}  # 1-based Excel row (header is 1)
         for key, cell in zip(headers, row):
             if not key:
                 continue
             item[key] = cell
-        # If the row has neither an employee identifier nor an amount, skip
         has_id = bool(item.get('employee_id') or item.get('email') or item.get('name'))
         has_amount = item.get('amount') is not None and str(item.get('amount')).strip() != ''
         if not has_id and not has_amount:
             continue
         parsed.append(item)
+    if not parsed:
+        raise ValueError('The workbook has no bonus rows under the header. Add at least one employee amount.')
     return parsed
 
 
@@ -7581,8 +7650,31 @@ def api_finalize_monthly_payroll():
             finalized_by=session.get('admin_name') or session.get('username') or session.get('organization_name') or 'Admin',
         )
         if not saved_run:
-            return jsonify({'error': f'Payroll for {payroll_month} was finalized by another request'}), 409
-        return jsonify({'success': True, 'payroll': saved_run}), 201
+            # QA-93: distinguish a hard failure from an already-finalized month.
+            existing = db.get_monthly_payroll(
+                payroll_month, organization_id=current_tenant, branch_id=current_branch
+            )
+            if existing:
+                return jsonify({
+                    'success': True,
+                    'payroll': existing,
+                    'message': f'Payroll for {payroll_month} is already finalized.',
+                    'already_finalized': True,
+                }), 200
+            return jsonify({
+                'error': f'Finalize failed for {payroll_month}. Status was not saved. Please retry.',
+            }), 500
+        status_code = 200 if saved_run.get('already_finalized') else 201
+        return jsonify({
+            'success': True,
+            'payroll': saved_run,
+            'already_finalized': bool(saved_run.get('already_finalized')),
+            'message': (
+                f'Payroll for {payroll_month} is already finalized.'
+                if saved_run.get('already_finalized') else
+                f'Payroll for {payroll_month} finalized.'
+            ),
+        }), status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:

@@ -3851,6 +3851,13 @@ def _record_automatic_checkout_overtime(
 
     if overtime_hours <= 0:
         return 0.0
+    # QA-83: refuse a single automatic OT entry of 24 hours or more.
+    if overtime_hours >= 24.0:
+        logger.warning(
+            "Skipped automatic overtime for user #%s on %s: %.2fh >= 24h single-entry limit",
+            user_id, actual_date, overtime_hours,
+        )
+        return 0.0
     cursor.execute(
         "SELECT id, status, reason FROM overtime WHERE user_id = ? AND ot_date = ? ORDER BY id LIMIT 1",
         (user_id, actual_date),
@@ -5758,7 +5765,7 @@ def payroll_month_is_finalized(
     with sqlite3.connect(DB_PATH) as conn:
         row = conn.execute(
             """SELECT 1 FROM payroll_runs
-               WHERE payroll_month = ? AND status = 'Finalized'
+               WHERE payroll_month = ? AND LOWER(COALESCE(status, '')) = 'finalized'
                  AND COALESCE(organization_id,'DEFAULT_ORG') = ?
                  AND COALESCE(branch_id,'DEFAULT_BRANCH') = ?""",
             (payroll_month, org, branch),
@@ -6007,6 +6014,11 @@ def mark_user_present_today(
             target_date = datetime.now().strftime("%Y-%m-%d")
         actual_date = str(target_date)[:10]
         
+        ot_result: Dict[str, Any] = {
+            'overtime_hours': 0.0,
+            'overtime_created': False,
+            'overtime_message': None,
+        }
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             
@@ -6116,11 +6128,25 @@ def mark_user_present_today(
                     (user_id, name, 1.0, 'manual', timestamp_val_out, notes, marked_by, shift_db_id, user_org, user_branch)
                 )
 
-                # Calculate OT
+                # QA-84: Calculate late-checkout OT the same way as camera checkout.
+                # Prefer shift-history grace when no explicit shift override was chosen.
+                if not shift_id:
+                    hist_shift = cursor.execute('''
+                        SELECT start_time, end_time, checkout_grace_period_minutes
+                        FROM employee_shift_history
+                        WHERE user_id = ? AND effective_from <= ?
+                        ORDER BY effective_from DESC, id DESC LIMIT 1
+                    ''', (user_id, actual_date)).fetchone()
+                    if hist_shift and hist_shift[0] and hist_shift[1]:
+                        shift_start, shift_end = hist_shift[0], hist_shift[1]
+                        checkout_grace = int(hist_shift[2] or 0)
+
                 day_type = _get_overtime_day_type(cursor, user_id, actual_date)
+                ot_skip_reason = None
                 if _overtime_date_is_future(actual_date):
                     ot_hours = 0.0
                     ot_reason = f"Manual attendance checkout {co_clean}"
+                    ot_skip_reason = f"Overtime was not created because {actual_date} is in the future."
                 elif day_type in ('holiday', 'non_working_day'):
                     in_m = parse_time_to_minutes(ci_clean)
                     out_m = parse_time_to_minutes(co_clean)
@@ -6132,10 +6158,31 @@ def mark_user_present_today(
                     ot_reason = f"{day_label} attendance ({ci_clean} - {co_clean})"
                 else:
                     ot_hours = calculate_eligible_overtime(shift_start, shift_end, co_clean, checkout_grace)
-                    ot_reason = f"Manual attendance checkout {co_clean}"
+                    ot_reason = (
+                        f"Manual attendance checkout {co_clean} "
+                        f"[Shift: {shift_start} - {shift_end}, Grace: {checkout_grace}m]"
+                    )
+                    if ot_hours <= 0:
+                        ot_skip_reason = (
+                            f"No overtime for approval: checkout {co_clean} is within shift end "
+                            f"{str(shift_end)[:5]} plus {checkout_grace} minute grace."
+                        )
 
-                cursor.execute("SELECT id, status FROM overtime WHERE user_id = ? AND ot_date = ?", (user_id, actual_date))
+                # QA-83: a single OT entry must be under 24 hours.
+                if ot_hours >= 24.0:
+                    ot_skip_reason = (
+                        f"Overtime of {ot_hours:.2f}h was not saved because a single entry "
+                        f"must be less than 24 hours."
+                    )
+                    ot_hours = 0.0
+
+                cursor.execute(
+                    "SELECT id, status FROM overtime WHERE user_id = ? AND ot_date = ? ORDER BY id LIMIT 1",
+                    (user_id, actual_date),
+                )
                 ot_existing = cursor.fetchone()
+                ot_created = False
+                ot_result['overtime_hours'] = float(ot_hours or 0.0)
 
                 if ot_hours > 0:
                     limit_status = _get_overtime_limit_status_for_cursor(
@@ -6148,7 +6195,7 @@ def mark_user_present_today(
                     if ot_existing:
                         ot_id, cur_status = ot_existing[0], (ot_existing[1] or 'pending').lower()
                         if cur_status == 'pending':
-                            cursor.execute("UPDATE overtime SET hours = ?, reason = ? WHERE id = ?", 
+                            cursor.execute("UPDATE overtime SET hours = ?, reason = ? WHERE id = ?",
                                            (ot_hours, ot_reason, ot_id))
                             _cloud_mirror("mirror_overtime", {
                                 "id": ot_id,
@@ -6161,9 +6208,17 @@ def mark_user_present_today(
                                 "organization_id": user_org,
                                 "branch_id": user_branch,
                             })
+                            ot_created = True
+                        else:
+                            ot_skip_reason = (
+                                f"Overtime for {actual_date} already exists with status '{cur_status}'. "
+                                f"Pending approval list was not changed."
+                            )
                     else:
-                        cursor.execute("INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, status, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
-                                       (user_id, name, actual_date, ot_hours, ot_reason, user_org, user_branch))
+                        cursor.execute(
+                            "INSERT INTO overtime (user_id, user_name, ot_date, hours, reason, status, organization_id, branch_id) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
+                            (user_id, name, actual_date, ot_hours, ot_reason, user_org, user_branch),
+                        )
                         new_ot_id = cursor.lastrowid
                         _cloud_mirror("mirror_overtime", {
                             "id": new_ot_id,
@@ -6176,10 +6231,20 @@ def mark_user_present_today(
                             "organization_id": user_org,
                             "branch_id": user_branch,
                         })
+                        ot_created = True
+                    ot_result['overtime_created'] = ot_created
+                    if ot_created:
+                        ot_result['overtime_message'] = (
+                            f"Pending overtime of {ot_hours:.2f} hour(s) added for approval."
+                        )
+                    elif ot_skip_reason:
+                        ot_result['overtime_message'] = ot_skip_reason
                 else:
                     if ot_existing and (ot_existing[1] or 'pending').lower() == 'pending':
                         cursor.execute("DELETE FROM overtime WHERE id = ?", (ot_existing[0],))
                         _cloud_mirror("delete_pg_overtime", ot_existing[0], user_org)
+                    if ot_skip_reason:
+                        ot_result['overtime_message'] = ot_skip_reason
             else:
                 # If no checkout provided, remove any pending OT for this date
                 cursor.execute("SELECT id, status FROM overtime WHERE user_id = ? AND ot_date = ?", (user_id, actual_date))
@@ -6242,7 +6307,13 @@ def mark_user_present_today(
                 logger.warning("Failed to sync manual attendance to cloud: %s", pg_err)
 
         logger.info(f"✓ Manually marked user ID {user_id} present for {actual_date} (shift={shift_db_id}, in={ci_clean}, out={co_clean})")
-        return True
+        return {
+            'success': True,
+            'date': actual_date,
+            'check_in': ci_clean,
+            'check_out': co_clean,
+            **ot_result,
+        }
     except Exception as e:
         logger.error(f"Failed to manually mark user ID {user_id} present: {e}")
         raise e
@@ -9032,8 +9103,9 @@ def add_overtime(user_id: int, user_name: str = '', ot_date: str = '', hours: fl
             hours_val = round(float(hours), 6)
             if hours_val <= 0:
                 raise ValueError("Overtime hours must be greater than 0")
-            if hours_val > 24.0:
-                raise ValueError("Overtime hours cannot exceed 24 hours for a single day")
+            # QA-83 / QA-68: refuse 24 hours or more for a single entry
+            if hours_val >= 24.0:
+                raise ValueError("Overtime hours must be less than 24 hours for a single entry")
             clean_reason = str(reason or '').strip()
             if len(clean_reason) > 250:
                 raise ValueError("Overtime reason cannot exceed 250 characters")
@@ -9966,26 +10038,23 @@ def auto_calculate_ot_rates(
     rate_divisor: float = None,
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
-) -> int:
-    """Auto-calculate hourly overtime rate for active employees of one organization."""
+    overwrite_manual: bool = True,
+) -> Dict[str, Any]:
+    """QA-96: set each person's OT rate from their shift schedule.
+    Formula: basic ÷ (shift hours/day × weekly workdays × 52 ÷ 12).
+    The hours-per-month box is ignored; rate_divisor is accepted only for API compat.
+    """
     org, branch = _tenant_ids(organization_id, branch_id)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             ensure_payroll_settings_row(cursor, org, branch)
-            if rate_divisor is None:
-                row = cursor.execute(
-                    """SELECT COALESCE(ot_hour_divisor, 208) FROM payroll_settings
-                       WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                         AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
-                    (org, branch),
-                ).fetchone()
-                rate_divisor = float(row[0] if row else DEFAULT_OT_DIVISOR) or DEFAULT_OT_DIVISOR
             cursor.execute("""
                 SELECT u.id, COALESCE(s.basic_salary, u.salary, 0.0) as basic_salary,
                        COALESCE(s.allowances, 0.0) as allowances,
-                       COALESCE(s.deductions, 0.0) as deductions
+                       COALESCE(s.deductions, 0.0) as deductions,
+                       COALESCE(s.ot_rate, 0.0) as ot_rate
                 FROM users u
                 LEFT JOIN salary_configs s ON u.id = s.user_id
                 WHERE u.active = 1
@@ -9994,12 +10063,19 @@ def auto_calculate_ot_rates(
             """, (org, branch))
             employees = cursor.fetchall()
             updated_count = 0
+            skipped_count = 0
             for emp in employees:
                 b_sal = float(emp['basic_salary'] or 0.0)
-                if rate_divisor and rate_divisor != DEFAULT_OT_DIVISOR:
-                    ot_rate = round(b_sal / rate_divisor, 2) if (b_sal > 0 and rate_divisor > 0) else 0.0
-                else:
-                    ot_rate = calculate_employee_ot_rate(conn, emp['id'], None, b_sal, None)
+                existing_rate = float(emp['ot_rate'] or 0.0)
+                # Keep a hand-typed rate unless overwrite is requested.
+                if existing_rate > 0 and not overwrite_manual:
+                    skipped_count += 1
+                    continue
+                # Force shift-based calc (configured_rate=0 bypasses any saved package rate).
+                ot_rate = calculate_employee_ot_rate(conn, emp['id'], None, b_sal, 0.0)
+                if ot_rate <= 0:
+                    skipped_count += 1
+                    continue
                 cursor.execute("""
                     INSERT INTO salary_configs (
                         user_id, basic_salary, allowances, deductions, ot_rate, updated_at,
@@ -10014,10 +10090,18 @@ def auto_calculate_ot_rates(
                 """, (emp['id'], b_sal, float(emp['allowances'] or 0.0), float(emp['deductions'] or 0.0), ot_rate, org, branch))
                 updated_count += 1
             conn.commit()
-            return updated_count
+            return {
+                'updated': updated_count,
+                'skipped': skipped_count,
+                'success': True,
+                'message': (
+                    f'Updated OT rates for {updated_count} employee(s) from their shift schedules'
+                    + (f'; skipped {skipped_count}.' if skipped_count else '.')
+                ),
+            }
     except Exception as e:
         logger.error(f"Auto calculate OT rates error: {e}")
-        return 0
+        return {'updated': 0, 'skipped': 0, 'success': False, 'message': str(e)}
 
 
 def get_payroll_rules(
@@ -11117,7 +11201,7 @@ def replace_payroll_bonuses(
         conn.row_factory = sqlite3.Row
         users = conn.execute(
             """
-            SELECT id, name, email FROM users
+            SELECT id, name, email, exit_date, active, join_date FROM users
             WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
               AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
             """,
@@ -11128,15 +11212,21 @@ def replace_payroll_bonuses(
         by_name: Dict[str, List[Dict[str, Any]]] = {}
         for row in users:
             by_name.setdefault(str(row['name'] or '').strip().lower(), []).append(dict(row))
+        bonus_month_start = date(int(year), int(month), 1)
+        if int(month) == 12:
+            bonus_month_end = date(int(year) + 1, 1, 1) - timedelta(days=1)
+        else:
+            bonus_month_end = date(int(year), int(month) + 1, 1) - timedelta(days=1)
 
         for index, item in enumerate(rows, start=1):
+            excel_row = int(item.get('_row_number') or (index + 1))
             raw_id = item.get('user_id') or item.get('employee_id')
             raw_name = str(item.get('name') or '').strip()
             raw_email = str(item.get('email') or '').strip()
             raw_amount = item.get('amount')
             note = str(item.get('note') or '').strip()
 
-            emp_label = raw_name or raw_email or (f"ID #{raw_id}" if raw_id else f"Row {index}")
+            emp_label = raw_name or raw_email or (f"ID #{raw_id}" if raw_id else f"Row {excel_row}")
 
             # Skip instruction/comment rows that might have slipped through
             identifier_str = f"{raw_id} {raw_name}".lower()
@@ -11145,48 +11235,73 @@ def replace_payroll_bonuses(
             if not raw_id and not raw_name and not raw_email and raw_amount is None:
                 continue
 
-            # Robust numeric string conversion
+            # QA-87: parse amounts strictly — refuse text / bad formats; blank/0 still skip for excel template.
             amount = None
             is_blank = False
             if raw_amount is None:
                 is_blank = True
             elif isinstance(raw_amount, str) and raw_amount.strip() == '':
                 is_blank = True
+            elif isinstance(raw_amount, bool):
+                amount = None
             elif isinstance(raw_amount, (int, float)):
                 amount = float(raw_amount)
             elif isinstance(raw_amount, str):
-                cleaned_amt = raw_amount.strip().replace(',', '')
-                # Remove currency prefixes/suffixes
+                raw_str = raw_amount.strip()
+                # European decimal like 100,50 — refuse (ambiguous vs thousands).
+                if re.fullmatch(r'[-+]?\d+,\d{1,2}', raw_str):
+                    errors.append({
+                        'row': excel_row, 'employee': emp_label, 'field': 'amount',
+                        'error': f"Row {excel_row} ({emp_label}): Amount '{raw_str}' is not a valid number. Use a dot for decimals (e.g. 100.50), not a comma.",
+                    })
+                    continue
+                if re.search(r'[A-Za-z]', raw_str):
+                    errors.append({
+                        'row': excel_row, 'employee': emp_label, 'field': 'amount',
+                        'error': f"Row {excel_row} ({emp_label}): Amount '{raw_str}' is not numeric.",
+                    })
+                    continue
+                cleaned_amt = raw_str.replace(',', '')
                 cleaned_amt = re.sub(r'^[^\d.-]+|[^\d.]+$', '', cleaned_amt).strip()
                 if cleaned_amt in ('', '-'):
+                    # Non-empty original that cleaned to nothing (e.g. symbols) → reject, not skip.
+                    if raw_str not in ('',):
+                        errors.append({
+                            'row': excel_row, 'employee': emp_label, 'field': 'amount',
+                            'error': f"Row {excel_row} ({emp_label}): Amount '{raw_str}' is not numeric.",
+                        })
+                        continue
                     is_blank = True
                 else:
                     try:
                         amount = float(cleaned_amt)
                     except (TypeError, ValueError, OverflowError):
                         amount = None
+            else:
+                try:
+                    amount = float(raw_amount)
+                except (TypeError, ValueError, OverflowError):
+                    amount = None
 
             if is_blank:
                 if source == 'excel':
-                    # Excel template allows unused employees to be left blank or 0. Skip them.
                     continue
-                errors.append({'row': index, 'employee': emp_label, 'field': 'amount', 'error': f"Row {index} ({emp_label}): Amount is required"})
+                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount is required"})
                 continue
 
             if amount is None:
-                errors.append({'row': index, 'employee': emp_label, 'field': 'amount', 'error': f"Row {index} ({emp_label}): Amount must be numeric"})
+                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount must be numeric"})
                 continue
             if amount < 0:
-                errors.append({'row': index, 'employee': emp_label, 'field': 'amount', 'error': f"Row {index} ({emp_label}): Amount cannot be negative"})
+                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount cannot be negative"})
                 continue
             if amount == 0:
                 if source == 'excel':
-                    # Excel template instructions say "Leave 0 if none". Skip employees who receive no bonus.
                     continue
-                errors.append({'row': index, 'employee': emp_label, 'field': 'amount', 'error': f"Row {index} ({emp_label}): Amount cannot be zero"})
+                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount cannot be zero"})
                 continue
             if amount > limit:
-                errors.append({'row': index, 'employee': emp_label, 'field': 'amount', 'error': f"Row {index} ({emp_label}): Amount exceeds the organization bonus limit of {limit:g}"})
+                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount exceeds the organization bonus limit of {limit:g}"})
                 continue
             user = None
             if raw_id not in (None, ''):
@@ -11201,13 +11316,35 @@ def replace_payroll_bonuses(
                 if len(candidates) == 1:
                     user = candidates[0]
             if user is None:
-                errors.append({'row': index, 'employee': emp_label, 'field': 'employee_id', 'error': f"Row {index}: Unknown or deleted employee ({emp_label})"})
+                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'employee_id', 'error': f"Row {excel_row}: Unknown or deleted employee ({emp_label})"})
                 continue
             uid = int(user['id'])
             if uid in seen:
-                errors.append({'row': index, 'employee': emp_label, 'field': 'employee_id', 'error': f"Row {index}: Duplicate employee #{uid}; duplicates are rejected, not summed"})
+                first_row = seen[uid]
+                errors.append({
+                    'row': excel_row, 'employee': emp_label, 'field': 'employee_id',
+                    'error': f"Rows {first_row} and {excel_row}: employee #{uid} ({user.get('name') or emp_label}) appears twice. Duplicates are rejected; nothing was saved.",
+                })
                 continue
-            seen[uid] = index
+            # QA-88: refuse bonuses for people who left before the bonus month.
+            # Rule: exit on/after month start still qualifies for that month; exit before month start is refused.
+            exit_raw = str(user.get('exit_date') or '').strip()[:10]
+            if exit_raw:
+                try:
+                    exited_on = datetime.strptime(exit_raw, '%Y-%m-%d').date()
+                except ValueError:
+                    exited_on = None
+                if exited_on and exited_on < bonus_month_start:
+                    errors.append({
+                        'row': excel_row, 'employee': emp_label, 'field': 'employee_id',
+                        'error': (
+                            f"Row {excel_row} ({user.get('name') or emp_label}): left on {exit_raw}, "
+                            f"before bonus month {int(year):04d}-{int(month):02d}. Bonuses for people who "
+                            f"already left are refused (exit during the month is still allowed)."
+                        ),
+                    })
+                    continue
+            seen[uid] = excel_row
             preview.append({'user_id': uid, 'employee_name': user.get('name'), 'amount': amount, 'note': note})
 
         if commit and not errors:
@@ -12315,9 +12452,14 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
     payroll_settings['ot_rounding'] = ot_rounding
     attendance_mode = _normalize_attendance_pay_mode(payroll_settings.get('attendance_pay_mode'))
     month_complete = period_end >= month_end
-    decimal_places = int(payroll_settings.get('decimal_places') or DEFAULT_DECIMAL_PLACES)
+    # QA-91: money math uses fixed calculation precision so changing the
+    # "Decimal places" display setting never changes payable amounts.
+    display_decimal_places = int(payroll_settings.get('decimal_places') or DEFAULT_DECIMAL_PLACES)
+    calc_decimal_places = 2
+    decimal_places = calc_decimal_places  # used by helpers that still expect this name
+
     def _m(value):
-        return _payroll_money(value, decimal_places)
+        return _payroll_money(value, calc_decimal_places)
     with sqlite3.connect(DB_PATH, timeout=60.0) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -12485,13 +12627,21 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         if not pattern_days:
             pattern_days = shift_days_by_id.get(int(employee.get('shift_id') or 0)) or default_working_days()
         days_by_date = {str(day.get('date')): day for day in daily_records}
+        # QA-90: Count workdays from the calendar for the full month AND the
+        # employed window so join/exit mid-month does not depend on incomplete
+        # attendance-report rows (which previously left mid-month staff at full pay).
         full_month_workdays = 0
+        eligible_workdays_from_calendar = 0
         cursor_day = month_start
         while cursor_day <= month_end:
             rec = days_by_date.get(cursor_day.isoformat()) or {}
             if _is_scheduled_workday(cursor_day, pattern_days, rec.get('calendar_override')):
                 full_month_workdays += 1
+                if eligible_start <= cursor_day <= schedule_end:
+                    eligible_workdays_from_calendar += 1
             cursor_day += timedelta(days=1)
+        if eligible_start > month_start or schedule_end < month_end:
+            month_scheduled_workdays = int(eligible_workdays_from_calendar)
         shift_history_missing = any(day.get('shift_history_missing') for day in eligible_records)
         shift_details = list({
             (day['shift_id'], day['shift_effective_from']): {
@@ -12761,10 +12911,17 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 overtime_hours=float(present_days + late_days) * 8.0,
             )
             pay_lines.extend(named_lines)
-            if any(item.get('kind') == 'earning' and item.get('category') != 'bonus' for item in named_lines):
-                allowances = _m(sum(item['amount'] for item in named_lines if item.get('kind') == 'earning' and item.get('category') != 'bonus'))
+            # QA-94: named package earnings/deductions ADD to the salary-package lumps,
+            # they must not wipe the configured package allowance/deduction totals.
+            named_earn_total = sum(
+                float(item.get('amount') or 0)
+                for item in named_lines
+                if item.get('kind') == 'earning' and item.get('category') != 'bonus'
+            )
+            if named_earn_total:
+                allowances = _m(float(lump_allowances or 0) + named_earn_total)
             if any(item.get('kind') == 'deduction' for item in named_lines):
-                custom_deductions = named_deduct
+                custom_deductions = _m(float(lump_deductions or 0) + float(named_deduct or 0))
             if _payroll_flag_on(payroll_settings, 'enable_bonuses'):
                 bonus_amount = _m(bonus_amount + sum(item['amount'] for item in named_lines if item.get('category') == 'bonus'))
         pay_lines.extend(adj_pack.get('lines') or [])
@@ -12844,9 +13001,16 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         gross_salary = _m(
             basic_salary + allowances + overtime_amount + bonus_amount + off_day_extra_pay + adjustment_amount
         )
-        # QA-49: Preserve exact net and keep shortfall visible when cuts exceed pay
+        # QA-49 / QA-89: Payable never goes below 0; unpaid remainder stays as shortfall
+        # (shown on the payslip; carried as unrecovered for this month — not paid out).
         shortfall = round(max(0.0, total_emp_deductions - gross_salary), 2)
-        net_salary = round(gross_salary - total_emp_deductions, 2)
+        net_salary = round(max(0.0, gross_salary - total_emp_deductions), 2)
+        if shortfall > 0:
+            shortfall_note = (
+                f"Deductions exceed pay by {shortfall:,.2f}; take-home held at 0 "
+                f"(shortfall unrecovered this month)."
+            )
+            issues_remarks = f"{issues_remarks}; {shortfall_note}".strip('; ').strip() if issues_remarks else shortfall_note
 
         if attendance_mode == 'payable_days':
             p_label = int(payable_days) if float(payable_days).is_integer() else round(payable_days, 1)
@@ -13017,8 +13181,11 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         'total_off_day_extra': round(sum(row.get('off_day_extra_pay', 0) for row in rows), 2),
         'total_adjustments': round(sum(row.get('adjustment_amount', 0) for row in rows), 2),
         'total_arrears': round(sum(row.get('arrears_amount', 0) for row in rows), 2),
-        'total_deduction': round(sum(row['deduction_amount'] + row['custom_deductions'] for row in rows), 2),
-        'total_net_salary': round(sum(row['net_salary'] for row in rows), 2),
+        # QA-92: deduction_amount already includes custom_deductions — do not add them again.
+        'total_deduction': round(sum(float(row.get('deduction_amount') or 0) for row in rows), 2),
+        # QA-89: totals use clamped payable only; shortfall is reported separately.
+        'total_net_salary': round(sum(float(row.get('net_salary') or 0) for row in rows), 2),
+        'total_shortfall': round(sum(float(row.get('shortfall') or 0) for row in rows), 2),
         'absence_rules_configured': absence_rules_configured,
         'notices': payroll_notices,
         'earned_so_far_label': f'Earned so far (through {period_end.isoformat()})',
@@ -13032,7 +13199,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 'proration_basis': proration_basis,
                 'ot_rounding': ot_rounding,
                 'ot_hour_divisor': ot_hour_divisor,
-                'decimal_places': decimal_places,
+                'decimal_places': display_decimal_places,
+                'calc_decimal_places': calc_decimal_places,
                 'deduct_unpaid_leave': deduct_unpaid_leave,
                 'currency_code': payroll_settings.get('currency_code'),
             },
@@ -13261,13 +13429,14 @@ def get_monthly_payroll(
     branch_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Load a finalized payroll snapshot for a month, if one exists for the specified tenant."""
+    # QA-93: never treat a Postgres miss as "not finalized" when SQLite has the snapshot.
+    # A False PG result previously short-circuited to None, so the UI stayed "Ready"
+    # while finalize saw Finalized locally and returned "finalized by another request".
     if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
         if postgres_is_configured():
             try:
                 import postgres_mirror as cloud_pg
-                pg_res = cloud_pg.fetch_pg_monthly_payroll(payroll_month, organization_id, branch_id)
-                if pg_res is False:
-                    return None
+                cloud_pg.fetch_pg_monthly_payroll(payroll_month, organization_id, branch_id)
             except Exception as error:
                 logger.warning("Postgres unreachable for monthly payroll; falling back to SQLite cache: %s", error)
     with sqlite3.connect(DB_PATH, timeout=60.0) as conn:
@@ -13276,7 +13445,7 @@ def get_monthly_payroll(
         cursor.execute("PRAGMA busy_timeout = 60000")
         if organization_id:
             query = """SELECT * FROM payroll_runs
-                       WHERE payroll_month = ? AND status = 'Finalized'
+                       WHERE payroll_month = ? AND LOWER(COALESCE(status, '')) = 'finalized'
                          AND COALESCE(organization_id, 'DEFAULT_ORG') = ?"""
             params: List[Any] = [payroll_month, organization_id]
             if branch_id:
@@ -13284,7 +13453,10 @@ def get_monthly_payroll(
                 params.append(branch_id)
             cursor.execute(query, params)
         else:
-            cursor.execute("SELECT * FROM payroll_runs WHERE payroll_month = ? AND status = 'Finalized'", (payroll_month,))
+            cursor.execute(
+                "SELECT * FROM payroll_runs WHERE payroll_month = ? AND LOWER(COALESCE(status, '')) = 'finalized'",
+                (payroll_month,),
+            )
         run = cursor.fetchone()
         if not run:
             return None
@@ -13330,8 +13502,10 @@ def get_monthly_payroll(
         result['total_overtime'] = round(sum(float(row.get('overtime_amount') or 0) for row in result['records']), 2)
         result['total_bonus'] = round(sum(float(row.get('bonus_amount') or 0) for row in result['records']), 2)
         result['total_off_day_extra'] = round(sum(float(row.get('off_day_extra_pay') or 0) for row in result['records']), 2)
-        result['total_deduction'] = round(sum(float(row.get('deduction_amount') or 0) + float(row.get('custom_deductions') or 0) for row in result['records']), 2)
-        result['total_net_salary'] = round(sum(float(row.get('net_salary') or 0) for row in result['records']), 2)
+        # QA-92: deduction_amount already includes custom deductions.
+        result['total_deduction'] = round(sum(float(row.get('deduction_amount') or 0) for row in result['records']), 2)
+        result['total_net_salary'] = round(sum(max(0.0, float(row.get('net_salary') or 0)) for row in result['records']), 2)
+        result['total_shortfall'] = round(sum(float(row.get('shortfall') or row.get('unrecovered_deductions') or 0) for row in result['records']), 2)
     return result
 
 
@@ -13464,8 +13638,21 @@ def finalize_monthly_payroll(
                 (preview['payroll_month'], organization_id or 'DEFAULT_ORG', branch_id or 'DEFAULT_BRANCH'),
             )
             existing = cursor.fetchone()
-            if existing and existing[1] == 'Finalized':
-                return None
+            existing_status = str(existing[1] or '').strip().lower() if existing else ''
+            if existing and existing_status == 'finalized':
+                # Already finalized — return the saved snapshot (do not pretend it is a race).
+                conn.commit()
+                return get_monthly_payroll(
+                    preview['payroll_month'],
+                    organization_id=organization_id,
+                    branch_id=branch_id,
+                ) or {
+                    'payroll_month': preview.get('payroll_month'),
+                    'is_finalized': True,
+                    'status': 'Finalized',
+                    'records': preview.get('records') or [],
+                    'already_finalized': True,
+                }
             if existing:
                 run_id = existing[0]
                 cursor.execute('''
@@ -13550,7 +13737,7 @@ def reopen_monthly_payroll(
         cursor = conn.cursor()
         row = cursor.execute(
             """SELECT * FROM payroll_runs
-               WHERE payroll_month = ? AND status = 'Finalized'
+               WHERE payroll_month = ? AND LOWER(COALESCE(status,'')) = 'finalized'
                  AND COALESCE(organization_id,'DEFAULT_ORG') = ?
                  AND COALESCE(branch_id,'DEFAULT_BRANCH') = ?""",
             (payroll_month, org, branch),

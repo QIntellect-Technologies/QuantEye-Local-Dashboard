@@ -7960,6 +7960,10 @@ async function fetchMultiLiveDetections() {
           <div class="stat-content"><div class="stat-value" id="payrollNetTotal" style="color:#148f77;">--</div><div class="stat-label">Total Payable</div></div>
         </div>
         <div class="stat-box">
+          <div class="stat-icon" style="background:#fff1f2; color:#be123c;"><i class="fa-solid fa-scale-unbalanced"></i></div>
+          <div class="stat-content"><div class="stat-value" id="payrollShortfallTotal">--</div><div class="stat-label">Total Shortfall</div></div>
+        </div>
+        <div class="stat-box">
           <div class="stat-icon" style="background:#e8f4fb; color:#247eae;"><i class="fa-solid fa-calendar-check"></i></div>
           <div class="stat-content"><div class="stat-value" id="payrollScheduledTotal">--</div><div class="stat-label">Scheduled Days</div></div>
         </div>
@@ -9835,12 +9839,13 @@ async function fetchMultiLiveDetections() {
           <p class="payroll-panel-help">Only approved overtime is paid. Pending overtime waits until someone approves it.</p>
         <div class="settings-overtime-only" style="padding:0 0 12px; margin-bottom:12px;">
           <div style="font-weight:700; color:#173042;">Overtime hourly rate</div>
-          <div style="font-size:0.82em; color:#64748b; margin:4px 0 10px;">If a person has no overtime rate on their salary, payroll uses basic salary ÷ this number. Default 208 is 8 hours × 26 days.</div>
-          <label for="payrollOtHourDivisor" style="display:flex; align-items:center; gap:8px; margin:0; font-size:0.86em; font-weight:700; color:#475569;">
-            Hours per month
-            <input id="payrollOtHourDivisor" class="form-control" type="number" min="1" step="0.01" value="208" style="width:110px;">
-            <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700;">Save</button>
-          </label>
+          <div style="font-size:0.82em; color:#64748b; margin:4px 0 10px;">
+            If a person has no overtime rate on their salary package, payroll uses
+            <strong>basic ÷ (weekly shift hours × 52 ÷ 12)</strong> from that person’s shift.
+            Use <em>Auto-Set OT Rates (Shift Schedule Base)</em> on Salary packages to write those rates into each package.
+            A person who needs a different rate can be given one under OT Hourly Rate on their package.
+          </div>
+          <input type="hidden" id="payrollOtHourDivisor" value="208">
           <label style="display:block; margin-top:12px; font-size:0.86em; font-weight:700; color:#475569; max-width:420px;">
             Rounding
             <select id="payrollOtRounding" class="form-select" style="margin-top:4px;" onchange="previewPayrollSettingsImpact()">
@@ -10494,7 +10499,7 @@ async function fetchMultiLiveDetections() {
               </tbody>
             </table>
             <h5>Locked months</h5>
-            <p>After Finalize, that month is frozen. Changing OT hours per month, holiday extra, or pay method today does not rewrite a locked month. Recalculate only changes open months.</p>
+            <p>After Finalize, that month is frozen. Changing OT rates, holiday extra, or pay method today does not rewrite a locked month. Recalculate only changes open months.</p>
           </section>
 
           <section id="guide-general" hidden>
@@ -10701,24 +10706,25 @@ async function fetchMultiLiveDetections() {
 
           <section id="guide-overtime" hidden>
             <h4>5. Overtime</h4>
-            <p>Only approved overtime is paid. Pending overtime waits until someone approves it. If the person has an overtime rate on Salary packages, that rate is used. If not, payroll uses basic pay ÷ hours per month.</p>
-            <h5>Hours per month</h5>
-            <p>Default 208 means 8 hours × 26 work days. Change it only if your company uses a different month hour count.</p>
-            <div class="formula">Hourly rate = 60,000 ÷ hours per month</div>
+            <p>Only approved overtime is paid. Pending overtime waits until someone approves it. If the person has an overtime rate on Salary packages, that rate is used. If not, payroll uses basic ÷ (weekly shift hours × 52 ÷ 12) from that person’s shift.</p>
+            <h5>Shift-based hourly rate</h5>
+            <p>Use <strong>Auto-Set OT Rates (Shift Schedule Base)</strong> on Salary packages to write each person’s rate from their shift. A single overtime entry must be less than 24 hours.</p>
+            <div class="formula">Hourly rate = basic ÷ (hours/day × workdays/week × 52 ÷ 12)</div>
             <table class="payroll-guide-table">
-              <thead><tr><th>Hours per month</th><th>Hourly rate</th><th>4 approved hours</th></tr></thead>
+              <thead><tr><th>Basic</th><th>Shift</th><th>Monthly hours</th><th>Hourly rate</th></tr></thead>
               <tbody>
-                <tr><td>208 (default)</td><td>60,000 ÷ 208 = 288.46</td><td>1,153.84</td></tr>
-                <tr><td>240</td><td>60,000 ÷ 240 = 250.00</td><td>1,000.00</td></tr>
+                <tr><td>56,000</td><td>4 days × 9 hours</td><td>156</td><td>358.97</td></tr>
+                <tr><td>56,000</td><td>5 days × 8 hours</td><td>173.33</td><td>323.08</td></tr>
+                <tr><td>56,000</td><td>6 days × 8 hours</td><td>208</td><td>269.23</td></tr>
               </tbody>
             </table>
             <h5>Rounding</h5>
-            <p>Choose when to round. Locked months do not change.</p>
+            <p>Choose when to round. Locked months do not change. Money amounts are calculated at fixed 2 decimal places; the Decimal places setting only changes how numbers are shown.</p>
             <table class="payroll-guide-table">
               <thead><tr><th>Step</th><th>Round the hourly rate first</th><th>Round the overtime amount at the end</th></tr></thead>
               <tbody>
-                <tr><td>Hourly rate</td><td>60,000 ÷ 208 = 288.46</td><td>Keep more digits, 288.4615…</td></tr>
-                <tr><td>4 approved hours</td><td>4 × 288.46 = 1,153.84</td><td>4 × (60,000 ÷ 208) = 1,153.85</td></tr>
+                <tr><td>Hourly rate</td><td>56,000 ÷ 156 = 358.97</td><td>Keep more digits, then round the pay amount</td></tr>
+                <tr><td>4 approved hours</td><td>4 × 358.97 = 1,435.88</td><td>4 × (56,000 ÷ 156) then round once</td></tr>
               </tbody>
             </table>
             <h5>Maximum overtime</h5>
@@ -10754,7 +10760,7 @@ async function fetchMultiLiveDetections() {
               <li>Find the person with search or department filter.</li>
               <li>Click Edit on that row.</li>
               <li>Set basic pay. Add extras or cuts if needed.</li>
-              <li>Set overtime rate if this person has a special hourly rate. If you leave it blank, Overtime tab uses 60,000 ÷ 208.</li>
+              <li>Set overtime rate if this person has a special hourly rate. If you leave it blank, payroll uses basic ÷ that person’s shift monthly hours.</li>
               <li>Save. Recalculate the open month on Payroll to see new numbers.</li>
             </ol>
             <table class="payroll-guide-table">
@@ -10763,7 +10769,7 @@ async function fetchMultiLiveDetections() {
                 <tr><td>Base pay</td><td>Monthly basic</td><td>60,000</td></tr>
                 <tr><td>Allowances</td><td>Extra money on this package</td><td>6,000 house rent</td></tr>
                 <tr><td>Deductions</td><td>Cuts on this package</td><td>2,000 tax</td></tr>
-                <tr><td>OT rate</td><td>Pay per overtime hour for this person</td><td>300, or blank to use 288.46</td></tr>
+                <tr><td>OT rate</td><td>Pay per overtime hour for this person</td><td>300, or blank to use shift-based rate</td></tr>
                 <tr><td>Est. net pay</td><td>Basic + extras − package cuts. Attendance is not included yet</td><td>64,000</td></tr>
               </tbody>
             </table>
@@ -10967,8 +10973,13 @@ async function fetchMultiLiveDetections() {
     </div>
   </div>
 
-  <!-- Manual Attendance Modal -->
-  <div class="modal fade" id="manualAttendanceModal" tabindex="-1">
+  <!-- Manual Attendance Modal (QA-95: must sit above last-7-days / complete-view panels) -->
+  <style>
+    #manualAttendanceModal { z-index: 100050 !important; }
+    body.modal-open .modal-backdrop { z-index: 100040 !important; }
+    #mainCompleteViewModal { z-index: 99999; }
+  </style>
+  <div class="modal fade" id="manualAttendanceModal" tabindex="-1" style="z-index: 100050;">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content" style="border: none; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
         <div class="modal-header" style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
@@ -11490,32 +11501,32 @@ async function fetchMultiLiveDetections() {
     </div>
   </div>
 
-  <!-- Auto-Calculate OT Rates Modal -->
+  <!-- Auto-Calculate OT Rates Modal (QA-96: shift-schedule base, no hours box) -->
   <div id="autoOtRateModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(6px); padding: 20px;">
     <div style="background: #ffffff; width: 100%; max-width: 480px; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); overflow: hidden; display: flex; flex-direction: column; border: 1px solid #cfe8f7;">
       <div style="background: #f2faff; border-bottom: 1px solid #cfe8f7; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center;">
         <h3 style="margin: 0; font-size: 1.15em; font-weight: 700; color: #173042; display: flex; align-items: center; gap: 8px;">
-          <i class="fa-solid fa-wand-magic-sparkles" style="color:#3d9fd4;"></i> Auto-Calculate Overtime Rates
+          <i class="fa-solid fa-wand-magic-sparkles" style="color:#3d9fd4;"></i> Auto-Set OT Rates (Shift Schedule Base)
         </h3>
         <button type="button" class="btn-close" onclick="closeAutoOtRateModal()" aria-label="Close"></button>
       </div>
       <div style="padding: 20px 24px;">
         <p style="font-size: 0.88em; color: #64748b; margin-bottom: 16px;">
-          Computes standard hourly overtime rates for all active employees using:
-          <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: 700; color: #1e293b;">Rate = Base Salary / Monthly Working Hours</code>.
+          Sets each active person’s overtime rate from <strong>their own shift</strong>:
+          <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: 700; color: #1e293b;">basic ÷ (weekly shift hours × 52 ÷ 12)</code>.
+          Example with basic 56,000: 4×9h → 358.97, 5×8h → 323.08, 6×8h → 269.23.
         </p>
 
         <div id="modalAutoOtMsg" aria-live="polite" style="margin-bottom: 14px;"></div>
 
-        <div class="mb-3">
-          <label class="form-label" style="font-weight: 700; color: #334155; font-size: 0.85em;">Monthly Working Hours Divisor *</label>
-          <input type="number" id="autoOtDivisorInput" class="form-control" value="208" min="1" step="1" required style="border-radius: 8px; font-weight: 700;" />
-          <small style="font-size: 0.75em; color: #64748b;">Standard is 208 hours (26 working days × 8 hours/day).</small>
-        </div>
+        <label style="display:flex; gap:8px; align-items:flex-start; font-size:0.86em; color:#334155; margin-bottom:12px;">
+          <input id="autoOtOverwriteManual" type="checkbox" class="form-check-input" checked style="margin-top:3px;">
+          <span>Overwrite rates already typed on a salary package. Uncheck to keep hand-typed rates and only fill blanks.</span>
+        </label>
 
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; font-size: 0.8em; color: #475569;">
           <i class="fa-solid fa-circle-info text-primary me-1"></i>
-          This will update the overtime rate in each employee's salary package. Base salaries, allowances, and deductions are untouched.
+          Later shift changes do not auto-update a saved package rate. Run this again after shift changes, or edit OT Hourly Rate on the person.
         </div>
       </div>
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 24px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -11947,7 +11958,8 @@ async function fetchMultiLiveDetections() {
 
       function payrollRunState(payroll) {
         if (!payroll) return 'Draft';
-        if (payroll.is_finalized || payroll.status === 'Finalized') return 'Finalized';
+        const status = String(payroll.status || '').trim().toLowerCase();
+        if (payroll.is_finalized || status === 'finalized') return 'Finalized';
         if (!(payroll.records || []).length) return 'Draft';
         if ((payroll.records || []).some(row => payrollIssueDetails(row).length)) return 'Has unresolved issues';
         if (payroll.month_complete === false || payroll.can_finalize === false) return 'In progress';
@@ -11989,7 +12001,7 @@ async function fetchMultiLiveDetections() {
       function renderMonthlyPayroll(payroll) {
         currentPayrollPreview = payroll;
         const records = payroll.records || [];
-        const isFinalized = Boolean(payroll.is_finalized || payroll.status === 'Finalized');
+        const isFinalized = Boolean(payroll.is_finalized || String(payroll.status || '').toLowerCase() === 'finalized');
         const issues = records.filter(row => payrollIssueDetails(row).length);
         const state = payrollRunState(payroll);
         const calculateButton = document.getElementById('calculatePayrollButton');
@@ -12002,6 +12014,8 @@ async function fetchMultiLiveDetections() {
         document.getElementById('payrollBasicTotal').textContent = payrollMoney(payroll.total_basic_salary);
         document.getElementById('payrollDeductionTotal').textContent = payrollMoney(payroll.total_deduction);
         document.getElementById('payrollNetTotal').textContent = payrollMoney(payroll.total_net_salary);
+        const shortfallEl = document.getElementById('payrollShortfallTotal');
+        if (shortfallEl) shortfallEl.textContent = payrollMoney(payroll.total_shortfall || 0);
         document.getElementById('payrollScheduledTotal').textContent = records.reduce((sum, row) => sum + Number(row.scheduled_workdays || 0), 0);
         document.getElementById('payrollPresentTotal').textContent = records.reduce((sum, row) => sum + Number(row.present_days || 0), 0);
         document.getElementById('payrollAbsentTotal').textContent = records.reduce((sum, row) => sum + Number(row.absent_days || 0), 0);
@@ -12556,7 +12570,7 @@ async function fetchMultiLiveDetections() {
           document.getElementById('payrollStateBadge').textContent = 'Load failed';
           document.getElementById('payrollStateBadge').className = 'badge bg-danger-subtle text-danger';
           document.getElementById('reviewPayrollButton').disabled = true;
-          ['payrollStaffCount', 'payrollBasicTotal', 'payrollDeductionTotal', 'payrollNetTotal', 'payrollScheduledTotal', 'payrollPresentTotal', 'payrollAbsentTotal', 'payrollLateTotal', 'payrollPayableDaysTotal', 'payrollIssueCount'].forEach(id => {
+          ['payrollStaffCount', 'payrollBasicTotal', 'payrollDeductionTotal', 'payrollNetTotal', 'payrollShortfallTotal', 'payrollScheduledTotal', 'payrollPresentTotal', 'payrollAbsentTotal', 'payrollLateTotal', 'payrollPayableDaysTotal', 'payrollIssueCount'].forEach(id => {
             document.getElementById(id).textContent = '--';
           });
           document.getElementById('payrollReviewPanel').hidden = true;
@@ -12588,8 +12602,10 @@ async function fetchMultiLiveDetections() {
         });
       }
 
+      let payrollFinalizeInFlight = false;
       async function finalizeMonthlyPayroll(finalizeEarly) {
         if (!currentPayrollPreview || currentPayrollPreview.is_finalized) return;
+        if (payrollFinalizeInFlight) return;
         const month = currentPayrollPreview.payroll_month;
         const missingShift = currentPayrollPreview.records.filter(row => row.shift_history_missing || row.status === 'Missing shift history');
         if (missingShift.length) {
@@ -12615,7 +12631,14 @@ async function fetchMultiLiveDetections() {
         });
         if (!confirmed) return;
         const button = document.getElementById('finalizePayrollButton');
-        button.disabled = true;
+        const earlyBtn = document.getElementById('finalizePayrollEarlyButton');
+        const originalBtnHtml = button ? button.innerHTML : '';
+        payrollFinalizeInFlight = true;
+        if (button) {
+          button.disabled = true;
+          button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Finalizing';
+        }
+        if (earlyBtn) earlyBtn.disabled = true;
         try {
           const response = await fetch(`${API_BASE}/payroll/finalize`, {
             method: 'POST',
@@ -12628,10 +12651,16 @@ async function fetchMultiLiveDetections() {
           document.getElementById('payrollReviewPanel').hidden = false;
           renderPayrollReview();
           await loadPayrollHistory();
-          showAppToast(`${payrollMonthLabel(month)} finalized and locked.`, 'success');
+          showAppToast(result.message || `${payrollMonthLabel(month)} finalized and locked.`, 'success');
         } catch (error) {
           document.getElementById('payrollMessage').innerHTML = `<div class="alert alert-danger py-2 mb-0">${payrollEscape(error.message)}</div>`;
-          button.disabled = false;
+          if (button) {
+            button.disabled = false;
+            button.innerHTML = originalBtnHtml || '<i class="fa-solid fa-lock"></i> Finalize Payroll';
+          }
+          if (earlyBtn) earlyBtn.disabled = false;
+        } finally {
+          payrollFinalizeInFlight = false;
         }
       }
 
@@ -16047,6 +16076,9 @@ async function fetchMultiLiveDetections() {
         if (timeErr) timeErr.textContent = '';
         updateManualNotesCounter();
 
+        // QA-95: close the last-7-days / complete-view panel so this form is usable.
+        const completeModal = document.getElementById('mainCompleteViewModal');
+        if (completeModal) completeModal.style.display = 'none';
         new bootstrap.Modal(document.getElementById('manualAttendanceModal')).show();
       }
 
@@ -16073,6 +16105,9 @@ async function fetchMultiLiveDetections() {
         if (timeErr) timeErr.textContent = '';
         updateManualNotesCounter();
 
+        // QA-95: close the last-7-days / complete-view panel so this form is usable.
+        const completeModal = document.getElementById('mainCompleteViewModal');
+        if (completeModal) completeModal.style.display = 'none';
         new bootstrap.Modal(document.getElementById('manualAttendanceModal')).show();
       }
       
@@ -21092,15 +21127,9 @@ async function fetchMultiLiveDetections() {
       }
 
       async function runAutoOtRateCalculation() {
-        const divisorInput = document.getElementById('autoOtDivisorInput');
-        const divisor = parseFloat(divisorInput?.value || 208);
         const msgEl = document.getElementById('modalAutoOtMsg');
         const btn = document.getElementById('runAutoOtBtn');
-
-        if (isNaN(divisor) || divisor <= 0) {
-          if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">Divisor must be a positive number of hours.</div>`;
-          return;
-        }
+        const overwrite = Boolean(document.getElementById('autoOtOverwriteManual')?.checked);
 
         const originalBtnText = btn ? btn.innerHTML : '';
         if (btn) {
@@ -21112,7 +21141,7 @@ async function fetchMultiLiveDetections() {
           const resp = await fetch(`${API_BASE}/salary/auto-ot-rates`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ divisor: divisor })
+            body: JSON.stringify({ overwrite_manual: overwrite })
           });
           const result = await resp.json();
           if (!resp.ok || !result.success) {
