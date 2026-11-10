@@ -13064,7 +13064,11 @@ async function fetchMultiLiveDetections() {
           : type === "error"
             ? "fa-circle-exclamation"
             : "fa-circle-info";
-        elem.innerHTML = `<div class="${type}"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${message}</span></div>`;
+        if (elem) elem.innerHTML = `<div class="${type}"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${message}</span></div>`;
+        // Surface the same status as a professional toast notification as well.
+        if (type === 'success' || type === 'error') {
+          try { showAppToast(String(message || ''), type); } catch (e) {}
+        }
       }
 
       function staffFieldError(msg) {
@@ -15868,6 +15872,12 @@ async function fetchMultiLiveDetections() {
       }
 
       function showAppToast(message, type = 'info') {
+        // De-duplicate identical notifications in a short window.
+        const __key = String(type) + '|' + String(message);
+        const __now = Date.now();
+        window.__toastDedup = window.__toastDedup || {};
+        if (window.__toastDedup[__key] && __now - window.__toastDedup[__key] < 1800) return;
+        window.__toastDedup[__key] = __now;
         let container = document.getElementById('appToastContainer');
         if (!container) {
           container = document.createElement('div');
