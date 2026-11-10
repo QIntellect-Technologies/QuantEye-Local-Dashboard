@@ -100,7 +100,7 @@
         overflow-x: hidden;
       }
 
-      /* Sidebar Navigation - Porcelain (light) */
+      /* Sidebar Navigation - QIntellect Leads shell */
       .sidebar {
         width: 236px;
         position: fixed;
@@ -110,28 +110,19 @@
         display: flex;
         flex-direction: column;
         padding: 16px 12px 12px;
-        border: 1px solid #e7e9f0;
+        border: 0;
         border-radius: 22px;
-        background: linear-gradient(180deg, #ffffff 0%, #fbfbfd 100%);
-        box-shadow: 0 1px 2px rgba(20, 21, 29, 0.04), 0 22px 48px -34px rgba(20, 21, 29, 0.35);
+        background:
+          radial-gradient(110% 90% at 92% 0%, rgba(90, 85, 222, 0.2), transparent 55%),
+          radial-gradient(70% 70% at 0% 100%, rgba(29, 154, 102, 0.1), transparent 60%),
+          #101116;
+        box-shadow: 0 24px 60px -32px rgba(8, 9, 22, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
         font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-        color: #171922;
+        color: #ffffff;
         z-index: 100;
         transition: width 0.25s ease, padding 0.25s ease, background 0.25s ease;
       }
-      /* Soft accent sheen across the top of the panel. */
-      .sidebar::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 132px;
-        border-radius: 22px 22px 0 0;
-        pointer-events: none;
-        background: radial-gradient(80% 100% at 50% 0%, rgba(14, 110, 94, 0.07), transparent 72%);
-      }
-      /* Very faint 38px grid, masked from the top-right. */
+      /* Faint 38px grid, masked from the top-right. */
       .sidebar::after {
         content: "";
         position: absolute;
@@ -139,38 +130,48 @@
         border-radius: inherit;
         pointer-events: none;
         background-image:
-          linear-gradient(rgba(23, 25, 34, 0.045) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(23, 25, 34, 0.045) 1px, transparent 1px);
+          linear-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.7) 1px, transparent 1px);
         background-size: 38px 38px;
-        -webkit-mask-image: radial-gradient(ellipse at 72% 18%, #000, transparent 74%);
-        mask-image: radial-gradient(ellipse at 72% 18%, #000, transparent 74%);
+        -webkit-mask-image: radial-gradient(ellipse at 72% 20%, #000, transparent 72%);
+        mask-image: radial-gradient(ellipse at 72% 20%, #000, transparent 72%);
+        opacity: 0.045;
       }
-      /* Collapse control: an inset button that matches the card, not a badge on the edge. */
+      /* Top hairline highlight. */
+      .sidebar::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 32px;
+        right: 32px;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+        z-index: 2;
+      }
       .sidebar-toggle {
         position: absolute;
-        top: 15px;
-        right: 10px;
+        top: 18px;
+        right: -13px;
         width: 26px;
         height: 26px;
         min-height: 26px;
         padding: 0;
-        border: 1px solid #e3e6ee;
-        border-radius: 8px;
-        background: #ffffff;
-        color: #6b7080;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
+        background: #1a1b23;
+        color: rgba(255, 255, 255, 0.55);
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         z-index: 3;
-        font-size: 9px;
-        box-shadow: 0 1px 2px rgba(20, 21, 29, 0.06);
-        transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+        font-size: 10px;
+        box-shadow: 0 6px 18px rgba(8, 9, 22, 0.5);
+        transition: transform 0.25s ease, background 0.2s ease, color 0.2s ease;
       }
       .sidebar-toggle:hover {
-        background: #f3f4f8;
-        border-color: #d7dbe6;
-        color: #171922;
+        background: #262830;
+        color: #ffffff;
       }
       .sidebar-brand {
         position: relative;
@@ -179,7 +180,7 @@
         align-items: center;
         gap: 10px;
         height: 44px;
-        padding: 0 32px 0 6px;
+        padding: 0 6px;
         margin: 0;
         border-bottom: 0;
         flex-shrink: 0;
@@ -191,9 +192,9 @@
         align-items: center;
         justify-content: center;
         border-radius: 10px;
-        background: #f3f4f8;
-        box-shadow: inset 0 0 0 1px #e7e9f0, 0 1px 1px rgba(20, 21, 29, 0.03);
-        color: #0e6e5e;
+        background: rgba(255, 255, 255, 0.09);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+        color: #c9c6ff;
         font-size: 13px;
         flex-shrink: 0;
       }
@@ -212,7 +213,7 @@
         font-weight: 600;
         line-height: 1.35;
         letter-spacing: -0.035em;
-        color: #171922;
+        color: #ffffff;
       }
       .sidebar-brand-text em {
         display: block;
@@ -225,7 +226,7 @@
         font-weight: 500;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        color: #9aa0b0;
+        color: rgba(255, 255, 255, 0.35);
       }
       .sidebar-menu {
         position: relative;
@@ -249,7 +250,7 @@
         flex: 0 0 auto;
         padding: 0 10px;
         margin-bottom: 6px;
-        color: #a4a9b8;
+        color: rgba(255, 255, 255, 0.25);
         font-size: 9.5px;
         font-weight: 600;
         text-transform: uppercase;
@@ -265,7 +266,7 @@
         padding: 0 10px;
         border: 0;
         border-radius: 10px;
-        color: #5e6373 !important;
+        color: rgba(255, 255, 255, 0.55) !important;
         font-size: 13.5px;
         font-weight: 500;
         letter-spacing: -0.006em;
@@ -273,13 +274,13 @@
         transition: background-color 0.16s ease, color 0.16s ease;
       }
       .menu-item:hover {
-        color: #171922 !important;
-        background: #f4f5f9;
+        color: rgba(255, 255, 255, 0.9) !important;
+        background: rgba(255, 255, 255, 0.05);
       }
       .menu-item.active {
-        color: #0e6e5e !important;
-        background: #eaf4f1;
-        box-shadow: inset 0 0 0 1px rgba(14, 110, 94, 0.1);
+        color: #ffffff !important;
+        background: rgba(255, 255, 255, 0.09);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
       }
       .menu-item::before {
         content: "";
@@ -290,7 +291,7 @@
         height: 16px;
         transform: translateY(-50%);
         border-radius: 0 999px 999px 0;
-        background: #0e6e5e;
+        background: #aaa5ff;
         opacity: 0;
         transition: opacity 0.16s ease;
       }
@@ -306,18 +307,18 @@
         flex-shrink: 0;
         background: transparent;
         border-radius: 0;
-        color: #98a0af;
+        color: rgba(255, 255, 255, 0.45);
         font-size: 13px;
         text-align: center;
         transition: color 0.16s ease;
       }
       .menu-item:hover i {
         background: transparent;
-        color: #5e6373;
+        color: rgba(255, 255, 255, 0.7);
       }
       .menu-item.active i {
         background: transparent;
-        color: #0e6e5e;
+        color: #bbb7ff;
       }
       .sidebar-footer {
         position: relative;
@@ -325,7 +326,7 @@
         flex-shrink: 0;
         margin-top: auto;
         padding: 12px 0 0;
-        border-top: 1px solid #edeff4;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
         background: transparent;
         border-radius: 0;
         font-size: 12px;
@@ -335,16 +336,16 @@
         align-items: center;
         gap: 7px;
         padding: 0 10px 8px;
-        color: #6e7484;
+        color: rgba(255, 255, 255, 0.4);
         font-size: 11px;
         font-weight: 500;
       }
       .status-pulse {
         width: 6px;
         height: 6px;
-        background: #14957f;
+        background: #1d9a66;
         border-radius: 50%;
-        box-shadow: 0 0 0 3px rgba(20, 149, 127, 0.14);
+        box-shadow: 0 0 0 3px rgba(29, 154, 102, 0.16);
         animation: pulse-ring 2s infinite;
       }
       .sidebar-branch {
@@ -353,12 +354,12 @@
         gap: 7px;
         padding: 0 10px;
         margin-bottom: 8px;
-        color: #7c8292;
+        color: rgba(255, 255, 255, 0.45);
         font-size: 11.5px;
         font-weight: 500;
       }
       .sidebar-branch i {
-        color: #a6adba;
+        color: rgba(255, 255, 255, 0.35);
         font-size: 11px;
       }
       .sidebar-branch span {
@@ -375,7 +376,7 @@
         transition: background-color 0.16s ease;
       }
       .sidebar-user:hover {
-        background: #f4f5f9;
+        background: rgba(255, 255, 255, 0.05);
       }
       .sidebar-avatar {
         width: 28px;
@@ -385,9 +386,9 @@
         align-items: center;
         justify-content: center;
         border-radius: 50%;
-        background: #eaf4f1;
-        box-shadow: 0 0 0 1px #d6eae5;
-        color: #0e6e5e;
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+        color: rgba(255, 255, 255, 0.85);
         font-size: 11.5px;
         font-weight: 600;
       }
@@ -400,18 +401,18 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        color: #23252f;
+        color: rgba(255, 255, 255, 0.85);
         font-size: 13px;
         font-weight: 500;
       }
       .sidebar-user-sub {
         display: block;
-        color: #9aa0b0;
+        color: rgba(255, 255, 255, 0.35);
         font-size: 11.5px;
       }
       .sidebar-logout {
-        display: flex;
         justify-content: flex-start;
+        display: flex;
         align-items: center;
         gap: 10px;
         width: 100%;
@@ -421,7 +422,7 @@
         border: 0;
         border-radius: 10px;
         background: transparent;
-        color: #5e6373;
+        color: rgba(255, 255, 255, 0.55);
         font-family: inherit;
         font-size: 13.5px;
         font-weight: 500;
@@ -430,13 +431,13 @@
         transition: background-color 0.16s ease, color 0.16s ease;
       }
       .sidebar-logout:hover {
-        background: #f4f5f9;
-        color: #171922;
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.9);
       }
       .sidebar-logout i {
         width: 16px;
         font-size: 13px;
-        color: #98a0af;
+        color: rgba(255, 255, 255, 0.45);
       }
 
       @keyframes pulse-ring {
@@ -466,8 +467,8 @@
         left: 0;
         height: 100vh;
         background: transparent;
-        border: 0;
         box-shadow: none;
+        border: 0;
         border-radius: 0;
         overflow: visible;
       }
@@ -477,14 +478,9 @@
       }
       body.sidebar-collapsed .sidebar-toggle {
         position: fixed;
-        top: 14px;
+        top: 20px;
         left: 14px;
         right: auto;
-        width: 30px;
-        height: 30px;
-        border-color: #e3e6ee;
-        background: #ffffff;
-        box-shadow: 0 6px 18px -8px rgba(20, 21, 29, 0.4);
         transform: rotate(180deg);
       }
       body.sidebar-collapsed .sidebar::before,
@@ -505,7 +501,7 @@
 
         body:not(.sidebar-collapsed) .sidebar {
           z-index: 1200;
-          box-shadow: 0 24px 60px -22px rgba(20, 21, 29, 0.45);
+          box-shadow: 0 24px 60px -20px rgba(8, 9, 22, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.07);
         }
       }
 
@@ -6617,7 +6613,7 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">City *</label>
-              <input type="text" id="settingCity" class="form-control" maxlength="100" pattern="(?=.*[A-Za-z])[A-Za-z][A-Za-z .'\-]*" title="Use letters, spaces, hyphens, apostrophes, or periods (e.g. Rahim Yar Khan)" placeholder="e.g. Rahim Yar Khan" required style="border-radius: 8px;">
+              <input type="text" id="settingCity" class="form-control" maxlength="80" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="e.g. New York" required style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Contact Phone</label>
@@ -18489,29 +18485,35 @@ async function fetchMultiLiveDetections() {
           modalDesigTitle: 'Designation title',
           modalDesigDesc: 'Designation description',
         };
+        const matchesHtmlPattern = (input) => {
+          const value = String(input.value || '').trim();
+          if (!input.pattern || !value) return true;
+          try {
+            // HTML pattern is always a full-string match; test independently of customValidity.
+            return new RegExp(`^(?:${input.pattern})$`).test(value);
+          } catch (_) {
+            return true;
+          }
+        };
         const refresh = () => {
           let firstError = '';
           for (const input of inputs) {
             const allowEmpty = allowEmptyIds.includes(input.id) || (!requiredIds.includes(input.id) && !input.required);
-            // Clear stale customValidity first — otherwise a prior failure keeps
-            // checkValidity() false even after the user enters a valid value.
+            // Clear first so a previous custom error cannot poison pattern re-checks.
             input.setCustomValidity('');
             const err = validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty });
             if (err) {
               firstError = err;
               input.setCustomValidity(err);
-            } else if (input.pattern && input.value.trim() && !input.checkValidity()) {
+            } else if (input.pattern && input.value.trim() && !matchesHtmlPattern(input)) {
               firstError = `${labels[input.id] || 'Field'} format is invalid.`;
               input.setCustomValidity(firstError);
-            } else {
-              input.setCustomValidity('');
             }
           }
           const allOk = !firstError && inputs.every(input => {
             const allowEmpty = allowEmptyIds.includes(input.id) || (!requiredIds.includes(input.id) && !input.required);
             if (!allowEmpty && !String(input.value || '').trim()) return false;
-            input.setCustomValidity('');
-            return !validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty }) && (!input.pattern || !input.value.trim() || input.checkValidity());
+            return !validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty }) && matchesHtmlPattern(input);
           });
           setSaveButtonEnabled(btn, allOk);
           if (msgEl) {
