@@ -12819,11 +12819,11 @@ async function fetchMultiLiveDetections() {
               || dayType === 'Public Holiday'
               || dayType === 'public_holiday'
               || st === 'holiday';
-            // Allow manual mark when the person is on leave AND the day is also a public holiday.
+            // Leave days (and leave+holiday) allow Mark Present so worked leave can be recorded.
             const allowLeaveHolidayManualMark = isLeaveToday && isPublicHolidayDay;
             const allowManualMark = (typeof r.allow_manual_mark === 'boolean')
               ? Boolean(r.allow_manual_mark)
-              : ((!hasAttendance && st !== 'not_employed') || allowLeaveHolidayManualMark);
+              : ((!hasAttendance && st !== 'not_employed') || isLeaveToday || allowLeaveHolidayManualMark);
             const isPresentType = ['present', 'late', 'checked_out'].includes(st) || hasAttendance;
             let dayTypeSuffix = '';
             if (isPresentType) {
@@ -12905,10 +12905,7 @@ async function fetchMultiLiveDetections() {
             `;
 
             const actionCell = tr.lastElementChild;
-            if (isLeaveToday && !allowLeaveHolidayManualMark && !allowManualMark) {
-              const leaveLabel = st === 'on_leave_unpaid' ? 'Unpaid Leave Today' : 'On Leave Today';
-              actionCell.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px; color:#1d4ed8; font-size:0.76em; font-weight:700; white-space:nowrap;"><i class="fa-solid fa-umbrella-beach"></i> ${leaveLabel}</span>`;
-            } else if (allowManualMark || allowLeaveHolidayManualMark) {
+            if (allowManualMark || allowLeaveHolidayManualMark || isLeaveToday) {
               const btn = document.createElement('button');
               btn.style.cssText = 'padding:4px 10px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #16a34a; color:#15803d; background:#f0fdf4; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
               btn.innerHTML = (allowLeaveHolidayManualMark || (isLeaveToday && isPublicHolidayDay))
@@ -12916,7 +12913,9 @@ async function fetchMultiLiveDetections() {
                 : '<i class="fa-solid fa-check"></i> Mark Present';
               btn.title = (allowLeaveHolidayManualMark || (isLeaveToday && isPublicHolidayDay))
                 ? 'Public holiday with leave — manual attendance is allowed'
-                : 'Mark present manually';
+                : (isLeaveToday
+                  ? 'On leave — mark present if the employee still worked today'
+                  : 'Mark present manually');
               btn.addEventListener('mouseenter', function() { this.style.background = '#dcfce7'; });
               btn.addEventListener('mouseleave', function() { this.style.background = '#f0fdf4'; });
               btn.addEventListener('click', function() { markMainUserPresent(r.user_id, targetDate, r.name, this); });

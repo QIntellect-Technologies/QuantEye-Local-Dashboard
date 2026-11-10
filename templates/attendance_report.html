@@ -1908,8 +1908,8 @@
                     const allowLeaveHolidayManualMark = isLeaveToday && isPublicHolidayDay;
                     const allowManualMark = (typeof r.allow_manual_mark === 'boolean')
                       ? Boolean(r.allow_manual_mark)
-                      : (st === 'absent' || st === 'holiday' || allowLeaveHolidayManualMark);
-                    if (allowManualMark || allowLeaveHolidayManualMark) {
+                      : (st === 'absent' || st === 'holiday' || isLeaveToday || allowLeaveHolidayManualMark);
+                    if (allowManualMark || allowLeaveHolidayManualMark || isLeaveToday) {
                         const markLabel = (allowLeaveHolidayManualMark || (isLeaveToday && isPublicHolidayDay))
                           ? 'Mark Present (Holiday)'
                           : 'Mark Present';

@@ -5384,12 +5384,15 @@ def get_detailed_attendance_report(
                         ),
                         'status_display': status_display_val,
                         'is_public_holiday': is_public_holiday,
+                        # Manual mark is allowed on leave days so staff who still work
+                        # can be punched present (LV-05 restores leave when they attend).
+                        # Holiday leaves keep the same Mark Present path.
                         'allow_manual_mark': bool(
                             att is None
                             and status != 'not_employed'
-                            and (
-                                status in ('absent', 'holiday', 'weekend', 'off_day', 'schedule_unknown')
-                                or (status in ('on_leave', 'on_leave_unpaid') and is_public_holiday)
+                            and status in (
+                                'absent', 'holiday', 'weekend', 'off_day', 'schedule_unknown',
+                                'on_leave', 'on_leave_unpaid',
                             )
                         ),
                         'half_leave_count': 1 if (half_leave_active or (leave_info and leave_info.get('is_half_leave'))) else 0,
