@@ -968,36 +968,58 @@
 
       .payroll-stats-grid .stat-box {
         min-width: 0;
-        padding: 8px 10px !important;
-        gap: 8px !important;
-        border-radius: 10px !important;
-        min-height: 58px;
-        box-shadow: none;
+        padding: 16px;
+        gap: 14px;
+        border-radius: 12px;
+        min-height: 104px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+        background: #ffffff;
+        border: 1px solid #cfe8f7;
       }
 
       .payroll-stats-grid .stat-box:hover {
-        transform: none;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
       }
 
       .payroll-stats-grid .stat-icon {
-        width: 28px !important;
-        height: 28px !important;
-        flex: 0 0 28px !important;
-        border-radius: 7px !important;
-        font-size: 0.78em !important;
+        width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
+        border-radius: 12px;
+        font-size: 1.1em;
       }
 
       .payroll-stats-grid .stat-value {
-        font-size: 1.22rem !important;
+        font-size: 1.45rem;
         font-weight: 800;
         overflow-wrap: anywhere;
-        line-height: 1.2;
+        line-height: 1.1;
       }
 
       .payroll-stats-grid .stat-label {
-        font-size: 0.86rem !important;
-        margin-top: 2px !important;
-        letter-spacing: .01em;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        margin-top: 0;
+      }
+
+      @media (max-width: 900px) {
+        .payroll-stats-grid,
+        .page-view .payroll-stats-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .payroll-stats-grid,
+        .page-view .payroll-stats-grid {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
       }
 
       .payroll-projection-grid {
@@ -4768,6 +4790,12 @@
         #reports-view .rpt-hero {
           padding: 18px 18px 16px;
         }
+        #reports-view .rpt-rail {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        #staff-view .rpt-rail {
+          grid-template-columns: 1fr;
+        }
       }
       @media (max-width: 620px) {
         #reports-view .rpt-hero-title {
@@ -5210,6 +5238,7 @@
         transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
       }
       #staff-view .rpt-search input[type="search"] {
+        width: 100%;
         padding: 0 12px 0 32px;
       }
       #staff-view .rpt-search input[type="search"]::placeholder {
@@ -5823,6 +5852,237 @@
       @media (max-width: 620px) {
         #payroll-view .page-header h1 { font-size: 21px; }
       }
+      /* ---- Frost: payroll settings tabs (rules / calendar / salary config) ---- */
+      #payroll-rules-tab,
+      #payroll-calendar-tab,
+      #salary-config-tab {
+        --ink: #151b25; --ink-2: #2b3547; --mut: #6b7488; --faint: #98a0b4;
+        --line: #e3e8f5; --line-soft: #edf0f9; --glass: rgba(255,255,255,0.62);
+        --lilac: #8b7bf7; --mint: #3cc4aa; --r: 22px;
+        color: var(--ink);
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      #payroll-rules-tab .payroll-panel,
+      #payroll-calendar-tab .payroll-panel,
+      #salary-config-tab .payroll-panel {
+        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.7));
+        border: 1px solid rgba(226,231,246,0.9); border-radius: 16px;
+        box-shadow: 0 1px 2px rgba(20,24,40,0.04), 0 26px 54px -42px rgba(52,62,120,0.6);
+        padding: 20px 22px;
+      }
+      #payroll-rules-tab h3, #payroll-rules-tab h4,
+      #payroll-calendar-tab h3, #payroll-calendar-tab h4,
+      #salary-config-tab h3, #salary-config-tab h4 { color: var(--ink); letter-spacing: -0.02em; }
+      #payroll-rules-tab .payroll-panel-help,
+      #payroll-calendar-tab .payroll-panel-help,
+      #salary-config-tab p { color: var(--mut) !important; }
+      #payroll-rules-tab .log-table-wrapper,
+      #payroll-calendar-tab .log-table-wrapper,
+      #salary-config-tab .log-table-wrapper {
+        background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.7));
+        border: 1px solid rgba(226,231,246,0.9); border-radius: 16px; overflow: hidden;
+        box-shadow: 0 1px 2px rgba(20,24,40,0.04), 0 26px 54px -42px rgba(52,62,120,0.6);
+      }
+      #payroll-rules-tab .log-table thead,
+      #payroll-calendar-tab .log-table thead,
+      #salary-config-tab .log-table thead { background: rgba(248,249,254,0.99) !important; }
+      #payroll-rules-tab .log-table thead th,
+      #payroll-calendar-tab .log-table thead th,
+      #salary-config-tab .log-table thead th {
+        color: var(--mut); font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+        padding: 12px 16px; border-bottom: 1px solid var(--line-soft);
+      }
+      #payroll-rules-tab .log-table tbody td,
+      #payroll-calendar-tab .log-table tbody td,
+      #salary-config-tab .log-table tbody td {
+        border-bottom: 1px solid var(--line-soft); color: var(--ink-2); font-size: 12.5px; padding: 12px 16px;
+      }
+      #payroll-rules-tab .log-table tbody tr:hover td,
+      #payroll-calendar-tab .log-table tbody tr:hover td,
+      #salary-config-tab .log-table tbody tr:hover td { background: rgba(139,123,247,0.04); }
+      #payroll-rules-tab input.form-control, #payroll-rules-tab input[type="text"], #payroll-rules-tab input[type="number"],
+      #payroll-rules-tab input[type="month"], #payroll-rules-tab input[type="date"], #payroll-rules-tab select,
+      #payroll-rules-tab .form-control, #payroll-rules-tab .form-select,
+      #payroll-calendar-tab input.form-control, #payroll-calendar-tab input[type="text"], #payroll-calendar-tab input[type="number"],
+      #payroll-calendar-tab input[type="month"], #payroll-calendar-tab input[type="date"], #payroll-calendar-tab select,
+      #payroll-calendar-tab .form-control, #payroll-calendar-tab .form-select,
+      #salary-config-tab input.form-control, #salary-config-tab input[type="text"], #salary-config-tab input[type="number"],
+      #salary-config-tab input[type="month"], #salary-config-tab input[type="date"], #salary-config-tab select,
+      #salary-config-tab .form-control, #salary-config-tab .form-select {
+        border-color: var(--line); border-radius: 10px; background: rgba(255,255,255,0.92); color: var(--ink-2); font-size: 12.5px;
+      }
+      #payroll-rules-tab input:focus, #payroll-rules-tab select:focus,
+      #payroll-calendar-tab input:focus, #payroll-calendar-tab select:focus,
+      #salary-config-tab input:focus, #salary-config-tab select:focus {
+        border-color: rgba(139,123,247,0.5); box-shadow: 0 0 0 3px rgba(139,123,247,0.12); outline: none;
+      }
+      #payroll-rules-tab .btn-primary, #payroll-calendar-tab .btn-primary, #salary-config-tab .btn-primary,
+      #payroll-rules-tab .btn-teal, #payroll-calendar-tab .btn-teal, #salary-config-tab .btn-teal {
+        background: #8b7bf7 !important; border-color: #8b7bf7 !important; color: #fff !important; border-radius: 10px; font-weight: 600;
+      }
+      #payroll-rules-tab .btn-outline, #payroll-calendar-tab .btn-outline, #salary-config-tab .btn-outline {
+        border-color: rgba(139,123,247,0.4) !important; color: #5847c8 !important; background: rgba(139,123,247,0.09) !important; border-radius: 10px;
+      }
+      #payroll-rules-tab .btn-outline-secondary, #payroll-calendar-tab .btn-outline-secondary, #salary-config-tab .btn-outline-secondary {
+        border-color: var(--line) !important; color: var(--ink-2) !important; background: rgba(255,255,255,0.7) !important; border-radius: 10px;
+      }
+      /* payroll hub tabs (settings) */
+      .payroll-hub-tabs { background: rgba(255,255,255,0.62) !important; border: 1px solid rgba(226,231,246,0.9) !important; backdrop-filter: blur(12px); }
+      .payroll-hub-tab { border-radius: 10px; }
+      .payroll-hub-tab.active, .payroll-hub-tab[aria-selected="true"] { background: #8b7bf7 !important; color: #fff !important; }
+      /* payroll review panel + guide overlay + shift history dialog */
+      #payrollReviewPanel {
+        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.7)) !important;
+        border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 16px !important;
+        box-shadow: 0 1px 2px rgba(20,24,40,0.04), 0 26px 54px -42px rgba(52,62,120,0.6);
+      }
+      #payrollGuideOverlay > div, #payrollGuideOverlay .payroll-guide {
+        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88)) !important;
+        border: 1px solid rgba(226,231,246,0.9); border-radius: 18px;
+        box-shadow: 0 34px 64px -46px rgba(18,24,44,0.9);
+      }
+      #payrollShiftHistoryDialog > div {
+        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88)) !important;
+        border: 1px solid rgba(226,231,246,0.9); border-radius: 18px;
+        box-shadow: 0 34px 64px -46px rgba(18,24,44,0.9);
+      }
+      /* edit salary config modal */
+      #editSalaryConfigModal .modal-content, #editSalaryConfigModal > div {
+        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.9));
+        border: 1px solid rgba(226,231,246,0.9); border-radius: 18px;
+        box-shadow: 0 34px 64px -46px rgba(18,24,44,0.9);
+      }
+      #editSalaryConfigModal .modal-header { border-bottom: 1px solid var(--line-soft); }
+      #editSalaryConfigModal .modal-footer { border-top: 1px solid var(--line-soft); }
+      /* exceptions table container */
+      #payroll-view div[style*="background:#ffffff; border:1px solid #cfe8f7"] {
+        background: rgba(255,255,255,0.62) !important;
+        border: 1px solid rgba(226,231,246,0.9) !important;
+        border-radius: 16px !important;
+      }
+    </style>
+    <style>
+      /* ============ Leave & Holidays — Frost premium surface (GUI only) ============ */
+      #leaves-view {
+        --ink: #151b25; --ink-2: #2b3547; --txt: #3d4757; --mut: #6b7488; --faint: #98a0b4;
+        --line: #e3e8f5; --line-soft: #edf0f9; --glass: rgba(255,255,255,0.62);
+        --lilac: #8b7bf7; --mint: #3cc4aa; --r: 22px;
+        --shadow: 0 1px 2px rgba(20,24,40,0.04), 0 26px 54px -42px rgba(52,62,120,0.6);
+        gap: 16px; padding-bottom: 6px; color: var(--ink);
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      #leaves-view.page-view.active { display: grid; }
+      /* Hero-style page header */
+      #leaves-view .page-header {
+        position: relative; display: flex; align-items: flex-end; justify-content: space-between;
+        gap: 22px; flex-wrap: wrap; padding: 22px 24px 20px; border: 1px solid rgba(255,255,255,0.08);
+        border-radius: var(--r); overflow: hidden; color: #ffffff;
+        background: radial-gradient(48% 88% at 100% 0%, rgba(139,123,247,0.45), transparent 62%),
+                    radial-gradient(46% 76% at 0% 104%, rgba(60,196,170,0.3), transparent 66%),
+                    linear-gradient(135deg, #141922 0%, #1b2130 46%, #212b3d 100%);
+        box-shadow: 0 1px 2px rgba(20,24,40,0.22), 0 34px 64px -46px rgba(18,24,44,0.9);
+      }
+      #leaves-view .page-header::before {
+        content: ""; position: absolute; inset: 0;
+        background-image: linear-gradient(rgba(255,255,255,0.055) 1px, transparent 1px),
+                         linear-gradient(90deg, rgba(255,255,255,0.055) 1px, transparent 1px);
+        background-size: 34px 34px;
+        -webkit-mask-image: radial-gradient(78% 130% at 12% 0%, #000 28%, transparent 78%);
+        mask-image: radial-gradient(78% 130% at 12% 0%, #000 28%, transparent 78%);
+        pointer-events: none;
+      }
+      #leaves-view .page-header-text { position: relative; z-index: 1; min-width: 260px; }
+      #leaves-view .page-header h1 { margin: 0; font-size: 26px; line-height: 1.12; font-weight: 600; letter-spacing: -0.035em; color: #ffffff; }
+      #leaves-view .page-header .page-subtitle { margin: 8px 0 0; max-width: 640px; font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,0.58); }
+      #leaves-view .page-header i { color: #b7aeff; }
+      /* subtabs -> glass pills */
+      #leaves-view .leave-filter-bar,
+      #leaves-view div[style*="display:flex; gap:8px; margin-bottom:20px"] {
+        background: rgba(255,255,255,0.62) !important;
+        border: 1px solid rgba(226,231,246,0.9) !important;
+        border-radius: 16px !important;
+        -webkit-backdrop-filter: blur(16px) saturate(1.1); backdrop-filter: blur(16px) saturate(1.1);
+        box-shadow: 0 1px 2px rgba(20,24,40,0.04);
+        padding: 10px 14px;
+      }
+      /* subtab buttons */
+      #leaves-view #leaveTabReq, #leaves-view #leaveTabBal,
+      #leaves-view #leaveTabTypes, #leaves-view #leaveTabHolidays {
+        border-radius: 10px; font-weight: 600; border: 1px solid var(--line);
+        background: rgba(255,255,255,0.7); color: var(--ink-2);
+      }
+      #leaves-view #leaveTabReq.btn-teal {
+        background: #8b7bf7 !important; border-color: #8b7bf7 !important; color: #fff !important;
+      }
+      /* tables -> frost */
+      #leaves-view .log-table-wrapper {
+        background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.7));
+        border: 1px solid rgba(226,231,246,0.9); border-radius: 16px; overflow: hidden;
+        box-shadow: 0 1px 2px rgba(20,24,40,0.04), 0 26px 54px -42px rgba(52,62,120,0.6);
+      }
+      #leaves-view .log-table thead { background: rgba(248,249,254,0.99) !important; }
+      #leaves-view .log-table thead th {
+        color: var(--mut); font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+        padding: 12px 16px; border-bottom: 1px solid var(--line-soft);
+      }
+      #leaves-view .log-table tbody td { border-bottom: 1px solid var(--line-soft); color: var(--ink-2); font-size: 12.5px; padding: 12px 16px; }
+      #leaves-view .log-table tbody tr:hover td { background: rgba(139,123,247,0.04); }
+      /* cards -> glass */
+      #leaves-view .card {
+        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.62));
+        border: 1px solid rgba(226,231,246,0.9); border-radius: 16px;
+        box-shadow: 0 1px 2px rgba(20,24,40,0.04), 0 26px 54px -42px rgba(52,62,120,0.6);
+      }
+      /* buttons */
+      #leaves-view .btn-primary { background: #8b7bf7 !important; border-color: #8b7bf7 !important; font-weight: 600; border-radius: 10px; }
+      #leaves-view .btn-outline { border-color: rgba(139,123,247,0.4) !important; color: #5847c8 !important; background: rgba(139,123,247,0.09) !important; border-radius: 10px; }
+      #leaves-view .btn-outline:hover { background: rgba(139,123,247,0.18) !important; }
+      #leaves-view .btn-outline-secondary { border-color: var(--line) !important; color: var(--ink-2) !important; background: rgba(255,255,255,0.7) !important; border-radius: 10px; }
+      #leaves-view .btn-secondary { background: rgba(255,255,255,0.9) !important; border-color: var(--line) !important; color: var(--ink-2) !important; border-radius: 10px; }
+      #leaves-view .btn-teal { background: #8b7bf7 !important; border-color: #8b7bf7 !important; color: #fff !important; border-radius: 8px; font-weight: 600; }
+      #leaves-view .btn-sm { border-radius: 8px; }
+      #leaves-view .badge { border-radius: 8px; }
+      /* inputs */
+      #leaves-view input.form-control, #leaves-view select.form-select {
+        border-color: var(--line); border-radius: 10px; background: rgba(255,255,255,0.92); color: var(--ink-2); font-size: 12.5px;
+      }
+      #leaves-view input.form-control:focus, #leaves-view select.form-select:focus {
+        border-color: rgba(139,123,247,0.5); box-shadow: 0 0 0 3px rgba(139,123,247,0.12);
+      }
+      /* alert info -> glass */
+      #leaves-view .alert-info {
+        background: rgba(139,123,247,0.06) !important; border: 1px solid rgba(139,123,247,0.2) !important;
+        color: var(--ink-2) !important; border-radius: 12px;
+      }
+      /* dropdown */
+      #leaves-view .dropdown-menu { border: 1px solid rgba(226,231,246,0.9); border-radius: 12px; box-shadow: 0 12px 32px rgba(20,24,40,0.12); }
+      @media (max-width: 900px) {
+        #leaves-view .page-header { padding: 18px 18px 16px; }
+      }
+      @media (max-width: 620px) {
+        #leaves-view .page-header h1 { font-size: 21px; }
+      }
+      /* leave modals -> Frost glass */
+      #fileLeaveModal > div, #fileLeaveModal .modal-content,
+      #leaveCompleteModal > div, #leaveCompleteModal .modal-content,
+      #leaveTypeModal > div, #leaveTypeModal .modal-content,
+      #companyHolidayModal > div, #companyHolidayModal .modal-content {
+        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.9)) !important;
+        border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 18px !important;
+        box-shadow: 0 34px 64px -46px rgba(18,24,44,0.9);
+      }
+      #fileLeaveModal .modal-header, #leaveCompleteModal .modal-header, #leaveTypeModal .modal-header, #companyHolidayModal .modal-header { border-bottom: 1px solid var(--line-soft, #edf0f9); }
+      #fileLeaveModal .modal-footer, #leaveCompleteModal .modal-footer, #leaveTypeModal .modal-footer, #companyHolidayModal .modal-footer { border-top: 1px solid var(--line-soft, #edf0f9); }
+      #fileLeaveModal h3, #leaveCompleteModal h3, #leaveTypeModal h3, #companyHolidayModal h3 { color: var(--ink, #151b25); }
+      #fileLeaveModal .form-control, #fileLeaveModal .form-select,
+      #leaveCompleteModal .form-control, #leaveCompleteModal .form-select,
+      #leaveTypeModal .form-control, #leaveTypeModal .form-select,
+      #companyHolidayModal .form-control, #companyHolidayModal .form-select {
+        border-color: var(--line, #e3e8f5); border-radius: 10px; background: rgba(255,255,255,0.92); color: var(--ink-2, #2b3547); font-size: 12.5px;
+      }
+      #fileLeaveModal .btn-primary, #leaveCompleteModal .btn-primary, #leaveTypeModal .btn-primary, #companyHolidayModal .btn-primary { background: #8b7bf7 !important; border-color: #8b7bf7 !important; border-radius: 10px; font-weight: 600; }
+      #fileLeaveModal .btn-secondary, #leaveCompleteModal .btn-secondary, #leaveTypeModal .btn-secondary, #companyHolidayModal .btn-secondary { border-color: var(--line, #e3e8f5) !important; color: var(--ink-2, #2b3547) !important; background: rgba(255,255,255,0.9) !important; border-radius: 10px; }
+      #fileLeaveModal .btn-outline, #leaveCompleteModal .btn-outline, #leaveTypeModal .btn-outline, #companyHolidayModal .btn-outline { border-color: rgba(139,123,247,0.4) !important; color: #5847c8 !important; background: rgba(139,123,247,0.09) !important; border-radius: 10px; }
     </style>
   </head>
   <body class="{% if not is_authenticated %}auth-required{% endif %}">
@@ -8340,10 +8600,9 @@ async function fetchMultiLiveDetections() {
       </div>
 
       <section class="rpt-filters app-camera-select-host" aria-label="Staff filters">
-        <div class="rpt-filters-body">
-          <div class="rpt-field rpt-field--grow">
-            <span class="rpt-field-label">Search</span>
-            <div class="rpt-search">
+        <div class="rpt-filters-body">          <div class="rpt-field rpt-field--grow" style="flex-direction: row; align-items: center; gap: 10px; min-width: 0;">
+            <span class="rpt-field-label" style="white-space: nowrap; margin-bottom: 0;">Search</span>
+            <div class="rpt-search" style="flex: 1; min-width: 0;">
               <i class="fa-solid fa-magnifying-glass"></i>
               <input type="search" id="tabStaffSearchInput" maxlength="100" placeholder="Search by name, ID, position, CNIC, phone, department..." oninput="filterTabStaffTable()" />
             </div>
