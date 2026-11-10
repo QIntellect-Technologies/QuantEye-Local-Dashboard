@@ -309,8 +309,8 @@ def check_module_entitlement_for_request():
         if path.startswith('/api/users') and not path.endswith('/assign-shift'):
             return _forbidden_module_response('attendance')
 
-    # 2. Leave-owned half-day rules (must run before the payroll blanket)
-    if path.startswith('/api/payroll-settings/scoped-rules/half-leave'):
+    # 2. Leave-owned half-day rules / scope lists (must run before the payroll blanket)
+    if path.startswith('/api/payroll-settings/scoped-rules/half-leave') or path.rstrip('/') == '/api/leave-settings/scope-options':
         if not has_leave:
             return _forbidden_module_response('leave')
     # Payroll module routes (including Settings payroll tabs)
@@ -325,9 +325,13 @@ def check_module_entitlement_for_request():
     if not has_payroll:
         # Note: '/api/payroll-settings/...' also starts with '/api/payroll' — exclude
         # leave-owned half-day rule routes explicitly.
+        # Leave-only clients may still need department/employee lists for half-day rules.
+        leave_scope_options = (
+            has_leave and path.rstrip('/') in {'/api/payroll/scope-options', '/api/leave-settings/scope-options'}
+        )
         payroll_blocked = (
             path in {'/payroll', '/payroll-view', '/api/payroll'}
-            or path.startswith('/api/payroll/')
+            or (path.startswith('/api/payroll/') and not leave_scope_options)
             or path.startswith('/api/salary')
             or (
                 path.startswith('/api/payroll-settings')
@@ -7191,6 +7195,7 @@ def api_get_employee_payslip(employee_id):
 
 
 @app.route('/api/payroll/scope-options', methods=['GET'])
+@app.route('/api/leave-settings/scope-options', methods=['GET'])
 def api_get_payroll_scope_options():
     try:
         return jsonify(db.get_payroll_scope_options(**payroll_tenant()))

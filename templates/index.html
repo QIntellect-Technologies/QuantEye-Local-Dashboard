@@ -15515,19 +15515,28 @@ async function fetchMultiLiveDetections() {
       }
 
       async function updateHalfLeaveRuleScopeOptions() {
-        const scope = document.getElementById('halfLeaveRuleScope').value;
+        const scope = document.getElementById('halfLeaveRuleScope')?.value || 'department';
         const targetSelect = document.getElementById('halfLeaveRuleTarget');
         if (!targetSelect) return;
         targetSelect.innerHTML = '<option value="">Select…</option>';
-        const data = await loadPayrollScopeOptions(true);
+        let data = {};
+        try {
+          // Prefer leave-owned route so leave-only orgs are not blocked by payroll license.
+          let res = await fetch('/api/leave-settings/scope-options', { cache: 'no-store' });
+          if (!res.ok) res = await fetch('/api/payroll/scope-options', { cache: 'no-store' });
+          data = res.ok ? await res.json() : (await loadPayrollScopeOptions(true)) || {};
+        } catch (error) {
+          data = (await loadPayrollScopeOptions(true)) || {};
+        }
         const options = scope === 'department' ? (data.departments || []) : (data.employees || []);
         options.forEach((opt) => {
           const el = document.createElement('option');
-          el.value = scope === 'department' ? (opt.name || opt.id) : opt.id;
-          el.textContent = (opt.name || opt.title || opt.id) + (opt.department ? ` (${opt.department})` : '');
+          el.value = scope === 'department' ? (opt.id || opt.name) : (opt.id || opt.user_id);
+          el.textContent = (opt.name || opt.title || opt.user_name || opt.id) + (opt.department ? ` (${opt.department})` : '');
           targetSelect.appendChild(el);
         });
       }
+      window.updateHalfLeaveRuleScopeOptions = updateHalfLeaveRuleScopeOptions;
 
       async function loadHalfLeaveSpecificRules() {
         const tbody = document.getElementById('halfLeaveSpecificRulesTableBody');
@@ -15557,53 +15566,75 @@ async function fetchMultiLiveDetections() {
       }
 
       async function saveHalfLeaveSpecificRule() {
-        const scope = document.getElementById('halfLeaveRuleScope').value;
-        const target = document.getElementById('halfLeaveRuleTarget').value;
-        const count = document.getElementById('halfLeaveRuleValue').value;
-        const mode = document.getElementById('halfLeaveQuotaMode')?.value || 'category';
-        // QA-66: Specific validation for each required field
-        if (!target) return showToast('Please select who the rule applies to (department or employee).', 'warning');
-        if (!count || count.trim() === '') return showToast('Enter Times per month — this field cannot be empty.', 'warning');
-        if (Number(count) <= 0 || isNaN(Number(count))) return showToast('Times per month must be a positive number (for example 1 or 2).', 'warning');
+        const scope = document.getElementById('halfLeaveRuleScope')?.value;
+        const target = document.getElementById('halfLeaveRuleTarget')?.value;
+        const count = document.getElementById('halfLeaveRuleValue')?.value;
+        // Person/department rules are monthly caps. If company mode is "category",
+        // still save a monthly_cap override — the form field is "Times per month".
+        const companyMode = document.getElementById('halfLeaveQuotaMode')?.value || 'category';
+        const mode = companyMode === 'category' ? 'monthly_cap' : companyMode;
+        const toast = (msg, type) => {
+          if (typeof showAppToast === 'function') showAppToast(msg, type === 'danger' ? 'error' : type);
+          else if (typeof nativeAlert === 'function') nativeAlert(msg);
+          else alert(msg);
+        };
+        if (!target) return toast('Please select who the rule applies to (department or employee).', 'warning');
+        if (!count || String(count).trim() === '') return toast('Enter Times per month — this field cannot be empty.', 'warning');
+        if (Number(count) <= 0 || isNaN(Number(count))) return toast('Times per month must be a positive number (for example 1 or 2).', 'warning');
         try {
           const res = await fetch('/api/payroll-settings/scoped-rules/half-leave', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scope_type: scope, scope_id: target, half_leave_quota_mode: mode, half_leaves_per_quota_day: count })
+            body: JSON.stringify({
+              scope_type: scope,
+              scope_id: target,
+              half_leave_quota_mode: mode,
+              half_leaves_per_quota_day: Number(count)
+            })
           });
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           if (res.ok && data.success) {
-            showToast(data.message || 'Rule saved successfully.', 'success');
-            document.getElementById('halfLeaveRuleValue').value = '';
-            await loadHalfLeaveSpecificRules(); // QA-65: await so table is visible immediately
+            toast(data.message || 'Rule saved successfully.', 'success');
+            const valueInput = document.getElementById('halfLeaveRuleValue');
+            if (valueInput) valueInput.value = '';
+            const targetSelect = document.getElementById('halfLeaveRuleTarget');
+            if (targetSelect) targetSelect.value = '';
+            await loadHalfLeaveSpecificRules();
           } else if (res.status === 409 || data.duplicate) {
-            showToast(data.error || 'Duplicate rule: A rule already exists for this target.', 'warning');
-            await loadHalfLeaveSpecificRules(); // QA-65: refresh table even on duplicate
+            toast(data.error || 'Duplicate rule: A rule already exists for this target.', 'warning');
+            await loadHalfLeaveSpecificRules();
           } else {
-            showToast(data.error || 'Failed to save rule.', 'danger');
-            await loadHalfLeaveSpecificRules(); // QA-65: refresh table on error too
+            toast(data.error || data.message || 'Failed to save rule.', 'error');
+            await loadHalfLeaveSpecificRules();
           }
         } catch (e) {
-          showToast('Error saving rule.', 'danger');
+          toast(e.message || 'Error saving rule.', 'error');
         }
       }
+      window.saveHalfLeaveSpecificRule = saveHalfLeaveSpecificRule;
 
       async function deleteHalfLeaveSpecificRule(id) {
         if (!await appConfirm('Delete this specific rule?')) return;
+        const toast = (msg, type) => {
+          if (typeof showAppToast === 'function') showAppToast(msg, type === 'danger' ? 'error' : type);
+          else if (typeof nativeAlert === 'function') nativeAlert(msg);
+          else alert(msg);
+        };
         try {
           const res = await fetch(`/api/payroll-settings/scoped-rules/half-leave/${id}`, { method: 'DELETE' });
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           if (data.success) {
-            showToast('Rule deleted.', 'success');
-            await loadHalfLeaveSpecificRules(); // QA-65: await delete refresh
+            toast('Rule deleted.', 'success');
+            await loadHalfLeaveSpecificRules();
           } else {
-            showToast(data.error || 'Failed to delete.', 'danger');
-            await loadHalfLeaveSpecificRules(); // QA-65: refresh even on delete error
+            toast(data.error || 'Failed to delete.', 'error');
+            await loadHalfLeaveSpecificRules();
           }
         } catch (e) {
-          showToast('Error deleting rule.', 'danger');
+          toast(e.message || 'Error deleting rule.', 'error');
         }
       }
+      window.deleteHalfLeaveSpecificRule = deleteHalfLeaveSpecificRule;
       function updatePayrollFeatureSectionsVisibility(settings) {
         const flags = [
           'enable_named_components', 'enable_bonuses', 'enable_individual_adjustments',
@@ -22990,25 +23021,39 @@ async function fetchMultiLiveDetections() {
     }
 
     window.updateHalfLeaveRuleScopeOptions = async function() {
-        const scope = document.getElementById('halfLeaveRuleScope').value;
+        const scope = document.getElementById('halfLeaveRuleScope')?.value || 'department';
         const targetSelect = document.getElementById('halfLeaveRuleTarget');
         if (!targetSelect) return;
         targetSelect.innerHTML = `<option value="">Select ${scope}...</option>`;
-        
-        const targets = await fetchRuleTargets();
-        
+
+        let departments = [];
+        let employees = [];
+        try {
+          const res = await fetch('/api/leave-settings/scope-options', { cache: 'no-store' });
+          if (res.ok) {
+            const data = await res.json();
+            departments = data.departments || [];
+            employees = data.employees || [];
+          }
+        } catch (_) {}
+        if (!departments.length && !employees.length) {
+          const targets = await fetchRuleTargets();
+          departments = targets.departments || [];
+          employees = targets.employees || [];
+        }
+
         if (scope === 'department') {
-            targets.departments.forEach(d => {
+            departments.forEach(d => {
                 const opt = document.createElement('option');
-                opt.value = d.id;
-                opt.textContent = d.name;
+                opt.value = d.id || d.name;
+                opt.textContent = d.name || d.title || d.id;
                 targetSelect.appendChild(opt);
             });
         } else if (scope === 'employee') {
-            targets.employees.forEach(e => {
+            employees.forEach(e => {
                 const opt = document.createElement('option');
                 opt.value = e.id || e.user_id;
-                opt.textContent = `${e.name || e.user_name} (ID: ${e.id || e.user_id})`;
+                opt.textContent = `${e.name || e.user_name || e.title || 'Employee'} (ID: ${e.id || e.user_id})`;
                 targetSelect.appendChild(opt);
             });
         }
