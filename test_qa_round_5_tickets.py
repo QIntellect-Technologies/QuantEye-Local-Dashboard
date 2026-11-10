@@ -269,6 +269,98 @@ class TestQARound5Tickets(unittest.TestCase):
         self.assertIn("half-leave allowance reached (3 occurrence(s) per month)", exhausted_res["message"])
 
     # =========================================================================
+    # Dept monthly half-leave cap must block Apply Leave (not only person rules)
+    # =========================================================================
+    def test_department_half_leave_monthly_cap_blocks_submit(self):
+        """Administration-style department cap of 3 must reject a 4th half-leave."""
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.execute(
+                """UPDATE leave_types
+                   SET half_leave_enabled = 1,
+                       half_leave_mode = 'separate',
+                       half_leave_allowance_count = 20,
+                       half_leave_allowance_months = 1
+                   WHERE organization_id = ? AND code = 'casual'""",
+                (self.org_id,),
+            )
+            conn.commit()
+
+        dept_id = db.add_department(
+            "Administration", "ADMIN", "Admin Dept", self.org_id, self.branch_id
+        )
+        emp_id = db.add_user(
+            name="Admin Dept Emp",
+            email="admin-dept-cap@example.com",
+            department="Administration",
+            salary=50000.0,
+            organization_id=self.org_id,
+            branch_id=self.branch_id,
+        )
+
+        saved = db.save_scoped_half_leave_rule(
+            scope_type="department",
+            scope_id=dept_id,
+            quota_mode="monthly_cap",
+            monthly_count=3,
+            organization_id=self.org_id,
+            branch_id=self.branch_id,
+        )
+        self.assertTrue(saved, f"Expected department rule save to succeed: {saved}")
+
+        rule_res = db.get_half_leave_rule(
+            emp_id, "casual", "2026-10-15", self.org_id, self.branch_id
+        )
+        self.assertEqual(rule_res["winning_source"], "department")
+        self.assertEqual(rule_res["allowance"], 3)
+
+        for i in range(3):
+            d_str = f"2026-10-{10 + i:02d}"
+            db.add_leave_request(
+                user_id=emp_id,
+                user_name="Admin Dept Emp",
+                leave_type="casual",
+                start_date=d_str,
+                end_date=d_str,
+                leave_duration="half",
+                status="approved",
+                organization_id=self.org_id,
+                branch_id=self.branch_id,
+            )
+
+        blocked = db.check_leave_quota(
+            user_id=emp_id,
+            leave_type_code="casual",
+            start_date="2026-10-20",
+            end_date="2026-10-20",
+            leave_duration="half",
+            organization_id=self.org_id,
+            branch_id=self.branch_id,
+        )
+        self.assertFalse(blocked["allowed"], f"4th half leave should be blocked: {blocked}")
+        self.assertEqual(blocked.get("reason_code"), "half_leave_allowance_reached")
+        self.assertEqual(blocked.get("half_leave_allowance_count"), 3)
+        self.assertEqual(blocked.get("half_leave_count"), 3)
+
+        # Name-only match still wins when another org also has "Administration".
+        other_org = "QA_R5_OTHER_ORG"
+        try:
+            with sqlite3.connect(db.DB_PATH) as conn:
+                conn.execute(
+                    "INSERT INTO departments (name, code, description, organization_id, branch_id) VALUES (?, '', '', ?, ?)",
+                    ("Administration", other_org, "OTHER_BRANCH"),
+                )
+                conn.commit()
+            rule_res2 = db.get_half_leave_rule(
+                emp_id, "casual", "2026-10-15", self.org_id, self.branch_id
+            )
+            self.assertEqual(rule_res2["winning_source"], "department")
+            self.assertFalse(rule_res2["allowed"])
+        finally:
+            with sqlite3.connect(db.DB_PATH) as conn:
+                conn.execute("DELETE FROM departments WHERE organization_id = ?", (other_org,))
+                conn.commit()
+
+    # =========================================================================
     # QA-43: Confirmation Messages on Half-Day Rule Save
     # =========================================================================
     def test_qa_43_confirmation_messages(self):
@@ -315,19 +407,21 @@ class TestQARound5Tickets(unittest.TestCase):
             organization_id=self.org_id,
             branch_id=self.branch_id,
         )
+        # Use the current calendar month so monthly_cap/category used_count matches get_leave_balances.
+        half_day = date.today().replace(day=min(date.today().day, 28)).isoformat()
         db.add_leave_request(
             user_id=emp_id,
             user_name="QA44 Emp",
             leave_type="casual",
-            start_date="2026-10-05",
-            end_date="2026-10-05",
+            start_date=half_day,
+            end_date=half_day,
             leave_duration="half",
             status="approved",
             organization_id=self.org_id,
             branch_id=self.branch_id,
         )
 
-        balances = db.get_leave_balances(year=2026, user_id=emp_id, organization_id=self.org_id)
+        balances = db.get_leave_balances(year=date.today().year, user_id=emp_id, organization_id=self.org_id)
         emp_data = next((item for item in balances if item["user_id"] == emp_id), None)
         self.assertIsNotNone(emp_data)
         casual_bal = emp_data["balances"].get("casual")

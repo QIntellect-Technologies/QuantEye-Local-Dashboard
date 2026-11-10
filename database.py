@@ -8285,13 +8285,16 @@ def resolve_half_leave_rule(
     department_name = str(department_name or '').strip()
     department_id = None
     if department_name:
+        # Prefer the department row for this org/branch so scoped rules bind correctly.
         cursor.execute(
             """SELECT id FROM departments
                WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
                  AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR COALESCE(organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG')
-               ORDER BY CASE WHEN COALESCE(organization_id, 'DEFAULT_ORG') = ? THEN 0 ELSE 1 END
+               ORDER BY
+                 CASE WHEN COALESCE(organization_id, 'DEFAULT_ORG') = ? THEN 0 ELSE 1 END,
+                 CASE WHEN COALESCE(branch_id, 'DEFAULT_BRANCH') = ? THEN 0 ELSE 1 END
                LIMIT 1""",
-            (department_name, org_id, org_id),
+            (department_name, org_id, org_id, branch_id),
         )
         d_row = cursor.fetchone()
         if d_row:
@@ -8357,13 +8360,51 @@ def resolve_half_leave_rule(
         }
 
     # 2. DEPARTMENT (if no person rule)
-    if not winning_rule and department_id is not None:
-        cursor.execute("""
-            SELECT * FROM payroll_scoped_rules
-            WHERE policy_type = 'half_leave_quota' AND scope_type = 'department' AND scope_id = ? AND active = 1
-              AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR COALESCE(organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG')
-            ORDER BY CASE WHEN COALESCE(organization_id, 'DEFAULT_ORG') = ? THEN 0 ELSE 1 END LIMIT 1
-        """, (department_id, org_id, org_id))
+    # Match by department id OR department name. Rules may be stored against a
+    # numeric departments.id, while users.department is a name; UI display already
+    # joins both, but enforcement previously required an exact id hit only.
+    # Keep org strict so another tenant's same-named department rule cannot win.
+    if not winning_rule and (department_id is not None or department_name):
+        cursor.execute(
+            """
+            SELECT r.*
+            FROM payroll_scoped_rules r
+            LEFT JOIN departments d
+              ON (
+                   CAST(d.id AS TEXT) = CAST(r.scope_id AS TEXT)
+                   OR LOWER(TRIM(d.name)) = LOWER(TRIM(CAST(r.scope_id AS TEXT)))
+                 )
+              AND (
+                   COALESCE(d.organization_id, 'DEFAULT_ORG') = COALESCE(r.organization_id, 'DEFAULT_ORG')
+                   OR COALESCE(d.organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG'
+                 )
+            WHERE r.policy_type = 'half_leave_quota'
+              AND r.scope_type = 'department'
+              AND r.active = 1
+              AND COALESCE(r.organization_id, 'DEFAULT_ORG') = ?
+              AND (
+                    COALESCE(r.branch_id, 'DEFAULT_BRANCH') = ?
+                    OR COALESCE(r.branch_id, 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+                  )
+              AND (
+                    (? IS NOT NULL AND CAST(r.scope_id AS TEXT) = CAST(? AS TEXT))
+                    OR (? != '' AND LOWER(TRIM(COALESCE(d.name, ''))) = LOWER(TRIM(?)))
+                    OR (? != '' AND LOWER(TRIM(CAST(r.scope_id AS TEXT))) = LOWER(TRIM(?)))
+                  )
+            ORDER BY
+              CASE WHEN COALESCE(r.branch_id, 'DEFAULT_BRANCH') = ? THEN 0 ELSE 1 END,
+              CASE WHEN ? IS NOT NULL AND CAST(r.scope_id AS TEXT) = CAST(? AS TEXT) THEN 0 ELSE 1 END
+            LIMIT 1
+            """,
+            (
+                org_id, branch_id,
+                department_id, department_id,
+                department_name, department_name,
+                department_name, department_name,
+                branch_id,
+                department_id, department_id,
+            ),
+        )
         d_row = cursor.fetchone()
         if d_row:
             d_dict = dict(d_row)
@@ -10235,12 +10276,36 @@ def _resolve_scoped_target_id(cursor, org: str, branch: str, scope: str, scope_i
     except (TypeError, ValueError):
         as_id = None
     if as_id is not None:
-        row = cursor.execute("SELECT id FROM departments WHERE id = ?", (as_id,)).fetchone()
+        # Only accept department ids that belong to this tenant (or legacy unscoped rows).
+        row = cursor.execute(
+            """SELECT id FROM departments
+               WHERE id = ?
+                 AND (
+                   COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                   OR organization_id IS NULL OR organization_id = ''
+                   OR COALESCE(organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG'
+                 )
+               ORDER BY
+                 CASE WHEN COALESCE(organization_id, 'DEFAULT_ORG') = ? THEN 0 ELSE 1 END,
+                 CASE WHEN COALESCE(branch_id, 'DEFAULT_BRANCH') = ? THEN 0 ELSE 1 END
+               LIMIT 1""",
+            (as_id, org, org, branch),
+        ).fetchone()
         if row:
             return int(row[0])
     row = cursor.execute(
-        "SELECT id FROM departments WHERE name = ? COLLATE NOCASE LIMIT 1",
-        (name,),
+        """SELECT id FROM departments
+           WHERE name = ? COLLATE NOCASE
+             AND (
+               COALESCE(organization_id, 'DEFAULT_ORG') = ?
+               OR organization_id IS NULL OR organization_id = ''
+               OR COALESCE(organization_id, 'DEFAULT_ORG') = 'DEFAULT_ORG'
+             )
+           ORDER BY
+             CASE WHEN COALESCE(organization_id, 'DEFAULT_ORG') = ? THEN 0 ELSE 1 END,
+             CASE WHEN COALESCE(branch_id, 'DEFAULT_BRANCH') = ? THEN 0 ELSE 1 END
+           LIMIT 1""",
+        (name, org, org, branch),
     ).fetchone()
     if row:
         return int(row[0])
@@ -10253,8 +10318,12 @@ def _resolve_scoped_target_id(cursor, org: str, branch: str, scope: str, scope_i
         return int(cur.lastrowid)
     except sqlite3.IntegrityError:
         row = cursor.execute(
-            "SELECT id FROM departments WHERE name = ? COLLATE NOCASE LIMIT 1",
-            (name,),
+            """SELECT id FROM departments
+               WHERE name = ? COLLATE NOCASE
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+               ORDER BY CASE WHEN COALESCE(branch_id, 'DEFAULT_BRANCH') = ? THEN 0 ELSE 1 END
+               LIMIT 1""",
+            (name, org, branch),
         ).fetchone()
         return int(row[0]) if row else None
 
