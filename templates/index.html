@@ -100,7 +100,7 @@
         overflow-x: hidden;
       }
 
-      /* Sidebar Navigation - QIntellect Leads shell */
+      /* Sidebar Navigation - Porcelain (light) */
       .sidebar {
         width: 236px;
         position: fixed;
@@ -110,19 +110,28 @@
         display: flex;
         flex-direction: column;
         padding: 16px 12px 12px;
-        border: 0;
+        border: 1px solid #e7e9f0;
         border-radius: 22px;
-        background:
-          radial-gradient(110% 90% at 92% 0%, rgba(90, 85, 222, 0.2), transparent 55%),
-          radial-gradient(70% 70% at 0% 100%, rgba(29, 154, 102, 0.1), transparent 60%),
-          #101116;
-        box-shadow: 0 24px 60px -32px rgba(8, 9, 22, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
+        background: linear-gradient(180deg, #ffffff 0%, #fbfbfd 100%);
+        box-shadow: 0 1px 2px rgba(20, 21, 29, 0.04), 0 22px 48px -34px rgba(20, 21, 29, 0.35);
         font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-        color: #ffffff;
+        color: #171922;
         z-index: 100;
         transition: width 0.25s ease, padding 0.25s ease, background 0.25s ease;
       }
-      /* Faint 38px grid, masked from the top-right. */
+      /* Soft accent sheen across the top of the panel. */
+      .sidebar::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 132px;
+        border-radius: 22px 22px 0 0;
+        pointer-events: none;
+        background: radial-gradient(80% 100% at 50% 0%, rgba(14, 110, 94, 0.07), transparent 72%);
+      }
+      /* Very faint 38px grid, masked from the top-right. */
       .sidebar::after {
         content: "";
         position: absolute;
@@ -130,48 +139,38 @@
         border-radius: inherit;
         pointer-events: none;
         background-image:
-          linear-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.7) 1px, transparent 1px);
+          linear-gradient(rgba(23, 25, 34, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(23, 25, 34, 0.045) 1px, transparent 1px);
         background-size: 38px 38px;
-        -webkit-mask-image: radial-gradient(ellipse at 72% 20%, #000, transparent 72%);
-        mask-image: radial-gradient(ellipse at 72% 20%, #000, transparent 72%);
-        opacity: 0.045;
+        -webkit-mask-image: radial-gradient(ellipse at 72% 18%, #000, transparent 74%);
+        mask-image: radial-gradient(ellipse at 72% 18%, #000, transparent 74%);
       }
-      /* Top hairline highlight. */
-      .sidebar::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 32px;
-        right: 32px;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
-        z-index: 2;
-      }
+      /* Collapse control: an inset button that matches the card, not a badge on the edge. */
       .sidebar-toggle {
         position: absolute;
-        top: 18px;
-        right: -13px;
+        top: 15px;
+        right: 10px;
         width: 26px;
         height: 26px;
         min-height: 26px;
         padding: 0;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 50%;
-        background: #1a1b23;
-        color: rgba(255, 255, 255, 0.55);
+        border: 1px solid #e3e6ee;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #6b7080;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         z-index: 3;
-        font-size: 10px;
-        box-shadow: 0 6px 18px rgba(8, 9, 22, 0.5);
-        transition: transform 0.25s ease, background 0.2s ease, color 0.2s ease;
+        font-size: 9px;
+        box-shadow: 0 1px 2px rgba(20, 21, 29, 0.06);
+        transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
       }
       .sidebar-toggle:hover {
-        background: #262830;
-        color: #ffffff;
+        background: #f3f4f8;
+        border-color: #d7dbe6;
+        color: #171922;
       }
       .sidebar-brand {
         position: relative;
@@ -180,7 +179,7 @@
         align-items: center;
         gap: 10px;
         height: 44px;
-        padding: 0 6px;
+        padding: 0 32px 0 6px;
         margin: 0;
         border-bottom: 0;
         flex-shrink: 0;
@@ -192,9 +191,9 @@
         align-items: center;
         justify-content: center;
         border-radius: 10px;
-        background: rgba(255, 255, 255, 0.09);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-        color: #c9c6ff;
+        background: #f3f4f8;
+        box-shadow: inset 0 0 0 1px #e7e9f0, 0 1px 1px rgba(20, 21, 29, 0.03);
+        color: #0e6e5e;
         font-size: 13px;
         flex-shrink: 0;
       }
@@ -213,7 +212,7 @@
         font-weight: 600;
         line-height: 1.35;
         letter-spacing: -0.035em;
-        color: #ffffff;
+        color: #171922;
       }
       .sidebar-brand-text em {
         display: block;
@@ -226,7 +225,7 @@
         font-weight: 500;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.35);
+        color: #9aa0b0;
       }
       .sidebar-menu {
         position: relative;
@@ -250,7 +249,7 @@
         flex: 0 0 auto;
         padding: 0 10px;
         margin-bottom: 6px;
-        color: rgba(255, 255, 255, 0.25);
+        color: #a4a9b8;
         font-size: 9.5px;
         font-weight: 600;
         text-transform: uppercase;
@@ -266,7 +265,7 @@
         padding: 0 10px;
         border: 0;
         border-radius: 10px;
-        color: rgba(255, 255, 255, 0.55) !important;
+        color: #5e6373 !important;
         font-size: 13.5px;
         font-weight: 500;
         letter-spacing: -0.006em;
@@ -274,13 +273,13 @@
         transition: background-color 0.16s ease, color 0.16s ease;
       }
       .menu-item:hover {
-        color: rgba(255, 255, 255, 0.9) !important;
-        background: rgba(255, 255, 255, 0.05);
+        color: #171922 !important;
+        background: #f4f5f9;
       }
       .menu-item.active {
-        color: #ffffff !important;
-        background: rgba(255, 255, 255, 0.09);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        color: #0e6e5e !important;
+        background: #eaf4f1;
+        box-shadow: inset 0 0 0 1px rgba(14, 110, 94, 0.1);
       }
       .menu-item::before {
         content: "";
@@ -291,7 +290,7 @@
         height: 16px;
         transform: translateY(-50%);
         border-radius: 0 999px 999px 0;
-        background: #aaa5ff;
+        background: #0e6e5e;
         opacity: 0;
         transition: opacity 0.16s ease;
       }
@@ -307,18 +306,18 @@
         flex-shrink: 0;
         background: transparent;
         border-radius: 0;
-        color: rgba(255, 255, 255, 0.45);
+        color: #98a0af;
         font-size: 13px;
         text-align: center;
         transition: color 0.16s ease;
       }
       .menu-item:hover i {
         background: transparent;
-        color: rgba(255, 255, 255, 0.7);
+        color: #5e6373;
       }
       .menu-item.active i {
         background: transparent;
-        color: #bbb7ff;
+        color: #0e6e5e;
       }
       .sidebar-footer {
         position: relative;
@@ -326,7 +325,7 @@
         flex-shrink: 0;
         margin-top: auto;
         padding: 12px 0 0;
-        border-top: 1px solid rgba(255, 255, 255, 0.07);
+        border-top: 1px solid #edeff4;
         background: transparent;
         border-radius: 0;
         font-size: 12px;
@@ -336,16 +335,16 @@
         align-items: center;
         gap: 7px;
         padding: 0 10px 8px;
-        color: rgba(255, 255, 255, 0.4);
+        color: #6e7484;
         font-size: 11px;
         font-weight: 500;
       }
       .status-pulse {
         width: 6px;
         height: 6px;
-        background: #1d9a66;
+        background: #14957f;
         border-radius: 50%;
-        box-shadow: 0 0 0 3px rgba(29, 154, 102, 0.16);
+        box-shadow: 0 0 0 3px rgba(20, 149, 127, 0.14);
         animation: pulse-ring 2s infinite;
       }
       .sidebar-branch {
@@ -354,12 +353,12 @@
         gap: 7px;
         padding: 0 10px;
         margin-bottom: 8px;
-        color: rgba(255, 255, 255, 0.45);
+        color: #7c8292;
         font-size: 11.5px;
         font-weight: 500;
       }
       .sidebar-branch i {
-        color: rgba(255, 255, 255, 0.35);
+        color: #a6adba;
         font-size: 11px;
       }
       .sidebar-branch span {
@@ -376,7 +375,7 @@
         transition: background-color 0.16s ease;
       }
       .sidebar-user:hover {
-        background: rgba(255, 255, 255, 0.05);
+        background: #f4f5f9;
       }
       .sidebar-avatar {
         width: 28px;
@@ -386,9 +385,9 @@
         align-items: center;
         justify-content: center;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.1);
-        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
-        color: rgba(255, 255, 255, 0.85);
+        background: #eaf4f1;
+        box-shadow: 0 0 0 1px #d6eae5;
+        color: #0e6e5e;
         font-size: 11.5px;
         font-weight: 600;
       }
@@ -401,18 +400,18 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        color: rgba(255, 255, 255, 0.85);
+        color: #23252f;
         font-size: 13px;
         font-weight: 500;
       }
       .sidebar-user-sub {
         display: block;
-        color: rgba(255, 255, 255, 0.35);
+        color: #9aa0b0;
         font-size: 11.5px;
       }
       .sidebar-logout {
-        justify-content: flex-start;
         display: flex;
+        justify-content: flex-start;
         align-items: center;
         gap: 10px;
         width: 100%;
@@ -422,7 +421,7 @@
         border: 0;
         border-radius: 10px;
         background: transparent;
-        color: rgba(255, 255, 255, 0.55);
+        color: #5e6373;
         font-family: inherit;
         font-size: 13.5px;
         font-weight: 500;
@@ -431,13 +430,13 @@
         transition: background-color 0.16s ease, color 0.16s ease;
       }
       .sidebar-logout:hover {
-        background: rgba(255, 255, 255, 0.05);
-        color: rgba(255, 255, 255, 0.9);
+        background: #f4f5f9;
+        color: #171922;
       }
       .sidebar-logout i {
         width: 16px;
         font-size: 13px;
-        color: rgba(255, 255, 255, 0.45);
+        color: #98a0af;
       }
 
       @keyframes pulse-ring {
@@ -467,8 +466,8 @@
         left: 0;
         height: 100vh;
         background: transparent;
-        box-shadow: none;
         border: 0;
+        box-shadow: none;
         border-radius: 0;
         overflow: visible;
       }
@@ -478,9 +477,14 @@
       }
       body.sidebar-collapsed .sidebar-toggle {
         position: fixed;
-        top: 20px;
+        top: 14px;
         left: 14px;
         right: auto;
+        width: 30px;
+        height: 30px;
+        border-color: #e3e6ee;
+        background: #ffffff;
+        box-shadow: 0 6px 18px -8px rgba(20, 21, 29, 0.4);
         transform: rotate(180deg);
       }
       body.sidebar-collapsed .sidebar::before,
@@ -501,7 +505,7 @@
 
         body:not(.sidebar-collapsed) .sidebar {
           z-index: 1200;
-          box-shadow: 0 24px 60px -20px rgba(8, 9, 22, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.07);
+          box-shadow: 0 24px 60px -22px rgba(20, 21, 29, 0.45);
         }
       }
 
@@ -6613,7 +6617,7 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">City *</label>
-              <input type="text" id="settingCity" class="form-control" maxlength="100" pattern="[A-Za-z]+(?:[ .'\-]+[A-Za-z]+)*" title="Use letters; spaces, periods, apostrophes, and hyphens are allowed (e.g. Rahim Yar Khan)" placeholder="e.g. Rahim Yar Khan" required style="border-radius: 8px;">
+              <input type="text" id="settingCity" class="form-control" maxlength="100" pattern="(?=.*[A-Za-z])[A-Za-z][A-Za-z .'\-]*" title="Use letters, spaces, hyphens, apostrophes, or periods (e.g. Rahim Yar Khan)" placeholder="e.g. Rahim Yar Khan" required style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Contact Phone</label>
@@ -6621,7 +6625,7 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Admin / User Display Name</label>
-              <input type="text" id="settingAdminName" class="form-control" maxlength="100" pattern="[A-Za-z]+(?:[ .'\-]+[A-Za-z]+)*" title="Use letters; spaces, periods, apostrophes, and hyphens are allowed" placeholder="e.g. Mr. Junaid" style="border-radius: 8px;">
+              <input type="text" id="settingAdminName" class="form-control" maxlength="100" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="e.g. Mr. Junaid" style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Official Email</label>
@@ -18489,29 +18493,25 @@ async function fetchMultiLiveDetections() {
           let firstError = '';
           for (const input of inputs) {
             const allowEmpty = allowEmptyIds.includes(input.id) || (!requiredIds.includes(input.id) && !input.required);
-            // Clear sticky customValidity first — otherwise checkValidity() stays false
-            // even after the user types a valid multi-word city like "Rahim Yar Khan".
+            // Clear stale customValidity first — otherwise a prior failure keeps
+            // checkValidity() false even after the user enters a valid value.
             input.setCustomValidity('');
             const err = validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty });
             if (err) {
-              firstError = firstError || err;
+              firstError = err;
               input.setCustomValidity(err);
-              continue;
-            }
-            const value = String(input.value || '').trim();
-            if (input.pattern && value && !input.checkValidity()) {
-              const label = labels[input.id] || 'Field';
-              const msg = input.title || `${label} format is invalid.`;
-              firstError = firstError || msg;
-              input.setCustomValidity(msg);
+            } else if (input.pattern && input.value.trim() && !input.checkValidity()) {
+              firstError = `${labels[input.id] || 'Field'} format is invalid.`;
+              input.setCustomValidity(firstError);
+            } else {
+              input.setCustomValidity('');
             }
           }
           const allOk = !firstError && inputs.every(input => {
             const allowEmpty = allowEmptyIds.includes(input.id) || (!requiredIds.includes(input.id) && !input.required);
             if (!allowEmpty && !String(input.value || '').trim()) return false;
             input.setCustomValidity('');
-            if (validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty })) return false;
-            return !input.pattern || !String(input.value || '').trim() || input.checkValidity();
+            return !validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty }) && (!input.pattern || !input.value.trim() || input.checkValidity());
           });
           setSaveButtonEnabled(btn, allOk);
           if (msgEl) {
