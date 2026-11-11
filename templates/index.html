@@ -9258,7 +9258,7 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">City *</label>
-              <input type="text" id="settingCity" class="form-control" maxlength="80" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="e.g. New York" required style="border-radius: 8px;">
+              <input type="text" id="settingCity" class="form-control" maxlength="100" pattern="[A-Za-z]+(?:[ .'\-]+[A-Za-z]+)*" title="Use letters; spaces, periods, apostrophes, and hyphens are allowed (e.g. Rahim Yar Khan)" placeholder="e.g. Rahim Yar Khan" required style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Contact Phone</label>
@@ -9266,7 +9266,7 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Admin / User Display Name</label>
-              <input type="text" id="settingAdminName" class="form-control" maxlength="100" pattern="[A-Za-z][A-Za-z .'-]*" placeholder="e.g. Mr. Junaid" style="border-radius: 8px;">
+              <input type="text" id="settingAdminName" class="form-control" maxlength="100" pattern="[A-Za-z]+(?:[ .'\-]+[A-Za-z]+)*" title="Use letters; spaces, periods, apostrophes, and hyphens are allowed" placeholder="e.g. Mr. Junaid" style="border-radius: 8px;">
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Official Email</label>
@@ -21180,6 +21180,10 @@ async function fetchMultiLiveDetections() {
             if (document.getElementById('settingEmail')) document.getElementById('settingEmail').value = data.email || '';
             window.__activeAdminEmail = (data.email || '').trim();
             updateDynamicBranchHeaders(data.branch_name, data.city, data.admin_name, data.email);
+            // Clear stale "City is required" from the empty pre-load validation pass.
+            if (typeof window.refreshBranchSafeValidation === 'function') {
+              window.refreshBranchSafeValidation();
+            }
           }
         } catch (e) {
           console.error("Failed to load branch settings:", e);
@@ -21269,32 +21273,43 @@ async function fetchMultiLiveDetections() {
           modalDesigTitle: 'Designation title',
           modalDesigDesc: 'Designation description',
         };
+        let userTouched = false;
         const matchesHtmlPattern = (input) => {
           const value = String(input.value || '').trim();
           if (!input.pattern || !value) return true;
           try {
-            // HTML pattern is always a full-string match; test independently of customValidity.
-            return new RegExp(`^(?:${input.pattern})$`).test(value);
+            // Prefer unicodeSets when available; fall back if the pattern is invalid under /v.
+            try {
+              return new RegExp(`^(?:${input.pattern})$`, 'v').test(value);
+            } catch (_) {
+              return new RegExp(`^(?:${input.pattern})$`).test(value);
+            }
           } catch (_) {
             return true;
           }
         };
-        const refresh = () => {
+        const refresh = ({ showEmptyRequired = userTouched } = {}) => {
           let firstError = '';
           for (const input of inputs) {
             const allowEmpty = allowEmptyIds.includes(input.id) || (!requiredIds.includes(input.id) && !input.required);
             // Clear first so a previous custom error cannot poison pattern re-checks.
             input.setCustomValidity('');
-            const err = validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty });
+            const raw = String(input.value || '');
+            const trimmed = raw.trim();
+            const err = validateSafePlainText(raw, labels[input.id] || input.id, { allowEmpty });
             if (err) {
+              // Do not flash "City is required" before branch settings finish loading.
+              if (!showEmptyRequired && !trimmed && /is required\.?$/i.test(err)) {
+                continue;
+              }
               firstError = err;
               input.setCustomValidity(err);
-            } else if (input.pattern && input.value.trim() && !matchesHtmlPattern(input)) {
+            } else if (input.pattern && trimmed && !matchesHtmlPattern(input)) {
               firstError = `${labels[input.id] || 'Field'} format is invalid.`;
               input.setCustomValidity(firstError);
             }
           }
-          const allOk = !firstError && inputs.every(input => {
+          const allOk = inputs.every(input => {
             const allowEmpty = allowEmptyIds.includes(input.id) || (!requiredIds.includes(input.id) && !input.required);
             if (!allowEmpty && !String(input.value || '').trim()) return false;
             return !validateSafePlainText(input.value, labels[input.id] || input.id, { allowEmpty }) && matchesHtmlPattern(input);
@@ -21307,10 +21322,10 @@ async function fetchMultiLiveDetections() {
           }
         };
         inputs.forEach(input => {
-          input.addEventListener('input', refresh);
-          input.addEventListener('blur', refresh);
+          input.addEventListener('input', () => { userTouched = true; refresh(); });
+          input.addEventListener('blur', () => { userTouched = true; refresh(); });
         });
-        refresh();
+        refresh({ showEmptyRequired: false });
         return refresh;
       }
 
