@@ -1041,22 +1041,22 @@ def create_user():
         if salary_raw is None or str(salary_raw).strip() == '':
             salary = 0.0 if not payroll_required else None
         else:
-            salary = db.parse_salary_amount(salary_raw)
+            salary = db.parse_salary_amount(
+                salary_raw, default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True
+            )
     except ValueError as salary_err:
         return jsonify({'error': str(salary_err), 'field': 'salary'}), 400
-    if payroll_required and (salary is None or salary <= 0):
-        return jsonify({'error': 'Basic salary must be greater than 0.', 'field': 'salary'}), 400
+    if payroll_required and (salary is None or salary < db.BASIC_SALARY_MIN):
+        return jsonify({'error': f'Basic salary must be at least {db.BASIC_SALARY_MIN:.2f}.', 'field': 'salary'}), 400
     if salary is None:
         salary = 0.0
-    if salary > 50_000_000:
-        return jsonify({'error': 'Basic salary cannot exceed 50,000,000.', 'field': 'salary'}), 400
     join_date = str(data.get('join_date') or '').strip()
     if not join_date:
         return jsonify({'error': 'Joining date is required for employee enrollment.', 'field': 'join_date'}), 400
     try:
-        datetime.strptime(join_date, '%Y-%m-%d')
-    except ValueError:
-        return jsonify({'error': 'Joining date must use YYYY-MM-DD format.', 'field': 'join_date'}), 400
+        join_date = db.validate_calendar_date(join_date, 'Joining date')
+    except ValueError as ve:
+        return jsonify({'error': str(ve), 'field': 'join_date'}), 400
     notes = data.get('notes', '')
     shift_id = int(data.get('shift_id', 1) or 1)
     
@@ -4760,13 +4760,12 @@ def api_add_staff():
     current_tenant = get_current_tenant_id()
     current_branch = get_current_branch_id()
     try:
-        salary = db.parse_salary_amount(data.get('salary', 0))
+        salary = db.parse_salary_amount(
+            data.get('salary', 0), default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True
+        )
+        join_date = db.validate_calendar_date(data.get('join_date', ''), 'Joining date', required=False) or ''
     except ValueError as salary_err:
         return jsonify({'success': False, 'message': str(salary_err)}), 400
-    if salary <= 0:
-        return jsonify({'success': False, 'message': 'Basic salary must be greater than 0.'}), 400
-    if salary > 50_000_000:
-        return jsonify({'success': False, 'message': 'Basic salary cannot exceed 50,000,000.'}), 400
     try:
         uid = db.add_user(
             name=data.get('name', ''),
@@ -4778,7 +4777,7 @@ def api_add_staff():
             cnic=data.get('cnic', ''),
             position=data.get('position', ''),
             salary=salary,
-            join_date=data.get('join_date', ''),
+            join_date=join_date,
             shift_id=shift_id,
             checkin_cameras=data.get('checkin_cameras', 'all') or 'all',
             checkout_cameras=data.get('checkout_cameras', 'all') or 'all',
@@ -4826,25 +4825,26 @@ def api_update_user(user_id):
 
     salary_val = data.get('salary')
     try:
-        salary = db.parse_salary_amount(salary_val, default=None) if salary_val is not None and str(salary_val).strip() != '' else None
+        salary = (
+            db.parse_salary_amount(salary_val, default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True)
+            if salary_val is not None and str(salary_val).strip() != '' else None
+        )
     except ValueError as salary_err:
         return jsonify({'error': str(salary_err)}), 400
 
     join_date = data.get('join_date')
     if join_date is not None and str(join_date).strip():
-        join_str = str(join_date).strip()[:10]
         try:
-            datetime.strptime(join_str, '%Y-%m-%d')
-        except ValueError:
-            return jsonify({'error': 'Joining date must be a valid calendar date (YYYY-MM-DD)', 'field': 'join_date'}), 400
+            join_date = db.validate_calendar_date(join_date, 'Joining date')
+        except ValueError as ve:
+            return jsonify({'error': str(ve), 'field': 'join_date'}), 400
 
     exit_date = data.get('exit_date')
     if exit_date is not None and str(exit_date).strip():
-        exit_str = str(exit_date).strip()[:10]
         try:
-            datetime.strptime(exit_str, '%Y-%m-%d')
-        except ValueError:
-            return jsonify({'error': 'Exit date must be a valid calendar date (YYYY-MM-DD)', 'field': 'exit_date'}), 400
+            exit_date = db.validate_calendar_date(exit_date, 'Exit date')
+        except ValueError as ve:
+            return jsonify({'error': str(ve), 'field': 'exit_date'}), 400
 
     checkin_cameras = data.get('checkin_cameras')
     checkout_cameras = data.get('checkout_cameras')
@@ -4860,12 +4860,12 @@ def api_update_user(user_id):
         position=data.get('position'),
         cnic=data.get('cnic'),
         salary=salary,
-        join_date=data.get('join_date'),
+        join_date=join_date,
         shift_id=shift_id,
         checkin_cameras=checkin_cameras,
         checkout_cameras=checkout_cameras,
         shift_effective_from=data.get('shift_effective_from'),
-        exit_date=data.get('exit_date'),
+        exit_date=exit_date,
         confirm_shift_reclassify=bool(data.get('confirm_shift_reclassify')),
         )
     except ValueError as exc:
@@ -6182,10 +6182,12 @@ def api_add_holiday():
     if not name or not hdate:
         return jsonify({'success': False, 'message': 'name and holiday_date are required'}), 400
     try:
+        hdate = db.validate_calendar_date(hdate, 'Holiday date')
+        edate = db.validate_calendar_date(edate, 'Holiday end date')
         holiday_start = datetime.strptime(hdate, '%Y-%m-%d')
         holiday_end = datetime.strptime(edate, '%Y-%m-%d')
-    except ValueError:
-        return jsonify({'success': False, 'message': 'Holiday dates must use YYYY-MM-DD format.'}), 400
+    except ValueError as ve:
+        return jsonify({'success': False, 'message': str(ve)}), 400
     if holiday_end < holiday_start:
         return jsonify({'success': False, 'message': 'Holiday end date cannot be earlier than its start date.'}), 400
     current_tenant = get_current_tenant_id()
@@ -6224,10 +6226,12 @@ def api_update_holiday(holiday_id):
     if not name or not hdate:
         return jsonify({'success': False, 'message': 'name and holiday_date are required'}), 400
     try:
+        hdate = db.validate_calendar_date(hdate, 'Holiday date')
+        edate = db.validate_calendar_date(edate, 'Holiday end date')
         holiday_start = datetime.strptime(hdate, '%Y-%m-%d')
         holiday_end = datetime.strptime(edate, '%Y-%m-%d')
-    except ValueError:
-        return jsonify({'success': False, 'message': 'Holiday dates must use YYYY-MM-DD format.'}), 400
+    except ValueError as ve:
+        return jsonify({'success': False, 'message': str(ve)}), 400
     if holiday_end < holiday_start:
         return jsonify({'success': False, 'message': 'Holiday end date cannot be earlier than its start date.'}), 400
     current_tenant = get_current_tenant_id()
@@ -6623,10 +6627,37 @@ def api_set_salary(user_id=None):
         if not u_target:
             return jsonify({'success': False, 'message': f'Employee #{uid} not found or access denied'}), 404
 
-        if basic_salary < 0 or allowances < 0 or deductions < 0 or ot_rate < 0:
-            return jsonify({'success': False, 'message': 'Salary, allowances, deductions, and OT rate must be non-negative'}), 400
-        if basic_salary > db.SALARY_MAX or allowances > db.SALARY_MAX or deductions > db.SALARY_MAX:
-            return jsonify({'success': False, 'message': f'Salary amounts cannot exceed {db.SALARY_MAX:,.0f}'}), 400
+        # QA-97 / QA-73: strict basic floor, 2dp, one max; refuse bad effective_from
+        try:
+            basic_salary = db.parse_salary_amount(
+                data.get('basic_salary', basic_salary),
+                default=None,
+                min_amount=db.BASIC_SALARY_MIN,
+                require_two_decimals=True,
+            )
+            allowances = db.parse_salary_amount(
+                data.get('allowances', allowances),
+                default=0.0,
+                min_amount=0.0,
+                require_two_decimals=True,
+            )
+            deductions = db.parse_salary_amount(
+                data.get('deductions', deductions),
+                default=0.0,
+                min_amount=0.0,
+                require_two_decimals=True,
+            )
+            ot_rate = db.parse_salary_amount(
+                data.get('ot_rate', ot_rate),
+                default=0.0,
+                min_amount=0.0,
+                require_two_decimals=True,
+            )
+            effective_from = data.get('effective_from')
+            if effective_from is not None and str(effective_from).strip():
+                effective_from = db.validate_calendar_date(effective_from, 'Effective from')
+        except ValueError as ve:
+            return jsonify({'success': False, 'message': str(ve)}), 400
 
         ok = db.set_salary_config(
             user_id=uid,
@@ -6634,7 +6665,7 @@ def api_set_salary(user_id=None):
             allowances=allowances,
             deductions=deductions,
             ot_rate=ot_rate,
-            effective_from=data.get('effective_from'),
+            effective_from=effective_from,
         )
         if ok:
             updated_cfg = db.get_salary_config(uid)

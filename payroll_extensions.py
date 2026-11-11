@@ -824,13 +824,29 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
             pay_lines = json.loads(pay_lines)
         except (TypeError, ValueError):
             pay_lines = []
-    named_earn = any(
-        str(item.get("kind") or "") == "earning" and float(item.get("amount") or 0)
-        for item in (pay_lines or [])
-    )
     named_bonus = any(str(item.get("category") or "") == "bonus" for item in (pay_lines or []))
-    if not named_earn:
-        add("Allowances", emp.get("allowances"))
+    named_earn_total = 0.0
+    for item in pay_lines or []:
+        amount = float(item.get("amount") or 0)
+        if not amount:
+            continue
+        kind = str(item.get("kind") or item.get("category") or "")
+        name = str(item.get("name") or item.get("type") or "Pay item")
+        if kind == "earning" and str(item.get("category") or "") != "bonus" and name.lower() not in ("basic", "basic pay"):
+            named_earn_total += amount
+        elif kind in ("allowance",) and name.lower() not in ("basic", "basic pay"):
+            named_earn_total += amount
+
+    # QA-100: package lump allowances ADD to named earning lines and must appear
+    # on the payslip. emp.allowances may already be lump+named, so prefer the
+    # explicit package_allowances field when present.
+    if emp.get("package_allowances") is not None:
+        pkg_lump = float(emp.get("package_allowances") or 0)
+    else:
+        pkg_lump = max(0.0, float(emp.get("allowances") or 0) - named_earn_total)
+    if pkg_lump > 0.005:
+        add("Monthly Allowance", pkg_lump, 1, True)
+
     ot_hours = float(emp.get("overtime_hours") or 0)
     ot_amount = float(emp.get("overtime_amount") or 0)
     if ot_amount:
@@ -860,7 +876,6 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
     add("Arrears", emp.get("arrears_amount"))
     if float(emp.get("off_day_extra_pay") or 0):
         add("Rest-day extra", emp.get("off_day_extra_pay"))
-    has_named_allowance = False
     for item in pay_lines or []:
         amount = float(item.get("amount") or 0)
         if not amount:
@@ -870,13 +885,7 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
         if kind in ("deduction", "tax", "loan", "advance", "provident", "insurance"):
             add(name, amount, 1, True)
         elif kind in ("earning", "allowance", "bonus") and name.lower() not in ("basic", "basic pay"):
-            has_named_allowance = True
             add(name, amount, 1, True)
-
-    # QA-54: When salary package has monthly allowance and no custom named allowance line overrides it, show it
-    pkg_allowance = float(emp.get("allowances") or 0)
-    if pkg_allowance > 0 and not has_named_allowance:
-        add("Monthly Allowance", pkg_allowance, 1, True)
 
     absence_cut = float(deductions.get("absence") or emp.get("attendance_deduction") or 0)
     if absence_cut > 0:

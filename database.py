@@ -73,26 +73,60 @@ sqlite3.connect = _safe_sqlite3_connect
 
 
 SALARY_MIN = 0.0
-SALARY_MAX = 100_000_000.0
+# Single published ceiling used by enroll, salary package, and API messages (QA-97).
+SALARY_MAX = 50_000_000.0
+BASIC_SALARY_MIN = 0.01
 
 
-def parse_salary_amount(value: Any, default: Optional[float] = 0.0) -> float:
+def parse_salary_amount(value: Any, default: Optional[float] = 0.0, *, min_amount: Optional[float] = None, require_two_decimals: bool = False) -> float:
     """Reject negative or absurd salary amounts before they are stored."""
     if value is None or (isinstance(value, str) and str(value).strip() == ''):
         if default is None:
             raise ValueError('Salary is required')
         value = default
+    raw = str(value).strip() if not isinstance(value, (int, float)) else value
+    if isinstance(raw, str) and re.search(r'[eE]', raw):
+        raise ValueError('Salary must be a plain number with at most 2 decimal places')
+    if require_two_decimals and isinstance(raw, str):
+        if not re.fullmatch(r'\d+(\.\d{1,2})?', raw):
+            raise ValueError('Salary must use at most 2 decimal places')
     try:
-        amount = float(value)
+        amount = float(raw)
     except (TypeError, ValueError):
         raise ValueError('Salary must be a valid number') from None
-    if amount < SALARY_MIN:
+    floor = SALARY_MIN if min_amount is None else float(min_amount)
+    if amount < floor:
+        if floor > 0:
+            raise ValueError(f'Salary must be at least {floor:.2f}')
         raise ValueError('Salary cannot be negative')
     if amount > SALARY_MAX:
         raise ValueError('Salary cannot exceed {:,.0f}'.format(SALARY_MAX))
     if amount != amount:  # NaN
         raise ValueError('Salary must be a valid number')
-    return amount
+    if require_two_decimals and round(amount, 2) != amount:
+        raise ValueError('Salary must use at most 2 decimal places')
+    return round(amount, 2) if require_two_decimals else amount
+
+
+def validate_calendar_date(value: Any, field_label: str = 'Date', *, required: bool = True) -> Optional[str]:
+    """QA-73: refuse impossible calendar dates (e.g. 2026-11-31) instead of saving silently."""
+    raw = str(value or '').strip()
+    if not raw:
+        if required:
+            raise ValueError(f'{field_label} is required')
+        return None
+    candidate = raw[:10]
+    try:
+        parsed = datetime.strptime(candidate, '%Y-%m-%d')
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f'{field_label} is not a valid calendar date. Use YYYY-MM-DD (for example 2026-11-30 — 31 Nov does not exist).'
+        ) from exc
+    if parsed.strftime('%Y-%m-%d') != candidate:
+        raise ValueError(
+            f'{field_label} is not a valid calendar date. Use YYYY-MM-DD (for example 2026-11-30 — 31 Nov does not exist).'
+        )
+    return candidate
 
 
 def _user_tenant(cursor, user_id: int) -> Tuple[str, str]:
@@ -9561,7 +9595,7 @@ def update_overtime_status(
     branch_id: Optional[str] = None,
     rejection_reason: Optional[str] = None,
 ) -> bool:
-    """Update an overtime record status (pending -> approved/rejected, or approved -> rejected) while recording audit history."""
+    """Update overtime status. QA-98: only pending records may be approved or rejected."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
@@ -9590,13 +9624,8 @@ def update_overtime_status(
 
             raise_if_payroll_month_locked(str(ot_date_val)[:10], org_val, branch_val)
 
-            if norm_new_status == 'rejected':
-                if cur_status not in ('pending', 'approved'):
-                    return False
-            elif norm_new_status == 'approved':
-                if cur_status != 'pending':
-                    return False
-            else:
+            # QA-98: approved/rejected decisions are final from the approve/reject controls.
+            if cur_status != 'pending' or norm_new_status not in ('approved', 'rejected'):
                 return False
 
             now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -9606,8 +9635,6 @@ def update_overtime_status(
             new_audit = f"{existing_audit}\n{audit_entry}".strip() if existing_audit else audit_entry
 
             final_rej_reason = rejection_reason if rejection_reason is not None else existing_rej_reason
-            if norm_new_status == 'rejected' and not final_rej_reason and cur_status == 'approved':
-                final_rej_reason = f"Rejected post-approval by {approved_by}"
 
             rej_by = approved_by if norm_new_status == 'rejected' else None
             rej_at = now_str if norm_new_status == 'rejected' else None
@@ -9622,7 +9649,7 @@ def update_overtime_status(
             ]
             params: List[Any] = [norm_new_status, approved_by, final_rej_reason, rej_by, rej_at, new_audit]
 
-            where_statuses = "('pending', 'approved')" if norm_new_status == 'rejected' else "('pending')"
+            where_statuses = "('pending')"
             query = f"""UPDATE overtime SET {', '.join(set_clauses)}
                        WHERE id = ? AND LOWER(COALESCE(status, 'pending')) IN {where_statuses}"""
             params.append(ot_id)
@@ -9920,14 +9947,13 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
             return False
         raise_if_payroll_month_locked(str(effective_from or date.today().isoformat())[:10], owner[1], owner[2])
         settings = get_payroll_settings(organization_id=owner[1], branch_id=owner[2])
-        b_sal = float(basic_salary or 0.0)
-        if b_sal <= 0:
-            raise ValueError("Basic salary must be greater than 0")
-        if b_sal > 50_000_000:
-            raise ValueError("Basic salary cannot exceed 50,000,000")
-        allow = max(0.0, float(allowances or 0.0))
-        deduct = max(0.0, float(deductions or 0.0))
-        ot = max(0.0, float(ot_rate or 0.0))
+        # QA-97: basic floor 0.01, max 2 decimals, one clear SALARY_MAX ceiling
+        b_sal = parse_salary_amount(basic_salary, default=None, min_amount=BASIC_SALARY_MIN, require_two_decimals=True)
+        allow = parse_salary_amount(allowances, default=0.0, min_amount=0.0, require_two_decimals=True)
+        deduct = parse_salary_amount(deductions, default=0.0, min_amount=0.0, require_two_decimals=True)
+        ot = parse_salary_amount(ot_rate, default=0.0, min_amount=0.0, require_two_decimals=True)
+        if effective_from is not None and str(effective_from).strip():
+            effective_from = validate_calendar_date(effective_from, 'Effective from')
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -12659,6 +12685,18 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
 
         eligible_start = max(month_start, employed_from)
         eligible_end = min(period_end, exited_on) if exited_on else period_end
+        # QA-72: still include people who join later this month; mark and do not
+        # charge absences for days before they start (or for future days not yet worked).
+        not_yet_started = employed_from > period_end
+        join_marker = ''
+        raw_join = str(employee.get('join_date') or '').strip()[:10]
+        if raw_join:
+            try:
+                join_dt = datetime.strptime(raw_join, "%Y-%m-%d").date()
+                if month_start <= join_dt <= month_end:
+                    join_marker = f"Joins {join_dt.strftime('%d %b')}"
+            except (TypeError, ValueError):
+                join_marker = ''
 
         if (exited_on and exited_on < employed_from) or eligible_start > month_end or (exited_on and exited_on < month_start):
             continue
@@ -12783,6 +12821,17 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             f"{hl_cnt_int} half-{d_pl} counted as {eq_str} {eq_pl}"
             if half_leave_count > 0 else ""
         )
+        # QA-72: never treat pre-join / not-yet-started days as absences.
+        if not_yet_started or eligible_start > period_end:
+            present_days = 0.0
+            late_days = 0.0
+            approved_leave_days = 0.0
+            approved_leave_days_period = 0.0
+            unpaid_leave_days = 0.0
+            unexcused_absent_days = 0.0
+            half_leave_count = 0
+            half_leave_absent_note = ""
+            scheduled_workdays = 0
         absent_days = unexcused_absent_days + unpaid_leave_days
         payable_days = min(float(scheduled_workdays), round(present_days + late_days + approved_leave_days_period, 2))
         
@@ -12951,15 +13000,17 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         off_days_worked = attendance_off_days_worked
         bonus_amount = _m(bonus_amounts.get(int(employee_id), 0.0)) if _payroll_flag_on(payroll_settings, 'enable_bonuses') else 0.0
 
+        package_allowances = lump_allowances
         allowances = lump_allowances
         custom_deductions = lump_deductions
         pay_lines: List[Dict[str, Any]] = []
+        named_earn_total = 0.0
         if _payroll_flag_on(payroll_settings, 'enable_named_components') or len(extra_maps.get('assignments', [])) > 0:
             named_earn, named_deduct, named_lines = _named_component_totals(
                 extra_maps['assignments'],
                 extra_maps['types'],
                 basic_salary,
-                eligible_end,
+                eligible_end if not not_yet_started else schedule_end,
                 payroll_settings,
                 decimal_places,
                 employee=employee,
@@ -13040,6 +13091,16 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             half_leave_deduction = 0.0
             unpaid_leave_deduction = 0.0
             attendance_shortfall = 0.0
+        elif not_yet_started:
+            # QA-72: pay from join→month-end via proration; no absence/shortfall before start.
+            absence_rule_deduction = 0.0
+            half_leave_deduction = 0.0
+            unpaid_leave_deduction = 0.0
+            attendance_shortfall = 0.0
+            matched_rule = None
+            deduction_percent = None
+            rule_missing = False
+            issues_remarks = join_marker or 'Joins later this month'
         elif attendance_mode == 'payable_days':
             earn_divisor = float(month_scheduled_workdays or 0)
             earn_factor = (float(payable_days) / earn_divisor) if earn_divisor else 0.0
@@ -13051,6 +13112,10 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             deduction_percent = None
             rule_missing = False
             issues_remarks = 'Rule not applied (pay method: payable days)'
+        if join_marker and issues_remarks and join_marker not in issues_remarks:
+            issues_remarks = f"{join_marker}; {issues_remarks}"
+        elif join_marker and not issues_remarks:
+            issues_remarks = join_marker
         attendance_deduction = round(absence_rule_deduction + unpaid_leave_deduction + half_leave_deduction + attendance_shortfall, 2)
         total_emp_deductions = round(attendance_deduction + custom_deductions, 2)
         deduction_amount = total_emp_deductions
@@ -13148,6 +13213,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'department': employee['department'],
             'designation': employee['designation'] or 'Staff Member',
             'exit_date': employee.get('exit_date'),
+            'join_date': raw_join or None,
+            'join_marker': join_marker,
+            'not_yet_started': 1 if not_yet_started else 0,
             'has_joining_date': has_joining_date,
             'basic_salary': basic_salary,
             'is_prorated': 1 if is_prorated else 0,
@@ -13158,6 +13226,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'days_paid': days_paid,
             'missed_day_details': missed_day_details,
             'half_leave_absent_note': half_leave_absent_note,
+            'package_allowances': package_allowances,
+            'named_earnings_total': named_earn_total,
             'allowances': allowances,
             'custom_deductions': custom_deductions,
             'overtime_hours': ot_hours,

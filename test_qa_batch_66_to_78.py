@@ -80,16 +80,13 @@ class QABatch66To78Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             db.set_salary_config(user_id, basic_salary=-1000)
 
-    # QA-72: Future join date excluded from payroll month
-    def test_qa_72_future_join_date_excluded(self):
-        users = [
-            {'id': 101, 'name': 'Oct Hire', 'join_date': '2026-10-01', 'active': 1},
-            {'id': 102, 'name': 'Nov Hire', 'join_date': '2026-11-01', 'active': 1},
-        ]
-        month_end = '2026-10-31'
-        eligible = [u for u in users if not u.get('join_date') or u['join_date'] <= month_end]
-        self.assertEqual(len(eligible), 1)
-        self.assertEqual(eligible[0]['id'], 101)
+    # QA-72 (updated): future joiners remain in the month, marked, no pre-join absences
+    def test_qa_72_future_join_date_included_with_marker_contract(self):
+        with open('database.py', 'r', encoding='utf-8') as f:
+            code = f.read()
+        self.assertIn('join_marker', code)
+        self.assertIn('not_yet_started', code)
+        self.assertIn('QA-72', code)
 
     # QA-73: Date validation in index.html
     def test_qa_73_date_validation_in_templates(self):

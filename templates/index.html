@@ -11838,7 +11838,7 @@ async function fetchMultiLiveDetections() {
             <div class="col-md-6">
               <label class="form-label" style="font-weight: 700; color: #334155; font-size: 0.85em;">Basic Salary (PKR) *</label>
               <div style="position: relative;">
-                <input type="number" id="modalSalaryBasic" class="form-control" placeholder="0.00" min="0" step="0.01" required oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #0f172a;" />
+                <input type="number" id="modalSalaryBasic" class="form-control" placeholder="0.00" min="0.01" max="50000000" step="0.01" required oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #0f172a;" />
                 <span style="position: absolute; right: 12px; top: 8px; font-size: 0.75em; color: #94a3b8; font-weight: 700;">PKR</span>
               </div>
               <small style="font-size: 0.75em; color: #64748b;">Synchronized with employee payroll base.</small>
@@ -12713,6 +12713,9 @@ async function fetchMultiLiveDetections() {
             const exitBadgeHtml = row.exit_date
               ? `<span class="badge" style="background:rgba(245,158,11,0.15); color:#d97706; border:1px solid rgba(245,158,11,0.3); font-size:0.72em; margin-left:6px;"><i class="fa-solid fa-door-open"></i> Leaving ${payrollEscape(row.exit_date)}</span>`
               : '';
+            const joinBadgeHtml = (row.join_marker || (row.not_yet_started && row.join_date))
+              ? `<span class="badge" style="background:rgba(139,123,247,0.15); color:#5847c8; border:1px solid rgba(139,123,247,0.35); font-size:0.72em; margin-left:6px;"><i class="fa-solid fa-user-plus"></i> ${payrollEscape(row.join_marker || ('Joins ' + row.join_date))}</span>`
+              : '';
 
             const deductParts = [];
             if (Number(row.absence_deduction || 0) > 0) deductParts.push(`Absent (${Number(row.absent_days || 0)}d): -${payrollMoney(row.absence_deduction)}`);
@@ -12728,7 +12731,7 @@ async function fetchMultiLiveDetections() {
                 <td class="fw-semibold">
                   <div style="color:#173042; font-weight:700;">
                     ${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
-                    ${exitBadgeHtml}
+                    ${joinBadgeHtml}${exitBadgeHtml}
                   </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
                 </td>
@@ -12751,7 +12754,7 @@ async function fetchMultiLiveDetections() {
                 <td class="fw-semibold">
                   <div style="color:#173042; font-weight:700;">
                     ${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
-                    ${exitBadgeHtml}
+                    ${joinBadgeHtml}${exitBadgeHtml}
                   </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
                 </td>
@@ -12774,7 +12777,7 @@ async function fetchMultiLiveDetections() {
                 <td class="fw-semibold">
                   <div style="color:#173042; font-weight:700;">
                     ${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
-                    ${exitBadgeHtml}
+                    ${joinBadgeHtml}${exitBadgeHtml}
                   </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
                 </td>
@@ -12789,7 +12792,7 @@ async function fetchMultiLiveDetections() {
             } else {
               return `<tr>
                 <td class="fw-semibold">#${payrollEscape(row.employee_id)}</td>
-                <td class="fw-semibold">${payrollEscape(row.employee_name)}</td>
+                <td class="fw-semibold">${payrollEscape(row.employee_name)}${joinBadgeHtml}${exitBadgeHtml}</td>
                 <td>${payrollEscape(row.department || 'Unassigned')}</td>
                 <td>${payrollEscape(row.designation || 'Staff Member')}</td>
                 <td class="text-end">${payrollMoney(row.basic_salary)}${row.is_prorated && row.proration_explanation ? `<div style="font-size:0.72em; color:#64748b;" title="${payrollEscape(row.proration_explanation)}">${payrollEscape(row.proration_explanation)}</div>` : ''}</td>
@@ -13749,7 +13752,11 @@ async function fetchMultiLiveDetections() {
             if (dept) dept.value = "";
             if (pos) { pos.innerHTML = '<option value="">Select department first</option>'; }
             syncEnrollSubmitEnabled();
-            if (typeof loadStaffDirectory === 'function') loadStaffDirectory();
+            if (typeof window.refreshSharedPeopleLists === 'function') {
+              window.refreshSharedPeopleLists();
+            } else if (typeof loadStaffDirectory === 'function') {
+              loadStaffDirectory();
+            }
           } else {
             showMessage("enrollmentMessage", data.error || 'Failed to register staff.', "error");
             showAppToast(data.error || 'Failed to register staff.', 'error');
@@ -15088,8 +15095,12 @@ async function fetchMultiLiveDetections() {
           if (resp.ok) {
             closeEditModal();
             addTerminalLine(`[CRUD] Updated details for User '${name}' (ID: ${userId})`, "success");
-            loadStaffDirectory();
-            if (typeof loadTabStaffDirectory === 'function') loadTabStaffDirectory();
+            if (typeof window.refreshSharedPeopleLists === 'function') {
+              window.refreshSharedPeopleLists();
+            } else {
+              loadStaffDirectory();
+              if (typeof loadTabStaffDirectory === 'function') loadTabStaffDirectory();
+            }
             loadStats();
             showAppToast(data.message || `Staff profile '${name}' updated successfully`, 'success');
           } else {
@@ -15118,7 +15129,8 @@ async function fetchMultiLiveDetections() {
           const data = await resp.json();
           if (resp.ok) {
             showAppToast(`Deactivated '${name}' from ${exitDate}`, 'success');
-            loadStaffDirectory();
+            if (typeof window.refreshSharedPeopleLists === 'function') window.refreshSharedPeopleLists();
+            else loadStaffDirectory();
             loadStats();
             return;
           }
@@ -15136,7 +15148,8 @@ async function fetchMultiLiveDetections() {
           const data = await resp.json();
           if (resp.ok) {
             addTerminalLine(`[CRUD] Successfully deleted User '${name}' (ID: ${userId}) and cleared all training embeddings.`, "success");
-            loadStaffDirectory();
+            if (typeof window.refreshSharedPeopleLists === 'function') window.refreshSharedPeopleLists();
+            else loadStaffDirectory();
             loadStats();
             loadAttendanceLogs();
             showAppToast(`Profile for '${name}' permanently deleted`, 'success');
@@ -21521,21 +21534,62 @@ async function fetchMultiLiveDetections() {
         if (input) input.value = suggested;
       }
 
+      function isRealCalendarDateValue(iso) {
+        if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(String(iso).trim())) return false;
+        const [y, m, d] = String(iso).trim().split('-').map(Number);
+        const dt = new Date(y, m - 1, d);
+        return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+      }
+      window.isRealCalendarDateValue = isRealCalendarDateValue;
+
+      function parseMoney2dpOrError(raw, label, { min = 0, max = 50000000, requireMinPositive = false } = {}) {
+        const text = String(raw ?? '').trim();
+        if (!text) return { error: `${label} is required.` };
+        if (/[eE]/.test(text) || !/^\d+(\.\d{1,2})?$/.test(text)) {
+          return { error: `${label} must be a number with at most 2 decimal places (for example 35000 or 35000.50).` };
+        }
+        const num = Number(text);
+        if (!Number.isFinite(num)) return { error: `${label} must be a valid number.` };
+        const floor = requireMinPositive ? Math.max(min, 0.01) : min;
+        if (num < floor) {
+          return { error: requireMinPositive || floor > 0
+            ? `${label} must be at least ${floor.toFixed(2)}.`
+            : `${label} cannot be negative.` };
+        }
+        if (num > max) {
+          return { error: `${label} cannot exceed ${max.toLocaleString('en-US')}.` };
+        }
+        return { value: Math.round(num * 100) / 100 };
+      }
+      window.parseMoney2dpOrError = parseMoney2dpOrError;
+
       async function saveSalaryConfig() {
         const uid = document.getElementById('modalSalaryUserId')?.value;
         const msgEl = document.getElementById('modalSalaryMsg');
         const btn = document.getElementById('saveSalaryBtn');
         if (!uid) return;
 
-        const basic = parseFloat(document.getElementById('modalSalaryBasic')?.value || 0);
-        const allow = parseFloat(document.getElementById('modalSalaryAllowances')?.value || 0);
-        const deduct = parseFloat(document.getElementById('modalSalaryDeductions')?.value || 0);
-        const otRate = parseFloat(document.getElementById('modalSalaryOtRate')?.value || 0);
-
-        if (isNaN(basic) || basic < 0 || isNaN(allow) || allow < 0 || isNaN(deduct) || deduct < 0 || isNaN(otRate) || otRate < 0) {
-          if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">All salary amounts must be valid non-negative numbers.</div>`;
+        const basicParsed = parseMoney2dpOrError(document.getElementById('modalSalaryBasic')?.value, 'Basic salary', { min: 0.01, requireMinPositive: true });
+        const allowParsed = parseMoney2dpOrError(document.getElementById('modalSalaryAllowances')?.value || '0', 'Allowances', { min: 0 });
+        const deductParsed = parseMoney2dpOrError(document.getElementById('modalSalaryDeductions')?.value || '0', 'Deductions', { min: 0 });
+        const otParsed = parseMoney2dpOrError(document.getElementById('modalSalaryOtRate')?.value || '0', 'OT rate', { min: 0 });
+        const effectiveFrom = (document.getElementById('modalSalaryEffectiveFrom')?.value || '').trim();
+        if (basicParsed.error || allowParsed.error || deductParsed.error || otParsed.error) {
+          if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">${escapeSalaryHtml(basicParsed.error || allowParsed.error || deductParsed.error || otParsed.error)}</div>`;
           return;
         }
+        if (!effectiveFrom) {
+          if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">Effective from date is required. Enter a real calendar date.</div>`;
+          return;
+        }
+        if (!isRealCalendarDateValue(effectiveFrom)) {
+          if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">Effective from is not a valid calendar date (for example 31 Nov does not exist). Nothing was saved.</div>`;
+          return;
+        }
+        const basic = basicParsed.value;
+        const allow = allowParsed.value;
+        const deduct = deductParsed.value;
+        const otRate = otParsed.value;
 
         const originalBtnText = btn ? btn.innerHTML : '';
         if (btn) {
@@ -21553,7 +21607,7 @@ async function fetchMultiLiveDetections() {
               allowances: allow,
               deductions: deduct,
               ot_rate: otRate,
-              effective_from: document.getElementById('modalSalaryEffectiveFrom')?.value || null
+              effective_from: effectiveFrom
             })
           });
           const result = await resp.json();
@@ -26990,8 +27044,8 @@ async function fetchMultiLiveDetections() {
         const premiumLabel = Number(r.ot_premium_percent || 0) > 0 ? ` (+${Number(r.ot_premium_percent).toFixed(2).replace(/\.00$/, '')}%)` : '';
         const st = (r.status||'pending').toLowerCase();
         const isPending = st === 'pending';
-        const isApproved = st === 'approved';
-        const canAct = isPending || isApproved;
+        // QA-98: once approved/rejected, hide Approve/Reject — decision is final in this view
+        const canAct = isPending;
         let statusBadge;
         if (st === 'approved') statusBadge = '<span class="badge bg-success-subtle text-success"><i class="fa-solid fa-check"></i> Approved</span>';
         else if (st === 'rejected') statusBadge = '<span class="badge bg-danger-subtle text-danger"><i class="fa-solid fa-xmark"></i> Rejected</span>';
@@ -27010,9 +27064,7 @@ async function fetchMultiLiveDetections() {
               <button class="btn btn-sm btn-outline-success me-1" onclick="otDetailApproveSingle(${r.id})" title="Approve overtime record"><i class="fa-solid fa-check"></i></button>
               <button class="btn btn-sm btn-outline-danger me-1" onclick="otDetailRejectSingle(${r.id})" title="Reject overtime record"><i class="fa-solid fa-xmark"></i></button>
               <button class="btn btn-sm btn-outline-secondary" onclick="deleteOvertimeRecord(${r.id})" title="Delete overtime record" aria-label="Delete overtime record"><i class="fa-solid fa-trash"></i></button>
-            ` : (isApproved ? `
-              <button class="btn btn-sm btn-outline-danger me-1" onclick="otDetailRejectSingle(${r.id})" title="Reject approved overtime record"><i class="fa-solid fa-xmark"></i> Reject</button>
-            ` : `<button class="btn btn-sm btn-outline-danger" onclick="deleteOvertimeRecord(${r.id})" title="Delete this overtime record" aria-label="Delete overtime record"><i class="fa-solid fa-trash"></i></button>`)}</td>
+            ` : `<span class="text-muted small">${st === 'approved' ? 'Approved' : (st === 'rejected' ? 'Rejected' : '')}</span>`}</td>
           </tr>`;
       }).join('');
     }
@@ -27046,12 +27098,15 @@ async function fetchMultiLiveDetections() {
     }
 
     async function otDetailRejectSelected() {
-      const ids = otDetailGetSelectedPendingIds();
-      if (!ids.length) { showAppToast('Select at least one record to reject.', 'warning'); return; }
+      // QA-98: only pending records can be rejected from this screen
+      const ids = [...document.querySelectorAll('.otDetailCheck:checked:not([disabled])')]
+        .filter(cb => (cb.dataset.status || '').toLowerCase() === 'pending')
+        .map(cb => parseInt(cb.dataset.id));
+      if (!ids.length) { showAppToast('Select at least one pending record to reject.', 'warning'); return; }
       const inputReason = prompt('Optional rejection reason (leave blank if none):');
       if (inputReason === null) return;
       const rejectionReason = inputReason.trim() || undefined;
-      if (!await appConfirm(`Reject ${ids.length} selected OT record(s)?\n\nAny approved overtime among them will be excluded from payroll.`)) return;
+      if (!await appConfirm(`Reject ${ids.length} selected pending OT record(s)?`)) return;
       try {
         const payload = { ids, status: 'rejected', approved_by: getActingAdminDisplayName() };
         if (rejectionReason) payload.rejection_reason = rejectionReason;
@@ -27105,14 +27160,16 @@ async function fetchMultiLiveDetections() {
 
     async function otDetailRejectSingle(id) {
       const rec = _otDetailRecords.find(item => Number(item.id) === Number(id));
-      const isApprovedRec = (rec?.status || '').toLowerCase() === 'approved';
+      const st = (rec?.status || '').toLowerCase();
+      // QA-98: approved OT cannot be rejected from the same Approve/Reject controls
+      if (st && st !== 'pending') {
+        showAppToast('Only pending overtime can be rejected here.', 'warning');
+        return;
+      }
       const inputReason = prompt('Optional rejection reason (leave blank if none):');
       if (inputReason === null) return;
       const rejectionReason = inputReason.trim() || undefined;
-      const confirmMsg = isApprovedRec
-        ? `Are you sure you want to REJECT this already APPROVED overtime record (#${id})?\n\nIt will be excluded from payable overtime and payroll calculations.`
-        : 'Reject this overtime record?';
-      if (!await appConfirm(confirmMsg)) return;
+      if (!await appConfirm('Reject this overtime record?')) return;
       try {
         const payload = { ids: [id], status: 'rejected', approved_by: getActingAdminDisplayName() };
         if (rejectionReason) payload.rejection_reason = rejectionReason;
@@ -27212,9 +27269,32 @@ async function fetchMultiLiveDetections() {
     let _cachedRuleTargets = null;
     window.invalidateStaffAndDepartmentCaches = function() {
         _cachedRuleTargets = null;
+        window._payrollScopeOptions = null;
         window._allOtSalaryConfigs = null;
         window._allLeaveUsers = null;
+        window._cachedPayrollCalendarUsers = null;
+        window.cachedPayrollCalendarUsers = null;
     };
+    // QA-99: after staff add/edit/delete, refresh every people list from one shared invalidation.
+    window.refreshSharedPeopleLists = async function() {
+      window.invalidateStaffAndDepartmentCaches?.();
+      const jobs = [];
+      try {
+        if (typeof loadStaffDirectory === 'function') jobs.push(loadStaffDirectory());
+        if (typeof loadTabStaffDirectory === 'function') jobs.push(loadTabStaffDirectory());
+        if (typeof loadSalaryConfigs === 'function') jobs.push(loadSalaryConfigs());
+        if (typeof loadMonthlyPayroll === 'function') jobs.push(loadMonthlyPayroll());
+        if (typeof loadPayrollExceptions === 'function') jobs.push(loadPayrollExceptions());
+        if (typeof fillPayLineScopeOptions === 'function') jobs.push(fillPayLineScopeOptions());
+        if (typeof fetchRuleTargets === 'function') jobs.push(fetchRuleTargets(true));
+        if (typeof updateHalfLeaveRuleScopeOptions === 'function') jobs.push(updateHalfLeaveRuleScopeOptions());
+        if (typeof loadOvertimeRecords === 'function' && document.getElementById('overtime-view')?.classList.contains('active')) {
+          jobs.push(loadOvertimeRecords());
+        }
+      } catch (e) { console.error('refreshSharedPeopleLists error', e); }
+      await Promise.allSettled(jobs);
+    };
+    window.refreshSharedPeopleLists = window.refreshSharedPeopleLists;
     async function fetchRuleTargets(forceRefresh = false) {
         if (!_cachedRuleTargets || forceRefresh) {
             _cachedRuleTargets = { departments: [], employees: [] };
