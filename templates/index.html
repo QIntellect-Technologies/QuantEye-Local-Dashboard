@@ -15235,15 +15235,8 @@ async function fetchMultiLiveDetections() {
         const e = eInput ? eInput.value : '';
 
         currentMainFilterDate = 'custom';
-        document.querySelectorAll('.main-date-preset').forEach(btn => {
-          btn.classList.remove('btn-primary', 'active');
-          btn.classList.add('btn-outline');
-        });
-        const targetBtn = document.getElementById('mBtnCustom');
-        if (targetBtn) {
-          targetBtn.classList.remove('btn-outline');
-          targetBtn.classList.add('btn-primary', 'active');
-        }
+        document.querySelectorAll('#reports-view .rpt-preset').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('mBtnCustom')?.classList.add('active');
 
         const customGroup = document.getElementById('mainCustomRangeGroup');
         if (customGroup) customGroup.style.display = 'flex';
@@ -15259,10 +15252,7 @@ async function fetchMultiLiveDetections() {
 
       function setMainDateFilter(preset) {
         currentMainFilterDate = preset;
-        document.querySelectorAll('.main-date-preset').forEach(btn => {
-          btn.classList.remove('btn-primary', 'active');
-          btn.classList.add('btn-outline');
-        });
+        document.querySelectorAll('#reports-view .rpt-preset').forEach(btn => btn.classList.remove('active'));
         
         const customGroup = document.getElementById('mainCustomRangeGroup');
         if (customGroup) customGroup.style.display = 'none';
@@ -15278,11 +15268,7 @@ async function fetchMultiLiveDetections() {
         };
 
         const targetId = btnMap[preset] || 'mBtnToday';
-        const targetBtn = document.getElementById(targetId);
-        if (targetBtn) {
-          targetBtn.classList.remove('btn-outline');
-          targetBtn.classList.add('btn-primary', 'active');
-        }
+        document.getElementById(targetId)?.classList.add('active');
 
         updateMainStatusFilterVisibility();
 
@@ -24176,7 +24162,8 @@ async function fetchMultiLiveDetections() {
       });
       if (!coalesced.length) return;
       if (!await appConfirm(`Are you sure you want to ${status} ${coalesced.length} leave request(s)?`)) return;
-      const reopenUserId = window._leaveCompleteUserId;
+      const keepUserId = window._leaveCompleteUserId;
+      const modalWasOpen = document.getElementById('leaveCompleteModal')?.style.display === 'flex';
       try {
         const failures = [];
         for (const item of coalesced) {
@@ -24192,11 +24179,11 @@ async function fetchMultiLiveDetections() {
             failures.push(result.message || result.error || `Leave #${item.id}`);
           }
         }
-        closeLeaveCompleteView();
         await loadLeaveRequests();
         await loadLeaveBalances();
-        if (reopenUserId != null && typeof openEmployeeCompleteView === 'function') {
-          openEmployeeCompleteView(reopenUserId);
+        // Refresh complete view in place — do not close then reopen (looks awkward).
+        if (modalWasOpen && keepUserId != null && typeof openEmployeeCompleteView === 'function') {
+          openEmployeeCompleteView(keepUserId);
         }
         if (failures.length) {
           showAppToast(`Some leave request portions could not be updated: ${failures[0]}`, 'error');
@@ -24204,7 +24191,6 @@ async function fetchMultiLiveDetections() {
           showAppToast(`Leave request portions ${status}.`, 'success');
         }
       } catch (e) {
-        closeLeaveCompleteView();
         await loadLeaveRequests();
         showAppToast('Network error updating leave request.', 'error');
       }

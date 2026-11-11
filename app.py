@@ -5960,8 +5960,8 @@ def api_add_leave():
         )
     except ValueError as exc:
         if str(exc) == db.PAYROLL_LOCK_MESSAGE:
-            return jsonify({'error': str(exc), 'reopen': '/api/payroll/reopen'}), 409
-        return jsonify({'error': str(exc)}), 400
+            return jsonify({'error': str(exc), 'message': str(exc), 'reopen': '/api/payroll/reopen'}), 409
+        return jsonify({'success': False, 'error': str(exc), 'message': str(exc)}), 400
     if not lid:
         return jsonify({'success': False, 'message': 'This leave request overlaps an existing active leave or could not be saved. Please review the employee\'s leave dates.'}), 409
     return jsonify({

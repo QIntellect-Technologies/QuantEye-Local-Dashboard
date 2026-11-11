@@ -7008,6 +7008,35 @@ def _find_active_leave_overlap(cursor, user_id: int, start_date: str, end_date: 
     return cursor.fetchone()
 
 
+def _find_attendance_dates_in_range(
+    cursor,
+    user_id: int,
+    start_date: str,
+    end_date: str,
+    limit: int = 5,
+) -> List[str]:
+    """Return dates in [start_date, end_date] where the employee already has attendance."""
+    rows = cursor.execute(
+        """
+        SELECT DISTINCT date(timestamp) AS work_date
+        FROM attendance
+        WHERE user_id = ?
+          AND date(timestamp) >= ?
+          AND date(timestamp) <= ?
+        ORDER BY work_date
+        LIMIT ?
+        """,
+        (user_id, start_date, end_date, max(1, int(limit))),
+    ).fetchall()
+    dates: List[str] = []
+    for row in rows:
+        value = row[0] if not isinstance(row, sqlite3.Row) else row['work_date']
+        day = str(value or '').strip()[:10]
+        if day:
+            dates.append(day)
+    return dates
+
+
 def validate_half_day_leave_times(
     cursor_or_conn,
     user_id: int,
@@ -7177,6 +7206,14 @@ def add_leave_request(
                     f"Cannot add leave request for user {user_id}: dates overlap active request #{conflict['id']}"
                 )
                 return None
+            present_dates = _find_attendance_dates_in_range(cursor, user_id, s_str, e_str)
+            if present_dates:
+                shown = ', '.join(present_dates[:3])
+                extra = f" (+{len(present_dates) - 3} more)" if len(present_dates) > 3 else ''
+                raise ValueError(
+                    f"Leave cannot be requested for {shown}{extra} because this employee "
+                    f"already has attendance (was present) on that day. Choose another date."
+                )
             cursor.execute("SELECT organization_id, branch_id FROM users WHERE id = ?", (user_id,))
             u_row = cursor.fetchone()
             u_org = organization_id or (u_row[0] if u_row else None) or 'DEFAULT_ORG'
@@ -8726,6 +8763,27 @@ def check_leave_quota(
                         'allocated_days': 9999.0,
                         'used_days': 0.0,
                         'leave_type_name': leave_type_code,
+                    }
+                present_dates = _find_attendance_dates_in_range(
+                    cursor, int(user_id), start_date.strip(), end_date.strip()
+                )
+                if present_dates:
+                    shown = ', '.join(present_dates[:3])
+                    extra = f" (+{len(present_dates) - 3} more)" if len(present_dates) > 3 else ''
+                    return {
+                        'allowed': False,
+                        'reason_code': 'already_present',
+                        'message': (
+                            f"Leave cannot be requested for {shown}{extra} because this employee "
+                            f"already has attendance (was present) on that day. Choose another date."
+                        ),
+                        'requested_days': 1 if duration == 'half' else requested_days,
+                        'quota_days_requested': 0,
+                        'remaining_days': 9999.0,
+                        'allocated_days': 9999.0,
+                        'used_days': 0.0,
+                        'leave_type_name': leave_type_code,
+                        'present_dates': present_dates,
                     }
 
             # Find leave type owned by the employee's organization
