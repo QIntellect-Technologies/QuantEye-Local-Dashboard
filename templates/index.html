@@ -15793,7 +15793,8 @@ async function fetchMultiLiveDetections() {
 
         updateMainStatusFilterVisibility();
 
-        let url = `${API_BASE}/reports/attendance?`;
+        // Light path: Present/Absent only for page refresh (no camera/leave/holiday joins).
+        let url = `${API_BASE}/reports/attendance?light=1&`;
         const dept = document.getElementById('mainDeptFilter')?.value || 'all';
         const status = document.getElementById('mainStatusFilter')?.value || 'all';
 
@@ -16699,11 +16700,42 @@ async function fetchMultiLiveDetections() {
       }
 
       // ================= MAIN COMPLETE VIEW MODAL LOGIC =================
-      function openMainCompleteView(userId) {
+      async function openMainCompleteView(userId) {
         try {
           if (!mainReportData || !mainReportData.records) return;
-          const emp = mainReportData.records.find(r => String(r.user_id) === String(userId));
+          let emp = mainReportData.records.find(r => String(r.user_id) === String(userId));
           if (!emp) return;
+
+          // Light page rows omit daily_records; load full detail only when opening Complete View.
+          if (!Array.isArray(emp.daily_records) || emp.daily_records.length === 0) {
+            const dailyTbodyLoading = document.getElementById('mainModalDailyTbody');
+            if (dailyTbodyLoading) {
+              dailyTbodyLoading.innerHTML = '<tr><td colspan="9" style="padding:20px; text-align:center; color:#64748b;"><i class="fa-solid fa-spinner fa-spin"></i> Loading daily detail...</td></tr>';
+            }
+            const modalEarly = document.getElementById('mainCompleteViewModal');
+            if (modalEarly) modalEarly.style.display = 'flex';
+            try {
+              let detailUrl = `${API_BASE}/reports/attendance?light=0&user_id=${encodeURIComponent(userId)}&`;
+              const s = document.getElementById('mainStartDate')?.value;
+              const e = document.getElementById('mainEndDate')?.value;
+              if (currentMainFilterDate === 'custom' && s && e) {
+                detailUrl += `start_date=${encodeURIComponent(s)}&end_date=${encodeURIComponent(e)}&`;
+              } else if (currentMainFilterDate && currentMainFilterDate !== 'custom') {
+                detailUrl += `date=${encodeURIComponent(currentMainFilterDate)}&`;
+              } else {
+                detailUrl += 'date=today&';
+              }
+              const detailRes = await fetch(detailUrl + `_t=${Date.now()}`, { cache: 'no-store' });
+              const detailReport = await detailRes.json();
+              if (detailRes.ok && Array.isArray(detailReport?.records) && detailReport.records[0]) {
+                emp = { ...emp, ...detailReport.records[0] };
+                const idx = mainReportData.records.findIndex(r => String(r.user_id) === String(userId));
+                if (idx >= 0) mainReportData.records[idx] = emp;
+              }
+            } catch (detailErr) {
+              console.warn('Complete View detail load failed:', detailErr);
+            }
+          }
 
           currentMainActiveModalUserId = userId;
 

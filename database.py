@@ -4518,6 +4518,370 @@ def get_all_departments(organization_id: Optional[str] = None) -> List[str]:
 
 
 
+def _resolve_attendance_report_window(
+    cursor: sqlite3.Cursor,
+    target_date: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Tuple[str, str, bool, int, List[str]]:
+    """Normalize report date presets into inclusive YYYY-MM-DD start/end bounds."""
+    if target_date == 'today' or (not target_date and not start_date):
+        cursor.execute("SELECT date('now', 'localtime')")
+        target_date = cursor.fetchone()[0]
+        start_date = target_date
+        end_date = target_date
+        is_multi_day = False
+    elif target_date == 'yesterday':
+        cursor.execute("SELECT date('now', 'localtime', '-1 day')")
+        target_date = cursor.fetchone()[0]
+        start_date = target_date
+        end_date = target_date
+        is_multi_day = False
+    elif target_date == 'this_week':
+        cursor.execute("SELECT date('now', 'localtime', 'weekday 0', '-6 days'), date('now', 'localtime')")
+        start_date, end_date = cursor.fetchone()
+        is_multi_day = (start_date != end_date)
+    elif target_date == 'this_month':
+        cursor.execute("SELECT date('now', 'localtime', 'start of month'), date('now', 'localtime')")
+        start_date, end_date = cursor.fetchone()
+        is_multi_day = (start_date != end_date)
+    elif target_date == 'last7':
+        cursor.execute("SELECT date('now', 'localtime', '-6 days'), date('now', 'localtime')")
+        start_date, end_date = cursor.fetchone()
+        is_multi_day = True
+    elif target_date == 'last30':
+        cursor.execute("SELECT date('now', 'localtime', '-29 days'), date('now', 'localtime')")
+        start_date, end_date = cursor.fetchone()
+        is_multi_day = True
+    elif target_date and not start_date:
+        # Keep legacy target_date parsing in the caller for full detail path;
+        # light path reuses the same block below via get_detailed for complex labels.
+        td_str = str(target_date).strip()
+        start_date = td_str
+        end_date = td_str
+        is_multi_day = False
+    else:
+        end_date = end_date or start_date
+        start_date = start_date or end_date
+        is_multi_day = (str(start_date) != str(end_date))
+
+    start_date = str(start_date).strip().split('T')[0].split(' ')[0][:10]
+    end_date = str(end_date).strip().split('T')[0].split(' ')[0][:10]
+    d1_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+    d2_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+    if d1_date > d2_date:
+        d1_date, d2_date = d2_date, d1_date
+        start_date, end_date = end_date, start_date
+    total_days = (d2_date - d1_date).days + 1
+    date_list = [(d1_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(total_days)]
+    is_multi_day = total_days > 1
+    return start_date, end_date, is_multi_day, total_days, date_list
+
+
+def get_light_attendance_report(
+    target_date: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    department: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    search_query: Optional[str] = None,
+    user_id: Optional[int] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Fast Attendance Report page loader.
+
+    One row per staff member for the selected dates using only:
+      MIN(timestamp) / MAX(timestamp) presence marks.
+    No camera, place, shift, holiday, or leave lookups on this path.
+    Uses sargable timestamp range bounds so the attendance index is used.
+    """
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Reuse the same date preset resolution as the full report for common filters.
+            if target_date in (
+                'today', 'yesterday', 'this_week', 'this_month', 'last7', 'last30'
+            ) or (not target_date and start_date) or (not target_date and not start_date):
+                start_date, end_date, is_multi_day, total_days, date_list = _resolve_attendance_report_window(
+                    cursor, target_date=target_date, start_date=start_date, end_date=end_date
+                )
+            else:
+                # Fall back to full parser for uncommon date labels.
+                return get_detailed_attendance_report(
+                    target_date=target_date,
+                    start_date=start_date,
+                    end_date=end_date,
+                    department=department,
+                    status_filter=status_filter,
+                    search_query=search_query,
+                    user_id=user_id,
+                    organization_id=organization_id,
+                    branch_id=branch_id,
+                )
+
+            report_org = organization_id or 'DEFAULT_ORG'
+            user_query = '''
+                SELECT u.id, u.name, u.email, u.phone, u.department, u.photo_path, u.cnic, u.position,
+                       COALESCE(u.shift_id, 1) as shift_id,
+                       COALESCE(s.name, 'General Morning Shift') as shift_name
+                FROM users u
+                LEFT JOIN shifts s ON COALESCE(u.shift_id, 1) = s.id
+                WHERE (u.active = 1 OR (u.exit_date IS NOT NULL AND u.exit_date >= ?))
+            '''
+            user_params: List[Any] = [start_date]
+            if department and department.strip() and department.lower() != 'all':
+                user_query += " AND LOWER(TRIM(u.department)) = LOWER(TRIM(?))"
+                user_params.append(department.strip())
+            if user_id is not None:
+                user_query += " AND u.id = ?"
+                user_params.append(int(user_id))
+            if organization_id and organization_id != 'all':
+                if organization_id == 'DEFAULT_ORG':
+                    user_query += " AND (u.organization_id = 'DEFAULT_ORG' OR u.organization_id IS NULL)"
+                else:
+                    user_query += " AND u.organization_id = ?"
+                    user_params.append(organization_id)
+            if branch_id and branch_id != 'all':
+                if branch_id == 'DEFAULT_BRANCH':
+                    user_query += " AND (u.branch_id = 'DEFAULT_BRANCH' OR u.branch_id IS NULL)"
+                else:
+                    user_query += " AND u.branch_id = ?"
+                    user_params.append(branch_id)
+            user_query += " ORDER BY u.department ASC, u.name ASC"
+            cursor.execute(user_query, user_params)
+            users = [dict(r) for r in cursor.fetchall()]
+            if not users:
+                return {
+                    'is_multi_day': is_multi_day,
+                    'light': True,
+                    'date_label': start_date if not is_multi_day else f"{start_date} to {end_date}",
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'total_days': total_days,
+                    'summary': {
+                        'total_days': total_days,
+                        'duration_days': total_days,
+                        'total_enrolled': 0,
+                        'total_matching': 0,
+                        'attended_count': 0,
+                        'zero_attendance_count': 0,
+                        'total_present_days': 0,
+                        'total_late_days': 0,
+                        'total_absent_days': 0,
+                        'attendance_rate': 0.0,
+                    },
+                    'records': [],
+                    'departments': [],
+                }
+
+            user_ids = [int(u['id']) for u in users]
+            placeholders = ','.join('?' for _ in user_ids)
+            start_ts = f"{start_date} 00:00:00"
+            end_excl = (datetime.strptime(end_date, "%Y-%m-%d").date() + timedelta(days=1)).strftime("%Y-%m-%d")
+            end_ts = f"{end_excl} 00:00:00"
+
+            # Indexed range only in WHERE (never date(timestamp)). Group by calendar day via substr.
+            att_sql = f'''
+                SELECT user_id,
+                       substr(timestamp, 1, 10) AS log_date,
+                       MIN(timestamp) AS first_seen,
+                       MAX(timestamp) AS last_seen
+                FROM attendance
+                WHERE user_id IN ({placeholders})
+                  AND timestamp >= ?
+                  AND timestamp < ?
+            '''
+            att_params: List[Any] = list(user_ids) + [start_ts, end_ts]
+            if report_org and report_org != 'all':
+                if report_org == 'DEFAULT_ORG':
+                    att_sql += " AND (organization_id = 'DEFAULT_ORG' OR organization_id IS NULL)"
+                else:
+                    att_sql += " AND (organization_id = ? OR organization_id IS NULL)"
+                    att_params.append(report_org)
+            if branch_id and branch_id != 'all':
+                if branch_id == 'DEFAULT_BRANCH':
+                    att_sql += " AND (branch_id = 'DEFAULT_BRANCH' OR branch_id IS NULL)"
+                else:
+                    att_sql += " AND (branch_id = ? OR branch_id IS NULL)"
+                    att_params.append(branch_id)
+            att_sql += " GROUP BY user_id, substr(timestamp, 1, 10)"
+            cursor.execute(att_sql, att_params)
+            marks_by_user: Dict[int, Dict[str, Dict[str, Any]]] = {}
+            for row in cursor.fetchall():
+                uid = int(row['user_id'])
+                log_date = str(row['log_date'] or '')[:10]
+                if not log_date:
+                    continue
+                marks_by_user.setdefault(uid, {})[log_date] = {
+                    'first_seen': row['first_seen'],
+                    'last_seen': row['last_seen'],
+                }
+
+            records = []
+            total_present_days_all = 0
+            total_absent_days_all = 0
+            attended_users_count = 0
+            dept_stats: Dict[str, Dict[str, Any]] = {}
+            sq = (search_query or '').strip().lower()
+            sf = (status_filter or 'all').strip().lower()
+
+            for u in users:
+                uid = int(u['id'])
+                dept = u.get('department') or 'General / Unassigned'
+                if dept not in dept_stats:
+                    dept_stats[dept] = {
+                        'total_staff': 0, 'attended_staff': 0,
+                        'present_days': 0, 'absent_days': 0, 'late_days': 0,
+                        'paid_leave_days': 0, 'unpaid_leave_days': 0,
+                    }
+                dept_stats[dept]['total_staff'] += 1
+
+                if sq and not (
+                    sq in str(u.get('name') or '').lower()
+                    or sq in dept.lower()
+                    or sq in str(u.get('position') or '').lower()
+                    or sq in str(uid)
+                ):
+                    continue
+
+                day_marks = marks_by_user.get(uid, {})
+                present_days = len(day_marks)
+                absent_days = max(0, total_days - present_days)
+                if present_days:
+                    attended_users_count += 1
+                    dept_stats[dept]['attended_staff'] += 1
+                total_present_days_all += present_days
+                total_absent_days_all += absent_days
+                dept_stats[dept]['present_days'] += present_days
+                dept_stats[dept]['absent_days'] += absent_days
+                rate = round((present_days / total_days * 100), 1) if total_days else 0.0
+
+                if not is_multi_day:
+                    day_key = start_date
+                    mark = day_marks.get(day_key)
+                    st_val = 'present' if mark else 'absent'
+                    if sf == 'present' and st_val != 'present':
+                        continue
+                    if sf == 'absent' and st_val != 'absent':
+                        continue
+                    records.append({
+                        'user_id': uid,
+                        'name': u.get('name'),
+                        'email': u.get('email') or '',
+                        'phone': u.get('phone') or '',
+                        'department': dept,
+                        'position': u.get('position') or 'Staff Member',
+                        'cnic': u.get('cnic') or '',
+                        'photo_path': u.get('photo_path'),
+                        'shift_name': u.get('shift_name') or 'General Morning Shift',
+                        'shift_id': u.get('shift_id'),
+                        'status': st_val,
+                        'attendance_status': st_val,
+                        'status_display': 'Present' if st_val == 'present' else 'Absent',
+                        'first_seen': (mark or {}).get('first_seen'),
+                        'last_seen': (mark or {}).get('last_seen'),
+                        'date': start_date,
+                        'present_days': int(st_val == 'present'),
+                        'absent_days': int(st_val == 'absent'),
+                        'late_days': 0,
+                        'leave_days': 0,
+                        'paid_leave_days': 0,
+                        'unpaid_leave_days': 0,
+                        'working_days': 1,
+                        'checkin_camera': '—',
+                        'checkout_camera': '—',
+                        'checkin_location': '—',
+                        'checkout_location': '—',
+                        'location': '—',
+                        'source': 'auto' if mark else '',
+                        'notes': '',
+                        'light': True,
+                        'daily_records': [],
+                    })
+                else:
+                    if sf == 'present' and present_days == 0:
+                        continue
+                    if sf == 'absent' and absent_days == 0:
+                        continue
+                    records.append({
+                        'user_id': uid,
+                        'name': u.get('name'),
+                        'email': u.get('email') or '',
+                        'phone': u.get('phone') or '',
+                        'department': dept,
+                        'position': u.get('position') or 'Staff Member',
+                        'cnic': u.get('cnic') or '',
+                        'photo_path': u.get('photo_path'),
+                        'shift_name': u.get('shift_name') or 'General Morning Shift',
+                        'shift_id': u.get('shift_id'),
+                        'total_days': total_days,
+                        'working_days': total_days,
+                        'present_days': present_days,
+                        'absent_days': absent_days,
+                        'late_days': 0,
+                        'leave_days': 0,
+                        'paid_leave_days': 0,
+                        'unpaid_leave_days': 0,
+                        'total_leave_days': 0,
+                        'payable_days': present_days,
+                        'attendance_rate': rate,
+                        'present_display': f"{present_days} / {total_days}",
+                        'absent_display': f"{absent_days} / {total_days}",
+                        'light': True,
+                        'daily_records': [],
+                    })
+
+            total_possible = max(1, len(users) * total_days)
+            overall_rate = round((total_present_days_all / total_possible * 100), 1)
+            dept_summary = []
+            for dname, ddata in dept_stats.items():
+                max_d = max(1, ddata['total_staff'] * total_days)
+                dept_summary.append({
+                    'department': dname,
+                    'total_staff': ddata['total_staff'],
+                    'total': ddata['total_staff'],
+                    'attended_staff': ddata['attended_staff'],
+                    'present_days': ddata['present_days'],
+                    'present': ddata['present_days'],
+                    'absent_days': ddata['absent_days'],
+                    'absent': ddata['absent_days'],
+                    'late_days': 0,
+                    'late': 0,
+                    'paid_leave_days': 0,
+                    'unpaid_leave_days': 0,
+                    'attendance_rate': round((ddata['present_days'] / max_d * 100), 1),
+                })
+
+            return {
+                'is_multi_day': is_multi_day,
+                'light': True,
+                'date_label': start_date if not is_multi_day else f"{start_date} to {end_date}",
+                'start_date': start_date,
+                'end_date': end_date,
+                'total_days': total_days,
+                'summary': {
+                    'total_days': total_days,
+                    'duration_days': total_days,
+                    'total_enrolled': len(users),
+                    'total_matching': len(records),
+                    'attended_count': attended_users_count,
+                    'zero_attendance_count': max(0, len(users) - attended_users_count),
+                    'total_present_days': total_present_days_all,
+                    'total_late_days': 0,
+                    'total_absent_days': total_absent_days_all,
+                    'attendance_rate': overall_rate,
+                },
+                'records': records,
+                'departments': dept_summary,
+            }
+    except Exception as e:
+        logger.error(f"Light attendance report failed: {e}")
+        raise
+
+
 def get_detailed_attendance_report(
     target_date: Optional[str] = None,
     start_date: Optional[str] = None,

@@ -5295,7 +5295,11 @@ def generate_report_filename(report_data: dict, department: str = None, shift: s
 
 @app.route('/api/reports/attendance', methods=['GET'])
 def api_reports_attendance():
-    """Return comprehensive attendance report with combinable filters."""
+    """Return attendance report with combinable filters.
+
+    Default page loads use light=1 (Present/Absent only, indexed timestamp range).
+    Excel export and Complete View keep the full detailed report.
+    """
     target_date = request.args.get('date', '').strip() or None
     start_date = request.args.get('start_date', '').strip() or None
     end_date = request.args.get('end_date', '').strip() or None
@@ -5307,24 +5311,39 @@ def api_reports_attendance():
     checkout_camera = request.args.get('checkout_camera', '').strip() or None
     camera_id = request.args.get('camera_id', '').strip() or request.args.get('camera', '').strip() or None
     user_id = request.args.get('user_id', type=int)
+    light_raw = str(request.args.get('light', '1')).strip().lower()
+    use_light = light_raw in ('1', 'true', 'yes')
 
     current_tenant = get_current_tenant_id()
     current_branch = get_current_branch_id()
-    report = db.get_detailed_attendance_report(
-        target_date=target_date,
-        start_date=start_date,
-        end_date=end_date,
-        department=department,
-        shift_id=shift_id,
-        status_filter=status,
-        search_query=search,
-        checkin_camera=checkin_camera,
-        checkout_camera=checkout_camera,
-        camera_id=camera_id,
-        user_id=user_id,
-        organization_id=current_tenant,
-        branch_id=current_branch,
-    )
+    # Force full detail when a single employee drill-down is requested or light=0.
+    if use_light and user_id is None:
+        report = db.get_light_attendance_report(
+            target_date=target_date,
+            start_date=start_date,
+            end_date=end_date,
+            department=department,
+            status_filter=status,
+            search_query=search,
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
+    else:
+        report = db.get_detailed_attendance_report(
+            target_date=target_date,
+            start_date=start_date,
+            end_date=end_date,
+            department=department,
+            shift_id=shift_id,
+            status_filter=status,
+            search_query=search,
+            checkin_camera=checkin_camera,
+            checkout_camera=checkout_camera,
+            camera_id=camera_id,
+            user_id=user_id,
+            organization_id=current_tenant,
+            branch_id=current_branch,
+        )
     return jsonify(report), 200
 
 
