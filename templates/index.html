@@ -3724,10 +3724,15 @@
         white-space: normal;
         word-break: break-word;
       }
-      .app-camera-select-item:hover,
+      .app-camera-select-item:hover {
+        background: #f8fafc;
+        color: #1e293b;
+      }
+      /* GUI-01: selected option stays plain — no blue highlight fill */
       .app-camera-select-item.selected {
-        background: #f0f9ff;
-        color: #0369a1;
+        background: transparent;
+        color: #1e293b;
+        font-weight: 700;
       }
       select.app-style-select-source { display: none !important; }
       /* Keep filter bars from clipping camera-style menus */
@@ -6448,7 +6453,417 @@
       .form-control.is-invalid, .form-select.is-invalid { border-color: #dc2626 !important; box-shadow: 0 0 0 3px rgba(220,38,38,0.12) !important; }
       .field-error { color: #dc2626; font-size: 0.8em; margin-top: 4px; }
     </style>
-  </head>
+    <style>
+    /* ============================================================
+       Attendance / Staff / Leave / Shifts / Settings UI pass
+       (AR, SD, LH, SA, SET, GUI tickets)
+       ============================================================ */
+    :root {
+      --ui-purple: #8b7bf7;
+      --ui-purple-dark: #7563e8;
+      --ui-ink: #151b25;
+      --ui-ink-2: #2b3547;
+      --ui-muted: #6b7488;
+      --ui-line: #e3e8f5;
+      --ui-line-soft: #edf0f9;
+      --ui-radius: 10px;
+    }
+
+    /* --- Consistent typography across the reworked modules (GUI-02) --- */
+    #reports-view, #staff-view, #leaves-view, #shifts-view, #settings-view, #overtime-view {
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      color: var(--ui-ink-2);
+    }
+    #staff-view .rpt-btn, #reports-view .rpt-btn, #leaves-view .btn, #shifts-view .btn,
+    #leaves-view .rpt-btn {
+      border-radius: var(--ui-radius);
+      font-weight: 600;
+    }
+
+    /* --- Export dropdowns must never be clipped (AR-02, SD-03, LH-06) --- */
+    .rpt-hero, .rpt-hero-actions, .rpt-sheet, .rpt-filters,
+    .page-header, .page-header-actions, .leave-filter-bar {
+      overflow: visible !important;
+    }
+    #reports-view.page-view, #staff-view.page-view, #leaves-view.page-view {
+      overflow: visible;
+    }
+    .rpt-hero-actions .dropdown, .page-header-actions .dropdown { position: relative; }
+    .rpt-hero-actions .dropdown-menu, .page-header-actions .dropdown-menu {
+      z-index: 2055 !important;
+      margin-top: 6px;
+    }
+    .rpt-hero-actions .dropdown-menu.show, .page-header-actions .dropdown-menu.show { display: block; }
+
+    /* --- Standardised close (cross) button (LH-02) --- */
+    .modal-x-btn {
+      box-sizing: border-box;
+      width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0;
+      border-radius: 50%; border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 13px; line-height: 1; cursor: pointer; flex: 0 0 32px;
+      transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+    }
+    .modal-x-btn:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+    .modal-x-btn i { font-size: 13px; }
+    .btn-close {
+      box-sizing: border-box; width: 32px; height: 32px; padding: 0; border-radius: 50%;
+      background-color: #f8fafc; border: 1px solid #e2e8f0; opacity: 1;
+      background-size: 11px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .btn-close:hover { background-color: #fef2f2; border-color: #fecaca; opacity: 1; }
+
+    /* --- Purple primary Save buttons (AR-03, SD-02, SD-04) --- */
+    #manualAttendanceModal .btn-primary,
+    #bulkCameraModal .btn-primary,
+    #editStaffModal .btn-primary,
+    #deptModal .btn-primary,
+    #desigModal .btn-primary {
+      background: var(--ui-purple) !important;
+      border-color: var(--ui-purple) !important;
+      color: #ffffff !important;
+      font-weight: 600 !important;
+      border-radius: var(--ui-radius) !important;
+    }
+    #manualAttendanceModal .btn-primary:hover,
+    #bulkCameraModal .btn-primary:hover,
+    #editStaffModal .btn-primary:hover,
+    #deptModal .btn-primary:hover,
+    #desigModal .btn-primary:hover {
+      background: var(--ui-purple-dark) !important;
+      border-color: var(--ui-purple-dark) !important;
+    }
+
+    /* --- Selected option in dropdown triggers: plain, no highlight (GUI-01) --- */
+    .app-camera-select-chip {
+      background: transparent !important;
+      border: 0 !important;
+      box-shadow: none !important;
+      padding: 0 2px !important;
+      margin: 0 !important;
+      color: #1e293b !important;
+      font-weight: 600;
+    }
+    .app-camera-select-trigger { background: #ffffff; box-shadow: none; }
+    .app-camera-select-trigger.active { background: #ffffff; }
+
+    /* --- Leave request filter bar alignment (LH-03) --- */
+    .leave-filter-bar { align-items: flex-end; }
+    .leave-filter-bar > * { margin-bottom: 0; }
+    .leave-filter-bar .form-control,
+    .leave-filter-bar .form-select,
+    .leave-filter-bar .btn,
+    .leave-filter-bar > label .form-control {
+      height: 38px; min-height: 38px; box-sizing: border-box;
+    }
+    .leave-filter-bar .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 14px;
+    }
+    .leave-filter-bar .form-select { padding-top: 0; padding-bottom: 0; }
+    #leaveStatusFilter { min-width: 170px; }
+
+    /* --- Shift assignment filter bar (SA-01) --- */
+    #shifts-view .shift-filter-bar {
+      display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap;
+      gap: 12px; padding: 12px 16px; background: #f8fafc;
+      border-bottom: 1px solid var(--ui-line);
+    }
+    #shifts-view .shift-filter-bar .form-select,
+    #shifts-view .shift-filter-bar input[type="text"] {
+      height: 38px; min-height: 38px; box-sizing: border-box;
+      border: 1px solid #e2e8f0; border-radius: var(--ui-radius);
+      background-color: #ffffff; font-size: 12.5px; font-weight: 500; color: var(--ui-ink-2);
+    }
+    #shifts-view .shift-filter-bar input[type="text"] { padding-left: 34px; }
+    #shifts-view .shift-filter-bar .btn {
+      height: 38px; min-height: 38px; display: inline-flex; align-items: center; gap: 6px;
+      border-radius: var(--ui-radius); font-weight: 600; font-size: 12.5px; padding: 0 14px;
+    }
+
+    /* --- Complete view modals follow the design system (AR-05, LH-01) --- */
+    #mainCompleteViewModal > div,
+    #leaveCompleteModal > div {
+      border-radius: 18px !important;
+      border: 1px solid var(--ui-line) !important;
+      box-shadow: 0 34px 64px -46px rgba(18, 24, 44, 0.9) !important;
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    }
+    #mainCompleteViewModal h3, #leaveCompleteModal h3 { color: var(--ui-ink) !important; letter-spacing: -0.01em; }
+    #mainCompleteViewModal h4, #leaveCompleteModal h4 { color: var(--ui-ink) !important; font-weight: 700 !important; }
+    #mainCompleteViewModal > div > div:first-child,
+    #leaveCompleteModal > div > div:first-child {
+      background: #f8fafc !important; border-bottom: 1px solid var(--ui-line-soft) !important;
+    }
+    #mainCompleteViewModal table th, #leaveCompleteModal table th {
+      color: var(--ui-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700;
+    }
+    #mainCompleteViewModal > div > div:last-child,
+    #leaveCompleteModal > div > div:last-child {
+      background: #f8fafc !important; border-top: 1px solid var(--ui-line-soft) !important;
+    }
+    #mainCompleteViewModal .btn-primary,
+    #leaveCompleteModal .btn-primary {
+      background: var(--ui-purple) !important; border-color: var(--ui-purple) !important; border-radius: var(--ui-radius) !important;
+    }
+
+    /* --- Shared module chrome (GUI-02) --- */
+    #reports-view .form-control, #reports-view .form-select,
+    #staff-view .form-control, #staff-view .form-select,
+    #leaves-view .form-control, #leaves-view .form-select,
+    #shifts-view .form-control, #shifts-view .form-select,
+    #settings-view .form-control, #settings-view .form-select,
+    #overtime-view .form-control, #overtime-view .form-select,
+    #payroll-view .form-control, #payroll-view .form-select {
+      border-color: #e2e8f0; border-radius: var(--ui-radius); color: var(--ui-ink-2);
+      font-family: inherit; font-size: 13px;
+    }
+    #reports-view .form-control:focus, #reports-view .form-select:focus,
+    #staff-view .form-control:focus, #staff-view .form-select:focus,
+    #leaves-view .form-control:focus, #leaves-view .form-select:focus,
+    #shifts-view .form-control:focus, #shifts-view .form-select:focus,
+    #settings-view .form-control:focus, #settings-view .form-select:focus,
+    #overtime-view .form-control:focus, #overtime-view .form-select:focus,
+    #payroll-view .form-control:focus, #payroll-view .form-select:focus {
+      border-color: var(--ui-purple); box-shadow: 0 0 0 3px rgba(139,123,247,0.16);
+    }
+    #settings-view .btn-primary,
+    #shifts-view .btn-primary,
+    #overtime-view .btn-primary,
+    #payroll-view .btn-primary,
+    #leaves-view .btn-primary {
+      border-radius: var(--ui-radius);
+    }
+    #refreshSettingsBtn {
+      background: var(--ui-purple) !important; border: none !important;
+    }
+    .rpt-field-label {
+      display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--ui-muted); margin-bottom: 6px;
+    }
+
+    /* --- Settings: inline validation messages (SET-01, SET-02) --- */
+    .field-inline-error {
+      display: block; min-height: 16px; margin-top: 4px;
+      font-size: 12px; font-weight: 600; color: #dc2626;
+    }
+    #settingPhone.is-invalid, #settingAdminName.is-invalid {
+      border-color: #fca5a5 !important; box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.12);
+    }
+    #settingPhone.is-valid, #settingAdminName.is-valid { border-color: #86efac !important; }
+
+    /* --- Pagination bars shared by settings tables (SET-03, SET-04) --- */
+    .settings-pagination {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--ui-line-soft); background: #ffffff;
+    }
+  </style>
+  <script>
+(function () {
+  'use strict';
+
+  /* LH-02 — one close (cross) button design for every modal */
+  function normalizeCloseButtons() {
+    document.querySelectorAll('[id$="Modal"], [id$="modal"], .modal, [id$="Overlay"]').forEach(function (host) {
+      host.querySelectorAll('i.fa-xmark[onclick], i.fa-solid.fa-xmark[onclick]').forEach(function (icon) {
+        if (icon.dataset.normalized === '1') return;
+        if (icon.closest('.app-camera-select-panel, .dropdown-menu, .app-toast')) return;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'modal-x-btn';
+        btn.setAttribute('aria-label', icon.getAttribute('title') || 'Close');
+        btn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        btn.dataset.normalized = '1';
+        var onclick = icon.getAttribute('onclick');
+        if (onclick) btn.setAttribute('onclick', onclick);
+        icon.replaceWith(btn);
+      });
+      /* Round header X buttons that already wrap fa-xmark but lack modal-x-btn */
+      host.querySelectorAll('button').forEach(function (b) {
+        if (b.dataset.normalized === '1') return;
+        if (b.classList.contains('modal-x-btn') || b.classList.contains('btn-close')) return;
+        if (b.closest('.app-camera-select-panel, .dropdown-menu, .app-toast')) return;
+        var icon = b.querySelector(':scope > i.fa-xmark, :scope > i.fa-solid.fa-xmark');
+        if (!icon) return;
+        var label = (b.getAttribute('aria-label') || b.getAttribute('title') || b.textContent || '').toLowerCase();
+        var looksLikeClose = /close|dismiss|cancel/.test(label) || (b.childNodes.length <= 3 && !/\b(reject|delete|remove)\b/i.test(b.textContent || ''));
+        if (!looksLikeClose) return;
+        if ((b.textContent || '').replace(/\s+/g, ' ').trim().length > 8) return;
+        b.className = 'modal-x-btn';
+        b.type = 'button';
+        b.setAttribute('aria-label', b.getAttribute('aria-label') || 'Close');
+        b.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        b.dataset.normalized = '1';
+        b.removeAttribute('style');
+      });
+      host.querySelectorAll('button.btn-close').forEach(function (b) {
+        b.classList.add('modal-x-btn');
+        b.setAttribute('aria-label', b.getAttribute('aria-label') || 'Close');
+        b.dataset.normalized = '1';
+      });
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', normalizeCloseButtons);
+  } else {
+    normalizeCloseButtons();
+  }
+
+  /* SET-01 / SET-02 — input-level validation for Branch & Organization */
+  window.validateBranchPhoneField = function () {
+    var el = document.getElementById('settingPhone');
+    var msg = document.getElementById('settingPhoneError');
+    if (!el || !msg) return true;
+    var v = el.value.trim();
+    var ok = !v || /^\+?[0-9 .()\-]{7,30}$/.test(v);
+    msg.textContent = (ok || !el.dataset.touched) ? '' : 'Enter a valid phone number (7-30 characters: digits, +, spaces, dashes, parentheses).';
+    el.classList.toggle('is-invalid', !ok);
+    el.classList.toggle('is-valid', ok && v.length > 0);
+    return ok;
+  };
+
+  window.validateBranchAdminNameField = function () {
+    var el = document.getElementById('settingAdminName');
+    var msg = document.getElementById('settingAdminNameError');
+    if (!el || !msg) return true;
+    var v = el.value.trim();
+    var ok = !v || /^[A-Za-z]+(?:[ .'\-]+[A-Za-z]+)*$/.test(v);
+    msg.textContent = (ok || !el.dataset.touched) ? '' : "Use letters only, with spaces, periods, apostrophes or hyphens (e.g. Mr. Junaid).";
+    el.classList.toggle('is-invalid', !ok);
+    el.classList.toggle('is-valid', ok && v.length > 0);
+    return ok;
+  };
+
+  function wireBranchValidation() {
+    ['settingPhone', 'settingAdminName'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var fn = id === 'settingPhone' ? window.validateBranchPhoneField : window.validateBranchAdminNameField;
+      el.addEventListener('input', function () { el.dataset.touched = '1'; fn(); });
+      el.addEventListener('blur', function () { el.dataset.touched = '1'; fn(); });
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireBranchValidation);
+  } else {
+    wireBranchValidation();
+  }
+
+  /* SET-03 / SET-04 — pagination for Department & Designation management */
+  var _deptPage = 1, _deptPageSize = 10, _deptRowsCache = [];
+  var _desigPage = 1, _desigPageSize = 10, _desigRowsCache = [];
+
+  function ensureSettingsPager(tbodyId, cfg) {
+    var tbody = document.getElementById(tbodyId);
+    if (!tbody) return null;
+    var card = tbody.closest('.card');
+    if (!card) return null;
+    var bar = document.getElementById(cfg.barId);
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = 'app-table-pagination settings-pagination';
+      bar.id = cfg.barId;
+      bar.innerHTML =
+        '<div class="app-page-info" id="' + cfg.infoId + '"></div>' +
+        '<div class="app-page-controls" style="display:flex;align-items:center;gap:8px;">' +
+        '<select id="' + cfg.sizeId + '" class="form-select" aria-label="Rows per page" style="height:32px;min-height:32px;width:auto;font-size:12px;padding:0 26px 0 10px;"></select>' +
+        '<span id="' + cfg.controlsId + '" style="display:inline-flex;gap:6px;"></span></div>';
+      card.appendChild(bar);
+      var sel = document.getElementById(cfg.sizeId);
+      [10, 25, 50, 100].forEach(function (n) {
+        var o = document.createElement('option');
+        o.value = String(n);
+        o.textContent = n + ' / page';
+        sel.appendChild(o);
+      });
+      sel.value = String(cfg.getSize());
+      sel.addEventListener('change', function () { cfg.setSize(parseInt(this.value, 10) || 10); });
+    }
+    return bar;
+  }
+
+  function paintSettingsPager(cfg, cache, page, size) {
+    var bar = ensureSettingsPager(cfg.tbodyId, cfg);
+    if (!bar) return { page: page, start: 0, end: 0 };
+    var total = cache.length;
+    var pages = Math.max(1, Math.ceil(total / size));
+    if (page > pages) page = pages;
+    if (page < 1) page = 1;
+    var start = total === 0 ? 0 : (page - 1) * size + 1;
+    var end = Math.min(page * size, total);
+    var info = document.getElementById(cfg.infoId);
+    if (info) info.textContent = 'Showing ' + start + '-' + end + ' of ' + total + ' records';
+    var controls = document.getElementById(cfg.controlsId);
+    if (controls) {
+      controls.innerHTML = '';
+      var mk = function (label, target, disabled, active) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'app-page-btn' + (active ? ' active' : '');
+        b.innerHTML = label;
+        b.disabled = !!disabled;
+        b.onclick = function () { cfg.setPage(target); };
+        controls.appendChild(b);
+      };
+      mk('<i class="fa-solid fa-chevron-left"></i>', page - 1, page <= 1, false);
+      for (var i = 1; i <= pages; i++) mk(String(i), i, false, i === page);
+      mk('<i class="fa-solid fa-chevron-right"></i>', page + 1, page >= pages, false);
+    }
+    return { page: page, start: start, end: end };
+  }
+
+  var deptCfg = {
+    tbodyId: 'departmentsTableBody', barId: 'deptPaginationBar',
+    infoId: 'deptPageInfo', controlsId: 'deptPageControls', sizeId: 'deptPageSize',
+    getSize: function () { return _deptPageSize; },
+    setSize: function (v) { _deptPageSize = v; _deptPage = 1; window.renderDepartmentsTable(_deptRowsCache); },
+    setPage: function (p) { _deptPage = p; window.renderDepartmentsTable(_deptRowsCache); }
+  };
+  var desigCfg = {
+    tbodyId: 'designationsTableBody', barId: 'desigPaginationBar',
+    infoId: 'desigPageInfo', controlsId: 'desigPageControls', sizeId: 'desigPageSize',
+    getSize: function () { return _desigPageSize; },
+    setSize: function (v) { _desigPageSize = v; _desigPage = 1; window.renderDesignationsTable(_desigRowsCache); },
+    setPage: function (p) { _desigPage = p; window.renderDesignationsTable(_desigRowsCache); }
+  };
+
+  window.renderDeptPageInfo = function () {
+    var state = paintSettingsPager(deptCfg, _deptRowsCache, _deptPage, _deptPageSize);
+    _deptPage = state.page;
+  };
+  window.renderDesigPageInfo = function () {
+    var state = paintSettingsPager(desigCfg, _desigRowsCache, _desigPage, _desigPageSize);
+    _desigPage = state.page;
+  };
+
+  window.getDeptPageSlice = function (rows) {
+    _deptRowsCache = Array.isArray(rows) ? rows : [];
+    window.renderDeptPageInfo();
+    var start = (_deptPage - 1) * _deptPageSize;
+    return _deptRowsCache.slice(start, start + _deptPageSize);
+  };
+  window.getDesigPageSlice = function (rows) {
+    _desigRowsCache = Array.isArray(rows) ? rows : [];
+    window.renderDesigPageInfo();
+    var start = (_desigPage - 1) * _desigPageSize;
+    return _desigRowsCache.slice(start, start + _desigPageSize);
+  };
+
+  /* Staff directory page-size control (SD-05) */
+  window.changeTabStaffPageSize = function (value) {
+    var size = parseInt(value, 10) || 25;
+    window.tabStaffPageSize = size;
+    if (typeof window.renderTabStaffPage === 'function') window.renderTabStaffPage(1);
+  };
+
+  /* Shift assignments page-size control (SA-02) */
+  window.changeShiftStaffPageSize = function (value) {
+    var size = parseInt(value, 10) || 25;
+    window.shiftStaffPageSize = size;
+    if (typeof window.renderShiftStaffPage === 'function') window.renderShiftStaffPage(1);
+  };
+})();
+  </script>
+</head>
   <body class="{% if not is_authenticated %}auth-required{% endif %}">
     <!-- Global Floating Toast Container -->
     <div id="toastContainer" class="app-toast-container" aria-live="polite"></div>
@@ -6907,11 +7322,7 @@
                 <i class="fa-solid fa-camera" style="color: #3aafa9"></i>
                 Upload Profile Photo
               </h3>
-              <i
-                class="fa-solid fa-circle-xmark"
-                onclick="closePhotoModal()"
-                style="font-size: 1.5em; color: #94a3b8; cursor: pointer"
-              ></i>
+              <button type="button" class="modal-x-btn" onclick="closePhotoModal()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
             </div>
 
             <!-- Preview -->
@@ -7772,19 +8183,19 @@ async function fetchMultiLiveDetections() {
         </section>
       </div>
 
-      <!-- Complete View Modal (Dedicated Employee Attendance Detail View) -->
-      <div id="mainCompleteViewModal" style="position:fixed; inset:0; background:rgba(15,23,42,0.65); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; z-index:99999; padding:20px;" onclick="handleMainModalOverlayClick(event)">
-        <div style="background:#ffffff; border-radius:16px; width:100%; max-width:960px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,0.3); border:1px solid #cfe8f7;" onclick="event.stopPropagation()">
+      <!-- Complete View Modal (Dedicated Employee Attendance Detail View) — AR-05 -->
+      <div id="mainCompleteViewModal" style="position:fixed; inset:0; background:rgba(15,23,42,0.55); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; z-index:99999; padding:20px;" onclick="handleMainModalOverlayClick(event)">
+        <div style="background:#ffffff; border-radius:18px; width:100%; max-width:960px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 34px 64px -46px rgba(18,24,44,0.9); border:1px solid #e3e8f5;" onclick="event.stopPropagation()">
           <!-- Header -->
-          <div style="padding:18px 24px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; background:#f8fafc;">
+          <div style="padding:18px 24px; border-bottom:1px solid #edf0f9; display:flex; justify-content:space-between; align-items:center; background:#f8fafc;">
             <div style="display:flex; align-items:center; gap:14px;">
-              <div id="mainModalAvatar" style="width:48px; height:48px; border-radius:50%; background:#0284c7; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.2rem; font-weight:700; flex-shrink:0;">?</div>
+              <div id="mainModalAvatar" style="width:48px; height:48px; border-radius:50%; background:#8b7bf7; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.2rem; font-weight:700; flex-shrink:0;">?</div>
               <div>
-                <h3 id="mainModalEmpName" style="margin:0 0 4px 0; color:#0f172a; font-size:1.18rem; font-weight:700;">Employee Name</h3>
-                <div style="display:flex; gap:10px; align-items:center; font-size:0.82rem; color:#64748b; flex-wrap:wrap;">
-                  <span id="mainModalEmpId" style="color:#0284c7; font-weight:700;">#EMP-000</span>
+                <h3 id="mainModalEmpName" style="margin:0 0 4px 0; color:#151b25; font-size:1.18rem; font-weight:700; letter-spacing:-0.01em;">Employee Name</h3>
+                <div style="display:flex; gap:10px; align-items:center; font-size:0.82rem; color:#6b7488; flex-wrap:wrap;">
+                  <span id="mainModalEmpId" style="color:#5847c8; font-weight:700; font-family:'JetBrains Mono',monospace;">EMP-000</span>
                   <span>•</span>
-                  <span id="mainModalEmpDept" style="color:#2563eb; font-weight:600;">Department</span>
+                  <span id="mainModalEmpDept" style="color:#5847c8; font-weight:600;">Department</span>
                   <span>•</span>
                   <span id="mainModalEmpPos">Designation</span>
                   <span>•</span>
@@ -7793,10 +8204,10 @@ async function fetchMultiLiveDetections() {
               </div>
             </div>
             <div style="display:flex; align-items:center; gap:12px;">
-              <span id="mainModalPeriodBadge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:6px 14px; border-radius:20px; font-weight:700; font-size:0.82rem;">
+              <span id="mainModalPeriodBadge" style="background:#f3f0ff; color:#5847c8; border:1px solid #ddd6fe; padding:6px 14px; border-radius:20px; font-weight:700; font-size:0.82rem;">
                 Period: 01 Oct 2026 - 07 Oct 2026
               </span>
-              <button onclick="closeMainCompleteView()" style="background:#f1f5f9; border:1px solid #cbd5e1; color:#64748b; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:1rem;">
+              <button type="button" class="modal-x-btn" onclick="closeMainCompleteView()" aria-label="Close">
                 <i class="fa-solid fa-xmark"></i>
               </button>
             </div>
@@ -7810,9 +8221,9 @@ async function fetchMultiLiveDetections() {
                 <div style="font-size:0.74rem; color:#64748b; text-transform:uppercase; font-weight:600;">Total Days</div>
                 <div id="mainModalStatTotalDays" style="font-size:1.35rem; font-weight:700; color:#0f172a; margin-top:2px;">7</div>
               </div>
-              <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:12px; text-align:center;">
-                <div style="font-size:0.74rem; color:#0369a1; text-transform:uppercase; font-weight:600;">Working Days</div>
-                <div id="mainModalStatWorkingDays" style="font-size:1.35rem; font-weight:700; color:#0284c7; margin-top:2px;">6</div>
+              <div style="background:#f3f0ff; border:1px solid #ddd6fe; border-radius:10px; padding:12px; text-align:center;">
+                <div style="font-size:0.74rem; color:#5847c8; text-transform:uppercase; font-weight:600;">Working Days</div>
+                <div id="mainModalStatWorkingDays" style="font-size:1.35rem; font-weight:700; color:#5847c8; margin-top:2px;">6</div>
               </div>
               <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:12px; text-align:center;">
                 <div style="font-size:0.74rem; color:#15803d; text-transform:uppercase; font-weight:600;">Present Days</div>
@@ -7833,8 +8244,8 @@ async function fetchMultiLiveDetections() {
             </div>
 
             <!-- Daily Table -->
-            <h4 style="font-size:0.95rem; font-weight:700; color:#0f172a; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-              <i class="fa-solid fa-calendar-day" style="color:#0284c7;"></i> Daily Attendance Breakdown
+            <h4 style="font-size:0.95rem; font-weight:700; color:#151b25; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+              <i class="fa-solid fa-calendar-day" style="color:#8b7bf7;"></i> Daily Attendance Breakdown
             </h4>
             <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
               <table class="attendance-report-detail-table" style="width:100%; border-collapse:collapse; font-size:0.83rem;">
@@ -7860,7 +8271,7 @@ async function fetchMultiLiveDetections() {
 
           <!-- Footer -->
           <div style="padding:14px 24px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;">
-            <button onclick="exportMainCurrentEmployeeCSV()" class="btn btn-primary" style="background:#0284c7; border:none; padding:8px 18px; font-size:0.84rem; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+            <button onclick="exportMainCurrentEmployeeCSV()" class="btn btn-primary" style="background:#8b7bf7; border:none; padding:8px 18px; font-size:0.84rem; font-weight:600; border-radius:10px; display:inline-flex; align-items:center; gap:6px;">
               <i class="fa-solid fa-file-csv"></i> Export Employee CSV
             </button>
             <button onclick="closeMainCompleteView()" class="btn btn-outline" style="padding:8px 18px; font-size:0.84rem; font-weight:600; color:#475569; border-color:#cbd5e1;">
@@ -8079,7 +8490,7 @@ async function fetchMultiLiveDetections() {
           </div>
           <div style="display:flex; gap:8px; align-items:center;">
             <span id="payrollReviewState" class="badge bg-secondary-subtle text-secondary">Draft</span>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closePayrollReview()" aria-label="Close payroll review" title="Close review"><i class="fa-solid fa-xmark"></i></button>
+            <button type="button" class="modal-x-btn" onclick="closePayrollReview()" aria-label="Close payroll review" title="Close review"><i class="fa-solid fa-xmark"></i></button>
           </div>
         </div>
         <div id="payrollReviewSummary" class="payroll-review-summary"></div>
@@ -8284,10 +8695,14 @@ async function fetchMultiLiveDetections() {
 
       <!-- Subtab 2: Leave Balances -->
       <div id="subtab-leave-balances" style="display:none;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+          <h3 style="font-size:1.05em;font-weight:700;margin:0;color:#173042;">Employee Yearly Quotas (<span id="leaveBalanceYearLabel">2026</span>)</h3>
+        </div>
         <div class="leave-filter-bar">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <h3 style="font-size:1.05em; font-weight:700; margin:0; color:#173042;">Employee Yearly Quotas (2026)</h3>
-          </div>
+          <label for="leaveBalanceYearFilter" style="display:grid;gap:2px;font-size:0.76em;font-weight:700;color:#64748b;margin:0;">
+            YEAR
+            <select id="leaveBalanceYearFilter" class="form-select" onchange="onLeaveBalanceYearChange(this.value)" style="min-width:120px;"></select>
+          </label>
           <input type="search" id="leaveBalanceSearch" class="form-control" maxlength="100" placeholder="Search by name or ID..." oninput="onLeaveBalanceSearchInput()" style="max-width:260px; min-height:38px;" />
           <select id="leaveBalancePageSize" class="form-select" onchange="changeLeaveBalancePageSize(this.value)" style="width:auto; min-width:110px;">
             <option value="10">10 / page</option>
@@ -8559,7 +8974,7 @@ async function fetchMultiLiveDetections() {
             <button id="otModalPrevMonth" onclick="otDetailNavMonth(-1)" class="btn btn-sm btn-outline-secondary" title="Previous Month" aria-label="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
             <input type="month" id="otDetailMonthInput" class="form-control form-control-sm" aria-label="Overtime month" style="width:150px;" onchange="loadOtDetailForMonth()" />
             <button id="otModalNextMonth" onclick="otDetailNavMonth(1)" class="btn btn-sm btn-outline-secondary" title="Next Month" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></button>
-            <button type="button" onclick="closeOtDetailModal()" aria-label="Close overtime details" title="Close" style="background:#f1f5f9; border:1px solid #cbd5e1; color:#64748b; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+            <button type="button" class="modal-x-btn" onclick="closeOtDetailModal()" aria-label="Close overtime details" title="Close"><i class="fa-solid fa-xmark"></i></button>
           </div>
         </div>
         <div style="flex:1; overflow-y:auto; padding:20px 24px;">
@@ -8675,22 +9090,30 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
 
-        <!-- Filter / Search Toolbar -->
-        <div style="padding:12px 16px; background:#ffffff; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-          <div style="display:flex; gap:10px; align-items:center; flex:1; min-width:260px; max-width:400px;">
+        <!-- Filter / Search Toolbar (SA-01: same label-above-field pattern as Staff / Reports) -->
+        <div class="shift-filter-bar rpt-filters-body" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:12px 16px; background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+          <div class="rpt-field" style="flex:1; min-width:220px; max-width:360px;">
+            <span class="rpt-field-label">Search</span>
             <div style="position:relative; width:100%;">
               <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.85em;"></i>
-              <input type="text" id="shiftStaffSearch" oninput="filterShiftStaffTable()" placeholder="Search staff by name, ID, position..." style="width:100%; padding:7px 12px 7px 32px; border:1px solid #cfe8f7; border-radius:8px; font-size:0.85em; outline:none;" />
+              <input type="text" id="shiftStaffSearch" class="form-control" oninput="filterShiftStaffTable()" placeholder="Search staff by name, ID, position..." style="width:100%; height:38px; padding:7px 12px 7px 32px; border:1px solid #e2e8f0; border-radius:10px; font-size:0.85em; outline:none;" />
             </div>
           </div>
-          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-            <select id="shiftFilterDept" onchange="filterShiftStaffTable()" class="form-select" style="font-size:0.82em; font-weight:600; border:1px solid #cfe8f7; border-radius:8px; padding:6px 28px 6px 10px;">
+          <div class="rpt-field">
+            <span class="rpt-field-label">Department</span>
+            <select id="shiftFilterDept" onchange="filterShiftStaffTable()" class="form-select" style="height:38px; min-width:170px; font-size:0.82em; font-weight:600; border:1px solid #e2e8f0; border-radius:10px;">
               <option value="all">All Departments</option>
             </select>
-            <select id="shiftFilterCurrentShift" onchange="filterShiftStaffTable()" class="form-select" style="font-size:0.82em; font-weight:600; border:1px solid #cfe8f7; border-radius:8px; padding:6px 28px 6px 10px;">
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Assigned Shift</span>
+            <select id="shiftFilterCurrentShift" onchange="filterShiftStaffTable()" class="form-select" style="height:38px; min-width:180px; font-size:0.82em; font-weight:600; border:1px solid #e2e8f0; border-radius:10px;">
               <option value="all">All Assigned Shifts</option>
             </select>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetShiftStaffFilters()" style="font-weight:700; white-space:nowrap;">
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">&nbsp;</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetShiftStaffFilters()" style="height:38px; font-weight:700; white-space:nowrap; border-radius:10px;">
               <i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters
             </button>
           </div>
@@ -8719,6 +9142,15 @@ async function fetchMultiLiveDetections() {
 
         <!-- Shift Staff Table Pagination -->
         <div id="shiftStaffPagination" class="app-table-pagination">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12px;color:#64748b;font-weight:600;">Rows</span>
+            <select id="shiftStaffPageSize" class="form-select" onchange="changeShiftStaffPageSize(this.value)" style="height:32px;min-height:32px;width:auto;font-size:12px;padding:0 26px 0 10px;">
+              <option value="10">10 / page</option>
+              <option value="25" selected>25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+          </div>
           <div id="shiftStaffPageInfo" class="app-page-info">
             Showing <strong id="shiftStaffShowingStart">0</strong> to <strong id="shiftStaffShowingEnd">0</strong> of <strong id="shiftStaffShowingTotal">0</strong> staff members
           </div>
@@ -8734,7 +9166,7 @@ async function fetchMultiLiveDetections() {
       <div class="card p-0" style="width: 100%; max-width: 500px; background: #ffffff; border-radius: 16px; border: 1px solid #cfe8f7; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2);">
         <div style="background: #f2faff; border-bottom: 1px solid #cfe8f7; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
           <h3 id="shiftModalTitle" style="font-size: 1.1em; font-weight: 700; color: #173042; margin: 0;"><i class="fa-solid fa-business-time" style="color:#3d9fd4; margin-right:8px;"></i> Add New Shift</h3>
-          <i class="fa-solid fa-xmark" onclick="closeShiftModal()" style="font-size: 1.2em; color: #64748b; cursor: pointer;"></i>
+          <button type="button" class="modal-x-btn" onclick="closeShiftModal()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div style="padding: 20px;">
           <input type="hidden" id="modalShiftId" value="" />
@@ -8810,7 +9242,7 @@ async function fetchMultiLiveDetections() {
           <h3 style="font-size: 1.15em; font-weight: 600; color: #ffffff; margin: 0; display: flex; align-items: center; gap: 8px; letter-spacing:-0.02em;">
             <i class="fa-solid fa-user-pen" style="color: #b7aeff;"></i> Edit Staff Profile
           </h3>
-          <i class="fa-solid fa-xmark" onclick="closeEditModal()" style="font-size: 1.3em; color: rgba(255,255,255,0.7); cursor: pointer; transition: color 0.2s;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='rgba(255,255,255,0.7)'"></i>
+          <button type="button" class="modal-x-btn" onclick="closeEditModal()" aria-label="Close" style="background:rgba(255,255,255,0.15); border-color:rgba(255,255,255,0.25); color:#fff;"><i class="fa-solid fa-xmark"></i></button>
         </div>
         
         <div style="padding: 22px; overflow-y: auto; flex: 1; background: linear-gradient(180deg, #ffffff 0%, #f7f8fe 100%);">
@@ -8969,8 +9401,8 @@ async function fetchMultiLiveDetections() {
       </div>
 
       <section class="rpt-filters app-camera-select-host" aria-label="Staff filters">
-        <div class="rpt-filters-body">          <div class="rpt-field rpt-field--grow" style="flex-direction: row; align-items: center; gap: 10px; min-width: 0;">
-            <span class="rpt-field-label" style="white-space: nowrap; margin-bottom: 0;">Search</span>
+        <div class="rpt-filters-body">          <div class="rpt-field rpt-field--grow" style="flex-direction: column; align-items: stretch; gap: 4px; min-width: 0;">
+            <span class="rpt-field-label">Search</span>
             <div class="rpt-search" style="flex: 1; min-width: 0;">
               <i class="fa-solid fa-magnifying-glass"></i>
               <input type="search" id="tabStaffSearchInput" maxlength="100" placeholder="Search by name, ID, position, CNIC, phone, department..." oninput="filterTabStaffTable()" />
@@ -8995,7 +9427,13 @@ async function fetchMultiLiveDetections() {
             <p class="rpt-sheet-sub">All enrolled staff members and their assigned cameras</p>
           </div>
           <div class="rpt-sheet-tools">
-            <span class="rpt-tool-label">25 / page</span>
+            <span class="rpt-tool-label">Rows</span>
+            <select id="tabStaffPageSize" class="form-select" onchange="changeTabStaffPageSize(this.value)">
+              <option value="10">10 / page</option>
+              <option value="25" selected>25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
           </div>
         </div>
         <div class="rpt-table-scroll">
@@ -9046,7 +9484,7 @@ async function fetchMultiLiveDetections() {
           <h3 style="font-size: 1.15em; font-weight: 800; color: #173042; margin: 0; display: flex; align-items: center; gap: 8px;">
             <i class="fa-solid fa-camera-rotate" style="color: #3d9fd4;"></i> Bulk Camera Assignment
           </h3>
-          <i class="fa-solid fa-xmark" onclick="closeBulkCameraModal()" style="font-size: 1.3em; color: #64748b; cursor: pointer; transition: color 0.2s;" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#64748b'"></i>
+          <button type="button" class="modal-x-btn" onclick="closeBulkCameraModal()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
         </div>
         
         <div style="padding: 22px; overflow-y: auto; flex: 1;">
@@ -9109,7 +9547,7 @@ async function fetchMultiLiveDetections() {
         <p class="page-subtitle" id="settingsPageSubtitle">Manage organization, branch, staff, shift, and system configuration.</p>
       </div>
       <div class="page-header-actions">
-        <button id="refreshSettingsBtn" type="button" class="btn btn-primary btn-sm" onclick="reloadSystemConfiguration(true)" style="border-radius:8px; font-weight:700; background:#3d9fd4; border:none; padding:8px 16px;">
+        <button id="refreshSettingsBtn" type="button" class="btn btn-primary btn-sm" onclick="refreshActiveSettingsTab()" style="border-radius:8px; font-weight:700; background:#3d9fd4; border:none; padding:8px 16px;">
           <i class="fa-solid fa-rotate"></i> Refresh Settings
         </button>
       </div>
@@ -9262,11 +9700,13 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Contact Phone</label>
-              <input type="tel" id="settingPhone" class="form-control" maxlength="30" pattern="\+?[0-9 .()\-]{7,30}" placeholder="e.g. +1 (555) 019-2834" style="border-radius: 8px;">
+              <input type="tel" id="settingPhone" class="form-control" maxlength="30" pattern="\+?[0-9 .()\-]{7,30}" placeholder="e.g. +1 (555) 019-2834" style="border-radius: 8px;" oninput="validateBranchPhoneField()" onblur="validateBranchPhoneField()">
+              <small id="settingPhoneError" class="field-inline-error" role="alert"></small>
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Admin / User Display Name</label>
-              <input type="text" id="settingAdminName" class="form-control" maxlength="100" pattern="[A-Za-z]+(?:[ .'\-]+[A-Za-z]+)*" title="Use letters; spaces, periods, apostrophes, and hyphens are allowed" placeholder="e.g. Mr. Junaid" style="border-radius: 8px;">
+              <input type="text" id="settingAdminName" class="form-control" maxlength="100" pattern="[A-Za-z]+(?:[ .'\-]+[A-Za-z]+)*" title="Use letters; spaces, periods, apostrophes, and hyphens are allowed" placeholder="e.g. Mr. Junaid" style="border-radius: 8px;" oninput="validateBranchAdminNameField()" onblur="validateBranchAdminNameField()">
+              <small id="settingAdminNameError" class="field-inline-error" role="alert"></small>
             </div>
             <div class="col-md-6">
               <label class="form-label font-weight-bold" style="color: #475569; font-size: 0.85em;">Official Email</label>
@@ -10921,7 +11361,7 @@ async function fetchMultiLiveDetections() {
     <div class="card p-0" style="width: 100%; max-width: 540px; background: #ffffff; border-radius: 16px; border: 1px solid #cfe8f7; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2);">
       <div style="background: #f2faff; border-bottom: 1px solid #cfe8f7; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
         <h3 id="cameraModalTitle" style="font-size: 1.1em; font-weight: 700; color: #173042; margin: 0;"><i class="fa-solid fa-video" style="color:#3d9fd4; margin-right:8px;"></i> Configure AI Camera</h3>
-        <i class="fa-solid fa-xmark" onclick="closeCameraModal()" style="font-size: 1.2em; color: #64748b; cursor: pointer;"></i>
+        <button type="button" class="modal-x-btn" onclick="closeCameraModal()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div style="padding: 20px;">
         <input type="hidden" id="modalCameraDbId" value="" />
@@ -10994,7 +11434,7 @@ async function fetchMultiLiveDetections() {
             <input type="hidden" id="manualAttDate" />
             <div class="mb-3">
               <label class="form-label" style="font-weight: 600; color: #334155;">Shift *</label>
-              <select class="form-select" id="manualAttShiftSelect" onchange="onManualShiftChange()">
+              <select class="form-select" id="manualAttShiftSelect" data-native-select="1" onchange="onManualShiftChange()" style="display:block; width:100%;">
                 <option value="">Loading shifts...</option>
               </select>
             </div>
@@ -11017,7 +11457,7 @@ async function fetchMultiLiveDetections() {
         </div>
         <div class="modal-footer" style="border-top: 1px solid #e2e8f0; background: #f8fafc; border-radius: 0 0 12px 12px;">
           <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-primary" onclick="submitManualAttendance()" style="font-weight: 600;">Save Attendance</button>
+          <button type="button" class="btn btn-primary" onclick="submitManualAttendance()" style="font-weight: 600; background:#8b7bf7; border-color:#8b7bf7;">Save Attendance</button>
         </div>
       </div>
     </div>
@@ -11109,19 +11549,19 @@ async function fetchMultiLiveDetections() {
     </div>
   </div>
 
-  <div id="leaveCompleteModal" style="display:none; position:fixed; inset:0; padding:16px; overflow-y:auto; overscroll-behavior:contain; background:rgba(15,23,42,0.65); backdrop-filter:blur(6px); z-index:10001; align-items:center; justify-content:center;" onclick="if(event.target===this) closeLeaveCompleteView();">
-    <div style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; width:min(100%,760px); max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); margin:auto 0; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,0.3);">
-      <div style="padding:18px 22px; border-bottom:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+  <div id="leaveCompleteModal" style="display:none; position:fixed; inset:0; padding:16px; overflow-y:auto; overscroll-behavior:contain; background:rgba(15,23,42,0.55); backdrop-filter:blur(6px); z-index:10001; align-items:center; justify-content:center;" onclick="if(event.target===this) closeLeaveCompleteView();">
+    <div style="background:#ffffff; border:1px solid #e3e8f5; border-radius:18px; width:min(100%,760px); max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); margin:auto 0; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 34px 64px -46px rgba(18,24,44,0.9);">
+      <div style="padding:18px 22px; border-bottom:1px solid #edf0f9; background:#f8fafc; display:flex; justify-content:space-between; align-items:center; gap:12px;">
         <div style="display:flex; align-items:center; gap:12px; min-width:0;">
-          <div id="leaveCompleteAvatar" style="width:44px; height:44px; flex-shrink:0; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#0284c7; color:#ffffff; font-size:1.1rem; font-weight:800;">?</div>
+          <div id="leaveCompleteAvatar" style="width:44px; height:44px; flex-shrink:0; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#8b7bf7; color:#ffffff; font-size:1.1rem; font-weight:800;">?</div>
           <div style="min-width:0;">
-            <h3 id="leaveCompleteEmployee" style="margin:0 0 3px; color:#173042; font-size:1.12rem; font-weight:800;"></h3>
-            <div id="leaveCompleteRequestId" style="color:#64748b; font-size:0.82rem; font-weight:600;"></div>
+            <h3 id="leaveCompleteEmployee" style="margin:0 0 3px; color:#151b25; font-size:1.12rem; font-weight:800; letter-spacing:-0.01em;"></h3>
+            <div id="leaveCompleteRequestId" style="color:#6b7488; font-size:0.82rem; font-weight:600;"></div>
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
-          <span id="leaveCompletePeriod" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:6px 12px; border-radius:20px; font-size:0.8rem; font-weight:700;"></span>
-          <button type="button" onclick="closeLeaveCompleteView()" aria-label="Close leave details" title="Close" style="box-sizing:border-box; width:34px; min-width:34px; height:34px; min-height:34px; padding:0; border-radius:50%; border:1px solid #cbd5e1; background:#f1f5f9; color:#64748b; display:inline-flex; align-items:center; justify-content:center; flex:0 0 34px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+          <span id="leaveCompletePeriod" style="background:#f3f0ff; color:#5847c8; border:1px solid #ddd6fe; padding:6px 12px; border-radius:20px; font-size:0.8rem; font-weight:700;"></span>
+          <button type="button" class="modal-x-btn" onclick="closeLeaveCompleteView()" aria-label="Close leave details" title="Close"><i class="fa-solid fa-xmark"></i></button>
         </div>
       </div>
       <div style="padding:20px 22px; overflow-y:auto; min-height:0; flex:1; overscroll-behavior:contain;">
@@ -11131,15 +11571,15 @@ async function fetchMultiLiveDetections() {
           <div style="padding:12px; text-align:center; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px;"><div style="font-size:0.72rem; color:#c2410c; text-transform:uppercase; font-weight:700;">Unpaid</div><div id="leaveCompleteUnpaidDays" style="font-size:1.3rem; color:#ea580c; font-weight:800;"></div></div>
           <div style="padding:12px; text-align:center; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px;"><div style="font-size:0.72rem; color:#1d4ed8; text-transform:uppercase; font-weight:700;">Quota Used</div><div id="leaveCompleteQuotaDays" style="font-size:1.3rem; color:#2563eb; font-weight:800;"></div></div>
         </div>
-        <h4 style="font-size:0.95rem; color:#173042; font-weight:800; margin:0 0 10px;"><i class="fa-solid fa-file-lines" style="color:#0284c7;"></i> Leave Request Details</h4>
+        <h4 style="font-size:0.95rem; color:#151b25; font-weight:800; margin:0 0 10px;"><i class="fa-solid fa-file-lines" style="color:#8b7bf7;"></i> Leave Request Details</h4>
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px;">
           <div><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">Leave Type</div><div id="leaveCompleteType" style="color:#334155; font-weight:700;"></div></div>
           <div><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">Status</div><div id="leaveCompleteStatus" style="color:#334155; font-weight:700;"></div></div>
           <div><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">By Admin</div><div id="leaveCompleteApprover" style="color:#334155; font-weight:700;"></div></div>
           <div style="grid-column:1/-1;"><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">Remaining Leave Balances</div><div id="leaveCompleteBalance" aria-live="polite" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;"><span class="text-muted">Loading balances...</span></div></div>
         </div>
-        <h4 style="font-size:0.95rem; color:#173042; font-weight:800; margin:20px 0 10px;"><i class="fa-solid fa-list-check" style="color:#0284c7;"></i> Allocation Details</h4>
-        <div id="leaveCompleteAllocationSummary" role="status" style="margin:0 0 10px; padding:10px 12px; background:#f2faff; border-left:3px solid #3d9fd4; border-radius:4px; color:#334155; font-size:0.84em; line-height:1.45;"></div>
+        <h4 style="font-size:0.95rem; color:#151b25; font-weight:800; margin:20px 0 10px;"><i class="fa-solid fa-list-check" style="color:#8b7bf7;"></i> Allocation Details</h4>
+        <div id="leaveCompleteAllocationSummary" role="status" style="margin:0 0 10px; padding:10px 12px; background:#f3f0ff; border-left:3px solid #8b7bf7; border-radius:8px; color:#334155; font-size:0.84em; line-height:1.45;"></div>
         <div id="leaveCompleteAllocationScroller" style="border:1px solid #e2e8f0; border-radius:8px; overflow-x:auto; cursor:grab; user-select:none;">
           <table class="log-table" style="width:100%; min-width:720px;">
             <thead style="background:#f1f5f9;"><tr><th style="width:44px;"><input id="leaveCompleteSelectAll" type="checkbox" aria-label="Select all pending leave segments" onchange="toggleLeaveCompleteSelectAll(this.checked)" /></th><th>Allocation</th><th>Date Span</th><th>Reason</th><th class="text-center">Days / Half Leaves</th><th>Payroll Treatment</th><th>Status</th></tr></thead>
@@ -15621,7 +16061,7 @@ async function fetchMultiLiveDetections() {
             table.style.minWidth = '1350px';
             thead.innerHTML = `
               <tr>
-                <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b; width:75px;"># ID</th>
+                <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b; width:90px;">EMP ID</th>
                 <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b;">Staff Member</th>
                 <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b;">Department</th>
                 <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b;">Designation</th>
@@ -15633,14 +16073,14 @@ async function fetchMultiLiveDetections() {
                 <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b; text-align:center;">Unpaid Leaves</th>
                 <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b; text-align:center;">Payable Days</th>
                 <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b; text-align:center;">Attendance %</th>
-                <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b; text-align:center; width:140px; position:sticky; right:0; z-index:3; background:#f2faff; box-shadow:-6px 0 10px rgba(15,23,42,0.08);">Action</th>
+                <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b; text-align:center; width:140px; background:#f2faff;">Action</th>
               </tr>
             `;
           } else {
             table.style.minWidth = '1200px';
             thead.innerHTML = `
               <tr>
-                <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b; width:75px;"># ID</th>
+                <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b; width:90px;">EMP ID</th>
                 <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b;">Staff Member</th>
                 <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b;">Department</th>
                 <th style="padding:12px 16px; font-size:0.75em; text-transform:uppercase; color:#64748b;">Date</th>
@@ -15669,9 +16109,9 @@ async function fetchMultiLiveDetections() {
           tr.style.borderBottom = '1px solid #f1f5f9';
 
           const initial = r.name ? r.name.charAt(0).toUpperCase() : '?';
-          let photoHtml = `<div style="width:32px; height:32px; border-radius:50%; background:#0284c7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; flex-shrink:0;">${initial}</div>`;
+          let photoHtml = `<div style="width:32px; height:32px; border-radius:50%; background:#8b7bf7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; flex-shrink:0;">${initial}</div>`;
           if (r.photo_path) {
-            photoHtml = `<img src="/api/users/${r.user_id}/photo" style="width:32px; height:32px; border-radius:50%; object-fit:cover; flex-shrink:0;" onerror="this.onerror=null; this.outerHTML='<div style=\\'width:32px; height:32px; border-radius:50%; background:#0284c7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; flex-shrink:0;\\'>${initial}</div>'">`;
+            photoHtml = `<img src="/api/users/${r.user_id}/photo" style="width:32px; height:32px; border-radius:50%; object-fit:cover; flex-shrink:0;" onerror="this.onerror=null; this.outerHTML='<div style=\\'width:32px; height:32px; border-radius:50%; background:#8b7bf7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; flex-shrink:0;\\'>${initial}</div>'">`;
           }
 
           const empIdDisp = `EMP-${String(r.user_id).padStart(3, '0')}`;
@@ -15685,7 +16125,7 @@ async function fetchMultiLiveDetections() {
             else if (presRate < 75) rateColor = '#d97706';
 
             tr.innerHTML = `
-              <td style="padding:10px 14px; font-weight:700; color:#0284c7; font-size:0.82rem;">${empIdDisp}</td>
+              <td style="padding:10px 14px; font-weight:700; color:#5847c8; font-size:0.82rem; font-family:'JetBrains Mono',monospace;">${empIdDisp}</td>
               <td style="padding:10px 14px;">
                 <div style="display:flex; align-items:center; gap:9px;">
                   ${photoHtml}
@@ -15734,8 +16174,8 @@ async function fetchMultiLiveDetections() {
                   </div>
                 </div>
               </td>
-              <td style="padding:10px 14px; text-align:center; position:sticky; right:0; z-index:1; background:#ffffff; box-shadow:-6px 0 10px rgba(15,23,42,0.06);">
-                <button onclick="openMainCompleteView(${r.user_id})" class="btn btn-sm" style="background:#0284c7; color:#ffffff; border:none; padding:5px 12px; font-size:0.78rem; font-weight:600; border-radius:6px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 4px rgba(2,132,199,0.2);">
+              <td style="padding:10px 14px; text-align:center; background:#ffffff;">
+                <button onclick="openMainCompleteView(${r.user_id})" class="btn btn-sm" style="background:#8b7bf7; color:#ffffff; border:none; padding:5px 12px; font-size:0.78rem; font-weight:600; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 4px rgba(139,123,247,0.25);">
                   <i class="fa-solid fa-calendar-days"></i> Complete View
                 </button>
               </td>
@@ -15813,8 +16253,9 @@ async function fetchMultiLiveDetections() {
               <span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${isManualSource ? '#e0f2fe' : '#f1f5f9'}; color:${isManualSource ? '#0369a1' : '#475569'};">${escapeHtml(source)}</span>
             </div>`;
             
+            // AR-06: same EMP-### format as Multi-Day table
             tr.innerHTML = `
-              <td style="padding:10px 14px; font-weight:600; color:#94a3b8; font-size:0.78em;">#${r.user_id}</td>
+              <td style="padding:10px 14px; font-weight:700; color:#5847c8; font-size:0.82rem; font-family:'JetBrains Mono',monospace;">${empIdDisp}</td>
               <td style="padding:10px 14px;">
                 <div style="display:flex; align-items:center; gap:8px;">
                   ${photoHtml}
@@ -16257,7 +16698,7 @@ async function fetchMultiLiveDetections() {
           const avatarBox = document.getElementById('mainModalAvatar');
           if (avatarBox) {
             if (emp.photo_path) {
-              avatarBox.innerHTML = `<img src="/api/users/${emp.user_id}/photo" style="width:48px; height:48px; border-radius:50%; object-fit:cover;" onerror="this.onerror=null; this.outerHTML='<div style=\\'width:48px; height:48px; border-radius:50%; background:#0284c7; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.2rem; font-weight:700;\\'>${initial}</div>'">`;
+              avatarBox.innerHTML = `<img src="/api/users/${emp.user_id}/photo" style="width:48px; height:48px; border-radius:50%; object-fit:cover;" onerror="this.onerror=null; this.outerHTML='<div style=\\'width:48px; height:48px; border-radius:50%; background:#8b7bf7; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.2rem; font-weight:700;\\'>${initial}</div>'">`;
             } else {
               avatarBox.innerHTML = initial;
             }
@@ -16820,6 +17261,17 @@ async function fetchMultiLiveDetections() {
       }
 
       function upgradeSelectToCameraStyle(selectEl, options = {}) {
+        // AR-04: the Mark Present Shift field stays a native select so it always expands.
+        if (selectEl && (selectEl.dataset.nativeSelect === '1' || selectEl.id === 'manualAttShiftSelect')) {
+          const staleWrap = selectEl.closest('.app-camera-select');
+          if (staleWrap && staleWrap.parentNode) {
+            staleWrap.parentNode.insertBefore(selectEl, staleWrap);
+            staleWrap.remove();
+          }
+          selectEl.style.display = '';
+          selectEl.classList.add('form-select');
+          return null;
+        }
         if (!selectEl || selectEl.tagName !== 'SELECT' || selectEl.multiple) return null;
         if (selectEl.dataset.appCameraSelect === '1' && selectEl._appCameraWrap?.isConnected) {
           refreshAppCameraSelect(selectEl);
@@ -17230,7 +17682,7 @@ async function fetchMultiLiveDetections() {
       // STAFF DIRECTORY PAGINATION (25 PER PAGE)
       // =======================================================
       let tabStaffCurrentPage = 1;
-      const tabStaffPageSize = 25;
+      var tabStaffPageSize = 25;
       let tabStaffFilteredCache = [];
 
       function renderTabStaffRows(staffList) {
@@ -17305,7 +17757,7 @@ async function fetchMultiLiveDetections() {
             <td style="padding:9px 12px; text-align:center; vertical-align:middle;">
               <input type="checkbox" class="staff-row-checkbox" value="${s.id}" onchange="toggleStaffRowCheck(${s.id}, this.checked)" ${isRowChecked ? 'checked' : ''} style="width:15px; height:15px; cursor:pointer; accent-color:#0284c7;" />
             </td>
-            <td style="padding:9px 12px; font-weight:700; color:#0284c7; font-size:0.8rem; vertical-align:middle;">#${String(s.id).padStart(3, '0')}</td>
+            <td style="padding:9px 12px; font-weight:700; color:#0284c7; font-size:0.8rem; vertical-align:middle;">EMP-${String(s.id).padStart(3, '0')}</td>
             <td style="padding:9px 12px; vertical-align:middle;">
               <div style="display:flex; align-items:center; gap:10px;">
                 ${photoHtml}
@@ -17456,7 +17908,7 @@ async function fetchMultiLiveDetections() {
       let shiftStaffListCache = [];
       let shiftStaffFilteredCache = [];
       let shiftStaffCurrentPage = 1;
-      const shiftStaffPageSize = 25;
+      var shiftStaffPageSize = 25;
       const shiftWeekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
       function getShiftEffectiveFrom() {
@@ -17669,7 +18121,7 @@ async function fetchMultiLiveDetections() {
             <td style="padding:10px 14px; text-align:center;">
               <input type="checkbox" class="shift-staff-checkbox" value="${user.id}" ${isChecked ? "checked" : ""} onchange="toggleShiftStaffRowCheck(${user.id}, this.checked)" style="width:16px; height:16px; cursor:pointer; accent-color:#3d9fd4;" />
             </td>
-            <td style="padding:10px 14px; font-weight:700; color:#94a3b8; font-size:0.78em;">#${user.id}</td>
+            <td style="padding:10px 14px; font-weight:700; color:#94a3b8; font-size:0.78em;">EMP-${String(user.id).padStart(3, '0')}</td>
             <td style="padding:10px 14px;">
               <div style="display:flex; align-items:center; gap:9px;">
                 <div style="width:32px; height:32px; border-radius:50%; background:#e0f2fe; color:#0284c7; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; flex-shrink:0;">${initial}</div>
@@ -18257,7 +18709,7 @@ async function fetchMultiLiveDetections() {
         document.querySelectorAll('.settings-nav-btn').forEach((nav) => {
           const on = nav.id === navBtnId;
           nav.classList.toggle('active', on);
-          nav.style.background = on ? '#3d9fd4' : '#f1f5f9';
+          nav.style.background = on ? '#8b7bf7' : '#f1f5f9';
           nav.style.color = on ? '#ffffff' : '#475569';
         });
       }
@@ -18321,7 +18773,7 @@ async function fetchMultiLiveDetections() {
         });
         if (btn) {
           btn.classList.add('active');
-          btn.style.background = '#3d9fd4';
+          btn.style.background = '#8b7bf7';
           btn.style.color = '#ffffff';
         }
 
@@ -18383,6 +18835,49 @@ async function fetchMultiLiveDetections() {
           paintPayrollHubTabs('packages');
         }
       }
+
+      // GUI-03: refresh only the settings tab that is currently open.
+      async function refreshActiveSettingsTab() {
+        const btn = document.getElementById('refreshSettingsBtn');
+        const activeTab = Array.from(document.querySelectorAll('.settings-sub-tab')).find(el => el.offsetParent !== null);
+        const tabId = activeTab ? activeTab.id : '';
+        const loaders = {
+          'branch-tab': () => loadBranchSettings(),
+          'depts-tab': () => loadDepartmentsTable(),
+          'desigs-tab': () => loadDesignationsTable(),
+          'cameras-tab': () => (typeof loadCamerasGrid === 'function' ? loadCamerasGrid() : Promise.resolve()),
+          'leave-settings-tab': async () => {
+            if (typeof loadPayrollSettings === 'function') await loadPayrollSettings();
+            if (typeof updateHalfLeaveQuotaModeUI === 'function') updateHalfLeaveQuotaModeUI();
+            if (typeof updateHalfLeaveRuleScopeOptions === 'function') await updateHalfLeaveRuleScopeOptions();
+          },
+          'mobile-app-tab': () => (typeof loadMobileCredentials === 'function' ? loadMobileCredentials('settingsMobileCredentialResult') : Promise.resolve()),
+          'payroll-rules-tab': async () => {
+            if (typeof loadPayrollRules === 'function') await loadPayrollRules();
+            if (typeof loadPayrollSettings === 'function') await loadPayrollSettings();
+          },
+          'payroll-calendar-tab': () => (typeof loadPayrollCalendar === 'function' ? loadPayrollCalendar() : Promise.resolve()),
+          'salary-config-tab': () => (typeof loadSalaryConfigs === 'function' ? loadSalaryConfigs() : Promise.resolve())
+        };
+        const loader = loaders[tabId];
+        if (!loader) return;
+        const original = btn ? btn.innerHTML : '';
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Refreshing...';
+        }
+        try {
+          await loader();
+        } finally {
+          if (btn) {
+            setTimeout(function () {
+              btn.disabled = false;
+              btn.innerHTML = original;
+            }, 350);
+          }
+        }
+      }
+      window.refreshActiveSettingsTab = refreshActiveSettingsTab;
 
       async function reloadSystemConfiguration(showRefreshState = false) {
         const refreshButton = document.getElementById('refreshSettingsBtn');
@@ -21434,6 +21929,7 @@ async function fetchMultiLiveDetections() {
       }
 
       function renderDepartmentsTable(depts) {
+        if (typeof window.getDeptPageSlice === 'function') depts = window.getDeptPageSlice(depts);
         const tbody = document.getElementById('departmentsTableBody');
         if (!tbody) return;
         if (!depts || depts.length === 0) {
@@ -21580,6 +22076,7 @@ async function fetchMultiLiveDetections() {
       }
 
       function renderDesignationsTable(desigs) {
+        if (typeof window.getDesigPageSlice === 'function') desigs = window.getDesigPageSlice(desigs);
         const tbody = document.getElementById('designationsTableBody');
         if (!tbody) return;
         if (!desigs || desigs.length === 0) {
@@ -23713,7 +24210,7 @@ async function fetchMultiLiveDetections() {
           <tr style="border-bottom:1px solid #f1f5f9; transition:background 0.15s ease;">
             <td style="padding:12px 14px;">
               <div style="display:flex; align-items:center; gap:10px;">
-                <div style="width:34px; height:34px; border-radius:50%; background:#0284c7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.85em; flex-shrink:0;">
+                <div style="width:34px; height:34px; border-radius:50%; background:#8b7bf7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.85em; flex-shrink:0;">
                   ${String(group.user_name || 'U').charAt(0).toUpperCase()}
                 </div>
                 <div>
@@ -24247,6 +24744,14 @@ async function fetchMultiLiveDetections() {
     }
     window.onLeaveBalanceSearchInput = onLeaveBalanceSearchInput;
 
+    function onLeaveBalanceYearChange(year) {
+      const yearLabel = document.getElementById('leaveBalanceYearLabel');
+      if (yearLabel) yearLabel.textContent = year;
+      _leaveBalPage = 1;
+      loadLeaveBalances();
+    }
+    window.onLeaveBalanceYearChange = onLeaveBalanceYearChange;
+
     function resetLeaveBalanceFilters() {
       const search = document.getElementById('leaveBalanceSearch');
       const pageSize = document.getElementById('leaveBalancePageSize');
@@ -24287,6 +24792,20 @@ async function fetchMultiLiveDetections() {
     async function loadLeaveBalances() {
       const tbody = document.getElementById('leaveBalancesTableBody');
       if (!tbody) return;
+      const yearSelect = document.getElementById('leaveBalanceYearFilter');
+      if (yearSelect && !yearSelect.options.length) {
+        const currentYear = new Date().getFullYear();
+        [currentYear - 2, currentYear - 1, currentYear, currentYear + 1].forEach(y => {
+          const opt = document.createElement('option');
+          opt.value = String(y);
+          opt.textContent = String(y);
+          yearSelect.appendChild(opt);
+        });
+        yearSelect.value = String(currentYear);
+      }
+      const balanceYear = (yearSelect && yearSelect.value) ? yearSelect.value : String(new Date().getFullYear());
+      const yearLabel = document.getElementById('leaveBalanceYearLabel');
+      if (yearLabel) yearLabel.textContent = balanceYear;
       tbody.innerHTML = (window.leaveModuleLoader || ((c) => `<tr><td colspan="${c}" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.35rem; color:#0d9488;"></i></td></tr>`))(6);
       try {
         if (!(_allLeaveTypes || []).length) {
@@ -24294,7 +24813,7 @@ async function fetchMultiLiveDetections() {
           const types = await typeRes.json();
           _allLeaveTypes = Array.isArray(types) ? types : [];
         }
-        const res = await fetch('/api/leaves/balances?year=2026');
+        const res = await fetch(`/api/leaves/balances?year=${encodeURIComponent(balanceYear)}`);
         const data = await res.json();
         _allLeaveBalances = Array.isArray(data) ? data : [];
         filterLeaveBalancesTable();
@@ -25184,11 +25703,12 @@ async function fetchMultiLiveDetections() {
       const nameValid = name.length <= 100 && !containsUnsafeInput(name) && !/^[=+\-@]/.test(name);
       const descriptionValid = description.length <= 250 && !containsUnsafeInput(description);
       const datesValid = Boolean(date && (!endDate || endDate >= date));
-      setFieldError('modalHolidayNameError', !name ? 'Holiday name is required.' : nameValid ? '' : 'Use safe text and normal punctuation only (maximum 100 characters).');
+      const revealHolidayErrors = window._holidayFormSubmitAttempted === true;
+      setFieldError('modalHolidayNameError', !revealHolidayErrors ? '' : (!name ? 'Holiday name is required.' : nameValid ? '' : 'Use safe text and normal punctuation only (maximum 100 characters).'));
       setFieldError('modalHolidayDescError', descriptionValid ? '' : 'Description contains unsupported content or exceeds 250 characters.');
       const valid = Boolean(name && nameValid && datesValid);
       const button = document.getElementById('saveHolidayBtn');
-      if (button) button.disabled = !valid;
+      if (button) button.disabled = false;
       return valid;
     }
 
@@ -25421,6 +25941,7 @@ async function fetchMultiLiveDetections() {
         if (!dInput.value) dInput.value = todayStr;
       }
       if (eInput) eInput.value = '';
+      window._holidayFormSubmitAttempted = false;
       validateHolidayForm();
       modal.style.display = 'flex';
     }
@@ -25444,6 +25965,7 @@ async function fetchMultiLiveDetections() {
       if (descInput) descInput.value = h.description || '';
       updateCharacterCounter('modalHolidayName', 'modalHolidayNameCounter');
       updateCharacterCounter('modalHolidayDesc', 'modalHolidayDescCounter');
+      window._holidayFormSubmitAttempted = false;
       validateHolidayForm();
       const recInput = document.getElementById('modalHolidayRecurring');
       if (recInput) recInput.checked = Boolean(Number(h.is_recurring));
@@ -25465,11 +25987,10 @@ async function fetchMultiLiveDetections() {
       const desc = document.getElementById('modalHolidayDesc').value.trim();
       const isRec = document.getElementById('modalHolidayRecurring')?.checked ? 1 : 0;
 
-      if (!name || !hdate) {
-        alert("Please enter holiday name and start date.");
-        return;
-      }
-      if (!validateHolidayForm()) return;
+      window._holidayFormSubmitAttempted = true;
+      if (!name) { validateHolidayForm(true); return; }
+      if (!hdate) { alert("Please enter a holiday start date."); return; }
+      if (!validateHolidayForm(true)) return;
 
       try {
         const url = holidayId ? `/api/holidays/${holidayId}` : '/api/holidays';

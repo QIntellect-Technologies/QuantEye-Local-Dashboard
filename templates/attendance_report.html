@@ -860,7 +860,10 @@
                 color: black !important;
             }
         }
-    </style>
+            /* AR-02: keep the export menu above every surrounding surface */
+        .page-header, .header-actions, .container { overflow: visible !important; }
+        #attendanceExportMenu { z-index: 3000 !important; }
+</style>
 </head>
 <body>
 
@@ -1165,7 +1168,7 @@
                     <div>
                         <h2 id="modalEmpName" style="color: #ffffff; font-size: 1.35rem; margin-bottom: 2px;">Employee Name</h2>
                         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 0.85rem; color: var(--text-muted);">
-                            <span id="modalEmpId" style="color: var(--primary-cyan); font-weight: 700;">#EMP-000</span>
+                            <span id="modalEmpId" style="color: var(--primary-cyan); font-weight: 700;">EMP-000</span>
                             <span>•</span>
                             <span id="modalEmpDept" style="color: #60a5fa; font-weight: 600;">Department</span>
                             <span>•</span>
