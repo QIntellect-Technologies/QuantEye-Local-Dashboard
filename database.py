@@ -953,10 +953,15 @@ def init_db():
                     allowances REAL DEFAULT 0,
                     deductions REAL DEFAULT 0,
                     ot_rate REAL DEFAULT 0,
+                    effective_from TEXT,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
             ''')
+            try:
+                cursor.execute("ALTER TABLE salary_configs ADD COLUMN effective_from TEXT")
+            except sqlite3.OperationalError:
+                pass
 
             # Finalized payroll is stored as a monthly snapshot of employee and attendance data.
             cursor.execute('''
@@ -1337,10 +1342,49 @@ def init_db():
                     note TEXT NOT NULL DEFAULT '',
                     source TEXT NOT NULL DEFAULT 'excel',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(organization_id, branch_id, year, month, user_id)
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            # QA-109: multiple bonus entries per person/month (additive history).
+            # Drop legacy UNIQUE(organization_id, branch_id, year, month, user_id) if present.
+            try:
+                bonus_sql_row = cursor.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='payroll_bonuses'"
+                ).fetchone()
+                bonus_sql = ((bonus_sql_row[0] if bonus_sql_row else '') or '').replace(' ', '').replace('\n', '')
+                if 'UNIQUE(organization_id,branch_id,year,month,user_id)' in bonus_sql:
+                    cursor.execute('''
+                        CREATE TABLE payroll_bonuses_qa109 (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            organization_id TEXT NOT NULL DEFAULT 'DEFAULT_ORG',
+                            branch_id TEXT NOT NULL DEFAULT 'DEFAULT_BRANCH',
+                            year INTEGER NOT NULL,
+                            month INTEGER NOT NULL,
+                            user_id INTEGER NOT NULL,
+                            amount REAL NOT NULL DEFAULT 0,
+                            note TEXT NOT NULL DEFAULT '',
+                            source TEXT NOT NULL DEFAULT 'excel',
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    ''')
+                    cursor.execute('''
+                        INSERT INTO payroll_bonuses_qa109 (
+                            id, organization_id, branch_id, year, month, user_id,
+                            amount, note, source, created_at, updated_at
+                        )
+                        SELECT id, organization_id, branch_id, year, month, user_id,
+                               amount, note, source, created_at, updated_at
+                        FROM payroll_bonuses
+                    ''')
+                    cursor.execute('DROP TABLE payroll_bonuses')
+                    cursor.execute('ALTER TABLE payroll_bonuses_qa109 RENAME TO payroll_bonuses')
+            except sqlite3.Error:
+                logger.exception('payroll_bonuses additive migration failed')
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS idx_payroll_bonuses_month_user '
+                'ON payroll_bonuses(organization_id, branch_id, year, month, user_id)'
+            )
 
             # Branch / Organization Settings table
             cursor.execute('''
@@ -2318,6 +2362,25 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                         "UPDATE employee_shift_history SET effective_from = ? WHERE id = ?",
                         (norm_join, earliest_history[0])
                     )
+                # QA-72: keep salary package Effective from aligned when it was still a stamp/old join.
+                pkg_row = cursor.execute(
+                    "SELECT effective_from FROM salary_configs WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+                if pkg_row is not None:
+                    pkg = str(pkg_row[0] or '').strip()[:10]
+                    created_d = cursor.execute(
+                        "SELECT date(created_at), date(enrollment_date) FROM users WHERE id = ?",
+                        (user_id,),
+                    ).fetchone()
+                    created_iso = str((created_d[0] if created_d else '') or '').strip()[:10]
+                    enroll_iso = str((created_d[1] if created_d else '') or '').strip()[:10]
+                    old_join = str(existing_join_date or '').strip()[:10]
+                    if (not pkg) or _is_auto_join_stamp(pkg, created_iso, enroll_iso) or pkg == old_join:
+                        cursor.execute(
+                            "UPDATE salary_configs SET effective_from = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                            (norm_join, user_id),
+                        )
             conn.commit()
             
         if updated:
@@ -2331,13 +2394,70 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
         return False
 
 
+def _parse_iso_date_candidate(cand: Any) -> Optional[str]:
+    if not cand:
+        return None
+    clean = str(cand).split(' ')[0].split('T')[0].strip()
+    if len(clean) >= 10:
+        try:
+            datetime.strptime(clean[:10], '%Y-%m-%d')
+            return clean[:10]
+        except ValueError:
+            pass
+    return None
+
+
+def _is_auto_join_stamp(
+    join_date: Optional[str],
+    created_at: Optional[str] = None,
+    enrollment_date: Optional[str] = None,
+    today_iso: Optional[str] = None,
+) -> bool:
+    """True when join_date looks like enrollment/system stamp, not a deliberate hire date."""
+    jd = _parse_iso_date_candidate(join_date)
+    if not jd:
+        return True
+    today = today_iso or date.today().isoformat()
+    created = _parse_iso_date_candidate(created_at)
+    enrolled = _parse_iso_date_candidate(enrollment_date)
+    return jd == today or (created is not None and jd == created) or (enrolled is not None and jd == enrolled)
+
+
+def resolve_payroll_join_date(employee_or_user: Union[Dict[str, Any], sqlite3.Row, None]) -> Optional[str]:
+    """QA-72: payroll joining date must match the saved business date (not a today-stamp).
+
+    Prefer users.join_date when it is a deliberate hire date. If join_date is still an
+    auto-enrollment stamp (today / created_at / enrollment_date) and the salary package
+    has Effective from, use that package date so payroll matches Configure Salary Package.
+    """
+    if not employee_or_user:
+        return None
+    if not isinstance(employee_or_user, (dict, sqlite3.Row)):
+        return None
+    jd = _parse_iso_date_candidate(employee_or_user.get('join_date'))
+    pkg = _parse_iso_date_candidate(
+        employee_or_user.get('package_effective_from')
+        or employee_or_user.get('effective_from')
+        or employee_or_user.get('salary_effective_from')
+    )
+    created = _parse_iso_date_candidate(employee_or_user.get('created_at'))
+    enrolled = _parse_iso_date_candidate(employee_or_user.get('enrollment_date'))
+    if jd and not _is_auto_join_stamp(jd, created, enrolled):
+        return jd
+    if pkg:
+        return pkg
+    if jd:
+        return jd
+    return enrolled or created or _parse_iso_date_candidate(employee_or_user.get('employed_from'))
+
+
 def get_employee_employment_start_date(employee_or_user: Union[Dict[str, Any], sqlite3.Row, Tuple, List, None]) -> Optional[str]:
     """
     LAYER 5: Standardized business employment start date precedence rule.
     Do NOT blindly use min(created_at, enrollment_date, join_date).
     
     Precedence:
-    1. Valid join_date (legitimate business hire date, YYYY-MM-DD)
+    1. Resolved payroll joining date (QA-72: real hire date, not today-stamp)
     2. Validated employment/enrollment date (if join_date is missing/NULL)
     3. created_at as final fallback (when no explicit employment date was recorded)
     
@@ -2350,29 +2470,17 @@ def get_employee_employment_start_date(employee_or_user: Union[Dict[str, Any], s
     if not employee_or_user:
         return None
 
-    def _parse_date_candidate(cand: Any) -> Optional[str]:
-        if not cand:
-            return None
-        clean = str(cand).split(' ')[0].split('T')[0].strip()
-        if len(clean) >= 10:
-            try:
-                datetime.strptime(clean[:10], '%Y-%m-%d')
-                return clean[:10]
-            except ValueError:
-                pass
-        return None
-
     if isinstance(employee_or_user, (dict, sqlite3.Row)):
-        jd = _parse_date_candidate(employee_or_user.get('join_date'))
-        if jd:
-            return jd
-        ed = _parse_date_candidate(employee_or_user.get('enrollment_date'))
+        resolved = resolve_payroll_join_date(employee_or_user)
+        if resolved:
+            return resolved
+        ed = _parse_iso_date_candidate(employee_or_user.get('enrollment_date'))
         if ed:
             return ed
-        ca = _parse_date_candidate(employee_or_user.get('created_at'))
+        ca = _parse_iso_date_candidate(employee_or_user.get('created_at'))
         if ca:
             return ca
-        ef = _parse_date_candidate(employee_or_user.get('employed_from'))
+        ef = _parse_iso_date_candidate(employee_or_user.get('employed_from'))
         if ef:
             return ef
         return None
@@ -10155,29 +10263,21 @@ def get_all_salary_configs(active_only: bool = True, department: Optional[str] =
                     ROUND(COALESCE(s.basic_salary, u.salary, 0.0) + COALESCE(s.allowances, 0.0) - COALESCE(s.deductions, 0.0), 2) as net_estimated,
                     CASE WHEN s.user_id IS NOT NULL THEN 1 ELSE 0 END as is_configured,
                     s.updated_at,
+                    NULLIF(TRIM(u.join_date), '') as join_date,
                     COALESCE(
-                        NULLIF(TRIM(u.join_date), ''),
-                        (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
-                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c 
+                        NULLIF(TRIM(s.effective_from), ''),
+                        (SELECT MAX(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
+                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c
                          WHERE c.active = 1
-                           AND (c.organization_id IS NULL OR c.organization_id = '' OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
-                           AND (
-                               (COALESCE(c.scope_type, 'employee') = 'employee' AND c.user_id = u.id)
-                               OR (c.scope_type = 'org')
-                               OR (c.scope_type = 'department' AND c.scope_id = u.department)
-                               OR (c.scope_type = 'designation' AND c.scope_id = COALESCE(u.position, 'Staff Member'))
-                               OR (c.scope_type = 'shift' AND (c.scope_id = CAST(u.shift_id AS TEXT) OR c.scope_id = u.shift_id))
-                           )
-                           AND NOT EXISTS (
-                               SELECT 1 FROM payroll_employee_components exc
-                               WHERE exc.component_type_id = c.component_type_id
-                                 AND exc.user_id = u.id
-                                 AND exc.excluded = 1
-                                 AND exc.active = 1
-                           )
+                           AND COALESCE(c.scope_type, 'employee') = 'employee'
+                           AND c.user_id = u.id
+                           AND c.excluded = 0
+                           AND (c.organization_id IS NULL OR c.organization_id = ''
+                                OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
                         ),
+                        NULLIF(TRIM(u.join_date), ''),
                         substr(s.updated_at, 1, 10),
-                        '2026-01-01'
+                        date('now')
                     ) as effective_from,
                     (SELECT COUNT(DISTINCT c.component_type_id) FROM payroll_employee_components c 
                      WHERE c.active = 1
@@ -10207,6 +10307,9 @@ def get_all_salary_configs(active_only: bool = True, department: Optional[str] =
             for r in configs:
                 if float(r.get('ot_rate') or 0.0) <= 0:
                     r['ot_rate'] = calculate_employee_ot_rate(cursor, r['user_id'], basic_salary=r.get('basic_salary'))
+                r['effective_from'] = _clamp_effective_from_to_join(
+                    r.get('effective_from'), r.get('join_date')
+                )
             return configs
     except Exception as e:
         logger.error(f"Get all salary configs error: {e}")
@@ -10234,29 +10337,21 @@ def get_salary_config(user_id: int) -> Optional[Dict]:
                     ROUND(COALESCE(s.basic_salary, u.salary, 0.0) + COALESCE(s.allowances, 0.0) - COALESCE(s.deductions, 0.0), 2) as net_estimated,
                     CASE WHEN s.user_id IS NOT NULL THEN 1 ELSE 0 END as is_configured,
                     s.updated_at,
+                    NULLIF(TRIM(u.join_date), '') as join_date,
                     COALESCE(
-                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c 
+                        NULLIF(TRIM(s.effective_from), ''),
+                        (SELECT MAX(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
+                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c
                          WHERE c.active = 1
-                           AND (c.organization_id IS NULL OR c.organization_id = '' OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
-                           AND (
-                               (COALESCE(c.scope_type, 'employee') = 'employee' AND c.user_id = u.id)
-                               OR (c.scope_type = 'org')
-                               OR (c.scope_type = 'department' AND c.scope_id = u.department)
-                               OR (c.scope_type = 'designation' AND c.scope_id = COALESCE(u.position, 'Staff Member'))
-                               OR (c.scope_type = 'shift' AND (c.scope_id = CAST(u.shift_id AS TEXT) OR c.scope_id = u.shift_id))
-                           )
-                           AND NOT EXISTS (
-                               SELECT 1 FROM payroll_employee_components exc
-                               WHERE exc.component_type_id = c.component_type_id
-                                 AND exc.user_id = u.id
-                                 AND exc.excluded = 1
-                                 AND exc.active = 1
-                           )
+                           AND COALESCE(c.scope_type, 'employee') = 'employee'
+                           AND c.user_id = u.id
+                           AND c.excluded = 0
+                           AND (c.organization_id IS NULL OR c.organization_id = ''
+                                OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
                         ),
-                        (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
+                        NULLIF(TRIM(u.join_date), ''),
                         substr(s.updated_at, 1, 10),
-                        u.join_date,
-                        '2026-01-01'
+                        date('now')
                     ) as effective_from,
                     (SELECT COUNT(DISTINCT c.component_type_id) FROM payroll_employee_components c 
                      WHERE c.active = 1
@@ -10284,6 +10379,9 @@ def get_salary_config(user_id: int) -> Optional[Dict]:
             if not row:
                 return None
             result = dict(row)
+            result['effective_from'] = _clamp_effective_from_to_join(
+                result.get('effective_from'), result.get('join_date')
+            )
             # Determine applicable monthly working hours from employee's shift schedule
             cursor.execute('''
                 SELECT start_time, end_time, working_days FROM employee_shift_history
@@ -10334,19 +10432,43 @@ def get_salary_config(user_id: int) -> Optional[Dict]:
         return None
 
 
+def _format_join_date_label(iso: Optional[str]) -> str:
+    raw = str(iso or '').strip()[:10]
+    if not raw:
+        return ''
+    try:
+        d = datetime.strptime(raw, '%Y-%m-%d').date()
+        return f"{d.day} {d.strftime('%b %Y')}"
+    except (TypeError, ValueError):
+        return raw
+
+
+def _clamp_effective_from_to_join(effective_from: Optional[str], join_date: Optional[str]) -> str:
+    """QA-107: never display an Effective from earlier than the person's joining date."""
+    ef = str(effective_from or '').strip()[:10]
+    jd = str(join_date or '').strip()[:10]
+    if jd and (not ef or ef < jd):
+        return jd
+    if ef:
+        return ef
+    return date.today().isoformat()
+
+
 def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float = 0.0, deductions: float = 0.0, ot_rate: float = 0.0, effective_from: Optional[str] = None) -> bool:
     """Insert or update salary configuration for a user and synchronize users.salary."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, COALESCE(organization_id,'DEFAULT_ORG'), COALESCE(branch_id,'DEFAULT_BRANCH') FROM users WHERE id = ?",
+                "SELECT id, COALESCE(organization_id,'DEFAULT_ORG'), COALESCE(branch_id,'DEFAULT_BRANCH'), "
+                "NULLIF(TRIM(join_date), '') FROM users WHERE id = ?",
                 (user_id,),
             )
             owner = cursor.fetchone()
         if not owner:
             logger.error(f"Cannot set salary config: user {user_id} not found")
             return False
+        join_date = str(owner[3] or '').strip()[:10]
         raise_if_payroll_month_locked(str(effective_from or date.today().isoformat())[:10], owner[1], owner[2])
         settings = get_payroll_settings(organization_id=owner[1], branch_id=owner[2])
         places = max(0, min(6, int(settings.get('decimal_places') or DEFAULT_DECIMAL_PLACES)))
@@ -10370,29 +10492,38 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
         )
         if effective_from is not None and str(effective_from).strip():
             effective_from = validate_calendar_date(effective_from, 'Effective from')
+        else:
+            effective_from = join_date or date.today().isoformat()
+        # QA-107: refuse Effective from earlier than joining date (first package and later changes).
+        if join_date and str(effective_from)[:10] < join_date:
+            raise ValueError(
+                f"Effective from cannot be earlier than the joining date "
+                f"({_format_join_date_label(join_date)}). Use {_format_join_date_label(join_date)} or a later date."
+            )
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 '''INSERT INTO salary_configs (
-                       user_id, basic_salary, allowances, deductions, ot_rate, updated_at,
+                       user_id, basic_salary, allowances, deductions, ot_rate, effective_from, updated_at,
                        organization_id, branch_id
                    )
-                   VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
+                   VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
                    ON CONFLICT(user_id) DO UPDATE SET
                    basic_salary=excluded.basic_salary,
                    allowances=excluded.allowances,
                    deductions=excluded.deductions,
                    ot_rate=excluded.ot_rate,
+                   effective_from=excluded.effective_from,
                    organization_id=excluded.organization_id,
                    branch_id=excluded.branch_id,
                    updated_at=CURRENT_TIMESTAMP''',
-                (user_id, b_sal, allow, deduct, ot, owner[1], owner[2])
+                (user_id, b_sal, allow, deduct, ot, str(effective_from)[:10], owner[1], owner[2])
             )
             cursor.execute("UPDATE users SET salary = ? WHERE id = ?", (b_sal, user_id))
-            # QA-72: if joining date still looks like an auto-enrollment stamp (blank/today),
-            # align it to the package effective_from so payroll uses the same date.
+            # QA-72: if joining date still looks like an auto-enrollment stamp (blank/today/
+            # created/enrollment), align it to the package Effective from so payroll matches
+            # Configure Salary Package and never keeps a replaced "today" stamp.
             if effective_from:
-                today_iso = date.today().isoformat()
                 row_u = cursor.execute(
                     "SELECT join_date, date(created_at), date(enrollment_date) FROM users WHERE id = ?",
                     (user_id,),
@@ -10400,14 +10531,15 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
                 cur_join = str((row_u[0] if row_u else '') or '').strip()[:10]
                 created_d = str((row_u[1] if row_u else '') or '').strip()[:10]
                 enroll_d = str((row_u[2] if row_u else '') or '').strip()[:10]
-                if (not cur_join) or cur_join == today_iso or cur_join == created_d or cur_join == enroll_d:
-                    if str(effective_from)[:10] != cur_join:
-                        cursor.execute(
-                            "UPDATE users SET join_date = ? WHERE id = ?",
-                            (str(effective_from)[:10], user_id),
-                        )
+                pkg = str(effective_from)[:10]
+                if _is_auto_join_stamp(cur_join, created_d, enroll_d) and pkg != cur_join:
+                    cursor.execute(
+                        "UPDATE users SET join_date = ? WHERE id = ?",
+                        (pkg, user_id),
+                    )
+            # Always keep a revision row so later Effective from dates stay visible (QA-107).
+            start = str(effective_from or date.today().isoformat())[:10]
             if _payroll_flag_on(settings, 'enable_salary_revisions'):
-                start = str(effective_from or date.today().isoformat())[:10]
                 cursor.execute(
                     """INSERT INTO salary_revisions (
                            organization_id, branch_id, user_id, effective_from,
@@ -11677,19 +11809,21 @@ def list_payroll_bonuses(
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
+    """Return every bonus entry for the month (QA-109 history). Totals use get_payroll_bonus_amounts."""
     org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
             SELECT b.id, b.user_id, b.amount, b.note, b.source, b.year, b.month,
+                   b.created_at, b.updated_at,
                    u.name AS employee_name, u.email
             FROM payroll_bonuses b
             LEFT JOIN users u ON u.id = b.user_id
             WHERE b.year = ? AND b.month = ?
               AND COALESCE(b.organization_id, 'DEFAULT_ORG') = ?
               AND COALESCE(b.branch_id, 'DEFAULT_BRANCH') = ?
-            ORDER BY u.name COLLATE NOCASE
+            ORDER BY u.name COLLATE NOCASE, b.id ASC
             """,
             (int(year), int(month), org, branch),
         ).fetchall()
@@ -11702,13 +11836,58 @@ def get_payroll_bonus_amounts(
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
 ) -> Dict[int, float]:
-    return {
-        int(row['user_id']): float(row.get('amount') or 0)
-        for row in list_payroll_bonuses(year, month, organization_id, branch_id)
-    }
+    """QA-109: sum all bonus entries for each person in the month."""
+    org, branch = _tenant_ids(organization_id, branch_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute(
+            """
+            SELECT user_id, ROUND(COALESCE(SUM(amount), 0), 6) AS amount
+            FROM payroll_bonuses
+            WHERE year = ? AND month = ?
+              AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+              AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+            GROUP BY user_id
+            """,
+            (int(year), int(month), org, branch),
+        ).fetchall()
+        return {int(row[0]): float(row[1] or 0) for row in rows}
 
 
 DEFAULT_BONUS_LIMIT = 1_000_000.0
+
+
+def _parse_bonus_amount_cell(raw_amount: Any) -> tuple:
+    """Return (amount|None, is_blank, error_message|None)."""
+    if raw_amount is None:
+        return None, True, None
+    if isinstance(raw_amount, str) and raw_amount.strip() == '':
+        return None, True, None
+    if isinstance(raw_amount, bool):
+        return None, False, 'Amount must be numeric'
+    if isinstance(raw_amount, (int, float)):
+        return float(raw_amount), False, None
+    if isinstance(raw_amount, str):
+        raw_str = raw_amount.strip()
+        if re.fullmatch(r'[-+]?\d+,\d{1,2}', raw_str):
+            return None, False, (
+                f"Amount '{raw_str}' is not a valid number. Use a dot for decimals (e.g. 100.50), not a comma."
+            )
+        if re.search(r'[A-Za-z]', raw_str):
+            return None, False, f"Amount '{raw_str}' is not numeric."
+        cleaned_amt = raw_str.replace(',', '')
+        cleaned_amt = re.sub(r'^[^\d.-]+|[^\d.]+$', '', cleaned_amt).strip()
+        if cleaned_amt in ('', '-'):
+            if raw_str not in ('',):
+                return None, False, f"Amount '{raw_str}' is not numeric."
+            return None, True, None
+        try:
+            return float(cleaned_amt), False, None
+        except (TypeError, ValueError, OverflowError):
+            return None, False, f"Amount '{raw_str}' is not numeric."
+    try:
+        return float(raw_amount), False, None
+    except (TypeError, ValueError, OverflowError):
+        return None, False, 'Amount must be numeric'
 
 
 def replace_payroll_bonuses(
@@ -11721,7 +11900,7 @@ def replace_payroll_bonuses(
     commit: bool = True,
     bonus_limit: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Validate bonus rows. Duplicate employees are rejected (never silently summed). Commit only when commit=True."""
+    """Validate bonus rows and INSERT additive entries (QA-109). Duplicate employees in one upload are rejected."""
     org, branch = _tenant_ids(organization_id, branch_id)
     if commit:
         raise_if_payroll_month_locked(f'{int(year):04d}-{int(month):02d}-01', org, branch)
@@ -11745,96 +11924,60 @@ def replace_payroll_bonuses(
         for row in users:
             by_name.setdefault(str(row['name'] or '').strip().lower(), []).append(dict(row))
         bonus_month_start = date(int(year), int(month), 1)
-        if int(month) == 12:
-            bonus_month_end = date(int(year) + 1, 1, 1) - timedelta(days=1)
-        else:
-            bonus_month_end = date(int(year), int(month) + 1, 1) - timedelta(days=1)
 
         for index, item in enumerate(rows, start=1):
             excel_row = int(item.get('_row_number') or (index + 1))
             raw_id = item.get('user_id') or item.get('employee_id')
             raw_name = str(item.get('name') or '').strip()
             raw_email = str(item.get('email') or '').strip()
-            raw_amount = item.get('amount')
+            # QA-109: prefer Amount to add; Amount remains accepted for API/grid callers.
+            raw_amount = item.get('amount_to_add')
+            if raw_amount is None:
+                raw_amount = item.get('amount')
             note = str(item.get('note') or '').strip()
 
             emp_label = raw_name or raw_email or (f"ID #{raw_id}" if raw_id else f"Row {excel_row}")
 
-            # Skip instruction/comment rows that might have slipped through
             identifier_str = f"{raw_id} {raw_name}".lower()
-            if any(identifier_str.startswith(kw) for kw in ('instruction', 'match employees', 'amount is', 'off-days')):
+            if any(identifier_str.startswith(kw) for kw in (
+                'instruction', 'match employees', 'amount is', 'amount to add', 'off-days', 'current bonus'
+            )):
                 continue
             if not raw_id and not raw_name and not raw_email and raw_amount is None:
                 continue
 
-            # QA-87: parse amounts strictly — refuse text / bad formats; blank/0 still skip for excel template.
-            amount = None
-            is_blank = False
-            if raw_amount is None:
-                is_blank = True
-            elif isinstance(raw_amount, str) and raw_amount.strip() == '':
-                is_blank = True
-            elif isinstance(raw_amount, bool):
-                amount = None
-            elif isinstance(raw_amount, (int, float)):
-                amount = float(raw_amount)
-            elif isinstance(raw_amount, str):
-                raw_str = raw_amount.strip()
-                # European decimal like 100,50 — refuse (ambiguous vs thousands).
-                if re.fullmatch(r'[-+]?\d+,\d{1,2}', raw_str):
-                    errors.append({
-                        'row': excel_row, 'employee': emp_label, 'field': 'amount',
-                        'error': f"Row {excel_row} ({emp_label}): Amount '{raw_str}' is not a valid number. Use a dot for decimals (e.g. 100.50), not a comma.",
-                    })
-                    continue
-                if re.search(r'[A-Za-z]', raw_str):
-                    errors.append({
-                        'row': excel_row, 'employee': emp_label, 'field': 'amount',
-                        'error': f"Row {excel_row} ({emp_label}): Amount '{raw_str}' is not numeric.",
-                    })
-                    continue
-                cleaned_amt = raw_str.replace(',', '')
-                cleaned_amt = re.sub(r'^[^\d.-]+|[^\d.]+$', '', cleaned_amt).strip()
-                if cleaned_amt in ('', '-'):
-                    # Non-empty original that cleaned to nothing (e.g. symbols) → reject, not skip.
-                    if raw_str not in ('',):
-                        errors.append({
-                            'row': excel_row, 'employee': emp_label, 'field': 'amount',
-                            'error': f"Row {excel_row} ({emp_label}): Amount '{raw_str}' is not numeric.",
-                        })
-                        continue
-                    is_blank = True
-                else:
-                    try:
-                        amount = float(cleaned_amt)
-                    except (TypeError, ValueError, OverflowError):
-                        amount = None
-            else:
-                try:
-                    amount = float(raw_amount)
-                except (TypeError, ValueError, OverflowError):
-                    amount = None
+            amount, is_blank, parse_err = _parse_bonus_amount_cell(raw_amount)
+            if parse_err:
+                errors.append({
+                    'row': excel_row, 'employee': emp_label, 'field': 'amount',
+                    'error': f"Row {excel_row} ({emp_label}): {parse_err}",
+                })
+                continue
 
             if is_blank:
-                if source == 'excel':
-                    continue
-                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount is required"})
+                # QA-104: blank keeps existing bonuses (excel) / no-op for grid.
                 continue
 
             if amount is None:
-                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount must be numeric"})
+                errors.append({
+                    'row': excel_row, 'employee': emp_label, 'field': 'amount',
+                    'error': f"Row {excel_row} ({emp_label}): Amount must be numeric",
+                })
                 continue
             if amount < 0:
-                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount cannot be negative"})
+                errors.append({
+                    'row': excel_row, 'employee': emp_label, 'field': 'amount',
+                    'error': f"Row {excel_row} ({emp_label}): Amount cannot be negative",
+                })
                 continue
             if amount == 0:
-                # QA-104 / QA-30: excel 0 or blank keeps the previously assigned bonus.
-                if source == 'excel':
-                    continue
-                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount cannot be zero"})
+                # QA-104 / QA-109: 0 does not remove and does not add.
                 continue
             if amount > limit:
-                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount exceeds the organization bonus limit of {limit:g}"})
+                errors.append({
+                    'row': excel_row, 'employee': emp_label, 'field': 'amount',
+                    'error': f"Row {excel_row} ({emp_label}): Amount exceeds the organization bonus limit of {limit:g}",
+                })
                 continue
             user = None
             if raw_id not in (None, ''):
@@ -11849,18 +11992,23 @@ def replace_payroll_bonuses(
                 if len(candidates) == 1:
                     user = candidates[0]
             if user is None:
-                errors.append({'row': excel_row, 'employee': emp_label, 'field': 'employee_id', 'error': f"Row {excel_row}: Unknown or deleted employee ({emp_label})"})
+                errors.append({
+                    'row': excel_row, 'employee': emp_label, 'field': 'employee_id',
+                    'error': f"Row {excel_row}: Unknown or deleted employee ({emp_label})",
+                })
                 continue
             uid = int(user['id'])
             if uid in seen:
                 first_row = seen[uid]
                 errors.append({
                     'row': excel_row, 'employee': emp_label, 'field': 'employee_id',
-                    'error': f"Rows {first_row} and {excel_row}: employee #{uid} ({user.get('name') or emp_label}) appears twice. Duplicates are rejected; nothing was saved.",
+                    'error': (
+                        f"Rows {first_row} and {excel_row}: employee #{uid} "
+                        f"({user.get('name') or emp_label}) appears twice. "
+                        f"Duplicates are rejected; nothing was saved."
+                    ),
                 })
                 continue
-            # QA-88: refuse bonuses for people who left before the bonus month.
-            # Rule: exit on/after month start still qualifies for that month; exit before month start is refused.
             exit_raw = str(user.get('exit_date') or '').strip()[:10]
             if exit_raw:
                 try:
@@ -11878,21 +12026,16 @@ def replace_payroll_bonuses(
                     })
                     continue
             seen[uid] = excel_row
-            preview.append({'user_id': uid, 'employee_name': user.get('name'), 'amount': amount, 'note': note})
+            preview.append({
+                'user_id': uid,
+                'employee_name': user.get('name'),
+                'amount': amount,
+                'note': note,
+            })
 
         if commit and not errors:
             cursor = conn.cursor()
-            # QA-104: never wipe the month when an Excel upload only has blanks/zeros
-            # (those rows are skipped so preview can be empty — keep existing bonuses).
-            if source != 'excel':
-                cursor.execute(
-                    """DELETE FROM payroll_bonuses
-                       WHERE year = ? AND month = ?
-                         AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                         AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
-                    (int(year), int(month), org, branch),
-                )
-            if source == 'excel' and not preview:
+            if not preview:
                 conn.commit()
                 return {
                     'imported': 0,
@@ -11901,25 +12044,26 @@ def replace_payroll_bonuses(
                     'unmatched': [],
                     'committed': True,
                     'duplicate_policy': 'reject',
+                    'additive': True,
+                    'totals': get_payroll_bonus_amounts(year, month, org, branch),
                     'bonuses': list_payroll_bonuses(year, month, org, branch),
-                    'message': 'No bonus amounts to apply. Existing bonuses were kept (0 or blank cells do not remove a bonus).',
+                    'message': (
+                        'No bonus amounts to add. Existing bonuses were kept '
+                        '(0 or blank Amount to add does not remove a bonus).'
+                    ),
                 }
             for item in preview:
+                # QA-109: each upload/save inserts a new history row; totals are summed.
                 cursor.execute(
                     """
                     INSERT INTO payroll_bonuses (
                         organization_id, branch_id, year, month, user_id, amount, note, source, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(organization_id, branch_id, year, month, user_id) DO UPDATE SET
-                        amount = excluded.amount,
-                        note = excluded.note,
-                        source = excluded.source,
-                        updated_at = CURRENT_TIMESTAMP
                     """,
                     (org, branch, int(year), int(month), item['user_id'], item['amount'], item['note'], source),
                 )
             _write_payroll_audit(cursor, 'bonuses_imported', org, branch, f'{int(year):04d}-{int(month):02d}', 'Admin', {
-                'imported': len(preview), 'source': source,
+                'imported': len(preview), 'source': source, 'additive': True,
             })
             conn.commit()
     return {
@@ -11929,6 +12073,8 @@ def replace_payroll_bonuses(
         'unmatched': [e['error'] for e in errors],
         'committed': bool(commit and not errors),
         'duplicate_policy': 'reject',
+        'additive': True,
+        'totals': get_payroll_bonus_amounts(year, month, org, branch) if commit else {},
         'bonuses': list_payroll_bonuses(year, month, org, branch) if commit else preview,
     }
 
@@ -11942,8 +12088,9 @@ def save_payroll_bonus_row(
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """QA-109: add a new bonus entry (does not replace earlier amounts)."""
     return replace_payroll_bonuses(
-        year, month, [{'user_id': user_id, 'amount': amount, 'note': note}],
+        year, month, [{'user_id': user_id, 'amount_to_add': amount, 'note': note}],
         organization_id=organization_id, branch_id=branch_id, source='grid', commit=True,
     )
 
@@ -13037,28 +13184,48 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                    COALESCE(sc.allowances, 0.0) AS allowances,
                    COALESCE(sc.deductions, 0.0) AS custom_deductions,
                    COALESCE(sc.ot_rate, 0.0) AS ot_rate,
-                   COALESCE(
-                       NULLIF(TRIM(u.join_date), ''),
-                       (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
-                       date(u.enrollment_date),
-                       date(u.created_at)
-                   ) AS employed_from,
-                   COALESCE(
-                       NULLIF(TRIM(u.join_date), ''),
-                       (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id)
-                   ) AS join_date,
+                   NULLIF(TRIM(u.join_date), '') AS raw_join_date,
+                   NULLIF(TRIM(sc.effective_from), '') AS package_effective_from,
+                   date(u.enrollment_date) AS enrollment_date,
+                   date(u.created_at) AS created_at,
                    u.exit_date,
                    u.active,
                    COALESCE(u.shift_id, 0) AS shift_id
             FROM users u
             LEFT JOIN salary_configs sc ON sc.user_id = u.id
             WHERE (u.active = 1 OR (u.exit_date IS NOT NULL AND u.exit_date >= ?))
-              AND (u.join_date IS NULL OR TRIM(u.join_date) = '' OR u.join_date <= ?)
+              AND (
+                    u.join_date IS NULL OR TRIM(u.join_date) = ''
+                    OR substr(TRIM(u.join_date), 1, 10) <= ?
+                    OR (
+                        NULLIF(TRIM(sc.effective_from), '') IS NOT NULL
+                        AND substr(TRIM(sc.effective_from), 1, 10) <= ?
+                    )
+                  )
               AND COALESCE(u.organization_id, 'DEFAULT_ORG') = ?
               AND (? IS NULL OR COALESCE(u.branch_id, 'DEFAULT_BRANCH') = ?)
             ORDER BY u.department COLLATE NOCASE, u.name COLLATE NOCASE
-        ''', (month_start.isoformat(), month_end.isoformat(), organization_id, branch_id, branch_id))
-        employees = [dict(row) for row in cursor.fetchall()]
+        ''', (
+            month_start.isoformat(),
+            month_end.isoformat(),
+            month_end.isoformat(),
+            organization_id,
+            branch_id,
+            branch_id,
+        ))
+        employees = []
+        for row in cursor.fetchall():
+            emp = dict(row)
+            # QA-72: resolve joining date once; never let a today-stamp beat the salary package date.
+            resolved_join = resolve_payroll_join_date({
+                'join_date': emp.get('raw_join_date'),
+                'package_effective_from': emp.get('package_effective_from'),
+                'enrollment_date': emp.get('enrollment_date'),
+                'created_at': emp.get('created_at'),
+            })
+            emp['join_date'] = resolved_join or ''
+            emp['employed_from'] = resolved_join or emp.get('enrollment_date') or emp.get('created_at') or month_start.isoformat()
+            employees.append(emp)
         inactive_no_exit = [dict(row) for row in cursor.execute(
             """SELECT id, name FROM users
                WHERE COALESCE(active, 1) = 0
@@ -13176,12 +13343,14 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         # charge absences for days before they start (or for future days not yet worked).
         not_yet_started = employed_from > period_end
         join_marker = ''
-        raw_join = str(employee.get('join_date') or '').strip()[:10]
+        # QA-72 / QA-108: marker uses the resolved saved joining date (never a replaced "today").
+        raw_join = str(employee.get('join_date') or emp_start_str or '').strip()[:10]
         if raw_join:
             try:
                 join_dt = datetime.strptime(raw_join, "%Y-%m-%d").date()
-                if month_start <= join_dt <= month_end:
-                    join_marker = f"Joins {join_dt.strftime('%d %b')}"
+                # Show "Joins …" only while the person has not started yet (joining date after today).
+                if join_dt > today:
+                    join_marker = f"Joins {join_dt.day} {join_dt.strftime('%b')}"
             except (TypeError, ValueError):
                 join_marker = ''
 

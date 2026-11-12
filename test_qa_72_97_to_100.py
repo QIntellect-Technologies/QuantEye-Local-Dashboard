@@ -97,8 +97,7 @@ class QaBatchFutureJoinAndPayslip(unittest.TestCase):
         preview = db.calculate_monthly_payroll(month, organization_id=self.org, branch_id=self.branch)
         row = next(r for r in preview["records"] if int(r["employee_id"]) == int(uid))
         self.assertEqual(row.get("join_date"), join.isoformat())
-        self.assertIn(join.strftime("%d %b"), row.get("join_marker") or "")
-        self.assertNotIn(today.strftime("%d %b"), row.get("join_marker") or "")
+        self.assertEqual(row.get("join_marker") or "", f"Joins {join.day} {join.strftime('%b')}")
         self.assertEqual(float(row.get("absent_days") or 0), 0.0)
         self.assertEqual(float(row.get("absence_deduction") or 0), 0.0)
 
@@ -120,6 +119,54 @@ class QaBatchFutureJoinAndPayslip(unittest.TestCase):
         self.assertEqual(float(row.get("absence_deduction") or 0), 0.0)
         self.assertEqual(float(row.get("attendance_shortfall") or 0), 0.0)
         self.assertTrue(row.get("not_yet_started") or row.get("is_prorated"))
+
+    def test_qa_72_month_end_join_not_replaced_by_today_stamp(self):
+        """Fourth retest: package/joining date 30 Nov must not become today's marker."""
+        import calendar
+
+        today = date.today()
+        month = today.strftime("%Y-%m")
+        month_end = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
+        if month_end <= today:
+            self.skipTest("Need a future month-end joining date")
+
+        # Simulate enrollment stamp = today, while salary package Effective from = month end.
+        uid = db.add_user(
+            name="Month End Joiner",
+            email="monthendjoiner@example.com",
+            department="QA",
+            salary=60000,
+            join_date=today.isoformat(),
+            shift_id=self._shift(),
+            organization_id=self.org,
+            branch_id=self.branch,
+        )
+        db.set_salary_config(
+            uid,
+            basic_salary=60000,
+            allowances=0,
+            deductions=0,
+            ot_rate=0,
+            effective_from=month_end.isoformat(),
+        )
+        # Force the historical desync QA keeps hitting: package has 30 Nov, users.join_date stuck on today.
+        with db.sqlite3.connect(self.db_path) as conn:
+            conn.execute("UPDATE users SET join_date = ? WHERE id = ?", (today.isoformat(), uid))
+            conn.execute(
+                "UPDATE salary_configs SET effective_from = ? WHERE user_id = ?",
+                (month_end.isoformat(), uid),
+            )
+            conn.commit()
+
+        preview = db.calculate_monthly_payroll(month, organization_id=self.org, branch_id=self.branch)
+        row = next(r for r in preview["records"] if int(r["employee_id"]) == int(uid))
+        marker = row.get("join_marker") or ""
+        self.assertEqual(row.get("join_date"), month_end.isoformat())
+        self.assertEqual(marker, f"Joins {month_end.day} {month_end.strftime('%b')}")
+        self.assertTrue(row.get("not_yet_started"))
+        self.assertEqual(float(row.get("absent_days") or 0), 0.0)
+        self.assertEqual(float(row.get("absence_deduction") or 0), 0.0)
+        self.assertEqual(float(row.get("attendance_shortfall") or 0), 0.0)
 
     def test_qa_98_cannot_reject_approved_overtime(self):
         uid = self._emp("OT Staff", 50000, join_date="2026-01-01")

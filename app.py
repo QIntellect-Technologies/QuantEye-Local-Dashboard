@@ -6828,19 +6828,32 @@ def _bonus_rows_from_workbook(file_storage) -> List[Dict[str, Any]]:
     if not rows:
         raise ValueError('The workbook is empty. Download the bonus template and fill employee amounts.')
 
-    # Canonical template headers (order flexible; names must match after normalize).
+    # QA-109: Amount to add is applied; Current bonus is informational only (not imported).
     required_headers = {
         'employee_id': {'employee_id', 'employee id', 'user_id', 'id', 'emp_id', 'staff_id'},
         'name': {'employee_name', 'employee name', 'name', 'full_name', 'full name'},
         'email': {'email', 'email_address', 'email address'},
-        'amount': {'amount', 'bonus', 'bonus_amount', 'bonus amount'},
+        'amount_to_add': {
+            'amount_to_add', 'amount to add', 'add_amount', 'add amount',
+            'bonus_to_add', 'bonus to add',
+        },
         'note': {'note', 'notes', 'remarks', 'comment'},
     }
+    optional_headers = {
+        'current_bonus': {
+            'current_bonus', 'current bonus', 'existing_bonus', 'existing bonus',
+            'amount', 'bonus', 'bonus_amount', 'bonus amount',
+        },
+    }
     aliases = {}
-    for canonical, names in required_headers.items():
+    for canonical, names in {**required_headers, **optional_headers}.items():
         for n in names:
             aliases[n.replace(' ', '_')] = canonical
             aliases[n] = canonical
+    # Prefer Amount to add over legacy Amount when both normalize the same way.
+    for n in required_headers['amount_to_add']:
+        aliases[n.replace(' ', '_')] = 'amount_to_add'
+        aliases[n] = 'amount_to_add'
 
     def _normalize_header(val):
         h = str(val or '').strip().lower()
@@ -6850,7 +6863,10 @@ def _bonus_rows_from_workbook(file_storage) -> List[Dict[str, Any]]:
 
     raw_headers = [str(cell or '').strip() for cell in rows[0]]
     if not any(raw_headers):
-        raise ValueError('The first row has no headers. Use columns: Employee ID, Employee Name, Email, Amount, Note.')
+        raise ValueError(
+            'The first row has no headers. Use columns: Employee ID, Employee Name, Email, '
+            'Current bonus, Amount to add, Note.'
+        )
 
     normalized = [_normalize_header(h) for h in raw_headers]
     mapped = []
@@ -6870,27 +6886,37 @@ def _bonus_rows_from_workbook(file_storage) -> List[Dict[str, Any]]:
     if unknown:
         raise ValueError(
             f"Unrecognized header(s): {', '.join(unknown)}. "
-            "Required headers are: Employee ID, Employee Name, Email, Amount, Note."
+            "Required headers are: Employee ID, Employee Name, Email, Amount to add, Note. "
+            "Optional: Current bonus (filled for reference; not imported)."
         )
     present = {k for k in mapped if k}
+    # Legacy templates used Amount instead of Amount to add — map Amount → amount_to_add
+    # only when Amount to add is missing, so re-uploading a filled Current-bonus template
+    # that also has Amount to add empty does not double.
+    if 'amount_to_add' not in present and 'current_bonus' in present:
+        mapped = ['amount_to_add' if k == 'current_bonus' else k for k in mapped]
+        present = {k for k in mapped if k}
+        # If the sheet only had a single Amount column, treat it as Amount to add.
+        # Prefer a dedicated Amount to add column when both exist (already handled above).
     missing = [label for label, canon in (
         ('Employee ID', 'employee_id'),
         ('Employee Name', 'name'),
         ('Email', 'email'),
-        ('Amount', 'amount'),
+        ('Amount to add', 'amount_to_add'),
         ('Note', 'note'),
     ) if canon not in present]
     if missing:
         raise ValueError(
             f"Missing required header(s): {', '.join(missing)}. "
-            "Download the bonus template and keep the header row unchanged."
+            "Download the bonus template. Use 'Amount to add' for new bonuses; "
+            "'Current bonus' is informational and is not imported."
         )
 
     headers = mapped
     parsed: List[Dict[str, Any]] = []
     instruction_keywords = (
         'instruction', 'instructions', 'match employees', 'amount is the bonus',
-        'off-days follow', 'note:', 'notes:', 'total'
+        'amount to add', 'current bonus', 'off-days follow', 'note:', 'notes:', 'total'
     )
     for row in rows[1:]:
         if not row or all(cell is None or str(cell).strip() == '' for cell in row):
@@ -6904,14 +6930,17 @@ def _bonus_rows_from_workbook(file_storage) -> List[Dict[str, Any]]:
         for key, cell in zip(headers, row):
             if not key:
                 continue
+            # Never import Current bonus as an amount to add.
+            if key == 'current_bonus':
+                continue
             item[key] = cell
         has_id = bool(item.get('employee_id') or item.get('email') or item.get('name'))
-        has_amount = item.get('amount') is not None and str(item.get('amount')).strip() != ''
+        has_amount = item.get('amount_to_add') is not None and str(item.get('amount_to_add')).strip() != ''
         if not has_id and not has_amount:
             continue
         parsed.append(item)
     if not parsed:
-        raise ValueError('The workbook has no bonus rows under the header. Add at least one employee amount.')
+        raise ValueError('The workbook has no bonus rows under the header. Add at least one Amount to add value.')
     return parsed
 
 
@@ -6939,15 +6968,13 @@ def api_payroll_bonus_template():
         return jsonify({'error': 'Excel export is unavailable because openpyxl is not installed on this server.'}), 500
     try:
         tenant = payroll_tenant()
-        bonuses = {
-            int(row['user_id']): row
-            for row in db.list_payroll_bonuses(year, month, **tenant)
-        }
+        # QA-109: Current bonus shows the summed total; Amount to add is what gets inserted.
+        bonus_totals = db.get_payroll_bonus_amounts(year, month, **tenant)
         users = db.get_all_users(organization_id=tenant['organization_id'], branch_id=tenant['branch_id'])
         workbook = openpyxl.Workbook()
         sheet = workbook.active
         sheet.title = 'Bonuses'
-        headers = ['Employee ID', 'Employee Name', 'Email', 'Amount', 'Note']
+        headers = ['Employee ID', 'Employee Name', 'Email', 'Current bonus', 'Amount to add', 'Note']
         sheet.append(headers)
         for cell in sheet[1]:
             cell.font = Font(bold=True, color='FFFFFF')
@@ -6956,19 +6983,21 @@ def api_payroll_bonus_template():
         for user in users:
             if not user.get('active', 1):
                 continue
-            existing = bonuses.get(int(user['id']), {})
             sheet.append([
                 user['id'],
                 _safe_excel_val(user.get('name') or ''),
                 _safe_excel_val(user.get('email') or ''),
-                float(existing.get('amount') or 0),
-                _safe_excel_val(existing.get('note') or ''),
+                float(bonus_totals.get(int(user['id']), 0) or 0),
+                None,
+                '',
             ])
         sheet.append([])
         sheet.append(['Instructions'])
         sheet.append(['Match employees by Employee ID, Email, or exact Name.'])
-        sheet.append(['Amount is the bonus for this payroll month.'])
-        sheet.append(['Leave 0 or blank to keep the previously assigned bonus (0 does not remove it).'])
+        sheet.append(['Current bonus is already assigned this month (for reference only — not imported).'])
+        sheet.append(['Amount to add is added on top of Current bonus (100 + 200 = 300). Each upload keeps its own history entry.'])
+        sheet.append(['Leave Amount to add blank or 0 to keep the previously assigned bonus (0 does not remove it).'])
+        sheet.append(['Re-uploading this file without filling Amount to add will not double existing bonuses.'])
         sheet.append(['To remove a bonus, clear it in Payroll with a dedicated Remove bonus action — do not upload 0.'])
         sheet.append(['Off-days follow each employee Shift schedule, not a fixed Sunday.'])
         buffer = io.BytesIO()

@@ -44,7 +44,7 @@
     {% if is_client_session %}
     <style id="server-rendered-client-entitlements">
       {% if not client_module_entitlements.attendance %}.sidebar-menu .menu-item[data-module="attendance"] { display: none !important; } #reports-view, #staff-view, #live-view, #enroll-view, #cameras-tab { display: none !important; } .settings-nav-btn[data-settings-module="attendance"] { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.payroll %}.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; } #payroll-view, #payroll-rules-tab, #payroll-calendar-tab, #salary-config-tab { display: none !important; } .settings-nav-btn[data-settings-module="payroll"], .payroll-only-ui { display: none !important; }{% endif %}
+      {% if not client_module_entitlements.payroll %}.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; } #payroll-view, #payroll-calendar-tab, #salary-config-tab { display: none !important; } .settings-nav-btn[data-settings-module="payroll"]:not([data-settings-also-module="overtime"]), .payroll-only-ui { display: none !important; }{% if not client_module_entitlements.overtime %}#payroll-rules-tab { display: none !important; } .settings-nav-btn[data-settings-also-module="overtime"] { display: none !important; }{% endif %}{% endif %}
       {% if not client_module_entitlements.leave %}.sidebar-menu .menu-item[data-module="leave"] { display: none !important; } #leaves-view { display: none !important; } .settings-leave-only, .payroll-leave-only { display: none !important; }{% endif %}
       {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; } #overtime-view { display: none !important; } .settings-overtime-only, .payroll-overtime-only { display: none !important; }{% endif %}
       {% if not client_module_entitlements.shifts %}.sidebar-menu .menu-item[data-module="shifts"] { display: none !important; } #shifts-view { display: none !important; } .settings-shifts-only { display: none !important; }{% endif %}
@@ -4778,8 +4778,8 @@
         margin: 0;
         font-size: 12px;
       }
-      /* Shared one-loader: fixed to the visible main area so it stays viewport-centered
-         on every page (short or long). Absolute+inset followed scroll height and looked low/high. */
+      /* Shared one-loader: fixed over the main panel. Card sits at ~40% from the top
+         (professional upper-middle), not geometric center or scroll-dependent. */
       .app-page-loader {
         position: fixed;
         top: 0;
@@ -4788,8 +4788,10 @@
         left: 252px;
         z-index: 1400;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: center;
+        padding: 40vh 24px 24px;
+        box-sizing: border-box;
         background: rgba(238, 248, 255, 0.78);
         backdrop-filter: blur(3px);
         -webkit-backdrop-filter: blur(3px);
@@ -4801,6 +4803,7 @@
       @media (max-width: 768px) {
         .app-page-loader {
           left: 0;
+          padding-top: 38vh;
         }
         body.sidebar-collapsed .app-page-loader {
           left: 72px;
@@ -4819,7 +4822,9 @@
         border: 1px solid #dbe5ec;
         border-radius: 16px;
         box-shadow: 0 14px 36px rgba(15, 23, 42, 0.12);
-        transform: translateY(0);
+        /* Anchor the card center on the 40vh line */
+        transform: translateY(-50%);
+        flex: 0 0 auto;
       }
       .app-page-loader-card i {
         display: inline-flex;
@@ -6122,14 +6127,35 @@
         box-shadow: 0 1px 2px rgba(20,24,40,0.04);
         padding: 10px 14px;
       }
-      /* subtab buttons */
-      #leaves-view #leaveTabReq, #leaves-view #leaveTabBal,
-      #leaves-view #leaveTabTypes, #leaves-view #leaveTabHolidays {
-        border-radius: 10px; font-weight: 600; border: 1px solid var(--line);
-        background: rgba(255,255,255,0.7); color: var(--ink-2);
+      /* subtab buttons — shared Leave / OT chrome (OT-05) */
+      #leaves-view .leave-subtabs,
+      #overtime-view .leave-subtabs {
+        display: flex; gap: 8px; margin-bottom: 20px;
+        border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;
       }
-      #leaves-view #leaveTabReq.btn-teal {
+      #leaves-view #leaveTabReq, #leaves-view #leaveTabBal,
+      #leaves-view #leaveTabTypes, #leaves-view #leaveTabHolidays,
+      #overtime-view #otSubTabLog, #overtime-view #otSubTabApproval {
+        border-radius: 10px; font-weight: 700; border: 1px solid var(--line);
+        background: rgba(255,255,255,0.7); color: var(--ink-2);
+        min-height: 34px; padding: 6px 12px;
+      }
+      #leaves-view #leaveTabReq.btn-teal,
+      #leaves-view #leaveTabBal.btn-teal,
+      #leaves-view #leaveTabTypes.btn-teal,
+      #leaves-view #leaveTabHolidays.btn-teal,
+      #overtime-view #otSubTabLog.btn-teal,
+      #overtime-view #otSubTabApproval.btn-teal {
         background: #8b7bf7 !important; border-color: #8b7bf7 !important; color: #fff !important;
+      }
+      #leaves-view #leaveTabReq.btn-outline-secondary,
+      #leaves-view #leaveTabBal.btn-outline-secondary,
+      #leaves-view #leaveTabTypes.btn-outline-secondary,
+      #leaves-view #leaveTabHolidays.btn-outline-secondary,
+      #overtime-view #otSubTabLog.btn-outline-secondary,
+      #overtime-view #otSubTabApproval.btn-outline-secondary {
+        border-color: var(--line) !important; color: var(--ink-2) !important;
+        background: rgba(255,255,255,0.7) !important;
       }
       /* tables -> frost */
       #leaves-view .log-table-wrapper {
@@ -6247,29 +6273,9 @@
         letter-spacing: -0.04em; color: var(--ink); font-variant-numeric: tabular-nums;
       }
       #overtime-view .rpt-metric-foot { display: block; margin-top: 4px; min-height: 15px; font-size: 11px; color: var(--faint); }
-      #overtime-view .ot-subtabs {
-        display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;
-      }
-      #overtime-view #otSubTabLog, #overtime-view #otSubTabApproval {
-        border-radius: 10px; font-weight: 700; border: 1px solid var(--line);
-        background: rgba(255,255,255,0.7); color: var(--ink-2);
-      }
-      #overtime-view #otSubTabLog.btn-teal, #overtime-view #otSubTabApproval.btn-teal {
-        background: #8b7bf7 !important; border-color: #8b7bf7 !important; color: #fff !important;
-      }
-      #overtime-view .btn-teal { background: #8b7bf7 !important; border-color: #8b7bf7 !important; color: #fff !important; border-radius: 8px; font-weight: 600; }
-      #overtime-view .btn-primary { background: #8b7bf7 !important; border-color: #8b7bf7 !important; color: #fff !important; border-radius: 10px; font-weight: 600; }
-      #overtime-view .btn-primary:hover { background: #7a6ae8 !important; border-color: #7a6ae8 !important; }
-      #overtime-view .btn-outline-secondary { border-color: var(--line) !important; color: var(--ink-2) !important; background: rgba(255,255,255,0.7) !important; border-radius: 10px; }
-      #overtime-view .btn-outline-primary { border-color: rgba(139,123,247,0.45) !important; color: #5847c8 !important; background: rgba(139,123,247,0.08) !important; border-radius: 10px; font-weight: 600; }
-      #overtime-view .btn-outline-primary:hover { background: rgba(139,123,247,0.16) !important; }
-      #overtime-view .btn-success { background: #10b981 !important; border-color: #10b981 !important; color: #fff !important; border-radius: 10px; font-weight: 600; }
-      #overtime-view .btn-success:hover { background: #059669 !important; border-color: #059669 !important; }
-      #overtime-view .btn-danger { background: #ef4444 !important; border-color: #ef4444 !important; color: #fff !important; border-radius: 10px; font-weight: 600; }
-      #overtime-view .btn-danger:hover { background: #dc2626 !important; border-color: #dc2626 !important; }
-      #overtime-view .btn:disabled, #overtime-view .btn.disabled,
-      #otDetailModal .btn:disabled, #otDetailModal .btn.disabled {
-        opacity: 0.45; cursor: not-allowed; pointer-events: none;
+      /* OT tabs use shared .leave-subtabs rules above (OT-05). Keep .btn-teal for non-tab OT chrome only. */
+      #overtime-view .btn-teal:not(#otSubTabLog):not(#otSubTabApproval) {
+        background: #3d9fd4 !important; border-color: #3d9fd4 !important; color: #fff !important; border-radius: 8px; font-weight: 700;
       }
       #overtime-view .ot-filter-bar {
         display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
@@ -6347,14 +6353,7 @@
         border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 18px !important;
         box-shadow: 0 34px 64px -46px rgba(18,24,44,0.9);
       }
-      #otDetailModal .ot-detail-actions {
-        display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important;
-        align-items: center; justify-content: flex-end; gap: 8px; overflow-x: auto;
-      }
-      #otDetailModal .ot-detail-actions .btn { white-space: nowrap; flex: 0 0 auto; border-radius: 10px; font-weight: 600; }
-      #otDetailModal .btn-success { background: #10b981 !important; border-color: #10b981 !important; color: #fff !important; }
-      #otDetailModal .btn-danger { background: #ef4444 !important; border-color: #ef4444 !important; color: #fff !important; }
-      #otDetailModal .btn-outline-secondary { border-color: var(--line, #e3e8f5) !important; color: var(--ink-2, #2b3547) !important; background: rgba(255,255,255,0.9) !important; }
+      /* OT-07 / OT-08 placeholders — final theme rules live in the late OT button pass below */
       #otDetailModal .form-control { border-color: var(--line, #e3e8f5); border-radius: 10px; background: rgba(255,255,255,0.92); color: var(--ink-2, #2b3547); font-size: 12.5px; }
       #addOvertimeModal > div, #addOvertimeModal .modal-content {
         background: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(255,255,255,0.9)) !important;
@@ -6369,8 +6368,6 @@
         min-height: 38px; height: 38px; border: 1px solid var(--line, #e3e8f5); border-radius: 10px;
         background: rgba(255,255,255,0.92);
       }
-      #addOvertimeModal .btn-primary { background: #8b7bf7 !important; border-color: #8b7bf7 !important; border-radius: 10px; font-weight: 600; }
-      #addOvertimeModal .btn-secondary { border-color: var(--line, #e3e8f5) !important; color: var(--ink-2, #2b3547) !important; background: rgba(255,255,255,0.9) !important; border-radius: 10px; }
       @media (max-width: 900px) {
         #overtime-view .rpt-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
@@ -6943,6 +6940,140 @@
     #payroll-view .btn-primary,
     #leaves-view .btn-primary {
       border-radius: var(--ui-radius);
+    }
+
+    /* ============================================================
+       OT-03 / OT-07 / OT-08 / OT-15 — late pass (wins over global
+       purple / blue button overrides). App theme #3d9fd4.
+       ============================================================ */
+    #overtime-view .btn-primary,
+    #overtime-view .btn-success,
+    #otDetailModal .btn-primary,
+    #otDetailModal .btn-success,
+    #addOvertimeModal .btn-primary {
+      background: #3d9fd4 !important;
+      border-color: #3d9fd4 !important;
+      color: #ffffff !important;
+      border-radius: 10px !important;
+      font-weight: 700 !important;
+      box-shadow: none !important;
+    }
+    #overtime-view .btn-primary:hover,
+    #overtime-view .btn-success:hover,
+    #overtime-view .btn-primary:focus,
+    #overtime-view .btn-success:focus,
+    #otDetailModal .btn-primary:hover,
+    #otDetailModal .btn-success:hover,
+    #addOvertimeModal .btn-primary:hover {
+      background: #247eae !important;
+      border-color: #247eae !important;
+      color: #ffffff !important;
+    }
+    #overtime-view .btn-outline-secondary,
+    #overtime-view .btn-outline-primary,
+    #otDetailModal .btn-outline-secondary,
+    #addOvertimeModal .btn-secondary {
+      border-color: #9bcce7 !important;
+      color: #247eae !important;
+      background: #ffffff !important;
+      border-radius: 10px !important;
+      font-weight: 700 !important;
+    }
+    #overtime-view .btn-outline-secondary:hover,
+    #overtime-view .btn-outline-primary:hover,
+    #otDetailModal .btn-outline-secondary:hover {
+      border-color: #65b9e8 !important;
+      background: #eef8ff !important;
+      color: #247eae !important;
+    }
+    #otDetailModal .btn-outline-success {
+      border-color: #86efac !important;
+      color: #15803d !important;
+      background: #ffffff !important;
+      border-radius: 8px !important;
+      font-weight: 700 !important;
+    }
+    #otDetailModal .btn-outline-success:hover {
+      background: #f0fdf4 !important;
+      border-color: #4ade80 !important;
+      color: #166534 !important;
+    }
+    #otDetailModal .btn-outline-danger {
+      border-color: #fca5a5 !important;
+      color: #b91c1c !important;
+      background: #ffffff !important;
+      border-radius: 8px !important;
+      font-weight: 700 !important;
+    }
+    #otDetailModal .btn-outline-danger:hover {
+      background: #fef2f2 !important;
+      border-color: #f87171 !important;
+      color: #991b1b !important;
+    }
+    #overtime-view .btn-danger,
+    #otDetailModal .btn-danger {
+      background: #dc4c4c !important;
+      border-color: #dc4c4c !important;
+      color: #ffffff !important;
+      border-radius: 10px !important;
+      font-weight: 700 !important;
+    }
+    #overtime-view .btn-danger:hover,
+    #otDetailModal .btn-danger:hover {
+      background: #b93636 !important;
+      border-color: #b93636 !important;
+    }
+    #overtime-view .btn:disabled,
+    #overtime-view .btn.disabled,
+    #otDetailModal .btn:disabled,
+    #otDetailModal .btn.disabled {
+      opacity: 0.45 !important;
+      cursor: not-allowed !important;
+      pointer-events: none !important;
+      box-shadow: none !important;
+      filter: grayscale(0.15);
+    }
+    /* OT-07: Complete View actions stay one horizontal row */
+    #otDetailModal .ot-detail-footer {
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 12px !important;
+      padding: 14px 22px !important;
+      border-top: 1px solid #edf0f9 !important;
+      background: #f8fafc !important;
+    }
+    #otDetailModal .ot-detail-actions {
+      display: inline-flex !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+      justify-content: flex-end !important;
+      gap: 8px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      min-width: 0;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    #otDetailModal .ot-detail-actions .btn {
+      display: inline-flex !important;
+      flex: 0 0 auto !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: auto !important;
+      max-width: none !important;
+      white-space: nowrap !important;
+      min-height: 34px !important;
+      padding: 0 12px !important;
+      margin: 0 !important;
+    }
+    #otDetailModal #otDetailFooterInfo {
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
     }
     /* Shared Refresh / Export buttons across modules (GUI-02) */
     .rpt-btn {
@@ -9405,7 +9536,7 @@ async function fetchMultiLiveDetections() {
       </div>
 
       <!-- Sub Navigation Tabs -->
-      <div style="display:flex; gap:8px; margin-bottom:20px; border-bottom:2px solid #e2e8f0; padding-bottom:8px;">
+      <div class="leave-subtabs">
         <button id="leaveTabReq" class="btn btn-sm btn-teal" onclick="switchLeaveSubTab('requests')" style="font-weight:700;"><i class="fa-solid fa-list-check"></i> Leave Requests</button>
         <button id="leaveTabBal" class="btn btn-sm btn-outline-secondary" onclick="switchLeaveSubTab('balances')" style="font-weight:700;"><i class="fa-solid fa-scale-balanced"></i> Leave Balances</button>
         <button id="leaveTabTypes" class="btn btn-sm btn-outline-secondary" onclick="switchLeaveSubTab('types')" style="font-weight:700;"><i class="fa-solid fa-layer-group"></i> Leave Types</button>
@@ -9472,17 +9603,19 @@ async function fetchMultiLiveDetections() {
         <div class="log-table-wrapper" style="overflow-x:auto; border:0; border-radius:0; background:#ffffff;">
           <table class="log-table" style="width:100%; min-width:1120px; table-layout:fixed;">
             <colgroup>
-              <col style="width:16%;">
+              <col style="width:9%;">
+              <col style="width:15%;">
               <col style="width:11%;">
-              <col style="width:16%;">
-              <col style="width:14%;">
-              <col style="width:18%;">
-              <col style="width:12%;">
+              <col style="width:15%;">
               <col style="width:13%;">
+              <col style="width:16%;">
+              <col style="width:10%;">
+              <col style="width:11%;">
             </colgroup>
             <thead style="background:#f2faff; border-bottom:1px solid #cfe8f7;">
               <tr>
-                <th style="min-width:160px;">Employee</th>
+                <th style="min-width:90px;">Employee ID</th>
+                <th style="min-width:150px;">Employee</th>
                 <th style="min-width:110px;">Leave Type</th>
                 <th style="min-width:160px; font-family:'JetBrains Mono', monospace;">Dates &amp; Duration</th>
                 <th style="min-width:140px;">Pay Split</th>
@@ -9492,7 +9625,7 @@ async function fetchMultiLiveDetections() {
               </tr>
             </thead>
             <tbody id="leaveRequestsTableBody">
-              <tr><td colspan="7" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.35rem; color:#0d9488;"></i></td></tr>
+              <tr><td colspan="8" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.35rem; color:#0d9488;"></i></td></tr>
             </tbody>
           </table>
         </div>
@@ -9544,6 +9677,7 @@ async function fetchMultiLiveDetections() {
           <table class="log-table" style="width:100%;">
             <thead id="leaveBalancesTableHead" style="background:#f2faff; border-bottom:1px solid #cfe8f7;">
               <tr>
+                <th>Employee ID</th>
                 <th>Employee</th>
                 <th>Department</th>
               </tr>
@@ -9726,13 +9860,10 @@ async function fetchMultiLiveDetections() {
         </article>
       </section>
 
-      <div class="ot-subtabs">
-        <button type="button" id="otSubTabLog" class="btn btn-sm btn-teal" onclick="switchOtSubTab('log')" style="font-weight:700;">
-          <i class="fa-solid fa-list"></i> OT Log
-        </button>
-        <button type="button" id="otSubTabApproval" class="btn btn-sm btn-outline-secondary" onclick="switchOtSubTab('approval')" style="font-weight:700;">
-          <i class="fa-solid fa-user-check"></i> OT for Approval <span id="otApprovalBadge" style="background:#f59e0b; color:#fff; border-radius:10px; padding:1px 7px; font-size:0.8em; margin-left:4px;"></span>
-        </button>
+      <!-- OT-05: same subtab chrome as Leave & Holidays -->
+      <div class="leave-subtabs">
+        <button type="button" id="otSubTabLog" class="btn btn-sm btn-teal" onclick="switchOtSubTab('log')" style="font-weight:700;"><i class="fa-solid fa-list"></i> OT Log</button>
+        <button type="button" id="otSubTabApproval" class="btn btn-sm btn-outline-secondary" onclick="switchOtSubTab('approval')" style="font-weight:700;"><i class="fa-solid fa-user-check"></i> OT for Approval <span id="otApprovalBadge" style="background:#f59e0b; color:#fff; border-radius:10px; padding:1px 7px; font-size:0.8em; margin-left:4px;"></span></button>
       </div>
 
       <div id="otSubContent-log">
@@ -9834,11 +9965,11 @@ async function fetchMultiLiveDetections() {
           </div>
           <div class="rpt-field" style="min-width:auto; margin-left:auto;">
             <span class="rpt-field-label">&nbsp;</span>
-            <div style="display:flex; gap:8px; align-items:center;">
-              <button type="button" class="btn btn-success btn-sm" id="otAcceptAllBtn" onclick="otAcceptAllInView()" disabled>
+            <div style="display:inline-flex; flex-direction:row; flex-wrap:nowrap; gap:8px; align-items:center; white-space:nowrap;">
+              <button type="button" class="btn btn-success btn-sm" id="otAcceptAllBtn" onclick="otAcceptAllInView()" disabled style="white-space:nowrap;">
                 <i class="fa-solid fa-check-double"></i> Accept All Pending
               </button>
-              <button type="button" class="btn btn-danger btn-sm" id="otRejectAllBtn" onclick="otRejectAllInView()" disabled>
+              <button type="button" class="btn btn-danger btn-sm" id="otRejectAllBtn" onclick="otRejectAllInView()" disabled style="white-space:nowrap;">
                 <i class="fa-solid fa-xmark"></i> Reject All Pending
               </button>
             </div>
@@ -9939,13 +10070,13 @@ async function fetchMultiLiveDetections() {
             </table>
           </div>
         </div>
-        <div style="padding:14px 24px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:nowrap;">
-          <div id="otDetailFooterInfo" style="font-size:0.88em; color:#475569; font-weight:600; flex:1 1 auto; min-width:0;"></div>
-          <div class="ot-detail-actions">
-            <button type="button" class="btn btn-success btn-sm" id="otDetailAcceptAllBtn" onclick="otDetailAcceptAllPending()"><i class="fa-solid fa-check-double"></i> Accept All (Month)</button>
-            <button type="button" class="btn btn-success btn-sm" id="otDetailApproveBtn" onclick="otDetailApproveSelected()" disabled><i class="fa-solid fa-check"></i> Approve Selected</button>
-            <button type="button" class="btn btn-danger btn-sm" id="otDetailRejectBtn" onclick="otDetailRejectSelected()" disabled><i class="fa-solid fa-xmark"></i> Reject Selected</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closeOtDetailModal()">Close</button>
+        <div class="ot-detail-footer" style="display:flex; flex-direction:row; flex-wrap:nowrap; align-items:center; justify-content:space-between; gap:12px;">
+          <div id="otDetailFooterInfo" style="font-size:0.88em; color:#475569; font-weight:600; flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+          <div class="ot-detail-actions" role="group" aria-label="Overtime review actions" style="display:inline-flex; flex-direction:row; flex-wrap:nowrap; align-items:center; gap:8px; white-space:nowrap;">
+            <button type="button" class="btn btn-success btn-sm" id="otDetailAcceptAllBtn" onclick="otDetailAcceptAllPending()" style="white-space:nowrap;"><i class="fa-solid fa-check-double"></i> Accept All (Month)</button>
+            <button type="button" class="btn btn-success btn-sm" id="otDetailApproveBtn" onclick="otDetailApproveSelected()" disabled style="white-space:nowrap;"><i class="fa-solid fa-check"></i> Approve Selected</button>
+            <button type="button" class="btn btn-danger btn-sm" id="otDetailRejectBtn" onclick="otDetailRejectSelected()" disabled style="white-space:nowrap;"><i class="fa-solid fa-xmark"></i> Reject Selected</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closeOtDetailModal()" style="white-space:nowrap;">Close</button>
           </div>
         </div>
       </div>
@@ -10509,10 +10640,12 @@ async function fetchMultiLiveDetections() {
         <i class="fa-solid fa-video"></i> Camera Management
       </button>
       {% endif %}
-      {% if not is_client_session or client_module_entitlements.payroll %}
-      <button id="payrollRulesNavBtn" class="btn btn-sm settings-nav-btn" data-settings-module="payroll" onclick="switchSettingsTab('payroll-rules-tab', this)" style="border-radius: 8px; font-weight: 700;">
+      {% if not is_client_session or client_module_entitlements.payroll or client_module_entitlements.overtime %}
+      <button id="payrollRulesNavBtn" class="btn btn-sm settings-nav-btn" data-settings-module="payroll" data-settings-also-module="overtime" onclick="switchSettingsTab('payroll-rules-tab', this)" style="border-radius: 8px; font-weight: 700;">
         <i class="fa-solid fa-percent"></i> Payroll Rules
       </button>
+      {% endif %}
+      {% if not is_client_session or client_module_entitlements.payroll %}
       <button id="payrollCalendarNavBtn" class="btn btn-sm settings-nav-btn" data-settings-module="payroll" onclick="switchSettingsTab('payroll-calendar-tab', this)" style="border-radius: 8px; font-weight: 700;">
         <i class="fa-solid fa-calendar-days"></i> Payroll Calendar
       </button>
@@ -10523,6 +10656,11 @@ async function fetchMultiLiveDetections() {
       {% if not is_client_session or client_module_entitlements.leave %}
       <button id="leaveSettingsNavBtn" class="btn btn-sm settings-nav-btn settings-leave-only" data-settings-module="leave" onclick="switchSettingsTab('leave-settings-tab', this)" style="border-radius: 8px; font-weight: 700;">
         <i class="fa-solid fa-umbrella-beach"></i> Leave Settings
+      </button>
+      {% endif %}
+      {% if not is_client_session or client_module_entitlements.overtime %}
+      <button id="overtimeSettingsNavBtn" class="btn btn-sm settings-nav-btn settings-overtime-only" data-settings-module="overtime" onclick="openOvertimeSettingsTab(this)" style="border-radius: 8px; font-weight: 700;">
+        <i class="fa-solid fa-clock-rotate-left"></i> Overtime Settings
       </button>
       {% endif %}
       {% if not is_client_session or client_module_entitlements.mobile %}
@@ -10794,7 +10932,7 @@ async function fetchMultiLiveDetections() {
     </div>
     {% endif %}
 
-    {% if not is_client_session or client_module_entitlements.payroll %}
+    {% if not is_client_session or client_module_entitlements.payroll or client_module_entitlements.overtime %}
     <template id="payrollHubTabsTemplate">
       <nav class="payroll-hub-tabs" aria-label="Payroll setup steps">
         <button type="button" class="payroll-hub-tab" data-payroll-hub="general">1. General</button>
@@ -10807,7 +10945,7 @@ async function fetchMultiLiveDetections() {
         <button type="button" class="payroll-hub-tab" data-payroll-hub="payslip">8. Payslip</button>
       </nav>
     </template>
-    <!-- TAB 5: PAYROLL RULES -->
+    <!-- TAB 5: PAYROLL RULES (also hosts Overtime Settings when OT module is enabled) -->
     <div id="payroll-rules-tab" class="settings-sub-tab" style="display: none;">
       <div class="card p-4 shadow-sm" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:16px;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
@@ -11518,6 +11656,7 @@ async function fetchMultiLiveDetections() {
       </div>
     </div>
 
+    {% if not is_client_session or client_module_entitlements.payroll %}
     <div id="payroll-calendar-tab" class="settings-sub-tab" style="display: none;">
       <div class="card p-4 shadow-sm" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:16px;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
@@ -11716,6 +11855,7 @@ async function fetchMultiLiveDetections() {
         </div>
       </div>
     </div>
+    {% endif %}
 
     {% endif %}
 
@@ -13705,8 +13845,18 @@ async function fetchMultiLiveDetections() {
             const exitBadgeHtml = row.exit_date
               ? `<span class="badge" style="background:rgba(245,158,11,0.15); color:#d97706; border:1px solid rgba(245,158,11,0.3); font-size:0.72em; margin-left:6px;"><i class="fa-solid fa-door-open"></i> Leaving ${payrollEscape(row.exit_date)}</span>`
               : '';
-            const joinBadgeHtml = (row.join_marker || (row.not_yet_started && row.join_date))
-              ? `<span class="badge" style="background:rgba(139,123,247,0.15); color:#5847c8; border:1px solid rgba(139,123,247,0.35); font-size:0.72em; margin-left:6px;"><i class="fa-solid fa-user-plus"></i> ${payrollEscape(row.join_marker || ('Joins ' + row.join_date))}</span>`
+            // QA-72: prefer server join_marker (saved joining date). Never invent "today".
+            const joinBadgeLabel = (() => {
+              if (row.join_marker) return String(row.join_marker);
+              if (!(row.not_yet_started && row.join_date)) return '';
+              const iso = String(row.join_date || '').slice(0, 10);
+              const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+              if (!m) return `Joins ${iso}`;
+              const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              return `Joins ${Number(m[3])} ${months[Number(m[2]) - 1]}`;
+            })();
+            const joinBadgeHtml = joinBadgeLabel
+              ? `<span class="badge" style="background:rgba(139,123,247,0.15); color:#5847c8; border:1px solid rgba(139,123,247,0.35); font-size:0.72em; margin-left:6px;"><i class="fa-solid fa-user-plus"></i> ${payrollEscape(joinBadgeLabel)}</span>`
               : '';
 
             const deductParts = [];
@@ -14241,19 +14391,60 @@ async function fetchMultiLiveDetections() {
       };
 
       function isSettingsTabEntitled(tabId) {
+        if (!window.entitledModules) return !Array.isArray(window.clientSessionModules);
+        // OT-01: Payroll Rules hosts Overtime Settings — allow when payroll OR overtime is entitled.
+        if (tabId === 'payroll-rules-tab') {
+          return Boolean(window.entitledModules.payroll || window.entitledModules.overtime);
+        }
         const reqMod = SETTINGS_TAB_MODULE[tabId];
         if (!reqMod) return true;
-        if (!window.entitledModules) return !Array.isArray(window.clientSessionModules);
         return Boolean(window.entitledModules[reqMod]);
       }
 
+      function openOvertimeSettingsTab(btn) {
+        // OT-01: Overtime module → Overtime Settings nav stays active and opens the Overtime hub pane.
+        const otBtn = btn || document.getElementById('overtimeSettingsNavBtn') || document.getElementById('payrollRulesNavBtn');
+        lastPayrollHubTab = 'overtime';
+        if (typeof switchSettingsTab === 'function') {
+          switchSettingsTab('payroll-rules-tab', otBtn);
+        }
+        const activateOtHub = () => {
+          document.querySelectorAll('#payroll-rules-tab .payroll-hub-pane').forEach((pane) => {
+            pane.classList.toggle('is-active', pane.getAttribute('data-payroll-hub-pane') === 'overtime');
+          });
+          if (typeof paintPayrollHubTabs === 'function') paintPayrollHubTabs('overtime');
+          lastPayrollHubTab = 'overtime';
+          // Keep "Overtime Settings" highlighted (do not steal active state to Payroll Rules).
+          document.querySelectorAll('.settings-nav-btn').forEach((nav) => {
+            const on = nav.id === 'overtimeSettingsNavBtn';
+            nav.classList.toggle('active', on);
+            nav.style.background = on ? '#8b7bf7' : '#f1f5f9';
+            nav.style.color = on ? '#ffffff' : '#475569';
+          });
+          const topbarTitle = document.getElementById('headerCurrentPageTitle');
+          const settingsSubEl = document.getElementById('settingsPageSubtitle');
+          if (topbarTitle) topbarTitle.textContent = 'Overtime Settings';
+          if (settingsSubEl) settingsSubEl.textContent = 'Set how overtime hours are paid, including holiday and rest-day extras. Only approved overtime is paid.';
+          if (typeof loadPayrollSettings === 'function') loadPayrollSettings();
+        };
+        requestAnimationFrame(() => setTimeout(activateOtHub, 0));
+      }
+      window.openOvertimeSettingsTab = openOvertimeSettingsTab;
+
       function applySettingsTabEntitlements() {
+        const mods = window.entitledModules || {};
+        const otOn = Boolean(mods.overtime);
+        const payrollOn = Boolean(mods.payroll);
+
         document.querySelectorAll('.settings-nav-btn[data-settings-module]').forEach((btn) => {
           const mod = btn.getAttribute('data-settings-module');
-          btn.style.display = (window.entitledModules && window.entitledModules[mod]) ? '' : 'none';
+          const also = btn.getAttribute('data-settings-also-module');
+          const show = Boolean(mods[mod]) || (also && Boolean(mods[also]));
+          if (show) btn.style.removeProperty('display');
+          else btn.style.setProperty('display', 'none', 'important');
         });
-        // OT-01: keep Overtime Settings (hub tab + panes) synced with Overtime module entitlement.
-        const otOn = Boolean(window.entitledModules && window.entitledModules.overtime);
+
+        // OT-01: keep Overtime Settings nav + hub tab/panes synced with module entitlement.
         let otEntStyle = document.getElementById('ot-settings-entitlement-style');
         if (!otEntStyle) {
           otEntStyle = document.createElement('style');
@@ -14262,28 +14453,46 @@ async function fetchMultiLiveDetections() {
         }
         if (otOn) {
           const serverEnt = document.getElementById('server-rendered-client-entitlements');
-          if (serverEnt && /settings-overtime-only/.test(serverEnt.textContent || '')) {
+          if (serverEnt) {
             serverEnt.textContent = (serverEnt.textContent || '')
               .replace(/\.sidebar-menu \.menu-item\[data-module="overtime"\][^{]*\{[^}]*\}/g, '')
               .replace(/#overtime-view\s*\{[^}]*\}/g, '')
-              .replace(/\.settings-overtime-only,\s*\.payroll-overtime-only\s*\{[^}]*\}/g, '');
+              .replace(/\.settings-overtime-only,\s*\.payroll-overtime-only\s*\{[^}]*\}/g, '')
+              .replace(/#payroll-rules-tab\s*\{[^}]*\}/g, '');
           }
           otEntStyle.textContent = `
+            #overtimeSettingsNavBtn.settings-overtime-only { display: inline-flex !important; }
             .payroll-hub-tab.settings-overtime-only,
             .payroll-hub-tab[data-payroll-hub="overtime"] { display: inline-flex !important; }
             .payroll-hub-pane.settings-overtime-only:not(.is-active),
             .payroll-hub-pane[data-payroll-hub-pane="overtime"]:not(.is-active) { display: none !important; }
             .payroll-hub-pane.settings-overtime-only.is-active,
             .payroll-hub-pane[data-payroll-hub-pane="overtime"].is-active { display: block !important; }
+            ${payrollOn || otOn ? '#payroll-rules-tab.settings-sub-tab { /* visibility controlled by switchSettingsTab */ }' : ''}
           `;
           document.querySelectorAll('.settings-overtime-only, .payroll-overtime-only').forEach((el) => {
-            if (el.matches('.payroll-hub-pane, .payroll-hub-tab, [data-payroll-hub], [data-payroll-hub-pane]')) return;
+            if (el.matches('.payroll-hub-pane, [data-payroll-hub-pane]')) return;
+            if (el.matches('.payroll-hub-tab, [data-payroll-hub="overtime"], #overtimeSettingsNavBtn')) {
+              el.style.setProperty('display', 'inline-flex', 'important');
+              return;
+            }
             el.style.removeProperty('display');
           });
+          // OT-only clients: keep Payroll Rules available but focus hub on Overtime.
+          if (!payrollOn) {
+            document.querySelectorAll('.payroll-hub-tab').forEach((btn) => {
+              const key = btn.getAttribute('data-payroll-hub');
+              btn.style.setProperty('display', key === 'overtime' ? 'inline-flex' : 'none', 'important');
+            });
+            if (typeof lastPayrollHubTab !== 'undefined' && lastPayrollHubTab !== 'overtime' && typeof switchPayrollHubTab === 'function') {
+              switchPayrollHubTab('overtime');
+            }
+          }
         } else {
           otEntStyle.textContent = `
             .sidebar-menu .menu-item[data-module="overtime"],
             #overtime-view,
+            #overtimeSettingsNavBtn,
             .settings-overtime-only,
             .payroll-overtime-only,
             [data-payroll-hub="overtime"],
@@ -22711,8 +22920,15 @@ async function fetchMultiLiveDetections() {
         document.getElementById('modalSalaryAllowances').value = parseFloat(item.allowances) || 0;
         document.getElementById('modalSalaryDeductions').value = parseFloat(item.deductions) || 0;
         document.getElementById('modalSalaryOtRate').value = parseFloat(item.ot_rate) || 0;
+        const joinDate = String(item.join_date || '').trim().slice(0, 10);
+        window._currentSalaryJoinDate = joinDate;
         const effective = document.getElementById('modalSalaryEffectiveFrom');
-        if (effective) effective.value = item.effective_from || '2026-01-01';
+        if (effective) {
+          // QA-107: show saved Effective from; for new staff default to joining date.
+          effective.value = item.effective_from || joinDate || '';
+          if (joinDate) effective.min = joinDate;
+          else effective.removeAttribute('min');
+        }
 
         window._currentSalaryWorkingHours = Number(item.applicable_working_hours || item.ot_hour_divisor || 208);
         const otBtn = document.getElementById('modalSalaryCalcOtBtn');
@@ -22842,6 +23058,18 @@ async function fetchMultiLiveDetections() {
         }
         if (!isRealCalendarDateValue(effectiveFrom)) {
           if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">Effective from is not a valid calendar date (for example 31 Nov does not exist). Nothing was saved.</div>`;
+          return;
+        }
+        const joinDateFloor = String(window._currentSalaryJoinDate || '').trim().slice(0, 10);
+        if (joinDateFloor && effectiveFrom < joinDateFloor) {
+          const joinLabel = (() => {
+            try {
+              const [y, m, d] = joinDateFloor.split('-').map(Number);
+              const dt = new Date(y, m - 1, d);
+              return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            } catch (e) { return joinDateFloor; }
+          })();
+          if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">Effective from cannot be earlier than the joining date (${escapeSalaryHtml(joinLabel)}). Use ${escapeSalaryHtml(joinLabel)} or a later date.</div>`;
           return;
         }
         const basic = basicParsed.value;
@@ -25361,7 +25589,7 @@ async function fetchMultiLiveDetections() {
       } catch (e) {
         console.error("Load leave requests error:", e);
         const errMsg = e.message || 'Error loading leave requests.';
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger p-4">
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger p-4">
           <i class="fa-solid fa-circle-exclamation"></i> Error loading leave requests: ${errMsg}
           <div class="mt-2"><button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadLeaveRequests()"><i class="fa-solid fa-rotate"></i> Retry</button></div>
         </td></tr>`;
@@ -25394,11 +25622,12 @@ async function fetchMultiLiveDetections() {
         const nameStr = (req.user_name || '').toLowerCase();
         let searchMatch = true;
         if (search) {
-          const numMatch = search.replace(/^#/, '');
+          const numMatch = search.replace(/^#/, '').replace(/^emp-?/i, '');
+          const empIdDisp = `emp-${String(req.user_id ?? '').padStart(3, '0')}`;
           if (/^\d+$/.test(numMatch)) {
-            searchMatch = (String(req.id) === numMatch || String(req.user_id) === numMatch);
+            searchMatch = (String(req.id) === numMatch || String(req.user_id) === numMatch || empIdDisp.includes(numMatch));
           } else {
-            searchMatch = nameStr.includes(search) || (req.department || '').toLowerCase().includes(search) || (req.leave_type || '').toLowerCase().includes(search);
+            searchMatch = nameStr.includes(search) || empIdDisp.includes(search) || (req.department || '').toLowerCase().includes(search) || (req.leave_type || '').toLowerCase().includes(search);
           }
         }
         const statusMatch = statusFilter === 'all'
@@ -25492,7 +25721,7 @@ async function fetchMultiLiveDetections() {
       });
 
       if (total === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-4">No leave requests found matching filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted p-4">No leave requests found matching filters.</td></tr>';
         return;
       }
 
@@ -25529,8 +25758,10 @@ async function fetchMultiLiveDetections() {
         const reasons = reqs.map(r => r.reason).filter(Boolean);
         const reasonStr = reasons.length ? reasons.join('; ') : '--';
 
+        const empIdDisp = `EMP-${String(group.user_id ?? '').padStart(3, '0')}`;
         return `
           <tr style="border-bottom:1px solid #f1f5f9; transition:background 0.15s ease;">
+            <td style="padding:12px 14px; font-weight:700; color:#5847c8; font-size:0.82rem; font-family:'JetBrains Mono',monospace; vertical-align:middle;">${empIdDisp}</td>
             <td style="padding:12px 14px;">
               <div style="display:flex; align-items:center; gap:10px;">
                 <div style="width:34px; height:34px; border-radius:50%; background:#8b7bf7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.85em; flex-shrink:0;">
@@ -25538,7 +25769,7 @@ async function fetchMultiLiveDetections() {
                 </div>
                 <div>
                   <div style="font-weight:700; color:#0f172a; font-size:0.92em;">${escapeHtml(group.user_name)}</div>
-                  <div style="font-size:0.75em; color:#64748b;">
+                  <div style="font-size:0.75em; color:#64748b; margin-top:2px;">
                     ${group.department ? `<span class="badge bg-secondary-subtle text-secondary me-1">${escapeHtml(group.department)}</span>` : ''}
                     <span class="badge bg-primary-subtle text-primary">${reqs.length} leave request${reqs.length === 1 ? '' : 's'}</span>
                   </div>
@@ -25776,8 +26007,8 @@ async function fetchMultiLiveDetections() {
       putText('leaveCompleteAvatar', String(firstReq.user_name || '?').charAt(0).toUpperCase());
       putText('leaveCompleteEmployee', firstReq.user_name || `User ${firstReq.user_id}`);
       putText('leaveCompleteRequestId', isMulti
-        ? `${requests.length} leave requests · Employee #${firstReq.user_id}`
-        : `Request #${firstReq.id} · Employee #${firstReq.user_id}`);
+        ? `${requests.length} leave requests · EMP-${String(firstReq.user_id ?? '').padStart(3, '0')}`
+        : `Request #${firstReq.id} · EMP-${String(firstReq.user_id ?? '').padStart(3, '0')}`);
       putText('leaveCompletePeriod', minDate === maxDate ? minDate : `${minDate} to ${maxDate}`);
 
       let pendingCount = 0, approvedCount = 0, partialCount = 0, rejectedCount = 0;
@@ -26189,7 +26420,7 @@ async function fetchMultiLiveDetections() {
       const thead = document.getElementById('leaveBalancesTableHead');
       if (!thead) return configuredLeaveBalanceTypes();
       const types = configuredLeaveBalanceTypes();
-      thead.innerHTML = `<tr><th>Employee</th><th>Department</th>${types.map(lt => `<th>${escapeHtml(lt.name || lt.code)}</th>`).join('')}</tr>`;
+      thead.innerHTML = `<tr><th>Employee ID</th><th>Employee</th><th>Department</th>${types.map(lt => `<th>${escapeHtml(lt.name || lt.code)}</th>`).join('')}</tr>`;
       return types;
     }
 
@@ -26237,8 +26468,9 @@ async function fetchMultiLiveDetections() {
       const filtered = _allLeaveBalances.filter(b => {
         const nameStr = (b.user_name || '').toLowerCase();
         const idStr = String(b.user_id || '').toLowerCase();
+        const empIdDisp = `emp-${String(b.user_id ?? '').padStart(3, '0')}`;
         const deptStr = (b.department || '').toLowerCase();
-        return !search || nameStr.includes(search) || idStr.includes(search) || deptStr.includes(search);
+        return !search || nameStr.includes(search) || idStr.includes(search) || empIdDisp.includes(search) || deptStr.includes(search);
       });
 
       const total = filtered.length;
@@ -26259,7 +26491,7 @@ async function fetchMultiLiveDetections() {
       });
 
       const types = renderLeaveBalanceHead();
-      const colCount = 2 + Math.max(types.length, 1);
+      const colCount = 3 + Math.max(types.length, 1);
 
       if (total === 0) {
         tbody.innerHTML = `<tr><td colspan="${colCount}" class="text-center text-muted p-4">No employee balances found.</td></tr>`;
@@ -26269,6 +26501,9 @@ async function fetchMultiLiveDetections() {
       const paged = filtered.slice((_leaveBalPage - 1) * _leaveBalPageSize, _leaveBalPage * _leaveBalPageSize);
 
       tbody.innerHTML = paged.map(b => {
+        const empIdDisp = (b.user_id != null && b.user_id !== '')
+          ? `EMP-${String(b.user_id).padStart(3, '0')}`
+          : '—';
         const cells = types.map(lt => {
           const code = String(lt.code || '').toLowerCase();
           const pack = (b.balances && (b.balances[lt.code] || b.balances[code] || Object.values(b.balances).find(item => String(item.type_name || '').toLowerCase() === String(lt.name || '').toLowerCase()))) || {
@@ -26294,10 +26529,8 @@ async function fetchMultiLiveDetections() {
         }).join('');
         return `
           <tr>
-            <td style="font-weight:700; color:#173042;">
-              <div>${escapeHtml(b.user_name)}</div>
-              ${b.user_id ? `<small style="color:#94a3b8; font-weight:500;">ID: ${escapeHtml(b.user_id)}</small>` : ''}
-            </td>
+            <td style="padding:10px 14px; font-weight:700; color:#5847c8; font-size:0.82rem; font-family:'JetBrains Mono',monospace; vertical-align:middle;">${empIdDisp}</td>
+            <td style="font-weight:700; color:#173042;">${escapeHtml(b.user_name)}</td>
             <td><span class="badge bg-light text-dark border">${escapeHtml(b.department || 'General')}</span></td>
             ${cells || `<td colspan="${Math.max(types.length, 1)}" class="text-muted">No leave types configured.</td>`}
           </tr>
@@ -28330,13 +28563,13 @@ async function fetchMultiLiveDetections() {
             <td class="text-center" style="font-weight:700; color:#059669;">${approvedHrs.toFixed(1)} hrs</td>
             <td class="text-center" style="font-weight:700; color:#dc2626;">${rejectedHrs.toFixed(1)} hrs</td>
             <td>
-              <div style="display:flex; justify-content:center; align-items:center; gap:8px; flex-wrap:nowrap; white-space:nowrap;">
-              <button class="btn btn-sm btn-outline-primary" onclick="openOtDetailModal(${e.user_id}, '${escapeOtHtml(e.user_name)}')" style="font-size:0.8em; font-weight:700; margin:0;">
+              <div style="display:inline-flex; flex-direction:row; justify-content:center; align-items:center; gap:8px; flex-wrap:nowrap; white-space:nowrap;">
+              <button type="button" class="btn btn-sm btn-outline-primary" onclick="openOtDetailModal(${e.user_id}, '${escapeOtHtml(e.user_name)}')" style="font-size:0.8em; font-weight:700; margin:0; white-space:nowrap;">
                 <i class="fa-solid fa-magnifying-glass"></i> View Details
               </button>
               ${hasPending ? `
-                <button class="btn btn-sm btn-success" onclick="otAcceptAllForEmployee(${e.user_id}, '${escapeOtHtml(e.user_name)}')" style="font-size:0.8em; font-weight:700; margin:0;"><i class="fa-solid fa-check-double"></i> Accept All</button>
-                <button class="btn btn-sm btn-danger" onclick="otRejectAllForEmployee(${e.user_id}, '${escapeOtHtml(e.user_name)}')" style="font-size:0.8em; font-weight:700; margin:0;"><i class="fa-solid fa-xmark"></i> Reject All</button>
+                <button type="button" class="btn btn-sm btn-success" onclick="otAcceptAllForEmployee(${e.user_id}, '${escapeOtHtml(e.user_name)}')" style="font-size:0.8em; font-weight:700; margin:0; white-space:nowrap;"><i class="fa-solid fa-check-double"></i> Accept All</button>
+                <button type="button" class="btn btn-sm btn-danger" onclick="otRejectAllForEmployee(${e.user_id}, '${escapeOtHtml(e.user_name)}')" style="font-size:0.8em; font-weight:700; margin:0; white-space:nowrap;"><i class="fa-solid fa-xmark"></i> Reject All</button>
               ` : ''}
               </div>
             </td>
