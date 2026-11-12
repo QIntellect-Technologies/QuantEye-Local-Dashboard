@@ -1929,12 +1929,13 @@
       }
 
       /* CCTV Grid layout for Live AI Attendance */
+      /* CM-01: do not stretch-to-feed-height (that clipped tiles after ~6) */
       .cctv-layout {
         display: grid;
         grid-template-columns: minmax(0, 1fr) 290px;
         gap: 16px;
         margin-top: 10px;
-        align-items: stretch;
+        align-items: start;
       }
 
       @media (max-width: 1024px) {
@@ -1948,6 +1949,12 @@
         flex-direction: column;
         gap: 10px;
         min-width: 0;
+        overflow: visible;
+      }
+
+      #multiCameraGridContainer {
+        overflow: visible;
+        width: 100%;
       }
 
       /* Camera Screen Wrapper */
@@ -2135,16 +2142,18 @@
         color: #ffffff;
       }
 
-      /* Multi-Camera Grid */
+      /* Multi-Camera Grid — CM-01: wrap all cameras */
       .cctv-multi-grid {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 12px;
         width: 100%;
+        overflow: visible;
+        align-items: stretch;
       }
 
       .cctv-multi-grid.grid-2 {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       }
 
       @media (max-width: 768px) {
@@ -3394,29 +3403,30 @@
         flex: 1;
         min-width: 0;
       }
+      /* SE-01: closed trigger shows plain text — no chip background */
       .custom-camera-chip {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        padding: 3px 8px;
-        border-radius: 6px;
-        font-size: 0.76rem;
+        padding: 0;
+        border-radius: 0;
+        font-size: inherit;
         font-weight: 600;
         line-height: 1.2;
-        background: #e0f2fe;
-        color: #0369a1;
-        border: 1px solid #bae6fd;
+        background: transparent;
+        color: inherit;
+        border: 0;
+        box-shadow: none;
         white-space: nowrap;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
-      .custom-camera-chip.all-badge {
-        background: #f0fdf4;
-        color: #15803d;
-        border-color: #bbf7d0;
-      }
+      .custom-camera-chip.all-badge,
       .custom-camera-chip.checkout-badge {
-        background: #fef3c7;
-        color: #92400e;
-        border-color: #fde68a;
+        background: transparent;
+        color: inherit;
+        border: 0;
       }
       .custom-camera-dropdown-panel {
         position: absolute;
@@ -6816,15 +6826,17 @@
       box-shadow: 0 10px 22px -16px rgba(0,0,0,0.9);
     }
     .rpt-btn-light:hover { background: #ffffff; border-color: #ffffff; }
-    /* GUI-05 / GUI-07: black icons + text on Leave + Shift refresh/export */
+    /* GUI-05 / GUI-07: black icons + text on Leave + Shift + Settings refresh/export */
     #leaves-view #leaveTopRefreshBtn,
     #leaves-view #leaveExportTopBtn,
-    #shifts-view #refreshShiftsBtn {
+    #shifts-view #refreshShiftsBtn,
+    #settings-view #refreshSettingsBtn {
       color: #151b25 !important;
     }
     #leaves-view #leaveTopRefreshBtn i,
     #leaves-view #leaveExportTopBtn i,
-    #shifts-view #refreshShiftsBtn i {
+    #shifts-view #refreshShiftsBtn i,
+    #settings-view #refreshSettingsBtn i {
       color: #151b25 !important;
     }
 
@@ -7044,8 +7056,10 @@
       font-size: 12px;
       font-weight: 600;
     }
-    /* SE-01: enrollment camera dropdowns follow shared dropdown language */
-    #enroll-view .custom-camera-select-trigger {
+    /* SE-01: enrollment + staff edit camera dropdowns follow shared dropdown language */
+    #enroll-view .custom-camera-select-trigger,
+    #editUserModal .custom-camera-select-trigger,
+    #bulkCameraModal .custom-camera-select-trigger {
       min-height: 40px;
       border: 1px solid #e2e8f0;
       border-radius: 10px;
@@ -7054,13 +7068,36 @@
       color: #2b3547;
     }
     #enroll-view .custom-camera-select-trigger:hover,
-    #enroll-view .custom-camera-select-trigger.active {
+    #enroll-view .custom-camera-select-trigger.active,
+    #editUserModal .custom-camera-select-trigger:hover,
+    #editUserModal .custom-camera-select-trigger.active,
+    #bulkCameraModal .custom-camera-select-trigger:hover,
+    #bulkCameraModal .custom-camera-select-trigger.active {
       border-color: #8b7bf7;
     }
-    #enroll-view .custom-camera-select-trigger.active {
+    #enroll-view .custom-camera-select-trigger.active,
+    #editUserModal .custom-camera-select-trigger.active,
+    #bulkCameraModal .custom-camera-select-trigger.active {
       box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.16);
     }
-    #enroll-view .custom-camera-dropdown-panel {
+    #enroll-view .custom-camera-chips-container,
+    #editUserModal .custom-camera-chips-container,
+    #bulkCameraModal .custom-camera-chips-container {
+      font-size: 13px;
+      font-weight: 600;
+      color: #2b3547;
+    }
+    #enroll-view .custom-camera-chip,
+    #editUserModal .custom-camera-chip,
+    #bulkCameraModal .custom-camera-chip {
+      background: transparent !important;
+      border: 0 !important;
+      color: inherit !important;
+      padding: 0 !important;
+    }
+    #enroll-view .custom-camera-dropdown-panel,
+    #editUserModal .custom-camera-dropdown-panel,
+    #bulkCameraModal .custom-camera-dropdown-panel {
       border: 1px solid #e2e8f0;
       border-radius: 12px;
       background: #ffffff;
@@ -7068,18 +7105,107 @@
       max-height: min(280px, 45vh);
       overflow-y: auto;
     }
-    #enroll-view .custom-camera-item {
+    #enroll-view .custom-camera-item,
+    #editUserModal .custom-camera-item,
+    #bulkCameraModal .custom-camera-item {
       font-size: 13px;
       font-weight: 600;
       color: #2b3547;
       border-radius: 8px;
     }
-    #enroll-view .custom-camera-item:hover {
+    #enroll-view .custom-camera-item:hover,
+    #editUserModal .custom-camera-item:hover,
+    #bulkCameraModal .custom-camera-item:hover {
       background: rgba(139, 123, 247, 0.08);
       color: #5847c8;
     }
-    #enroll-view .custom-camera-item input[type="checkbox"] {
+    #enroll-view .custom-camera-item input[type="checkbox"],
+    #editUserModal .custom-camera-item input[type="checkbox"],
+    #bulkCameraModal .custom-camera-item input[type="checkbox"] {
       accent-color: #8b7bf7;
+    }
+
+    /* GUI-11: Edit Staff + Add Custom Shift modals share frost form chrome */
+    #editUserModal > .card,
+    #shiftModal > .card {
+      background: #ffffff !important;
+      border: 1px solid #e3e8f5 !important;
+      border-radius: 18px !important;
+      overflow: hidden;
+    }
+    #editUserModal > .card > div:first-child,
+    #shiftModal > .card > div:first-child {
+      background: #f8fafc !important;
+      border-bottom: 1px solid #edf0f9 !important;
+    }
+    #editUserModal > .card > div:first-child h3,
+    #shiftModal > .card > div:first-child h3 {
+      color: #151b25 !important;
+    }
+    #editUserModal > .card > div:first-child h3 i,
+    #shiftModal > .card > div:first-child h3 i {
+      color: #8b7bf7 !important;
+    }
+    #editUserModal .modal-x-btn,
+    #shiftModal .modal-x-btn {
+      background: #ffffff !important;
+      border-color: #e3e8f5 !important;
+      color: #475569 !important;
+    }
+    #editUserModal > .card > div:nth-child(2),
+    #shiftModal > .card > div:nth-child(2) {
+      background: #ffffff !important;
+    }
+    #editUserModal > .card > div:last-child,
+    #shiftModal > .card > div:last-child {
+      background: #f8fafc !important;
+      border-top: 1px solid #edf0f9 !important;
+    }
+    #editUserModal .form-label,
+    #editUserModal label,
+    #shiftModal .form-label,
+    #shiftModal label {
+      font-size: 12.5px !important;
+      font-weight: 700 !important;
+      color: #334155 !important;
+    }
+    #editUserModal .form-control,
+    #editUserModal .form-select,
+    #shiftModal .form-control,
+    #shiftModal .form-select {
+      min-height: 40px;
+      border: 1px solid #e2e8f0 !important;
+      border-radius: 10px !important;
+      background: #ffffff !important;
+      color: #2b3547 !important;
+      font-size: 13px !important;
+      box-shadow: none;
+    }
+    #editUserModal .form-control::placeholder,
+    #shiftModal .form-control::placeholder {
+      color: #94a3b8;
+    }
+    #editUserModal .form-control:focus,
+    #editUserModal .form-select:focus,
+    #shiftModal .form-control:focus,
+    #shiftModal .form-select:focus {
+      border-color: #8b7bf7 !important;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.16) !important;
+    }
+    #editUserModal .btn-primary,
+    #shiftModal .btn-primary {
+      background: #8b7bf7 !important;
+      border-color: #8b7bf7 !important;
+      border-radius: 10px !important;
+      font-weight: 700 !important;
+    }
+    #editUserModal .btn-secondary,
+    #shiftModal .btn-secondary {
+      border-radius: 10px !important;
+      border-color: #e3e8f5 !important;
+      color: #2b3547 !important;
+      background: #ffffff !important;
+      font-weight: 600 !important;
     }
     .rpt-field-label {
       display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
@@ -8794,7 +8920,7 @@ async function fetchMultiLiveDetections() {
           <!-- Footer -->
           <div style="padding:14px 24px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;">
             <button onclick="exportMainCurrentEmployeeCSV()" class="btn btn-primary" style="background:#8b7bf7; border:none; padding:8px 18px; font-size:0.84rem; font-weight:600; border-radius:10px; display:inline-flex; align-items:center; gap:6px;">
-              <i class="fa-solid fa-file-csv"></i> Export Employee CSV
+              <i class="fa-solid fa-arrow-up-from-bracket export-btn-icon"></i> Export Employee CSV
             </button>
             <button onclick="closeMainCompleteView()" class="btn btn-outline" style="padding:8px 18px; font-size:0.84rem; font-weight:600; color:#475569; border-color:#cbd5e1;">
               <i class="fa-solid fa-arrow-left"></i> Back to Attendance Reports
@@ -8870,7 +8996,7 @@ async function fetchMultiLiveDetections() {
             <i class="fa-solid fa-lock"></i> Finalize
           </button>
           <button type="button" class="btn btn-outline" style="min-height:40px; border-color:#3d9fd4; color:#247eae;" onclick="downloadPayrollExcel()">
-            <i class="fa-solid fa-file-excel"></i> Export Excel
+            <i class="fa-solid fa-arrow-up-from-bracket export-btn-icon"></i> Export Excel
           </button>
         </div>
       </div>
@@ -9768,8 +9894,8 @@ async function fetchMultiLiveDetections() {
     <!-- Add/Edit Shift Modal -->
     <div id="shiftModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(6px); padding: 20px;">
       <div class="card p-0" style="width: 100%; max-width: 500px; background: #ffffff; border-radius: 16px; border: 1px solid #cfe8f7; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2);">
-        <div style="background: #f2faff; border-bottom: 1px solid #cfe8f7; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
-          <h3 id="shiftModalTitle" style="font-size: 1.1em; font-weight: 700; color: #173042; margin: 0;"><i class="fa-solid fa-business-time" style="color:#3d9fd4; margin-right:8px;"></i> Add New Shift</h3>
+        <div style="background: #f8fafc; border-bottom: 1px solid #edf0f9; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+          <h3 id="shiftModalTitle" style="font-size: 1.1em; font-weight: 700; color: #151b25; margin: 0;"><i class="fa-solid fa-business-time" style="color:#8b7bf7; margin-right:8px;"></i> Add New Shift</h3>
           <button type="button" class="modal-x-btn" onclick="closeShiftModal()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div style="padding: 20px;">
@@ -9832,9 +9958,9 @@ async function fetchMultiLiveDetections() {
             </div>
           </div>
         </div>
-        <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 20px; display: flex; justify-content: flex-end; gap: 10px;">
-          <button type="button" class="btn btn-secondary" onclick="closeShiftModal()">Cancel</button>
-          <button type="button" class="btn btn-primary" onclick="saveShift()" style="background:#3d9fd4; border:none; font-weight:700;">Save Shift</button>
+        <div style="background: #f8fafc; border-top: 1px solid #edf0f9; padding: 14px 20px; display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-secondary" onclick="closeShiftModal()" style="border-radius:10px; font-weight:600;">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="saveShift()" style="background:#8b7bf7; border:none; font-weight:700; border-radius:10px;">Save Shift</button>
         </div>
       </div>
     </div>
@@ -9842,14 +9968,14 @@ async function fetchMultiLiveDetections() {
     <!-- Beautiful Standalone Edit Staff Profile Modal Overlay -->
     <div id="editUserModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(6px); padding: 16px;">
       <div class="card p-0" style="width: 100%; max-width: 640px; max-height: 90vh; background: #ffffff; border-radius: 22px; border: 1px solid rgba(226,231,246,0.9); overflow: hidden; box-shadow: 0 1px 2px rgba(20,24,40,0.04), 0 34px 64px -46px rgba(18,24,44,0.9); display: flex; flex-direction: column;">
-        <div style="background: linear-gradient(135deg, #141922 0%, #1b2130 46%, #212b3d 100%); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 16px 22px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-          <h3 style="font-size: 1.15em; font-weight: 600; color: #ffffff; margin: 0; display: flex; align-items: center; gap: 8px; letter-spacing:-0.02em;">
-            <i class="fa-solid fa-user-pen" style="color: #b7aeff;"></i> Edit Staff Profile
+        <div style="background: #f8fafc; border-bottom: 1px solid #edf0f9; padding: 16px 22px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+          <h3 style="font-size: 1.15em; font-weight: 700; color: #151b25; margin: 0; display: flex; align-items: center; gap: 8px; letter-spacing:-0.02em;">
+            <i class="fa-solid fa-user-pen" style="color: #8b7bf7;"></i> Edit Staff Profile
           </h3>
-          <button type="button" class="modal-x-btn" onclick="closeEditModal()" aria-label="Close" style="background:rgba(255,255,255,0.15); border-color:rgba(255,255,255,0.25); color:#fff;"><i class="fa-solid fa-xmark"></i></button>
+          <button type="button" class="modal-x-btn" onclick="closeEditModal()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
         </div>
         
-        <div style="padding: 22px; overflow-y: auto; flex: 1; background: linear-gradient(180deg, #ffffff 0%, #f7f8fe 100%);">
+        <div style="padding: 22px; overflow-y: auto; flex: 1; background: #ffffff;">
           <div id="editModalMessage"></div>
           <input type="hidden" id="editUserId" />
 
@@ -9934,9 +10060,9 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
 
-        <div style="background: rgba(255,255,255,0.7); border-top: 1px solid #e3e8f5; padding: 14px 22px; display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; backdrop-filter: blur(8px);">
-          <button type="button" class="btn btn-secondary" onclick="closeEditModal()" style="font-weight: 600; padding: 8px 18px; font-size: 0.88em; border-color:#e3e8f5; color:#3d4757; background:rgba(255,255,255,0.9);">Cancel</button>
-          <button type="button" id="editSaveProfileBtn" class="btn btn-primary" onclick="saveUserProfile()" style="background: #8b7bf7; border: none; font-weight: 600; padding: 8px 20px; font-size: 0.88em; box-shadow: 0 4px 14px -6px rgba(139,123,247,0.6);">
+        <div style="background: #f8fafc; border-top: 1px solid #edf0f9; padding: 14px 22px; display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0;">
+          <button type="button" class="btn btn-secondary" onclick="closeEditModal()" style="font-weight: 600; padding: 8px 18px; font-size: 0.88em; border-radius:10px; border-color:#e3e8f5; color:#2b3547; background:#ffffff;">Cancel</button>
+          <button type="button" id="editSaveProfileBtn" class="btn btn-primary" onclick="saveUserProfile()" style="background: #8b7bf7; border: none; font-weight: 700; padding: 8px 20px; font-size: 0.88em; border-radius:10px;">
             <i class="fa-solid fa-floppy-disk"></i> Save Profile Details
           </button>
         </div>
@@ -19256,7 +19382,7 @@ async function fetchMultiLiveDetections() {
         const coGraceEl = document.getElementById("modalShiftCheckoutGrace");
         if (coGraceEl) coGraceEl.value = "0";
 
-        document.getElementById("shiftModalTitle").innerHTML = '<i class="fa-solid fa-business-time" style="color:#3d9fd4; margin-right:8px;"></i> Add New Shift';
+        document.getElementById("shiftModalTitle").innerHTML = '<i class="fa-solid fa-business-time" style="color:#8b7bf7; margin-right:8px;"></i> Add New Shift';
         document.getElementById("shiftModalMsg").innerHTML = "";
 
         const modalEl = document.getElementById("shiftModal");
@@ -19280,7 +19406,7 @@ async function fetchMultiLiveDetections() {
         const coGraceEl = document.getElementById("modalShiftCheckoutGrace");
         if (coGraceEl) coGraceEl.value = (checkoutGrace !== undefined && checkoutGrace !== null) ? parseInt(checkoutGrace) || 0 : 0;
 
-        document.getElementById("shiftModalTitle").innerHTML = `<i class="fa-solid fa-pen-to-square" style="color:#3d9fd4; margin-right:8px;"></i> Edit Shift: ${payrollEscape(name)}`;  // QA-76: escape shift name
+        document.getElementById("shiftModalTitle").innerHTML = `<i class="fa-solid fa-pen-to-square" style="color:#8b7bf7; margin-right:8px;"></i> Edit Shift: ${payrollEscape(name)}`;  // QA-76: escape shift name
         document.getElementById("shiftModalMsg").innerHTML = "";
 
         const modalEl = document.getElementById("shiftModal");
