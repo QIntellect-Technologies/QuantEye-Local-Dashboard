@@ -3619,25 +3619,23 @@
         align-items: flex-end;
         gap: 8px;
         flex-wrap: nowrap;
-        min-height: 38px;
+        min-height: 36px;
       }
       .leave-month-nav .btn {
-        width: 40px;
-        min-width: 40px;
-        height: 38px;
-        min-height: 38px;
+        width: 36px;
+        min-width: 36px;
+        height: 36px;
+        min-height: 36px;
         padding: 0;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         align-self: flex-end;
       }
-      .leave-month-nav > label {
-        display: grid;
-        gap: 2px;
-        font-size: 0.76em;
-        font-weight: 700;
-        color: #64748b;
+      .leave-month-nav .rpt-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
         margin: 0;
       }
 
@@ -3679,17 +3677,19 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      /* GUI-01: closed trigger shows plain text — no chip highlight */
       .app-camera-select-chip {
         display: inline-flex;
         align-items: center;
-        padding: 3px 8px;
-        border-radius: 6px;
-        font-size: 0.76rem;
+        padding: 0;
+        border-radius: 0;
+        font-size: inherit;
         font-weight: 600;
         line-height: 1.2;
-        background: #e0f2fe;
-        color: #0369a1;
-        border: 1px solid #bae6fd;
+        background: transparent;
+        color: inherit;
+        border: 0;
+        box-shadow: none;
         max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -3728,11 +3728,15 @@
         background: #f8fafc;
         color: #1e293b;
       }
-      /* GUI-01: selected option stays plain — no blue highlight fill */
+      /* GUI-01: highlight selected option only inside the expanded panel */
       .app-camera-select-item.selected {
-        background: transparent;
-        color: #1e293b;
+        background: #f3f0ff;
+        color: #5847c8;
         font-weight: 700;
+      }
+      .app-camera-select-item.selected:hover {
+        background: #ebe6ff;
+        color: #4a39b8;
       }
       select.app-style-select-source { display: none !important; }
       /* Keep filter bars from clipping camera-style menus */
@@ -6481,12 +6485,32 @@
     }
 
     /* --- Export dropdowns must never be clipped (AR-02, SD-03, LH-06) --- */
-    .rpt-hero, .rpt-hero-actions, .rpt-sheet, .rpt-filters,
+    .rpt-hero, .rpt-hero-actions, .rpt-filters,
     .page-header, .page-header-actions, .leave-filter-bar {
       overflow: visible !important;
     }
-    #reports-view.page-view, #staff-view.page-view, #leaves-view.page-view {
-      overflow: visible;
+    /* Keep module pages from scrolling horizontally; only tables scroll (Attendance Reports) */
+    #reports-view.page-view,
+    #staff-view.page-view,
+    #leaves-view.page-view {
+      overflow-x: hidden !important;
+      max-width: 100%;
+    }
+    #reports-view .rpt-sheet,
+    #staff-view .rpt-sheet {
+      overflow: hidden;
+      max-width: 100%;
+    }
+    #reports-view .rpt-table-scroll,
+    #staff-view .rpt-table-scroll {
+      overflow-x: auto !important;
+      overflow-y: auto;
+      max-width: 100%;
+      -webkit-overflow-scrolling: touch;
+    }
+    #reports-view .rpt-table {
+      min-width: 1080px;
+      width: 100%;
     }
     .rpt-hero-actions .dropdown, .page-header-actions .dropdown { position: relative; }
     .rpt-hero-actions .dropdown-menu, .page-header-actions .dropdown-menu {
@@ -6496,20 +6520,34 @@
     .rpt-hero-actions .dropdown-menu.show, .page-header-actions .dropdown-menu.show { display: block; }
 
     /* --- Standardised close (cross) button (LH-02) --- */
-    .modal-x-btn {
+    .modal-x-btn,
+    button.btn-close.modal-x-btn,
+    .btn-close.modal-x-btn {
       box-sizing: border-box;
-      width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0;
-      border-radius: 50%; border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b;
-      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px !important; min-width: 32px !important; height: 32px !important; min-height: 32px !important;
+      padding: 0 !important; margin: 0;
+      border-radius: 50% !important; border: 1px solid #e2e8f0 !important;
+      background: #f8fafc !important; background-image: none !important;
+      color: #64748b !important; opacity: 1 !important;
+      display: inline-flex !important; align-items: center; justify-content: center;
       font-size: 13px; line-height: 1; cursor: pointer; flex: 0 0 32px;
+      box-shadow: none !important;
       transition: background-color .16s ease, border-color .16s ease, color .16s ease;
     }
-    .modal-x-btn:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
-    .modal-x-btn i { font-size: 13px; }
+    .modal-x-btn:hover,
+    button.btn-close.modal-x-btn:hover,
+    .btn-close.modal-x-btn:hover {
+      background: #fef2f2 !important; background-image: none !important;
+      border-color: #fecaca !important; color: #dc2626 !important; opacity: 1 !important;
+    }
+    .modal-x-btn i,
+    .btn-close.modal-x-btn i {
+      font-size: 13px !important; line-height: 1; color: inherit; pointer-events: none;
+    }
     .btn-close {
       box-sizing: border-box; width: 32px; height: 32px; padding: 0; border-radius: 50%;
       background-color: #f8fafc; border: 1px solid #e2e8f0; opacity: 1;
-      background-size: 11px; display: inline-flex; align-items: center; justify-content: center;
+      background-image: none; display: inline-flex; align-items: center; justify-content: center;
     }
     .btn-close:hover { background-color: #fef2f2; border-color: #fecaca; opacity: 1; }
 
@@ -6534,76 +6572,181 @@
       border-color: var(--ui-purple-dark) !important;
     }
 
-    /* --- Selected option in dropdown triggers: plain, no highlight (GUI-01) --- */
+    /* --- Selected option in closed dropdown trigger: plain (GUI-01) --- */
     .app-camera-select-chip {
       background: transparent !important;
       border: 0 !important;
       box-shadow: none !important;
-      padding: 0 2px !important;
+      padding: 0 !important;
       margin: 0 !important;
-      color: #1e293b !important;
+      color: inherit !important;
       font-weight: 600;
     }
     .app-camera-select-trigger { background: #ffffff; box-shadow: none; }
     .app-camera-select-trigger.active { background: #ffffff; }
+    .app-camera-select-item.selected {
+      background: #f3f0ff !important;
+      color: #5847c8 !important;
+      font-weight: 700 !important;
+    }
 
-    /* --- Leave request filter bar alignment (LH-03) --- */
-    .leave-filter-bar { align-items: flex-end; }
+    /* --- Leave request filter bar alignment (LH-03 / LH-04) --- */
+    .leave-filter-bar {
+      align-items: flex-end !important;
+      gap: 10px !important;
+      padding: 12px 14px !important;
+      min-height: 0;
+    }
     .leave-filter-bar > * { margin-bottom: 0; }
+    .leave-filter-bar .rpt-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+      margin: 0;
+    }
+    .leave-filter-bar .rpt-field-label {
+      display: block;
+      padding-left: 2px;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #98a0b4;
+      margin: 0;
+      line-height: 1.2;
+    }
     .leave-filter-bar .form-control,
     .leave-filter-bar .form-select,
     .leave-filter-bar .btn,
-    .leave-filter-bar > label .form-control {
-      height: 38px; min-height: 38px; box-sizing: border-box;
+    .leave-filter-bar > label .form-control,
+    .leave-filter-bar .app-camera-select-trigger {
+      height: 36px !important;
+      min-height: 36px !important;
+      box-sizing: border-box;
     }
     .leave-filter-bar .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 14px;
+      font-size: 12px; font-weight: 600; border-radius: 10px;
     }
     .leave-filter-bar .form-select { padding-top: 0; padding-bottom: 0; }
+    .leave-filter-bar .app-camera-select {
+      width: auto;
+      min-width: 140px;
+      max-width: 200px;
+      flex: 0 0 auto;
+    }
+    .leave-filter-bar .app-camera-select.is-compact {
+      min-width: 110px;
+      max-width: 130px;
+    }
     #leaveStatusFilter { min-width: 170px; }
 
-    /* --- Shift assignment filter bar (SA-01) --- */
+    /* --- Shift assignment filter bar (SA-01) — compact like Staff / Reports --- */
     #shifts-view .shift-filter-bar {
-      display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap;
-      gap: 12px; padding: 12px 16px; background: #f8fafc;
+      display: flex !important;
+      align-items: flex-end !important;
+      justify-content: flex-start !important;
+      flex-wrap: wrap;
+      gap: 10px !important;
+      padding: 12px 14px !important;
+      background: #f8fafc;
       border-bottom: 1px solid var(--ui-line);
     }
-    #shifts-view .shift-filter-bar .form-select,
-    #shifts-view .shift-filter-bar input[type="text"] {
-      height: 38px; min-height: 38px; box-sizing: border-box;
-      border: 1px solid #e2e8f0; border-radius: var(--ui-radius);
-      background-color: #ffffff; font-size: 12.5px; font-weight: 500; color: var(--ui-ink-2);
+    #shifts-view .shift-filter-bar .rpt-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 0 0 auto;
+      min-width: 0;
+      max-width: none;
     }
-    #shifts-view .shift-filter-bar input[type="text"] { padding-left: 34px; }
+    #shifts-view .shift-filter-bar .rpt-field.shift-search-field {
+      flex: 1 1 220px;
+      min-width: 180px;
+      max-width: 280px;
+    }
+    #shifts-view .shift-filter-bar .form-select,
+    #shifts-view .shift-filter-bar input[type="text"],
+    #shifts-view .shift-filter-bar .app-camera-select-trigger {
+      height: 36px !important;
+      min-height: 36px !important;
+      box-sizing: border-box;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--ui-radius);
+      background-color: #ffffff;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--ui-ink-2);
+    }
+    #shifts-view .shift-filter-bar input[type="text"] { padding-left: 32px; width: 100%; }
+    #shifts-view .shift-filter-bar .app-camera-select { width: auto; min-width: 160px; max-width: 200px; }
     #shifts-view .shift-filter-bar .btn {
-      height: 38px; min-height: 38px; display: inline-flex; align-items: center; gap: 6px;
-      border-radius: var(--ui-radius); font-weight: 600; font-size: 12.5px; padding: 0 14px;
+      height: 36px; min-height: 36px; display: inline-flex; align-items: center; gap: 6px;
+      border-radius: var(--ui-radius); font-weight: 600; font-size: 12px; padding: 0 14px;
     }
 
     /* --- Complete view modals follow the design system (AR-05, LH-01) --- */
+    #mainCompleteViewModal,
+    #leaveCompleteModal {
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    }
     #mainCompleteViewModal > div,
     #leaveCompleteModal > div {
       border-radius: 18px !important;
-      border: 1px solid var(--ui-line) !important;
+      border: 1px solid rgba(227, 232, 245, 0.95) !important;
+      background: #ffffff !important;
       box-shadow: 0 34px 64px -46px rgba(18, 24, 44, 0.9) !important;
-      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      overflow: hidden !important;
+      color: #2b3547;
     }
-    #mainCompleteViewModal h3, #leaveCompleteModal h3 { color: var(--ui-ink) !important; letter-spacing: -0.01em; }
-    #mainCompleteViewModal h4, #leaveCompleteModal h4 { color: var(--ui-ink) !important; font-weight: 700 !important; }
+    #mainCompleteViewModal h3, #leaveCompleteModal h3 {
+      color: #151b25 !important; letter-spacing: -0.01em; font-weight: 700 !important;
+    }
+    #mainCompleteViewModal h4, #leaveCompleteModal h4 {
+      color: #151b25 !important; font-weight: 700 !important; font-size: 0.95rem !important;
+    }
     #mainCompleteViewModal > div > div:first-child,
     #leaveCompleteModal > div > div:first-child {
-      background: #f8fafc !important; border-bottom: 1px solid var(--ui-line-soft) !important;
+      background: #f8fafc !important;
+      border-bottom: 1px solid #edf0f9 !important;
+      padding: 18px 22px !important;
+    }
+    #mainCompleteViewModal table,
+    #leaveCompleteModal table {
+      width: 100%; border-collapse: collapse; font-size: 0.83rem;
+    }
+    #mainCompleteViewModal table thead,
+    #leaveCompleteModal table thead {
+      background: rgba(248, 249, 254, 0.99) !important;
     }
     #mainCompleteViewModal table th, #leaveCompleteModal table th {
-      color: var(--ui-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700;
+      color: #6b7488 !important; font-size: 10px !important; text-transform: uppercase;
+      letter-spacing: .08em; font-weight: 700 !important; padding: 10px 12px !important;
+      border-bottom: 1px solid #e3e8f5 !important; white-space: nowrap;
+    }
+    #mainCompleteViewModal table td, #leaveCompleteModal table td {
+      padding: 10px 12px !important; border-bottom: 1px solid #edf0f9 !important;
+      color: #2b3547; vertical-align: middle;
+    }
+    #mainCompleteViewModal .attendance-report-detail-table,
+    #leaveCompleteAllocationScroller {
+      border: 1px solid #e3e8f5 !important; border-radius: 12px !important; overflow: auto !important;
+      background: #fff;
     }
     #mainCompleteViewModal > div > div:last-child,
     #leaveCompleteModal > div > div:last-child {
-      background: #f8fafc !important; border-top: 1px solid var(--ui-line-soft) !important;
+      background: #f8fafc !important; border-top: 1px solid #edf0f9 !important;
+      padding: 14px 22px !important;
     }
     #mainCompleteViewModal .btn-primary,
     #leaveCompleteModal .btn-primary {
-      background: var(--ui-purple) !important; border-color: var(--ui-purple) !important; border-radius: var(--ui-radius) !important;
+      background: #8b7bf7 !important; border-color: #8b7bf7 !important;
+      border-radius: 10px !important; font-weight: 600 !important;
+    }
+    #mainCompleteViewModal .btn-outline,
+    #leaveCompleteModal .btn-outline-secondary {
+      border-radius: 10px !important; font-weight: 600 !important;
     }
 
     /* --- Shared module chrome (GUI-02) --- */
@@ -6633,12 +6776,50 @@
     #leaves-view .btn-primary {
       border-radius: var(--ui-radius);
     }
-    #refreshSettingsBtn {
-      background: var(--ui-purple) !important; border: none !important;
+    /* Shared Refresh / Export buttons across modules (GUI-02) */
+    .rpt-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 36px; padding: 0 14px; border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 10px; background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.88);
+      font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1;
+      white-space: nowrap; cursor: pointer;
+      transition: background-color .16s ease, border-color .16s ease, color .16s ease;
     }
+    .rpt-btn i { font-size: 11px; }
+    .rpt-btn:disabled, .rpt-btn.disabled { opacity: 0.45; cursor: not-allowed; }
+    .rpt-btn-dark {
+      border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.88);
+    }
+    .rpt-btn-dark:hover {
+      border-color: rgba(255,255,255,0.28); background: rgba(255,255,255,0.12); color: #fff;
+    }
+    .rpt-btn-light {
+      border-color: rgba(255,255,255,0.9); background: #f7f8ff; color: #151b25;
+      box-shadow: 0 10px 22px -16px rgba(0,0,0,0.9);
+    }
+    .rpt-btn-light:hover { background: #ffffff; border-color: #ffffff; }
     .rpt-field-label {
       display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
       text-transform: uppercase; color: var(--ui-muted); margin-bottom: 6px;
+    }
+    /* Shared pagination page-size dropdown (SA-02, SET-03, SET-04, Staff) */
+    .app-table-pagination .app-camera-select.is-compact,
+    .settings-pagination .app-camera-select.is-compact,
+    .rpt-sheet-tools .app-camera-select.is-compact {
+      width: 118px; min-width: 110px; max-width: 130px;
+    }
+    .app-table-pagination .app-camera-select-trigger,
+    .settings-pagination .app-camera-select-trigger,
+    .rpt-sheet-tools .app-camera-select-trigger {
+      height: 32px !important; min-height: 32px !important;
+      padding: 0 10px !important; border-radius: 9px !important;
+      border: 1px solid #e2e8f0 !important; background: #fff !important; box-shadow: none !important;
+    }
+    .app-table-pagination .app-camera-select-chip,
+    .settings-pagination .app-camera-select-chip,
+    .rpt-sheet-tools .app-camera-select-chip {
+      font-size: 11.5px !important; font-weight: 500 !important; background: transparent !important;
+      color: #2b3547 !important; padding: 0 !important; border: 0 !important;
     }
 
     /* --- Settings: inline validation messages (SET-01, SET-02) --- */
@@ -6696,8 +6877,11 @@
         b.removeAttribute('style');
       });
       host.querySelectorAll('button.btn-close').forEach(function (b) {
-        b.classList.add('modal-x-btn');
+        b.className = 'modal-x-btn';
+        b.type = 'button';
         b.setAttribute('aria-label', b.getAttribute('aria-label') || 'Close');
+        b.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        b.style.backgroundImage = 'none';
         b.dataset.normalized = '1';
       });
     });
@@ -6777,6 +6961,9 @@
       });
       sel.value = String(cfg.getSize());
       sel.addEventListener('change', function () { cfg.setSize(parseInt(this.value, 10) || 10); });
+      if (typeof window.upgradeSelectToCameraStyle === 'function') {
+        window.upgradeSelectToCameraStyle(sel, { compact: true });
+      }
     }
     return bar;
   }
@@ -8247,19 +8434,19 @@ async function fetchMultiLiveDetections() {
             <h4 style="font-size:0.95rem; font-weight:700; color:#151b25; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
               <i class="fa-solid fa-calendar-day" style="color:#8b7bf7;"></i> Daily Attendance Breakdown
             </h4>
-            <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
-              <table class="attendance-report-detail-table" style="width:100%; border-collapse:collapse; font-size:0.83rem;">
-                <thead style="background:#f1f5f9; border-bottom:1px solid #cbd5e1; color:#475569; text-transform:uppercase; font-size:0.74rem;">
+            <div class="attendance-report-detail-table" style="border:1px solid #e3e8f5; border-radius:12px; overflow:auto; max-width:100%;">
+              <table style="width:100%; min-width:860px; border-collapse:collapse; font-size:0.83rem;">
+                <thead>
                   <tr>
-                    <th style="padding:10px 14px; text-align:left;">Date</th>
-                    <th style="padding:10px 14px; text-align:left;">Day</th>
-                    <th style="padding:10px 14px; text-align:left;">Status</th>
-                    <th style="padding:10px 14px; text-align:left;">Check-In</th>
-                    <th style="padding:10px 14px; text-align:left;">Check-Out</th>
-                    <th style="padding:10px 14px; text-align:left;">Shift</th>
-                    <th style="padding:10px 14px; text-align:left;">Camera / Location</th>
-                    <th style="padding:10px 14px; text-align:left;">Source / Notes</th>
-                    <th style="padding:10px 14px; text-align:right;">Actions</th>
+                    <th style="text-align:left;">Date</th>
+                    <th style="text-align:left;">Day</th>
+                    <th style="text-align:left;">Status</th>
+                    <th style="text-align:left;">Check-In</th>
+                    <th style="text-align:left;">Check-Out</th>
+                    <th style="text-align:left;">Shift</th>
+                    <th style="text-align:left;">Camera / Location</th>
+                    <th style="text-align:left;">Source / Notes</th>
+                    <th style="text-align:right;">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="mainModalDailyTbody">
@@ -8596,13 +8783,13 @@ async function fetchMultiLiveDetections() {
           <p class="page-subtitle">Manage employee leave requests, leave quotas, paid leave policies, and company public holidays.</p>
         </div>
         <div class="page-header-actions" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-          <button id="leaveTopRefreshBtn" class="btn btn-outline-secondary" onclick="refreshActiveLeaveSubtab()"><i class="fa-solid fa-rotate"></i> Refresh</button>
-          <button class="btn btn-primary" onclick="openFileLeaveModal()"><i class="fa-solid fa-plus"></i> File Leave Request</button>
+          <button id="leaveTopRefreshBtn" type="button" class="rpt-btn rpt-btn-dark" onclick="refreshActiveLeaveSubtab()"><i class="fa-solid fa-rotate"></i><span>Refresh</span></button>
+          <button type="button" class="rpt-btn rpt-btn-dark" onclick="openFileLeaveModal()"><i class="fa-solid fa-plus"></i><span>File Leave Request</span></button>
           <div class="dropdown">
-            <button id="leaveExportTopBtn" type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" disabled>
-              <i class="fa-solid fa-file-export"></i> Export
+            <button id="leaveExportTopBtn" type="button" class="rpt-btn rpt-btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" disabled>
+              <i class="fa-solid fa-file-export"></i><span>Export</span>
             </button>
-            <ul class="dropdown-menu dropdown-menu-end shadow" style="border-radius:10px; border:1px solid #cfe8f7; min-width:180px;">
+            <ul class="dropdown-menu dropdown-menu-end rpt-menu shadow" style="border-radius:10px; border:1px solid #cfe8f7; min-width:180px;">
               <li><button type="button" class="dropdown-item" id="leavePdfExportBtn" onclick="exportLeaveHolidayPDF()"><i class="fa-solid fa-file-pdf me-2 text-danger"></i>Export PDF</button></li>
               <li><button type="button" class="dropdown-item" onclick="exportLeaveRequests()"><i class="fa-solid fa-file-csv me-2 text-primary"></i>Export CSV</button></li>
             </ul>
@@ -8623,32 +8810,44 @@ async function fetchMultiLiveDetections() {
         <div class="leave-filter-bar app-camera-select-host">
           <div class="leave-month-nav">
             <button id="leavePrevMonth" type="button" class="btn btn-outline-secondary" onclick="moveLeaveMonth(-1)" aria-label="Previous month" title="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
-            <label for="leaveMonthFilter">
-              LEAVE MONTH
+            <div class="rpt-field">
+              <span class="rpt-field-label">Leave Month</span>
               <input id="leaveMonthFilter" type="month" class="form-control" onchange="onLeaveFilterChange()" style="width:160px;">
-            </label>
+            </div>
             <button id="leaveNextMonth" type="button" class="btn btn-outline-secondary" onclick="moveLeaveMonth(1)" aria-label="Next month" title="Next month"><i class="fa-solid fa-chevron-right"></i></button>
           </div>
-          <label for="leaveDateFilter">
-            SPECIFIC DATE
+          <div class="rpt-field">
+            <span class="rpt-field-label">Specific Date</span>
             <input id="leaveDateFilter" type="date" class="form-control" onchange="onLeaveFilterChange()" style="width:160px;">
-          </label>
-          <input type="search" id="leaveSearch" class="form-control" maxlength="100" placeholder="Search employee name or ID..." oninput="onLeaveSearchInput()" style="width:220px; max-width:260px; flex:0 1 220px;" />
-          <select id="leaveStatusFilter" class="form-select" onchange="onLeaveFilterChange()" style="width:170px;">
-            <option value="all">All Statuses</option>
-            <option value="active">Active Requests</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="partially_approved">Partially Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
-          <select id="leavePageSize" class="form-select" onchange="changeLeavePageSize(this.value)" style="width:120px; min-width:110px;">
-            <option value="10">10 / page</option>
-            <option value="25" selected>25 / page</option>
-            <option value="50">50 / page</option>
-            <option value="100">100 / page</option>
-          </select>
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetLeaveRequestFilters()" style="white-space:nowrap;"><i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters</button>
+          </div>
+          <div class="rpt-field" style="min-width:200px; max-width:260px; flex:1 1 220px;">
+            <span class="rpt-field-label">Search</span>
+            <input type="search" id="leaveSearch" class="form-control" maxlength="100" placeholder="Search employee name or ID..." oninput="onLeaveSearchInput()" style="width:100%;" />
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Status</span>
+            <select id="leaveStatusFilter" class="form-select" onchange="onLeaveFilterChange()" style="width:170px;">
+              <option value="all">All Statuses</option>
+              <option value="active">Active Requests</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="partially_approved">Partially Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Rows</span>
+            <select id="leavePageSize" class="form-select" onchange="changeLeavePageSize(this.value)" style="width:120px; min-width:110px;">
+              <option value="10">10 / page</option>
+              <option value="25" selected>25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+          </div>
+          <div class="rpt-field" style="min-width:auto;">
+            <span class="rpt-field-label">&nbsp;</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetLeaveRequestFilters()" style="white-space:nowrap;"><i class="fa-solid fa-filter-circle-xmark"></i> Reset</button>
+          </div>
         </div>
 
         <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center" style="border-radius:10px; font-size:0.875rem; background:#f0f9ff; border:1px solid #b9e6fe; color:#0369a1;">
@@ -8698,19 +8897,28 @@ async function fetchMultiLiveDetections() {
         <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
           <h3 style="font-size:1.05em;font-weight:700;margin:0;color:#173042;">Employee Yearly Quotas (<span id="leaveBalanceYearLabel">2026</span>)</h3>
         </div>
-        <div class="leave-filter-bar">
-          <label for="leaveBalanceYearFilter" style="display:grid;gap:2px;font-size:0.76em;font-weight:700;color:#64748b;margin:0;">
-            YEAR
+        <div class="leave-filter-bar app-camera-select-host">
+          <div class="rpt-field">
+            <span class="rpt-field-label">Year</span>
             <select id="leaveBalanceYearFilter" class="form-select" onchange="onLeaveBalanceYearChange(this.value)" style="min-width:120px;"></select>
-          </label>
-          <input type="search" id="leaveBalanceSearch" class="form-control" maxlength="100" placeholder="Search by name or ID..." oninput="onLeaveBalanceSearchInput()" style="max-width:260px; min-height:38px;" />
-          <select id="leaveBalancePageSize" class="form-select" onchange="changeLeaveBalancePageSize(this.value)" style="width:auto; min-width:110px;">
-            <option value="10">10 / page</option>
-            <option value="25" selected>25 / page</option>
-            <option value="50">50 / page</option>
-            <option value="100">100 / page</option>
-          </select>
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetLeaveBalanceFilters()"><i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters</button>
+          </div>
+          <div class="rpt-field" style="min-width:200px; max-width:260px; flex:1 1 220px;">
+            <span class="rpt-field-label">Search</span>
+            <input type="search" id="leaveBalanceSearch" class="form-control" maxlength="100" placeholder="Search by name or ID..." oninput="onLeaveBalanceSearchInput()" style="width:100%;" />
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Rows</span>
+            <select id="leaveBalancePageSize" class="form-select" onchange="changeLeaveBalancePageSize(this.value)" style="width:auto; min-width:110px;">
+              <option value="10">10 / page</option>
+              <option value="25" selected>25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+          </div>
+          <div class="rpt-field" style="min-width:auto;">
+            <span class="rpt-field-label">&nbsp;</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetLeaveBalanceFilters()"><i class="fa-solid fa-filter-circle-xmark"></i> Reset</button>
+          </div>
         </div>
         <div class="card p-0" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; box-shadow:0 6px 18px rgba(61,159,212,0.07); overflow:hidden;">
         <div class="log-table-wrapper" style="overflow-x:auto; border:0; border-radius:0; background:#ffffff;">
@@ -9026,12 +9234,12 @@ async function fetchMultiLiveDetections() {
           <h1><i class="fa-solid fa-business-time" aria-hidden="true" style="color: #3d9fd4;"></i> Shift Management</h1>
           <p class="page-subtitle">Create and manage employee shifts and attendance schedules.</p>
         </div>
-        <div class="page-header-actions">
-          <button onclick="openAddShiftModal()" class="btn btn-primary shadow" style="width:auto; padding:9px 20px; font-size:0.88em; background:#3d9fd4; border:none; font-weight:700;">
-            <i class="fa-solid fa-plus-circle"></i> + Add Custom Shift
+        <div class="page-header-actions" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <button type="button" onclick="openAddShiftModal()" class="rpt-btn rpt-btn-dark">
+            <i class="fa-solid fa-plus-circle"></i><span>Add Custom Shift</span>
           </button>
-          <button id="refreshShiftsBtn" type="button" onclick="loadShiftsList(true)" class="btn btn-outline" style="width:auto; padding:9px 18px; font-size:0.88em; border-color:#3d9fd4; color:#247eae;">
-            <i class="fa-solid fa-rotate"></i> Refresh Shifts
+          <button id="refreshShiftsBtn" type="button" onclick="refreshActiveShiftsSection()" class="rpt-btn rpt-btn-light">
+            <i class="fa-solid fa-rotate"></i><span>Refresh</span>
           </button>
         </div>
       </div>
@@ -9090,31 +9298,31 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
 
-        <!-- Filter / Search Toolbar (SA-01: same label-above-field pattern as Staff / Reports) -->
-        <div class="shift-filter-bar rpt-filters-body" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:12px 16px; background:#f8fafc; border-bottom:1px solid #e2e8f0;">
-          <div class="rpt-field" style="flex:1; min-width:220px; max-width:360px;">
+        <!-- Filter / Search Toolbar (SA-01: same compact label-above-field pattern as Staff / Reports) -->
+        <div class="shift-filter-bar app-camera-select-host">
+          <div class="rpt-field shift-search-field">
             <span class="rpt-field-label">Search</span>
             <div style="position:relative; width:100%;">
               <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:0.85em;"></i>
-              <input type="text" id="shiftStaffSearch" class="form-control" oninput="filterShiftStaffTable()" placeholder="Search staff by name, ID, position..." style="width:100%; height:38px; padding:7px 12px 7px 32px; border:1px solid #e2e8f0; border-radius:10px; font-size:0.85em; outline:none;" />
+              <input type="text" id="shiftStaffSearch" class="form-control" oninput="filterShiftStaffTable()" placeholder="Search staff by name, ID, position..." />
             </div>
           </div>
           <div class="rpt-field">
             <span class="rpt-field-label">Department</span>
-            <select id="shiftFilterDept" onchange="filterShiftStaffTable()" class="form-select" style="height:38px; min-width:170px; font-size:0.82em; font-weight:600; border:1px solid #e2e8f0; border-radius:10px;">
+            <select id="shiftFilterDept" onchange="filterShiftStaffTable()" class="form-select" style="min-width:160px;">
               <option value="all">All Departments</option>
             </select>
           </div>
           <div class="rpt-field">
             <span class="rpt-field-label">Assigned Shift</span>
-            <select id="shiftFilterCurrentShift" onchange="filterShiftStaffTable()" class="form-select" style="height:38px; min-width:180px; font-size:0.82em; font-weight:600; border:1px solid #e2e8f0; border-radius:10px;">
+            <select id="shiftFilterCurrentShift" onchange="filterShiftStaffTable()" class="form-select" style="min-width:170px;">
               <option value="all">All Assigned Shifts</option>
             </select>
           </div>
-          <div class="rpt-field">
+          <div class="rpt-field" style="min-width:auto;">
             <span class="rpt-field-label">&nbsp;</span>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetShiftStaffFilters()" style="height:38px; font-weight:700; white-space:nowrap; border-radius:10px;">
-              <i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetShiftStaffFilters()" style="white-space:nowrap;">
+              <i class="fa-solid fa-filter-circle-xmark"></i> Reset
             </button>
           </div>
         </div>
@@ -9547,8 +9755,8 @@ async function fetchMultiLiveDetections() {
         <p class="page-subtitle" id="settingsPageSubtitle">Manage organization, branch, staff, shift, and system configuration.</p>
       </div>
       <div class="page-header-actions">
-        <button id="refreshSettingsBtn" type="button" class="btn btn-primary btn-sm" onclick="refreshActiveSettingsTab()" style="border-radius:8px; font-weight:700; background:#3d9fd4; border:none; padding:8px 16px;">
-          <i class="fa-solid fa-rotate"></i> Refresh Settings
+        <button id="refreshSettingsBtn" type="button" class="rpt-btn rpt-btn-light" onclick="refreshActiveSettingsTab()">
+          <i class="fa-solid fa-rotate"></i><span>Refresh</span>
         </button>
       </div>
     </div>
@@ -11421,20 +11629,20 @@ async function fetchMultiLiveDetections() {
   </style>
   <div class="modal fade" id="manualAttendanceModal" tabindex="-1" style="z-index: 100050;">
     <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content" style="border: none; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+      <div class="modal-content app-camera-select-host" style="border: none; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); overflow: visible;">
         <div class="modal-header" style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
           <h5 class="modal-title" style="font-weight: 700; color: #0f172a;">
             <i class="fa-solid fa-clock"></i> Mark Manual Attendance
           </h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <div class="modal-body" style="padding: 24px;">
+        <div class="modal-body" style="padding: 24px; overflow: visible;">
           <form id="manualAttendanceForm">
             <input type="hidden" id="manualAttUserId" />
             <input type="hidden" id="manualAttDate" />
             <div class="mb-3">
               <label class="form-label" style="font-weight: 600; color: #334155;">Shift *</label>
-              <select class="form-select" id="manualAttShiftSelect" data-native-select="1" onchange="onManualShiftChange()" style="display:block; width:100%;">
+              <select class="form-select" id="manualAttShiftSelect" onchange="onManualShiftChange()" style="width:100%;">
                 <option value="">Loading shifts...</option>
               </select>
             </div>
@@ -13407,7 +13615,9 @@ async function fetchMultiLiveDetections() {
         }
 
         if (viewId === "leaves-view") {
-          loadLeaveRequests();
+          // GUI-03: load only the leave subtab that is currently open.
+          if (typeof refreshActiveLeaveSubtab === 'function') refreshActiveLeaveSubtab();
+          else loadLeaveRequests();
         }
 
         if (viewId === "overtime-view") {
@@ -17251,6 +17461,14 @@ async function fetchMultiLiveDetections() {
         panel.style.maxWidth = `${Math.min(Math.max(width, 220), window.innerWidth - 16)}px`;
         panel.style.left = `${Math.max(8, Math.min(left, window.innerWidth - width - 8))}px`;
         panel.style.top = `${Math.max(8, top)}px`;
+        // AR-04: sit above Bootstrap/custom modals (Mark Present is z-index 100050).
+        let z = 12050;
+        const modalHost = trigger.closest('.modal.show, .modal, [id$="Modal"], [id$="modal"]');
+        if (modalHost) {
+          const mz = parseInt(window.getComputedStyle(modalHost).zIndex, 10);
+          z = Number.isFinite(mz) && mz > 0 ? mz + 20 : 100070;
+        }
+        panel.style.zIndex = String(z);
         // Flip upward if near bottom of viewport.
         requestAnimationFrame(() => {
           const panelHeight = panel.offsetHeight || 0;
@@ -17306,8 +17524,8 @@ async function fetchMultiLiveDetections() {
       }
 
       function upgradeSelectToCameraStyle(selectEl, options = {}) {
-        // AR-04: the Mark Present Shift field stays a native select so it always expands.
-        if (selectEl && (selectEl.dataset.nativeSelect === '1' || selectEl.id === 'manualAttShiftSelect')) {
+        // Opt-out only when explicitly marked native (rare OS-level cases).
+        if (selectEl && selectEl.dataset.nativeSelect === '1') {
           const staleWrap = selectEl.closest('.app-camera-select');
           if (staleWrap && staleWrap.parentNode) {
             staleWrap.parentNode.insertBefore(selectEl, staleWrap);
@@ -17379,11 +17597,12 @@ async function fetchMultiLiveDetections() {
         const ids = [
           'mainDeptFilter', 'mainStatusFilter', 'mainReportPageSize',
           'manualAttShiftSelect',
-          'tabStaffDeptFilter',
+          'tabStaffDeptFilter', 'tabStaffPageSize',
           'editDepartment', 'editPosition', 'editShiftId',
-          'leaveStatusFilter', 'leavePageSize', 'leaveBalancePageSize',
-          'bulkShiftTargetSelect', 'shiftFilterDept', 'shiftFilterCurrentShift',
+          'leaveStatusFilter', 'leavePageSize', 'leaveBalancePageSize', 'leaveBalanceYearFilter',
+          'bulkShiftTargetSelect', 'shiftFilterDept', 'shiftFilterCurrentShift', 'shiftStaffPageSize',
           'desigDeptFilter', 'modalDesigDeptId', 'modalCameraType',
+          'deptPageSize', 'desigPageSize',
           'enrollShiftId', 'enrollDepartment', 'enrollPosition',
           'modalLeaveDeptSelect', 'modalLeaveUserSelect', 'modalLeaveTypeSelect',
           'modalLeaveDurationSelect', 'modalExcessTreatment',
@@ -18010,6 +18229,12 @@ async function fetchMultiLiveDetections() {
           }
         }
       }
+
+      // GUI-03: Shift Management refresh reloads only this module's active data.
+      function refreshActiveShiftsSection() {
+        return loadShiftsList(true);
+      }
+      window.refreshActiveShiftsSection = refreshActiveShiftsSection;
 
       function toggleShiftGraceInput(enabled) {
         const box = document.getElementById("shiftGraceInputBox");
@@ -24888,6 +25113,8 @@ async function fetchMultiLiveDetections() {
           yearSelect.appendChild(opt);
         });
         yearSelect.value = String(currentYear);
+        if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(yearSelect);
+        else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(yearSelect);
       }
       const balanceYear = (yearSelect && yearSelect.value) ? yearSelect.value : String(new Date().getFullYear());
       const yearLabel = document.getElementById('leaveBalanceYearLabel');
