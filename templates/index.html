@@ -6932,6 +6932,51 @@
       gap: 10px;
     }
 
+    /* GUI-04: Settings → Leave Settings dropdowns match app-camera-select system */
+    #leave-settings-tab .app-camera-select-host,
+    #leave-settings-tab .payroll-rule-form,
+    #leave-settings-tab .payroll-rule-field {
+      overflow: visible !important;
+    }
+    #leave-settings-tab .app-camera-select[data-target-select="halfLeaveQuotaMode"] {
+      width: 100%;
+      max-width: 280px;
+      flex: 0 1 280px;
+    }
+    #leave-settings-tab .payroll-rule-field .app-camera-select {
+      width: 100%;
+      min-width: 160px;
+    }
+    #leave-settings-tab .app-camera-select-trigger {
+      min-height: 40px;
+      background: #ffffff;
+      border: 1.5px solid #cfe8f7;
+      border-radius: 10px;
+      font-size: 13px;
+      color: #173042;
+    }
+    #leave-settings-tab .app-camera-select-trigger:hover {
+      border-color: #3d9fd4;
+      background: #fcfdfe;
+    }
+    #leave-settings-tab .app-camera-select-trigger.active {
+      border-color: #8b7bf7;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.16);
+      background: #ffffff;
+    }
+    #leave-settings-tab .app-camera-select-label,
+    #leave-settings-tab .app-camera-select-chip {
+      font-size: 13px;
+      font-weight: 600;
+      color: #173042;
+    }
+    #leave-settings-tab .payroll-rule-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+
     /* GUI-11: shared form design system */
     .modal .form-label,
     [id$="Modal"] .form-label,
@@ -10153,17 +10198,17 @@ async function fetchMultiLiveDetections() {
 
     {% if not is_client_session or client_module_entitlements.leave %}
     <div id="leave-settings-tab" class="settings-sub-tab settings-leave-only" style="display: none;">
-      <div class="card p-4 shadow-sm" style="max-width: 960px; background: #ffffff; border: 1px solid #cfe8f7; border-radius: 16px;">
+      <div class="card p-4 shadow-sm app-camera-select-host" style="max-width: 960px; background: #ffffff; border: 1px solid #cfe8f7; border-radius: 16px; overflow: visible;">
         <h3 style="font-size: 1.15em; font-weight: 800; color: #173042; margin-bottom: 6px;">
           <i class="fa-solid fa-umbrella-beach" style="color:#0d9488; margin-right:8px;"></i> Leave &amp; Holidays Settings
         </h3>
         <p style="font-size: 0.9em; color: #64748b; margin-bottom: 16px;">Company half-day leave rules used by Apply Leave. Leave types and holidays are managed in the Leave &amp; Holidays module.</p>
-        <div id="leaveHalfDaySettingsPanel" class="settings-leave-only" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
+        <div id="leaveHalfDaySettingsPanel" class="settings-leave-only app-camera-select-host" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px; overflow: visible;">
           <div style="flex:1; min-width:240px;">
             <div style="font-weight:700; color:#173042;">Half-day leave</div>
             <div id="halfLeaveQuotaDescription" style="font-size:0.82em; color:#64748b;">How should half-day leave be counted? Only one rule applies. Winner order: one person → department → company setting. If the company setting is “use each leave type’s own rules”, the leave type is used after that.</div>
           </div>
-          <select id="halfLeaveQuotaMode" class="form-select" style="max-width:280px;" onchange="updateHalfLeaveQuotaModeUI()">
+          <select id="halfLeaveQuotaMode" class="form-select leave-settings-select" onchange="updateHalfLeaveQuotaModeUI()">
             <option value="category">Use each leave type’s own rules</option>
             <option value="monthly_cap">Set a monthly limit</option>
             <option value="monthly_convert">Count two half days as one full day</option>
@@ -10182,14 +10227,14 @@ async function fetchMultiLiveDetections() {
             <form id="halfLeaveSpecificRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); saveHalfLeaveSpecificRule();">
               <label class="payroll-rule-field">
                 Applies to
-                <select class="form-select" id="halfLeaveRuleScope" onchange="updateHalfLeaveRuleScopeOptions()">
+                <select class="form-select leave-settings-select" id="halfLeaveRuleScope" onchange="updateHalfLeaveRuleScopeOptions()">
                   <option value="department">Department</option>
                   <option value="employee">One person</option>
                 </select>
               </label>
               <label class="payroll-rule-field">
                 Choose
-                <select class="form-select" id="halfLeaveRuleTarget">
+                <select class="form-select leave-settings-select" id="halfLeaveRuleTarget">
                   <option value="">Select…</option>
                 </select>
               </label>
@@ -18017,7 +18062,9 @@ async function fetchMultiLiveDetections() {
           'modalLeaveDeptSelect', 'modalLeaveUserSelect', 'modalLeaveTypeSelect',
           'modalLeaveDurationSelect', 'modalExcessTreatment',
           'modalLeaveTypeIsPaid', 'modalLeaveTypePeriod', 'modalHalfLeaveMode',
-          'modalHalfLeaveQuotaType'
+          'modalHalfLeaveQuotaType',
+          // GUI-04: Settings → Leave Settings
+          'halfLeaveQuotaMode', 'halfLeaveRuleScope', 'halfLeaveRuleTarget'
         ];
         ids.forEach(id => {
           const el = document.getElementById(id);
@@ -18027,6 +18074,15 @@ async function fetchMultiLiveDetections() {
           upgradeSelectToCameraStyle(el);
         });
       }
+      function upgradeLeaveSettingsDropdowns() {
+        ['halfLeaveQuotaMode', 'halfLeaveRuleScope', 'halfLeaveRuleTarget'].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el && typeof upgradeSelectToCameraStyle === 'function') {
+            upgradeSelectToCameraStyle(el);
+          }
+        });
+      }
+      window.upgradeLeaveSettingsDropdowns = upgradeLeaveSettingsDropdowns;
       window.initListedAppCameraSelects = initListedAppCameraSelects;
       window.upgradeSelectToCameraStyle = upgradeSelectToCameraStyle;
       window.refreshAppCameraSelect = refreshAppCameraSelect;
@@ -19496,6 +19552,7 @@ async function fetchMultiLiveDetections() {
         else if (tabId === 'desigs-tab') loadDesignationsTable();
         else if (tabId === 'cameras-tab') loadCamerasGrid();
         else if (tabId === 'leave-settings-tab') {
+          if (typeof upgradeLeaveSettingsDropdowns === 'function') upgradeLeaveSettingsDropdowns();
           if (typeof loadPayrollSettings === 'function') loadPayrollSettings();
           if (typeof updateHalfLeaveQuotaModeUI === 'function') updateHalfLeaveQuotaModeUI();
           if (typeof updateHalfLeaveRuleScopeOptions === 'function') updateHalfLeaveRuleScopeOptions();
@@ -19535,9 +19592,11 @@ async function fetchMultiLiveDetections() {
           'desigs-tab': () => loadDesignationsTable(),
           'cameras-tab': () => (typeof loadCamerasGrid === 'function' ? loadCamerasGrid() : Promise.resolve()),
           'leave-settings-tab': async () => {
+            if (typeof upgradeLeaveSettingsDropdowns === 'function') upgradeLeaveSettingsDropdowns();
             if (typeof loadPayrollSettings === 'function') await loadPayrollSettings();
             if (typeof updateHalfLeaveQuotaModeUI === 'function') updateHalfLeaveQuotaModeUI();
             if (typeof updateHalfLeaveRuleScopeOptions === 'function') await updateHalfLeaveRuleScopeOptions();
+            if (typeof upgradeLeaveSettingsDropdowns === 'function') upgradeLeaveSettingsDropdowns();
           },
           'mobile-app-tab': () => (typeof loadMobileCredentials === 'function' ? loadMobileCredentials('settingsMobileCredentialResult') : Promise.resolve()),
           'payroll-rules-tab': async () => {
@@ -19671,6 +19730,12 @@ async function fetchMultiLiveDetections() {
           el.textContent = (opt.name || opt.title || opt.user_name || opt.id) + (opt.department ? ` (${opt.department})` : '');
           targetSelect.appendChild(el);
         });
+        if (typeof upgradeSelectToCameraStyle === 'function') {
+          upgradeSelectToCameraStyle(document.getElementById('halfLeaveRuleScope'));
+          upgradeSelectToCameraStyle(targetSelect);
+        } else if (typeof refreshAppCameraSelect === 'function') {
+          refreshAppCameraSelect(targetSelect);
+        }
       }
       window.updateHalfLeaveRuleScopeOptions = updateHalfLeaveRuleScopeOptions;
 
@@ -19851,6 +19916,8 @@ async function fetchMultiLiveDetections() {
             conversionCount.value = settings.half_leaves_per_quota_day || 2;
           }
           if (typeof updateHalfLeaveQuotaModeUI === 'function') updateHalfLeaveQuotaModeUI();
+          if (typeof upgradeLeaveSettingsDropdowns === 'function') upgradeLeaveSettingsDropdowns();
+          else if (quotaMode && typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(quotaMode);
           if (leaveMessage) leaveMessage.textContent = '';
           // Leave Settings-only pages: stop after half-day fields (payroll controls may be absent).
           if (!toggle && !overtimeMaxHours && !document.getElementById('payrollRuleForm')) {
@@ -21546,6 +21613,8 @@ async function fetchMultiLiveDetections() {
             conversionCount.value = result.settings?.half_leaves_per_quota_day || conversionCount.value;
           }
           if (typeof updateHalfLeaveQuotaModeUI === 'function') updateHalfLeaveQuotaModeUI();
+          if (typeof upgradeLeaveSettingsDropdowns === 'function') upgradeLeaveSettingsDropdowns();
+          else if (quotaMode && typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(quotaMode);
           if (message) {
             message.style.color = '#15803d';
             message.textContent = 'Leave settings saved.';
