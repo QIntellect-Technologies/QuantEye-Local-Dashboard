@@ -12143,7 +12143,8 @@ async function fetchMultiLiveDetections() {
             <ol>
               <li>Pick the bonus month.</li>
               <li>Download the sheet.</li>
-              <li>Type an amount for each person. Leave 0 or blank to keep an existing bonus — uploading 0 does not remove it.</li>
+              <li>Use <strong>Amount to add</strong> for the new bonus (100 + 200 = 300). <strong>Current bonus</strong> is only a reminder — it is not imported.</li>
+              <li>Leave Amount to add blank or 0 to keep the existing bonus (0 does not remove it). Re-upload without Amount to add does not double.</li>
               <li>Upload the sheet. This is for that month only.</li>
             </ol>
             <table class="payroll-guide-table">
@@ -13845,13 +13846,17 @@ async function fetchMultiLiveDetections() {
             const exitBadgeHtml = row.exit_date
               ? `<span class="badge" style="background:rgba(245,158,11,0.15); color:#d97706; border:1px solid rgba(245,158,11,0.3); font-size:0.72em; margin-left:6px;"><i class="fa-solid fa-door-open"></i> Leaving ${payrollEscape(row.exit_date)}</span>`
               : '';
-            // QA-72: prefer server join_marker (saved joining date). Never invent "today".
+            // QA-72 / QA-108: show "Joins …" only when joining date is still after today.
+            // Do not invent a badge from not_yet_started alone (that flagged Nov 1 joiners on Nov 12).
             const joinBadgeLabel = (() => {
-              if (row.join_marker) return String(row.join_marker);
-              if (!(row.not_yet_started && row.join_date)) return '';
               const iso = String(row.join_date || '').slice(0, 10);
               const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-              if (!m) return `Joins ${iso}`;
+              if (!m) return '';
+              const joinDt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+              const now = new Date();
+              const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              if (!(joinDt > todayLocal)) return '';
+              if (row.join_marker) return String(row.join_marker);
               const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
               return `Joins ${Number(m[3])} ${months[Number(m[2]) - 1]}`;
             })();
@@ -21219,7 +21224,7 @@ async function fetchMultiLiveDetections() {
             return;
           }
           const summary = (preview.preview || []).map((row) => `${row.employee_name}: ${row.amount}`).join('\n') || preview.message;
-          if (!await appConfirm(`Preview (duplicates are rejected, not summed):\n${summary}\n\nCommit this bonus file?`)) return;
+          if (!await appConfirm(`Preview (Amount to add is added on top of Current bonus; blank/0 keeps existing):\n${summary}\n\nCommit this bonus file?`)) return;
           const confirmForm = new FormData();
           confirmForm.append('file', file);
           confirmForm.append('confirm', '1');
@@ -22924,8 +22929,11 @@ async function fetchMultiLiveDetections() {
         window._currentSalaryJoinDate = joinDate;
         const effective = document.getElementById('modalSalaryEffectiveFrom');
         if (effective) {
-          // QA-107: show saved Effective from; for new staff default to joining date.
-          effective.value = item.effective_from || joinDate || '';
+          // QA-107: show saved Effective from; never open earlier than joining date
+          // (guards against stale 23 Oct pollution from older API/cache responses).
+          let eff = String(item.effective_from || joinDate || '').trim().slice(0, 10);
+          if (joinDate && (!eff || eff < joinDate)) eff = joinDate;
+          effective.value = eff;
           if (joinDate) effective.min = joinDate;
           else effective.removeAttribute('min');
         }

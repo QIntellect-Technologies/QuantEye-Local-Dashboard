@@ -7084,9 +7084,13 @@ def api_upload_payroll_bonuses():
         'duplicate_policy': 'reject',
         'bonuses': result['bonuses'],
         'message': (
-            f"Imported {result['imported']} bonus row(s) for {payroll_month}."
-            if result.get('committed') else
-            'Preview only. Confirm to commit. Duplicates are rejected, not summed.'
+            result.get('message')
+            or (
+                f"Added {result['imported']} bonus entr{'y' if result['imported'] == 1 else 'ies'} "
+                f"for {payroll_month} (amounts are added on top of Current bonus)."
+                if result.get('committed') else
+                'Preview only. Confirm to commit. Amount to add is summed; blank/0 keeps existing bonuses.'
+            )
         ),
     })
 

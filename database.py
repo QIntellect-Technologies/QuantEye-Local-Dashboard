@@ -1346,13 +1346,26 @@ def init_db():
                 )
             ''')
             # QA-109: multiple bonus entries per person/month (additive history).
-            # Drop legacy UNIQUE(organization_id, branch_id, year, month, user_id) if present.
+            # Drop legacy table UNIQUE(...) and any UNIQUE INDEX on the same columns.
             try:
                 bonus_sql_row = cursor.execute(
                     "SELECT sql FROM sqlite_master WHERE type='table' AND name='payroll_bonuses'"
                 ).fetchone()
                 bonus_sql = ((bonus_sql_row[0] if bonus_sql_row else '') or '').replace(' ', '').replace('\n', '')
-                if 'UNIQUE(organization_id,branch_id,year,month,user_id)' in bonus_sql:
+                has_table_unique = 'UNIQUE(organization_id,branch_id,year,month,user_id)' in bonus_sql
+                unique_index_names = []
+                for idx in cursor.execute("PRAGMA index_list('payroll_bonuses')").fetchall():
+                    # PRAGMA index_list: seq, name, unique, origin, partial
+                    if not idx or not int(idx[2] or 0):
+                        continue
+                    idx_name = str(idx[1] or '')
+                    cols = [
+                        str(c[2] or '').lower()
+                        for c in cursor.execute(f"PRAGMA index_info('{idx_name}')").fetchall()
+                    ]
+                    if cols == ['organization_id', 'branch_id', 'year', 'month', 'user_id']:
+                        unique_index_names.append(idx_name)
+                if has_table_unique or unique_index_names:
                     cursor.execute('''
                         CREATE TABLE payroll_bonuses_qa109 (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1379,6 +1392,9 @@ def init_db():
                     ''')
                     cursor.execute('DROP TABLE payroll_bonuses')
                     cursor.execute('ALTER TABLE payroll_bonuses_qa109 RENAME TO payroll_bonuses')
+                else:
+                    for idx_name in unique_index_names:
+                        cursor.execute(f'DROP INDEX IF EXISTS "{idx_name}"')
             except sqlite3.Error:
                 logger.exception('payroll_bonuses additive migration failed')
             cursor.execute(
@@ -2362,21 +2378,15 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                         "UPDATE employee_shift_history SET effective_from = ? WHERE id = ?",
                         (norm_join, earliest_history[0])
                     )
-                # QA-72: keep salary package Effective from aligned when it was still a stamp/old join.
+                # QA-72 / QA-107: keep package Effective from at or after the joining date.
                 pkg_row = cursor.execute(
                     "SELECT effective_from FROM salary_configs WHERE user_id = ?",
                     (user_id,),
                 ).fetchone()
                 if pkg_row is not None:
                     pkg = str(pkg_row[0] or '').strip()[:10]
-                    created_d = cursor.execute(
-                        "SELECT date(created_at), date(enrollment_date) FROM users WHERE id = ?",
-                        (user_id,),
-                    ).fetchone()
-                    created_iso = str((created_d[0] if created_d else '') or '').strip()[:10]
-                    enroll_iso = str((created_d[1] if created_d else '') or '').strip()[:10]
                     old_join = str(existing_join_date or '').strip()[:10]
-                    if (not pkg) or _is_auto_join_stamp(pkg, created_iso, enroll_iso) or pkg == old_join:
+                    if (not pkg) or pkg < norm_join or _is_auto_join_stamp(pkg) or pkg == old_join:
                         cursor.execute(
                             "UPDATE salary_configs SET effective_from = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
                             (norm_join, user_id),
@@ -2413,22 +2423,25 @@ def _is_auto_join_stamp(
     enrollment_date: Optional[str] = None,
     today_iso: Optional[str] = None,
 ) -> bool:
-    """True when join_date looks like enrollment/system stamp, not a deliberate hire date."""
+    """True when join_date is blank or still today's enrollment stamp.
+
+    Same-day create (join_date == created_at) is NOT treated as a stamp by itself: a person
+    created on 1 Nov with joining date 1 Nov must keep that date (QA-107 / QA-108). Only a
+    blank join or join equal to "today" may yield to the salary package Effective from.
+    """
     jd = _parse_iso_date_candidate(join_date)
     if not jd:
         return True
     today = today_iso or date.today().isoformat()
-    created = _parse_iso_date_candidate(created_at)
-    enrolled = _parse_iso_date_candidate(enrollment_date)
-    return jd == today or (created is not None and jd == created) or (enrolled is not None and jd == enrolled)
+    return jd == today
 
 
 def resolve_payroll_join_date(employee_or_user: Union[Dict[str, Any], sqlite3.Row, None]) -> Optional[str]:
     """QA-72: payroll joining date must match the saved business date (not a today-stamp).
 
-    Prefer users.join_date when it is a deliberate hire date. If join_date is still an
-    auto-enrollment stamp (today / created_at / enrollment_date) and the salary package
-    has Effective from, use that package date so payroll matches Configure Salary Package.
+    Prefer users.join_date whenever it is a real saved hire date. Only when join_date is
+    blank or still equal to today may Effective from from the salary package win — and
+    never when that package date is earlier than the saved joining date (QA-107).
     """
     if not employee_or_user:
         return None
@@ -2440,11 +2453,11 @@ def resolve_payroll_join_date(employee_or_user: Union[Dict[str, Any], sqlite3.Ro
         or employee_or_user.get('effective_from')
         or employee_or_user.get('salary_effective_from')
     )
-    created = _parse_iso_date_candidate(employee_or_user.get('created_at'))
     enrolled = _parse_iso_date_candidate(employee_or_user.get('enrollment_date'))
-    if jd and not _is_auto_join_stamp(jd, created, enrolled):
+    created = _parse_iso_date_candidate(employee_or_user.get('created_at'))
+    if jd and not _is_auto_join_stamp(jd):
         return jd
-    if pkg:
+    if pkg and (not jd or pkg >= jd):
         return pkg
     if jd:
         return jd
@@ -10264,19 +10277,13 @@ def get_all_salary_configs(active_only: bool = True, department: Optional[str] =
                     CASE WHEN s.user_id IS NOT NULL THEN 1 ELSE 0 END as is_configured,
                     s.updated_at,
                     NULLIF(TRIM(u.join_date), '') as join_date,
+                    -- QA-107: package Effective from is the saved salary date (or join date).
+                    -- Never use pay-line component dates or salary_configs.updated_at (those
+                    -- were the source of the shared 23 Oct date for everyone).
                     COALESCE(
                         NULLIF(TRIM(s.effective_from), ''),
                         (SELECT MAX(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
-                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c
-                         WHERE c.active = 1
-                           AND COALESCE(c.scope_type, 'employee') = 'employee'
-                           AND c.user_id = u.id
-                           AND c.excluded = 0
-                           AND (c.organization_id IS NULL OR c.organization_id = ''
-                                OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
-                        ),
                         NULLIF(TRIM(u.join_date), ''),
-                        substr(s.updated_at, 1, 10),
                         date('now')
                     ) as effective_from,
                     (SELECT COUNT(DISTINCT c.component_type_id) FROM payroll_employee_components c 
@@ -10338,19 +10345,13 @@ def get_salary_config(user_id: int) -> Optional[Dict]:
                     CASE WHEN s.user_id IS NOT NULL THEN 1 ELSE 0 END as is_configured,
                     s.updated_at,
                     NULLIF(TRIM(u.join_date), '') as join_date,
+                    -- QA-107: saved package date / revision / joining date only.
+                    -- Do not fall back to component dates or salary_configs.updated_at
+                    -- (mass-touch days like 23 Oct were leaking into every modal).
                     COALESCE(
                         NULLIF(TRIM(s.effective_from), ''),
                         (SELECT MAX(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
-                        (SELECT MIN(c.effective_from) FROM payroll_employee_components c
-                         WHERE c.active = 1
-                           AND COALESCE(c.scope_type, 'employee') = 'employee'
-                           AND c.user_id = u.id
-                           AND c.excluded = 0
-                           AND (c.organization_id IS NULL OR c.organization_id = ''
-                                OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
-                        ),
                         NULLIF(TRIM(u.join_date), ''),
-                        substr(s.updated_at, 1, 10),
                         date('now')
                     ) as effective_from,
                     (SELECT COUNT(DISTINCT c.component_type_id) FROM payroll_employee_components c 
@@ -10520,19 +10521,17 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
                 (user_id, b_sal, allow, deduct, ot, str(effective_from)[:10], owner[1], owner[2])
             )
             cursor.execute("UPDATE users SET salary = ? WHERE id = ?", (b_sal, user_id))
-            # QA-72: if joining date still looks like an auto-enrollment stamp (blank/today/
-            # created/enrollment), align it to the package Effective from so payroll matches
-            # Configure Salary Package and never keeps a replaced "today" stamp.
+            # QA-72 / QA-107: only fill a blank joining date from Effective from.
+            # Never overwrite a saved joining date (including same-day hires) with a
+            # package date — that was how 23 Oct replaced real Nov joining dates.
             if effective_from:
                 row_u = cursor.execute(
-                    "SELECT join_date, date(created_at), date(enrollment_date) FROM users WHERE id = ?",
+                    "SELECT join_date FROM users WHERE id = ?",
                     (user_id,),
                 ).fetchone()
                 cur_join = str((row_u[0] if row_u else '') or '').strip()[:10]
-                created_d = str((row_u[1] if row_u else '') or '').strip()[:10]
-                enroll_d = str((row_u[2] if row_u else '') or '').strip()[:10]
                 pkg = str(effective_from)[:10]
-                if _is_auto_join_stamp(cur_join, created_d, enroll_d) and pkg != cur_join:
+                if not cur_join and pkg:
                     cursor.execute(
                         "UPDATE users SET join_date = ? WHERE id = ?",
                         (pkg, user_id),
@@ -12052,8 +12051,31 @@ def replace_payroll_bonuses(
                         '(0 or blank Amount to add does not remove a bonus).'
                     ),
                 }
+            imported_ids = []
+            skipped_same = 0
             for item in preview:
-                # QA-109: each upload/save inserts a new history row; totals are summed.
+                # QA-109: each distinct Amount to add inserts a history row; totals are summed.
+                # Re-uploading the exact same row (same person/amount/note) does not double it.
+                already = cursor.execute(
+                    """
+                    SELECT id FROM payroll_bonuses
+                    WHERE year = ? AND month = ?
+                      AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                      AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                      AND user_id = ?
+                      AND ROUND(amount, 6) = ROUND(?, 6)
+                      AND COALESCE(note, '') = ?
+                    LIMIT 1
+                    """,
+                    (
+                        int(year), int(month), org, branch,
+                        item['user_id'], float(item['amount']),
+                        str(item.get('note') or ''),
+                    ),
+                ).fetchone()
+                if already:
+                    skipped_same += 1
+                    continue
                 cursor.execute(
                     """
                     INSERT INTO payroll_bonuses (
@@ -12062,20 +12084,39 @@ def replace_payroll_bonuses(
                     """,
                     (org, branch, int(year), int(month), item['user_id'], item['amount'], item['note'], source),
                 )
+                imported_ids.append(cursor.lastrowid)
             _write_payroll_audit(cursor, 'bonuses_imported', org, branch, f'{int(year):04d}-{int(month):02d}', 'Admin', {
-                'imported': len(preview), 'source': source, 'additive': True,
+                'imported': len(imported_ids), 'skipped_same': skipped_same,
+                'source': source, 'additive': True,
             })
             conn.commit()
+            return {
+                'imported': len(imported_ids),
+                'skipped_same': skipped_same,
+                'preview': preview,
+                'errors': errors,
+                'unmatched': [e['error'] for e in errors],
+                'committed': True,
+                'duplicate_policy': 'reject',
+                'additive': True,
+                'totals': get_payroll_bonus_amounts(year, month, org, branch),
+                'bonuses': list_payroll_bonuses(year, month, org, branch),
+                'message': (
+                    f"Added {len(imported_ids)} bonus entr{'y' if len(imported_ids) == 1 else 'ies'}"
+                    + (f"; skipped {skipped_same} already-saved identical row(s)" if skipped_same else '')
+                    + '.'
+                ),
+            }
     return {
-        'imported': len(preview) if commit and not errors else 0,
+        'imported': 0,
         'preview': preview,
         'errors': errors,
         'unmatched': [e['error'] for e in errors],
-        'committed': bool(commit and not errors),
+        'committed': False,
         'duplicate_policy': 'reject',
         'additive': True,
-        'totals': get_payroll_bonus_amounts(year, month, org, branch) if commit else {},
-        'bonuses': list_payroll_bonuses(year, month, org, branch) if commit else preview,
+        'totals': {},
+        'bonuses': preview,
     }
 
 
@@ -13343,12 +13384,15 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         # charge absences for days before they start (or for future days not yet worked).
         not_yet_started = employed_from > period_end
         join_marker = ''
-        # QA-72 / QA-108: marker uses the resolved saved joining date (never a replaced "today").
-        raw_join = str(employee.get('join_date') or emp_start_str or '').strip()[:10]
-        if raw_join:
+        # QA-72 / QA-108: marker uses the saved users.join_date (not package Effective from).
+        # Show "Joins …" only when that date is still after today — already-joined people never get it.
+        marker_join = str(
+            employee.get('raw_join_date') or employee.get('join_date') or emp_start_str or ''
+        ).strip()[:10]
+        raw_join = marker_join
+        if marker_join:
             try:
-                join_dt = datetime.strptime(raw_join, "%Y-%m-%d").date()
-                # Show "Joins …" only while the person has not started yet (joining date after today).
+                join_dt = datetime.strptime(marker_join, "%Y-%m-%d").date()
                 if join_dt > today:
                     join_marker = f"Joins {join_dt.day} {join_dt.strftime('%b')}"
             except (TypeError, ValueError):
@@ -14281,6 +14325,32 @@ def get_monthly_payroll(
             except (TypeError, ValueError):
                 result['snapshot'] = None
     result['is_finalized'] = True
+    # QA-108: finalized snapshots can still carry a stale "Joins …" badge from before
+    # the person started. Recompute the marker from join_date vs today on every load.
+    today = datetime.now().date()
+    for record in result.get('records') or []:
+        join_raw = str(record.get('join_date') or '').strip()[:10]
+        marker = ''
+        if join_raw:
+            try:
+                join_dt = datetime.strptime(join_raw, "%Y-%m-%d").date()
+                if join_dt > today:
+                    marker = f"Joins {join_dt.day} {join_dt.strftime('%b')}"
+            except (TypeError, ValueError):
+                marker = ''
+        record['join_marker'] = marker
+        remarks = str(record.get('issues_remarks') or '')
+        if remarks:
+            # Drop stale "Joins …" fragments when the person has already joined.
+            cleaned = re.sub(r'(?i)\bJoins\s+\d{1,2}\s+[A-Za-z]{3}\b;?\s*', '', remarks).strip(' ;')
+            if marker and marker not in cleaned:
+                cleaned = f"{marker}; {cleaned}".strip(' ;') if cleaned else marker
+            elif not marker and cleaned.lower().startswith('joins later'):
+                cleaned = ''
+            record['issues_remarks'] = cleaned
+        elif marker:
+            record['issues_remarks'] = marker
+        record['not_yet_started'] = 1 if (join_raw and join_raw > today.isoformat()) else 0
     if result['records']:
         result['total_allowances'] = round(sum(float(row.get('allowances') or 0) for row in result['records']), 2)
         result['total_overtime'] = round(sum(float(row.get('overtime_amount') or 0) for row in result['records']), 2)
