@@ -904,9 +904,7 @@
       }
 
       .page-view .staff-directory-filter-row,
-      .page-view #subtab-leave-requests > div:first-child,
-      .page-view #otSubContent-log > div:first-child,
-      .page-view #otSubContent-approval > div:first-child {
+      .page-view #subtab-leave-requests > div:first-child {
         min-height: 54px;
         padding: 10px 14px;
         gap: 10px;
@@ -919,11 +917,7 @@
       .page-view .staff-directory-filter-row input,
       .page-view .staff-directory-filter-row select,
       .page-view #subtab-leave-requests > div:first-child input,
-      .page-view #subtab-leave-requests > div:first-child select,
-      .page-view #otSubContent-log > div:first-child input,
-      .page-view #otSubContent-log > div:first-child select,
-      .page-view #otSubContent-approval > div:first-child input,
-      .page-view #otSubContent-approval > div:first-child select {
+      .page-view #subtab-leave-requests > div:first-child select {
         min-height: 38px;
         border-radius: 8px;
       }
@@ -6208,10 +6202,11 @@
       #fileLeaveModal .btn-outline, #leaveCompleteModal .btn-outline, #leaveTypeModal .btn-outline, #companyHolidayModal .btn-outline { border-color: rgba(139,123,247,0.4) !important; color: #5847c8 !important; background: rgba(139,123,247,0.09) !important; border-radius: 10px; }
     </style>
     <style>
-      /* ============ Overtime Management — Frost premium surface (GUI only) ============ */
+      /* ============ Overtime Management — align with Attendance + Leave ============ */
       #overtime-view {
         --ink: #151b25; --ink-2: #2b3547; --txt: #3d4757; --mut: #6b7488; --faint: #98a0b4;
         --line: #e3e8f5; --line-soft: #edf0f9; --lav: #8b7bf7; --teal: #34d3c4;
+        --shadow: 0 1px 2px rgba(20,24,40,0.04), 0 26px 54px -42px rgba(52,62,120,0.55);
         font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
       }
       #overtime-view .page-header {
@@ -6224,42 +6219,110 @@
       }
       #overtime-view .page-header h1 { color: #fff; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
       #overtime-view .page-header .page-subtitle { color: rgba(255,255,255,0.72); font-size: 13px; margin-top: 4px; }
-      #overtime-view .page-header .btn-primary { background: #8b7bf7 !important; border-color: #8b7bf7 !important; border-radius: 11px; font-weight: 700; box-shadow: 0 6px 14px -6px rgba(139,123,247,0.6); }
-      #overtime-view .page-header .btn-outline-secondary { background: rgba(255,255,255,0.1) !important; border-color: rgba(255,255,255,0.28) !important; color: #fff !important; border-radius: 11px; backdrop-filter: blur(8px); }
-      /* KPI cards */
-      #overtime-view .kpi-card {
-        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78)) !important;
-        border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 16px !important;
-        padding: 18px !important; box-shadow: 0 18px 38px -28px rgba(21,27,37,0.45), 0 1px 0 rgba(255,255,255,0.6) inset;
-        transition: transform .18s ease, box-shadow .18s ease; backdrop-filter: blur(12px);
+      #overtime-view .page-header i { color: #b7aeff !important; }
+      #overtime-view .rpt-rail {
+        display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px;
+        border: 1px solid var(--line); border-radius: 18px; background: var(--line);
+        box-shadow: var(--shadow); overflow: hidden; margin-bottom: 20px;
       }
-      #overtime-view .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 24px 46px -28px rgba(21,27,37,0.55); }
-      /* subtab bar */
-      #overtime-view > div[style*="border-bottom:2px solid #e2e8f0"] {
-        background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.65));
-        border: 1px solid rgba(226,231,246,0.9); border-radius: 14px 14px 0 0; padding: 6px 10px 0; backdrop-filter: blur(12px);
+      #overtime-view .rpt-metric {
+        position: relative; padding: 15px 18px 16px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.62));
+        backdrop-filter: blur(16px);
+      }
+      #overtime-view .rpt-metric-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      #overtime-view .rpt-metric-label {
+        font-size: 9.5px; font-weight: 600; letter-spacing: 0.11em; text-transform: uppercase; color: var(--faint);
+      }
+      #overtime-view .rpt-metric-icon {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px; border-radius: 8px; font-size: 11px;
+      }
+      #overtime-view .rpt-metric-icon.tone-lilac { background: rgba(139,123,247,0.12); color: #6a5cd6; }
+      #overtime-view .rpt-metric-icon.tone-mint { background: rgba(60,196,170,0.14); color: #1f8d77; }
+      #overtime-view .rpt-metric-icon.tone-amber { background: rgba(196,138,44,0.14); color: #9a6710; }
+      #overtime-view .rpt-metric-icon.tone-coral { background: rgba(214,96,88,0.12); color: #b4382f; }
+      #overtime-view .rpt-metric-value {
+        display: block; margin-top: 8px; font-size: 26px; font-weight: 600; line-height: 1.05;
+        letter-spacing: -0.04em; color: var(--ink); font-variant-numeric: tabular-nums;
+      }
+      #overtime-view .rpt-metric-foot { display: block; margin-top: 4px; min-height: 15px; font-size: 11px; color: var(--faint); }
+      #overtime-view .ot-subtabs {
+        display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;
       }
       #overtime-view #otSubTabLog, #overtime-view #otSubTabApproval {
-        padding: 10px 20px !important; font-weight: 700 !important; font-size: 0.88em !important;
-        border: none !important; border-bottom: 3px solid transparent !important; background: transparent !important;
-        color: var(--mut) !important; cursor: pointer; border-radius: 10px 10px 0 0; transition: color .15s, background .15s;
+        border-radius: 10px; font-weight: 700; border: 1px solid var(--line);
+        background: rgba(255,255,255,0.7); color: var(--ink-2);
       }
-      #overtime-view #otSubTabLog:hover, #overtime-view #otSubTabApproval:hover { background: rgba(139,123,247,0.06) !important; color: var(--ink-2) !important; }
-      #otSubTabLog[style*="border-bottom:3px solid #6366f1"], #otSubTabApproval[style*="border-bottom:3px solid #6366f1"] {
-        color: #5847c8 !important; border-bottom-color: #8b7bf7 !important;
+      #overtime-view #otSubTabLog.btn-teal, #overtime-view #otSubTabApproval.btn-teal {
+        background: #8b7bf7 !important; border-color: #8b7bf7 !important; color: #fff !important;
       }
-      /* filter bars */
-      #overtime-view div[style*="background:#ffffff; padding:12px 16px"] {
-        background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.72)) !important;
-        border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 14px !important; backdrop-filter: blur(12px);
-        box-shadow: 0 14px 30px -24px rgba(21,27,37,0.35);
+      #overtime-view .btn-teal { background: #8b7bf7 !important; border-color: #8b7bf7 !important; color: #fff !important; border-radius: 8px; font-weight: 600; }
+      #overtime-view .btn-primary { background: #8b7bf7 !important; border-color: #8b7bf7 !important; color: #fff !important; border-radius: 10px; font-weight: 600; }
+      #overtime-view .btn-primary:hover { background: #7a6ae8 !important; border-color: #7a6ae8 !important; }
+      #overtime-view .btn-outline-secondary { border-color: var(--line) !important; color: var(--ink-2) !important; background: rgba(255,255,255,0.7) !important; border-radius: 10px; }
+      #overtime-view .btn-outline-primary { border-color: rgba(139,123,247,0.45) !important; color: #5847c8 !important; background: rgba(139,123,247,0.08) !important; border-radius: 10px; font-weight: 600; }
+      #overtime-view .btn-outline-primary:hover { background: rgba(139,123,247,0.16) !important; }
+      #overtime-view .btn-success { background: #10b981 !important; border-color: #10b981 !important; color: #fff !important; border-radius: 10px; font-weight: 600; }
+      #overtime-view .btn-success:hover { background: #059669 !important; border-color: #059669 !important; }
+      #overtime-view .btn-danger { background: #ef4444 !important; border-color: #ef4444 !important; color: #fff !important; border-radius: 10px; font-weight: 600; }
+      #overtime-view .btn-danger:hover { background: #dc2626 !important; border-color: #dc2626 !important; }
+      #overtime-view .btn:disabled, #overtime-view .btn.disabled,
+      #otDetailModal .btn:disabled, #otDetailModal .btn.disabled {
+        opacity: 0.45; cursor: not-allowed; pointer-events: none;
       }
-      /* cards / tables */
-      #overtime-view .card {
-        background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85)) !important;
-        border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 16px !important;
-        box-shadow: 0 20px 40px -28px rgba(21,27,37,0.4); backdrop-filter: blur(12px); overflow: hidden;
+      #overtime-view .ot-filter-bar {
+        display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
+        padding: 14px 16px; margin-bottom: 16px;
+        border: 1px solid rgba(220,227,244,0.95); border-radius: 18px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.56));
+        box-shadow: var(--shadow);
       }
+      #overtime-view .rpt-field { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+      #overtime-view .rpt-field--grow { flex: 1 1 220px; min-width: 180px; }
+      #overtime-view .rpt-field-label {
+        padding-left: 2px; font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
+        text-transform: uppercase; color: var(--faint);
+      }
+      #overtime-view .rpt-search { position: relative; }
+      #overtime-view .rpt-search i {
+        position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+        font-size: 10.5px; color: var(--faint); pointer-events: none;
+      }
+      #overtime-view .rpt-search input[type="search"] {
+        height: 36px; padding: 0 12px 0 32px; border: 1px solid var(--line); border-radius: 10px;
+        background: rgba(255,255,255,0.92); color: var(--ink-2); font-size: 12px;
+      }
+      #overtime-view .ot-filter-bar .form-control,
+      #overtime-view .ot-filter-bar .form-select {
+        height: 36px; min-height: 36px; border-color: var(--line); border-radius: 10px;
+        background: rgba(255,255,255,0.92); color: var(--ink-2); font-size: 12.5px;
+      }
+      #overtime-view .ot-filter-bar .app-camera-select { width: 100%; min-width: 140px; }
+      #overtime-view .ot-filter-bar .app-camera-select-trigger {
+        height: 36px; min-height: 36px; padding: 0 12px; border: 1px solid var(--line);
+        border-radius: 10px; background: rgba(255,255,255,0.92); box-shadow: none;
+      }
+      #overtime-view .rpt-sheet {
+        border: 1px solid rgba(226,231,246,0.9); border-radius: 16px; overflow: hidden;
+        background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85));
+        box-shadow: 0 20px 40px -28px rgba(21,27,37,0.4);
+      }
+      #overtime-view .rpt-sheet-head {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+        padding: 15px 18px; border-bottom: 1px solid var(--line-soft);
+      }
+      #overtime-view .rpt-sheet-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+      #overtime-view .rpt-sheet-sub { margin: 3px 0 0; font-size: 11px; color: var(--faint); }
+      #overtime-view .rpt-sheet-tools { display: flex; align-items: center; gap: 8px; }
+      #overtime-view .rpt-tool-label {
+        font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint);
+      }
+      #overtime-view .rpt-sheet-tools .form-select,
+      #overtime-view .rpt-sheet-tools .app-camera-select-trigger {
+        height: 32px; min-height: 32px; border-radius: 9px; font-size: 12px;
+      }
+      #overtime-view .rpt-sheet-tools .app-camera-select { width: 118px; }
       #overtime-view .directory-table, #overtime-view .log-table { width: 100%; border-collapse: collapse; }
       #overtime-view .directory-table thead tr, #overtime-view .log-table thead tr {
         background: linear-gradient(180deg, rgba(248,250,252,0.95), rgba(240,244,252,0.9));
@@ -6274,32 +6337,46 @@
       #overtime-view .directory-table tbody tr:hover, #overtime-view .log-table tbody tr:hover {
         background: linear-gradient(90deg, rgba(139,123,247,0.05), transparent);
       }
-      /* approval table thead override */
-      #overtime-view .log-table-wrapper thead { background: linear-gradient(180deg, rgba(248,250,252,0.95), rgba(240,244,252,0.9)); }
-      /* otDetail modal */
+      #overtime-view .log-table-wrapper {
+        background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.7));
+        border: 1px solid rgba(226,231,246,0.9); border-radius: 16px; overflow: hidden;
+        box-shadow: 0 1px 2px rgba(20,24,40,0.04), 0 26px 54px -42px rgba(52,62,120,0.6);
+      }
       #otDetailModal > div {
         background: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(255,255,255,0.9)) !important;
         border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 18px !important;
         box-shadow: 0 34px 64px -46px rgba(18,24,44,0.9);
       }
-      #otDetailModal .btn-primary { background: #8b7bf7 !important; border-color: #8b7bf7 !important; border-radius: 10px; font-weight: 600; }
-      #otDetailModal .btn-success { background: #34d3c4 !important; border-color: #34d3c4 !important; color: #0f3a36 !important; border-radius: 10px; font-weight: 600; }
-      #otDetailModal .btn-danger { background: #f87171 !important; border-color: #f87171 !important; border-radius: 10px; font-weight: 600; }
-      #otDetailModal .btn-outline-secondary { border-color: var(--line, #e3e8f5) !important; color: var(--ink-2, #2b3547) !important; background: rgba(255,255,255,0.9) !important; border-radius: 10px; }
-      #otDetailModal .form-control { border-color: var(--line, #e3e8f5); border-radius: 10px; background: rgba(255,255,255,0.92); color: var(--ink-2, #2b3547); font-size: 12.5px; }
-      /* add overtime modal */
-      #addOvertimeModal > div, #addOvertimeModal .modal-content { background: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(255,255,255,0.9)) !important; border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 18px !important; box-shadow: 0 34px 64px -46px rgba(18,24,44,0.9); }
-      #overtime-view .btn-outline { border-color: rgba(139,123,247,0.4) !important; color: #5847c8 !important; background: rgba(139,123,247,0.09) !important; border-radius: 10px; }
-      #overtime-view .btn-success { background: #34d3c4 !important; border-color: #34d3c4 !important; color: #0f3a36 !important; border-radius: 10px; font-weight: 600; }
-      #overtime-view .btn-danger { background: #f87171 !important; border-color: #f87171 !important; border-radius: 10px; font-weight: 600; }
-      #overtime-view input.form-control, #overtime-view select.form-select {
-        border-color: var(--line, #e3e8f5); border-radius: 10px; background: rgba(255,255,255,0.92); color: var(--ink-2, #2b3547); font-size: 12.5px;
+      #otDetailModal .ot-detail-actions {
+        display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important;
+        align-items: center; justify-content: flex-end; gap: 8px; overflow-x: auto;
       }
+      #otDetailModal .ot-detail-actions .btn { white-space: nowrap; flex: 0 0 auto; border-radius: 10px; font-weight: 600; }
+      #otDetailModal .btn-success { background: #10b981 !important; border-color: #10b981 !important; color: #fff !important; }
+      #otDetailModal .btn-danger { background: #ef4444 !important; border-color: #ef4444 !important; color: #fff !important; }
+      #otDetailModal .btn-outline-secondary { border-color: var(--line, #e3e8f5) !important; color: var(--ink-2, #2b3547) !important; background: rgba(255,255,255,0.9) !important; }
+      #otDetailModal .form-control { border-color: var(--line, #e3e8f5); border-radius: 10px; background: rgba(255,255,255,0.92); color: var(--ink-2, #2b3547); font-size: 12.5px; }
+      #addOvertimeModal > div, #addOvertimeModal .modal-content {
+        background: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(255,255,255,0.9)) !important;
+        border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 18px !important;
+        box-shadow: 0 34px 64px -46px rgba(18,24,44,0.9);
+      }
+      #addOvertimeModal .form-select, #addOvertimeModal .form-control {
+        border-color: var(--line, #e3e8f5); border-radius: 10px; background: rgba(255,255,255,0.92);
+        color: var(--ink-2, #2b3547); font-size: 12.5px; min-height: 38px;
+      }
+      #addOvertimeModal .app-camera-select-trigger {
+        min-height: 38px; height: 38px; border: 1px solid var(--line, #e3e8f5); border-radius: 10px;
+        background: rgba(255,255,255,0.92);
+      }
+      #addOvertimeModal .btn-primary { background: #8b7bf7 !important; border-color: #8b7bf7 !important; border-radius: 10px; font-weight: 600; }
+      #addOvertimeModal .btn-secondary { border-color: var(--line, #e3e8f5) !important; color: var(--ink-2, #2b3547) !important; background: rgba(255,255,255,0.9) !important; border-radius: 10px; }
       @media (max-width: 900px) {
-        #overtime-view .kpi-card { min-height: 0; }
+        #overtime-view .rpt-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
       @media (max-width: 620px) {
         #overtime-view .page-header h1 { font-size: 21px; }
+        #overtime-view .rpt-rail { grid-template-columns: 1fr; }
       }
     </style>
     <style>
@@ -9601,150 +9678,214 @@ async function fetchMultiLiveDetections() {
     <div id="overtime-view" class="page-view">
       <div class="page-header">
         <div class="page-header-text">
-          <h1><i class="fa-solid fa-clock-rotate-left" aria-hidden="true" style="color: #6366f1;"></i> Overtime Management</h1>
+          <h1><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Overtime Management</h1>
           <p class="page-subtitle">Track, approve, and audit employee overtime hours, configured hourly rates, and payroll disbursement impact.</p>
         </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="btn btn-primary" onclick="openAddOvertimeModal()" style="background:#6366f1; border:none; font-weight:700;"><i class="fa-solid fa-plus-circle"></i> + Log Overtime</button>
-          <button class="btn btn-outline-secondary" onclick="loadOvertimeRecords()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+        <div class="page-header-actions" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <button type="button" class="rpt-btn rpt-btn-dark" onclick="openAddOvertimeModal()">
+            <i class="fa-solid fa-plus-circle"></i><span>Log Overtime</span>
+          </button>
+          <button type="button" class="rpt-btn rpt-btn-light" onclick="loadOvertimeRecords()">
+            <i class="fa-solid fa-rotate"></i><span>Refresh</span>
+          </button>
         </div>
       </div>
 
-      <!-- KPI Summary Cards -->
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:24px;">
-        <div class="kpi-card" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.82em; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px;">Total Logs</span>
-            <i class="fa-solid fa-calendar-check" style="font-size:1.3em; color:#6366f1; opacity:0.8;"></i>
+      <section class="rpt-rail" aria-label="Overtime summary">
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Total Logs</span>
+            <span class="rpt-metric-icon tone-lilac"><i class="fa-solid fa-calendar-check"></i></span>
           </div>
-          <div id="otKpiTotalLogs" style="font-size:1.8em; font-weight:800; color:#0f172a; margin-top:8px;">0</div>
-          <div style="font-size:0.8em; color:#94a3b8; margin-top:4px;">All overtime entries</div>
-        </div>
-        <div class="kpi-card" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.82em; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px;">Approved Hours</span>
-            <i class="fa-solid fa-circle-check" style="font-size:1.3em; color:#10b981; opacity:0.8;"></i>
+          <strong class="rpt-metric-value" id="otKpiTotalLogs">0</strong>
+          <span class="rpt-metric-foot">All overtime entries</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Approved Hours</span>
+            <span class="rpt-metric-icon tone-mint"><i class="fa-solid fa-circle-check"></i></span>
           </div>
-          <div id="otKpiApprovedHours" style="font-size:1.8em; font-weight:800; color:#10b981; margin-top:8px;">0.0 hrs</div>
-          <div style="font-size:0.8em; color:#94a3b8; margin-top:4px;">Eligible for payroll</div>
-        </div>
-        <div class="kpi-card" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.82em; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px;">Pending Approval</span>
-            <i class="fa-solid fa-hourglass-half" style="font-size:1.3em; color:#f59e0b; opacity:0.8;"></i>
+          <strong class="rpt-metric-value" id="otKpiApprovedHours">0.0 hrs</strong>
+          <span class="rpt-metric-foot">Eligible for payroll</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Pending Approval</span>
+            <span class="rpt-metric-icon tone-amber"><i class="fa-solid fa-hourglass-half"></i></span>
           </div>
-          <div id="otKpiPendingLogs" style="font-size:1.8em; font-weight:800; color:#f59e0b; margin-top:8px;">0</div>
-          <div style="font-size:0.8em; color:#94a3b8; margin-top:4px;">Awaiting review</div>
-        </div>
-        <div class="kpi-card" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.82em; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px;">Total Approved Pay</span>
-            <i class="fa-solid fa-money-bill-wave" style="font-size:1.3em; color:#0284c7; opacity:0.8;"></i>
+          <strong class="rpt-metric-value" id="otKpiPendingLogs">0</strong>
+          <span class="rpt-metric-foot">Awaiting review</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Total Approved Pay</span>
+            <span class="rpt-metric-icon tone-coral"><i class="fa-solid fa-money-bill-wave"></i></span>
           </div>
-          <div id="otKpiApprovedAmount" style="font-size:1.8em; font-weight:800; color:#0284c7; margin-top:8px;">PKR 0.00</div>
-          <div style="font-size:0.8em; color:#94a3b8; margin-top:4px;">Disbursement impact</div>
-        </div>
-      </div>
+          <strong class="rpt-metric-value" id="otKpiApprovedAmount">PKR 0.00</strong>
+          <span class="rpt-metric-foot">Disbursement impact</span>
+        </article>
+      </section>
 
-      <!-- Sub-tabs: OT Log | OT for Approval -->
-      <div style="display:flex; gap:0; margin-bottom:0; border-bottom:2px solid #e2e8f0;">
-        <button id="otSubTabLog" onclick="switchOtSubTab('log')" style="padding:10px 24px; font-weight:700; font-size:0.9em; border:none; border-bottom:3px solid #8b7bf7; background:transparent; color:#5847c8; cursor:pointer;">
+      <div class="ot-subtabs">
+        <button type="button" id="otSubTabLog" class="btn btn-sm btn-teal" onclick="switchOtSubTab('log')" style="font-weight:700;">
           <i class="fa-solid fa-list"></i> OT Log
         </button>
-        <button id="otSubTabApproval" onclick="switchOtSubTab('approval')" style="padding:10px 24px; font-weight:700; font-size:0.9em; border:none; border-bottom:3px solid transparent; background:transparent; color:#6b7488; cursor:pointer;">
+        <button type="button" id="otSubTabApproval" class="btn btn-sm btn-outline-secondary" onclick="switchOtSubTab('approval')" style="font-weight:700;">
           <i class="fa-solid fa-user-check"></i> OT for Approval <span id="otApprovalBadge" style="background:#f59e0b; color:#fff; border-radius:10px; padding:1px 7px; font-size:0.8em; margin-left:4px;"></span>
         </button>
       </div>
 
-      <!-- Sub-tab: OT Log -->
-      <div id="otSubContent-log" style="margin-top:16px;">
-        <!-- Filters Toolbar -->
-        <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center; background:#ffffff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:10px;">
-            <input type="search" id="otSearchInput" class="form-control" maxlength="100" placeholder="Search employee, ID, reason..." oninput="filterOvertimeTable()" style="max-width:280px;" />
-          <select id="otStatusFilter" class="form-select" onchange="filterOvertimeTable()" style="width:auto; min-width:150px;">
-            <option value="all">All Statuses</option>
-            <option value="pending">Pending Approval</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
-          <select id="otDepartmentFilter" class="form-select" onchange="filterOvertimeTable()" style="width:auto; min-width:160px;">
-            <option value="all">All Departments</option>
-          </select>
-          <input type="month" id="otMonthFilter" class="form-control" onchange="filterOvertimeTable()" style="width:auto; min-width:150px;" />
-          <button class="btn btn-outline-secondary btn-sm" onclick="resetOvertimeFilters()"><i class="fa-solid fa-arrow-rotate-left"></i> Reset</button>
-        </div>
-        <!-- Overtime Log Table -->
-        <div class="card p-0 mb-4" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:14px; box-shadow:0 6px 18px rgba(61,159,212,0.07); overflow:hidden;">
+      <div id="otSubContent-log">
+        <section class="ot-filter-bar app-camera-select-host" aria-label="OT Log filters">
+          <div class="rpt-field rpt-field--grow">
+            <span class="rpt-field-label">Search</span>
+            <div class="rpt-search">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="search" id="otSearchInput" class="form-control" maxlength="100" placeholder="Search employee, ID, reason..." oninput="filterOvertimeTable()" />
+            </div>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Status</span>
+            <select id="otStatusFilter" class="form-select" onchange="filterOvertimeTable()">
+              <option value="all">All Statuses</option>
+              <option value="pending">Pending Approval</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Department</span>
+            <select id="otDepartmentFilter" class="form-select" onchange="filterOvertimeTable()">
+              <option value="all">All Departments</option>
+            </select>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Month</span>
+            <input type="month" id="otMonthFilter" class="form-control" onchange="filterOvertimeTable()" />
+          </div>
+          <div class="rpt-field" style="min-width:auto;">
+            <span class="rpt-field-label">&nbsp;</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetOvertimeFilters()" style="height:36px;">
+              <i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters
+            </button>
+          </div>
+        </section>
+
+        <div class="rpt-sheet mb-4">
+          <div class="rpt-sheet-head">
+            <div>
+              <h2 class="rpt-sheet-title">Overtime log</h2>
+              <p class="rpt-sheet-sub">Grouped by employee for the selected filters</p>
+            </div>
+            <div class="rpt-sheet-tools app-camera-select-host">
+              <span class="rpt-tool-label">Rows</span>
+              <select id="otLogPageSize" class="form-select" onchange="changeOtLogPageSize(this.value)">
+                <option value="10">10 / page</option>
+                <option value="25" selected>25 / page</option>
+                <option value="50">50 / page</option>
+                <option value="100">100 / page</option>
+              </select>
+            </div>
+          </div>
           <div id="otLogTableScroller" class="table-responsive ot-log-drag-scroller">
             <table class="directory-table" style="width:100%; margin:0; border-collapse:collapse; min-width:1150px;">
               <thead>
-                <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; width:90px;"># ID</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Employee</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Dept &amp; Desig</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; width:110px;">Date</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; text-align:center; width:90px;">Hours</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; text-align:right; width:130px;">OT Rate</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; text-align:right; width:140px;">Amount</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">Reason / Task</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; width:110px;">Status</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; width:140px;">By Admin</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; width:130px;">Impact</th>
-                  <th style="padding:10px 12px; color:#64748b; font-size:0.74rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; text-align:center; width:150px;">Actions</th>
+                <tr>
+                  <th style="width:90px;">ID</th>
+                  <th>Employee</th>
+                  <th>Dept &amp; Desig</th>
+                  <th style="width:110px;">Date</th>
+                  <th class="text-center" style="width:90px;">Hours</th>
+                  <th class="text-end" style="width:130px;">OT Rate</th>
+                  <th class="text-end" style="width:140px;">Amount</th>
+                  <th>Reason / Task</th>
+                  <th style="width:110px;">Status</th>
+                  <th style="width:140px;">By Admin</th>
+                  <th style="width:130px;">Impact</th>
+                  <th class="text-center" style="width:150px;">Actions</th>
                 </tr>
               </thead>
-            <tbody id="overtimeTableBody">
-              <tr><td colspan="12" class="text-center text-muted p-4">Loading overtime records...</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div id="otLogPagination" class="app-table-pagination" style="border-top:1px solid #cfe8f7; background:#f8fafc;">
-          <div id="otLogPageInfo" class="app-page-info">
-            Showing <strong id="otLogShowingStart">0</strong> to <strong id="otLogShowingEnd">0</strong> of <strong id="otLogShowingTotal">0</strong> employees
+              <tbody id="overtimeTableBody">
+                <tr><td colspan="12" class="text-center text-muted p-4">Loading overtime records...</td></tr>
+              </tbody>
+            </table>
           </div>
-          <div id="otLogPageControls" class="app-page-controls"></div>
-        </div>
+          <div id="otLogPagination" class="app-table-pagination" style="border-top:1px solid #cfe8f7; background:#f8fafc;">
+            <div id="otLogPageInfo" class="app-page-info">
+              Showing <strong id="otLogShowingStart">0</strong> to <strong id="otLogShowingEnd">0</strong> of <strong id="otLogShowingTotal">0</strong> employees
+            </div>
+            <div id="otLogPageControls" class="app-page-controls"></div>
+          </div>
         </div>
       </div>
 
-      <!-- Sub-tab: OT for Approval -->
-      <div id="subtab-ot-approval">
-        <div id="otSubContent-approval" style="display:none; margin-top:16px;">
-        <!-- Filters for approval view -->
-        <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center; background:#ffffff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:10px; justify-content:space-between;">
-          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-            <input type="search" id="otApprovalSearch" class="form-control" maxlength="100" placeholder="Search employee..." oninput="renderOtApprovalList()" style="max-width:220px;" />
-            <input type="month" id="otApprovalMonth" class="form-control" onchange="renderOtApprovalList()" style="width:auto; min-width:150px;" />
+      <div id="otSubContent-approval" style="display:none;">
+        <section class="ot-filter-bar app-camera-select-host" aria-label="OT for Approval filters">
+          <div class="rpt-field rpt-field--grow">
+            <span class="rpt-field-label">Search</span>
+            <div class="rpt-search">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="search" id="otApprovalSearch" class="form-control" maxlength="100" placeholder="Search employee..." oninput="renderOtApprovalList()" />
+            </div>
           </div>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <button class="btn btn-success btn-sm" id="otAcceptAllBtn" onclick="otAcceptAllInView()" disabled style="font-weight:700;">
-              <i class="fa-solid fa-check-double"></i> Accept All Pending
-            </button>
-            <button class="btn btn-danger btn-sm" id="otRejectAllBtn" onclick="otRejectAllInView()" disabled style="font-weight:700;">
-              <i class="fa-solid fa-xmark"></i> Reject All Pending
-            </button>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Month</span>
+            <input type="month" id="otApprovalMonth" class="form-control" onchange="renderOtApprovalList()" />
           </div>
-        </div>
-        <!-- Approval grouped table -->
-        <div class="log-table-wrapper">
-          <table class="log-table" style="min-width:750px;">
-            <thead style="background:#fef9ec; border-bottom:1px solid #fde68a;">
-              <tr>
-                <th>Employee</th>
-                <th style="width:120px;" class="text-center">Pending Days</th>
-                <th style="width:140px;" class="text-center">Total Pending OT</th>
-                <th style="width:130px;" class="text-center">Approved OT</th>
-                <th style="width:130px;" class="text-center">Rejected OT</th>
-                <th class="text-center" style="width:260px; min-width:260px;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="otApprovalTableBody">
-              <tr><td colspan="6" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</td></tr>
-            </tbody>
-          </table>
+          <div class="rpt-field" style="min-width:auto; margin-left:auto;">
+            <span class="rpt-field-label">&nbsp;</span>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button type="button" class="btn btn-success btn-sm" id="otAcceptAllBtn" onclick="otAcceptAllInView()" disabled>
+                <i class="fa-solid fa-check-double"></i> Accept All Pending
+              </button>
+              <button type="button" class="btn btn-danger btn-sm" id="otRejectAllBtn" onclick="otRejectAllInView()" disabled>
+                <i class="fa-solid fa-xmark"></i> Reject All Pending
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <div class="rpt-sheet">
+          <div class="rpt-sheet-head">
+            <div>
+              <h2 class="rpt-sheet-title">OT for approval</h2>
+              <p class="rpt-sheet-sub">Employees with pending overtime in the selected period</p>
+            </div>
+            <div class="rpt-sheet-tools app-camera-select-host">
+              <span class="rpt-tool-label">Rows</span>
+              <select id="otApprovalPageSize" class="form-select" onchange="changeOtApprovalPageSize(this.value)">
+                <option value="10">10 / page</option>
+                <option value="25" selected>25 / page</option>
+                <option value="50">50 / page</option>
+                <option value="100">100 / page</option>
+              </select>
+            </div>
+          </div>
+          <div class="log-table-wrapper" style="border:none; border-radius:0; box-shadow:none;">
+            <table class="log-table" style="min-width:750px;">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th style="width:120px;" class="text-center">Pending Days</th>
+                  <th style="width:140px;" class="text-center">Total Pending OT</th>
+                  <th style="width:130px;" class="text-center">Approved OT</th>
+                  <th style="width:130px;" class="text-center">Rejected OT</th>
+                  <th class="text-center" style="width:260px; min-width:260px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="otApprovalTableBody">
+                <tr><td colspan="6" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="otApprovalPagination" class="app-table-pagination" style="border-top:1px solid #cfe8f7; background:#f8fafc;">
+            <div id="otApprovalPageInfo" class="app-page-info">
+              Showing <strong id="otApprovalShowingStart">0</strong> to <strong id="otApprovalShowingEnd">0</strong> of <strong id="otApprovalShowingTotal">0</strong> employees
+            </div>
+            <div id="otApprovalPageControls" class="app-page-controls"></div>
+          </div>
         </div>
       </div>
-    </div>
 
     <!-- OT Detail Popup Modal (per employee, per month) -->
     <div id="otDetailModal" style="display:none; position:fixed; inset:0; padding:12px; background:rgba(15,23,42,0.65); backdrop-filter:blur(6px); z-index:10000; align-items:center; justify-content:center;">
@@ -9798,13 +9939,13 @@ async function fetchMultiLiveDetections() {
             </table>
           </div>
         </div>
-        <div style="padding:14px 24px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-          <div id="otDetailFooterInfo" style="font-size:0.88em; color:#475569; font-weight:600;"></div>
-          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-            <button class="btn btn-success btn-sm" id="otDetailAcceptAllBtn" onclick="otDetailAcceptAllPending()" style="font-weight:700;"><i class="fa-solid fa-check-double"></i> Accept All (Month)</button>
-            <button class="btn btn-success btn-sm" id="otDetailApproveBtn" onclick="otDetailApproveSelected()" style="font-weight:700;"><i class="fa-solid fa-check"></i> Approve Selected</button>
-            <button class="btn btn-danger btn-sm" id="otDetailRejectBtn" onclick="otDetailRejectSelected()" style="font-weight:700;"><i class="fa-solid fa-xmark"></i> Reject Selected</button>
-            <button class="btn btn-outline-secondary btn-sm" onclick="closeOtDetailModal()">Close</button>
+        <div style="padding:14px 24px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:nowrap;">
+          <div id="otDetailFooterInfo" style="font-size:0.88em; color:#475569; font-weight:600; flex:1 1 auto; min-width:0;"></div>
+          <div class="ot-detail-actions">
+            <button type="button" class="btn btn-success btn-sm" id="otDetailAcceptAllBtn" onclick="otDetailAcceptAllPending()"><i class="fa-solid fa-check-double"></i> Accept All (Month)</button>
+            <button type="button" class="btn btn-success btn-sm" id="otDetailApproveBtn" onclick="otDetailApproveSelected()" disabled><i class="fa-solid fa-check"></i> Approve Selected</button>
+            <button type="button" class="btn btn-danger btn-sm" id="otDetailRejectBtn" onclick="otDetailRejectSelected()" disabled><i class="fa-solid fa-xmark"></i> Reject Selected</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closeOtDetailModal()">Close</button>
           </div>
         </div>
       </div>
@@ -10660,9 +10801,7 @@ async function fetchMultiLiveDetections() {
         <button type="button" class="payroll-hub-tab" data-payroll-hub="attendance">2. Attendance</button>
         <button type="button" class="payroll-hub-tab" data-payroll-hub="extras">3. Extra pay</button>
         <button type="button" class="payroll-hub-tab" data-payroll-hub="leave">4. Leave</button>
-        {% if not is_client_session or client_module_entitlements.overtime %}
-        <button type="button" class="payroll-hub-tab" data-payroll-hub="overtime">5. Overtime</button>
-        {% endif %}
+        <button type="button" class="payroll-hub-tab settings-overtime-only" data-payroll-hub="overtime" data-module="overtime">5. Overtime</button>
         <button type="button" class="payroll-hub-tab" data-payroll-hub="packages">6. Salary packages</button>
         <button type="button" class="payroll-hub-tab" data-payroll-hub="calendar">7. Special dates</button>
         <button type="button" class="payroll-hub-tab" data-payroll-hub="payslip">8. Payslip</button>
@@ -11096,8 +11235,7 @@ async function fetchMultiLiveDetections() {
         </section>
         </div>
 
-        {% if not is_client_session or client_module_entitlements.overtime %}
-        <div class="payroll-hub-pane" data-payroll-hub-pane="overtime">
+        <div class="payroll-hub-pane settings-overtime-only" data-payroll-hub-pane="overtime" data-module="overtime">
         <section class="payroll-panel settings-overtime-only">
           <h4>Overtime</h4>
           <p class="payroll-panel-help">Only approved overtime is paid. Pending overtime waits until someone approves it.</p>
@@ -11325,7 +11463,6 @@ async function fetchMultiLiveDetections() {
         </div>
         </section>
         </div>
-        {% endif %}
 
         <div class="payroll-hub-pane" data-payroll-hub-pane="payslip">
           <section class="payroll-panel">
@@ -12454,10 +12591,10 @@ async function fetchMultiLiveDetections() {
   <div id="addOvertimeModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(6px); padding: 20px;" onclick="if(event.target===this) closeAddOvertimeModal();">
     <div style="background: #ffffff; width: 100%; max-width: 540px; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); overflow: hidden; display: flex; flex-direction: column;">
       <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin: 0; font-size: 1.15em; font-weight: 700; color: #0f172a;"><i class="fa-solid fa-clock-rotate-left" style="color:#6366f1;"></i> Log Employee Overtime</h3>
+        <h3 style="margin: 0; font-size: 1.15em; font-weight: 700; color: #0f172a;"><i class="fa-solid fa-clock-rotate-left" style="color:#8b7bf7;"></i> Log Employee Overtime</h3>
         <button type="button" class="btn-close" onclick="closeAddOvertimeModal()"></button>
       </div>
-      <div style="padding: 20px 24px;">
+      <div class="app-camera-select-host" style="padding: 20px 24px;">
         <div id="addOvertimeMsg"></div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Select Department *</label>
@@ -12512,7 +12649,7 @@ async function fetchMultiLiveDetections() {
       </div>
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 24px; display: flex; justify-content: flex-end; gap: 10px;">
         <button type="button" class="btn btn-secondary" onclick="closeAddOvertimeModal()">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="submitOvertimeLog()" style="background:#6366f1; border:none; font-weight:700;">
+        <button type="button" class="btn btn-primary" onclick="submitOvertimeLog()">
           <i class="fa-solid fa-floppy-disk"></i> Save Overtime Record
         </button>
       </div>
@@ -14115,6 +14252,47 @@ async function fetchMultiLiveDetections() {
           const mod = btn.getAttribute('data-settings-module');
           btn.style.display = (window.entitledModules && window.entitledModules[mod]) ? '' : 'none';
         });
+        // OT-01: keep Overtime Settings (hub tab + panes) synced with Overtime module entitlement.
+        const otOn = Boolean(window.entitledModules && window.entitledModules.overtime);
+        let otEntStyle = document.getElementById('ot-settings-entitlement-style');
+        if (!otEntStyle) {
+          otEntStyle = document.createElement('style');
+          otEntStyle.id = 'ot-settings-entitlement-style';
+          document.head.appendChild(otEntStyle);
+        }
+        if (otOn) {
+          const serverEnt = document.getElementById('server-rendered-client-entitlements');
+          if (serverEnt && /settings-overtime-only/.test(serverEnt.textContent || '')) {
+            serverEnt.textContent = (serverEnt.textContent || '')
+              .replace(/\.sidebar-menu \.menu-item\[data-module="overtime"\][^{]*\{[^}]*\}/g, '')
+              .replace(/#overtime-view\s*\{[^}]*\}/g, '')
+              .replace(/\.settings-overtime-only,\s*\.payroll-overtime-only\s*\{[^}]*\}/g, '');
+          }
+          otEntStyle.textContent = `
+            .payroll-hub-tab.settings-overtime-only,
+            .payroll-hub-tab[data-payroll-hub="overtime"] { display: inline-flex !important; }
+            .payroll-hub-pane.settings-overtime-only:not(.is-active),
+            .payroll-hub-pane[data-payroll-hub-pane="overtime"]:not(.is-active) { display: none !important; }
+            .payroll-hub-pane.settings-overtime-only.is-active,
+            .payroll-hub-pane[data-payroll-hub-pane="overtime"].is-active { display: block !important; }
+          `;
+          document.querySelectorAll('.settings-overtime-only, .payroll-overtime-only').forEach((el) => {
+            if (el.matches('.payroll-hub-pane, .payroll-hub-tab, [data-payroll-hub], [data-payroll-hub-pane]')) return;
+            el.style.removeProperty('display');
+          });
+        } else {
+          otEntStyle.textContent = `
+            .sidebar-menu .menu-item[data-module="overtime"],
+            #overtime-view,
+            .settings-overtime-only,
+            .payroll-overtime-only,
+            [data-payroll-hub="overtime"],
+            [data-payroll-hub-pane="overtime"] { display: none !important; }
+          `;
+        }
+        if (!otOn && typeof lastPayrollHubTab !== 'undefined' && lastPayrollHubTab === 'overtime' && typeof switchPayrollHubTab === 'function') {
+          switchPayrollHubTab('general');
+        }
         if (typeof currentSettingsTab !== 'undefined' && currentSettingsTab && !isSettingsTabEntitled(currentSettingsTab)) {
           const branchBtn = document.querySelector(".settings-nav-btn[onclick*=\"'branch-tab'\"]");
           switchSettingsTab('branch-tab', branchBtn);
@@ -18337,6 +18515,8 @@ async function fetchMultiLiveDetections() {
           'editDepartment', 'editPosition', 'editShiftId',
           'leaveStatusFilter', 'leavePageSize', 'leaveBalancePageSize', 'leaveBalanceYearFilter',
           'leaveTypesPageSize', 'leaveHolidaysPageSize',
+          'otStatusFilter', 'otDepartmentFilter', 'otLogPageSize', 'otApprovalPageSize',
+          'modalOtDeptSelect', 'modalOtUserSelect', 'modalOtStatusSelect',
           'bulkShiftTargetSelect', 'shiftFilterDept', 'shiftFilterCurrentShift', 'shiftStaffPageSize',
           'desigDeptFilter', 'modalDesigDeptId', 'modalCameraType',
           'deptPageSize', 'desigPageSize',
@@ -19721,6 +19901,8 @@ async function fetchMultiLiveDetections() {
             button.classList.toggle('is-active', button.getAttribute('data-payroll-hub') === activeKey);
           });
         });
+        // OT-01: remounted hub tabs follow the live entitlement stylesheet.
+        if (typeof applySettingsTabEntitlements === 'function') applySettingsTabEntitlements();
         const step = PAYROLL_HUB_STEPS[activeKey];
         if (step) {
           document.querySelectorAll('[data-payroll-hub-step]').forEach((el) => {
@@ -27353,8 +27535,38 @@ async function fetchMultiLiveDetections() {
     // ============================================
     let _allOvertimeRecords = [];
     let _otSalaryConfigs = {};
+    let _allOtUsers = [];
     let otLogCurrentPage = 1;
-    const otLogPageSize = 25;
+    let otLogPageSize = 25;
+    let otApprovalCurrentPage = 1;
+    let otApprovalPageSize = 25;
+
+    function formatOtEmpId(userId) {
+      return `EMP-${String(userId ?? '').padStart(3, '0')}`;
+    }
+
+    function changeOtLogPageSize(value) {
+      otLogPageSize = Math.max(1, parseInt(value, 10) || 25);
+      otLogCurrentPage = 1;
+      filterOvertimeTable(false);
+    }
+    window.changeOtLogPageSize = changeOtLogPageSize;
+
+    function changeOtApprovalPageSize(value) {
+      otApprovalPageSize = Math.max(1, parseInt(value, 10) || 25);
+      otApprovalCurrentPage = 1;
+      renderOtApprovalList(false);
+    }
+    window.changeOtApprovalPageSize = changeOtApprovalPageSize;
+
+    function upgradeOtFilterSelects() {
+      ['otStatusFilter', 'otDepartmentFilter', 'otLogPageSize', 'otApprovalPageSize'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(el);
+        else if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(el, { compact: /PageSize$/i.test(id) });
+      });
+    }
 
     function escapeOtHtml(str) {
       if (str === null || str === undefined) return '';
@@ -27372,12 +27584,16 @@ async function fetchMultiLiveDetections() {
       tbody.innerHTML = '';
       if (typeof showAppPageLoader === 'function') showAppPageLoader('Loading overtime...');
       try {
-        const [otRes, staffRes] = await Promise.all([
+        const [otRes, staffRes, usersRes, deptRes] = await Promise.all([
           fetch('/api/overtime'),
-          fetch('/api/salary')
+          fetch('/api/salary').catch(() => null),
+          fetch('/api/users', { cache: 'no-store' }).catch(() => null),
+          fetch('/api/departments', { cache: 'no-store' }).catch(() => null)
         ]);
         const otData = await otRes.json();
-        const staffData = await staffRes.json();
+        const staffData = staffRes && staffRes.ok ? await staffRes.json() : [];
+        const usersData = usersRes && usersRes.ok ? await usersRes.json() : {};
+        _allOtUsers = Array.isArray(usersData?.users) ? usersData.users : (Array.isArray(usersData) ? usersData : []);
 
         _allOvertimeRecords = Array.isArray(otData) ? otData : [];
         _otSalaryConfigs = {};
@@ -27385,22 +27601,37 @@ async function fetchMultiLiveDetections() {
           staffData.forEach(sc => {
             _otSalaryConfigs[sc.user_id] = sc;
           });
-          // Populate department filter
-          const deptFilter = document.getElementById('otDepartmentFilter');
-          if (deptFilter && deptFilter.options.length <= 1) {
-            const depts = [...new Set(staffData.map(s => s.department).filter(Boolean))].sort();
-            depts.forEach(d => {
-              const opt = document.createElement('option');
-              opt.value = d;
-              opt.textContent = d;
-              deptFilter.appendChild(opt);
-            });
-          }
         }
 
+        const deptFilter = document.getElementById('otDepartmentFilter');
+        if (deptFilter) {
+          const prev = deptFilter.value || 'all';
+          let allDepts = [
+            ...(_allOtUsers.map(u => u.department).filter(Boolean)),
+            ...(Array.isArray(staffData) ? staffData.map(s => s.department).filter(Boolean) : []),
+            ..._allOvertimeRecords.map(r => r.department).filter(Boolean)
+          ];
+          if (deptRes && deptRes.ok) {
+            try {
+              const deptData = await deptRes.json();
+              const deptList = Array.isArray(deptData) ? deptData : (deptData.departments || []);
+              deptList.forEach(d => {
+                const name = typeof d === 'string' ? d : (d.name || d.department);
+                if (name) allDepts.push(name);
+              });
+            } catch (_) {}
+          }
+          const depts = [...new Set(allDepts)].sort();
+          deptFilter.innerHTML = '<option value="all">All Departments</option>' +
+            depts.map(d => `<option value="${escapeOtHtml(d)}">${escapeOtHtml(d)}</option>`).join('');
+          if ([...deptFilter.options].some(o => o.value === prev)) deptFilter.value = prev;
+          else deptFilter.value = 'all';
+        }
+        upgradeOtFilterSelects();
+
         renderOvertimeKPIs(_allOvertimeRecords);
-        filterOvertimeTable();
-        renderOtApprovalList();
+        filterOvertimeTable(false);
+        renderOtApprovalList(false);
       } catch (e) {
         console.error("Load overtime records error:", e);
         tbody.innerHTML = '<tr><td colspan="12" class="text-center text-danger p-4"><i class="fa-solid fa-circle-exclamation"></i> Error loading overtime records.</td></tr>';
@@ -27522,7 +27753,8 @@ async function fetchMultiLiveDetections() {
         const status = (r.status || '').toLowerCase();
         const dateStr = r.ot_date || '';
 
-        const matchesSearch = !search || name.includes(search) || idStr.includes(search) || reason.includes(search) || dateStr.includes(search);
+        const empIdDisp = formatOtEmpId(r.user_id).toLowerCase();
+        const matchesSearch = !search || name.includes(search) || idStr.includes(search) || empIdDisp.includes(search) || reason.includes(search) || dateStr.includes(search);
         const matchesStatus = statusFilter === 'all' || status === statusFilter;
         const matchesDept = deptFilter === 'all' || dept === deptFilter;
         const matchesMonth = !monthFilter || dateStr.startsWith(monthFilter);
@@ -27590,7 +27822,7 @@ async function fetchMultiLiveDetections() {
             : '<span class="badge bg-secondary-subtle text-muted" title="No overtime in this group is approved for payroll"><i class="fa-solid fa-ban"></i> Excluded</span>';
         return `
           <tr>
-            <td style="font-weight:700; color:#64748b;">#${group.user_id}</td>
+            <td style="font-weight:700; color:#0284c7; font-family:'JetBrains Mono',monospace; font-size:0.8rem;">${formatOtEmpId(group.user_id)}</td>
             <td>
               <div style="font-weight:700; color:#0f172a;">${escapeOtHtml(group.user_name)}</div>
               <small class="text-muted">${records.length} overtime record${records.length === 1 ? '' : 's'}</small>
@@ -27622,6 +27854,7 @@ async function fetchMultiLiveDetections() {
       if (st) st.value = 'all';
       if (d) d.value = 'all';
       if (m) m.value = '';
+      upgradeOtFilterSelects();
       filterOvertimeTable();
     }
 
@@ -27629,6 +27862,7 @@ async function fetchMultiLiveDetections() {
       const modal = document.getElementById('addOvertimeModal');
       const select = document.getElementById('modalOtUserSelect');
       const deptSelect = document.getElementById('modalOtDeptSelect');
+      const statusSelect = document.getElementById('modalOtStatusSelect');
       const dateInput = document.getElementById('modalOtDateInput');
       const hoursInput = document.getElementById('modalOtHoursInput');
       const reasonInput = document.getElementById('modalOtReasonInput');
@@ -27656,15 +27890,48 @@ async function fetchMultiLiveDetections() {
       modal.style.display = 'flex';
 
       try {
-        const res = await fetch('/api/salary', { cache: 'no-store' });
-        const configs = await res.json();
-        window._allOtSalaryConfigs = Array.isArray(configs) ? configs : [];
-        const departments = [...new Set(window._allOtSalaryConfigs.map(config => config.department).filter(Boolean))].sort();
+        const [usersRes, deptRes, salaryRes] = await Promise.all([
+          fetch('/api/users', { cache: 'no-store' }),
+          fetch('/api/departments', { cache: 'no-store' }).catch(() => null),
+          fetch('/api/salary', { cache: 'no-store' }).catch(() => null)
+        ]);
+        const usersData = await usersRes.json();
+        _allOtUsers = Array.isArray(usersData?.users) ? usersData.users : (Array.isArray(usersData) ? usersData : []);
+        window._allOtUsers = _allOtUsers;
+
+        let salaryConfigs = [];
+        if (salaryRes && salaryRes.ok) {
+          const configs = await salaryRes.json();
+          salaryConfigs = Array.isArray(configs) ? configs : [];
+        }
+        window._allOtSalaryConfigs = salaryConfigs;
+        _otSalaryConfigs = {};
+        salaryConfigs.forEach(sc => { _otSalaryConfigs[sc.user_id] = sc; });
+
+        let allDepts = _allOtUsers.map(u => u.department).filter(Boolean);
+        salaryConfigs.forEach(c => { if (c.department) allDepts.push(c.department); });
+        if (deptRes && deptRes.ok) {
+          try {
+            const deptData = await deptRes.json();
+            const deptList = Array.isArray(deptData) ? deptData : (deptData.departments || []);
+            deptList.forEach(d => {
+              const name = typeof d === 'string' ? d : (d.name || d.department);
+              if (name) allDepts.push(name);
+            });
+          } catch (_) {}
+        }
+        const departments = [...new Set(allDepts)].sort();
         if (deptSelect) {
           deptSelect.innerHTML = '<option value="">Select Department...</option>' +
             departments.map(department => `<option value="${escapeOtHtml(department)}">${escapeOtHtml(department)}</option>`).join('');
+          if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(deptSelect);
+          else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(deptSelect);
         }
         filterOtEmployees();
+        if (statusSelect) {
+          if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(statusSelect);
+          else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(statusSelect);
+        }
       } catch (e) {
         if (deptSelect) deptSelect.innerHTML = '<option value="">Failed to load departments</option>';
         select.innerHTML = '<option value="">Select Department First...</option>';
@@ -27678,23 +27945,36 @@ async function fetchMultiLiveDetections() {
       const select = document.getElementById('modalOtUserSelect');
       if (!select) return;
 
+      const users = window._allOtUsers || _allOtUsers || [];
       const configs = window._allOtSalaryConfigs || [];
-      const employees = department ? configs.filter(config => config.department === department) : [];
+      const configByUser = {};
+      configs.forEach(c => { configByUser[c.user_id] = c; });
+
+      const employees = department
+        ? users.filter(u => String(u.department || '') === String(department))
+        : [];
       if (window._otUserTomSelect) {
-        window._otUserTomSelect.destroy();
+        try { window._otUserTomSelect.destroy(); } catch (_) {}
         window._otUserTomSelect = null;
       }
 
       select.disabled = !department || employees.length === 0;
       const placeholder = !department ? 'Select Department First...' : (employees.length ? 'Select Employee...' : 'No employees in this department');
-      select.innerHTML = `<option value="">${placeholder}</option>` + employees.map(config =>
-        `<option value="${config.user_id}" data-rate="${config.ot_rate || 0}" data-basic="${config.basic_salary || 0}" data-dept="${escapeOtHtml(config.department || '')}">${escapeOtHtml(config.user_name)} (${escapeOtHtml(config.department || 'Staff')}) - Rate: PKR ${Number(config.ot_rate || 0).toLocaleString()}/hr</option>`
-      ).join('');
-      window._otUserTomSelect = new TomSelect(select, {
-        create: false,
-        sortField: { field: 'text', direction: 'asc' }
-      });
-      if (select.disabled) window._otUserTomSelect.disable();
+      select.innerHTML = `<option value="">${placeholder}</option>` + employees.map(user => {
+        const cfg = configByUser[user.id] || {};
+        const rate = Number(cfg.ot_rate || 0);
+        const name = user.name || user.user_name || 'Staff';
+        return `<option value="${user.id}" data-rate="${rate}" data-basic="${cfg.basic_salary || 0}" data-dept="${escapeOtHtml(user.department || '')}">${escapeOtHtml(name)} (${formatOtEmpId(user.id)}) - Rate: PKR ${rate.toLocaleString()}/hr</option>`;
+      }).join('');
+      if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(select);
+      else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(select);
+      else if (typeof TomSelect !== 'undefined') {
+        window._otUserTomSelect = new TomSelect(select, {
+          create: false,
+          sortField: { field: 'text', direction: 'asc' }
+        });
+        if (select.disabled) window._otUserTomSelect.disable();
+      }
       select.dispatchEvent(new Event('change'));
     }
 
@@ -27912,21 +28192,15 @@ async function fetchMultiLiveDetections() {
       const appContent = document.getElementById('otSubContent-approval');
       if (!logBtn || !appBtn) return;
 
-      if (tab === 'log') {
-        logBtn.style.borderBottomColor = '#8b7bf7';
-        logBtn.style.color = '#5847c8';
-        appBtn.style.borderBottomColor = 'transparent';
-        appBtn.style.color = '#6b7488';
-        if (logContent) logContent.style.display = 'block';
-        if (appContent) appContent.style.display = 'none';
-      } else {
-        appBtn.style.borderBottomColor = '#34d3c4';
-        appBtn.style.color = '#0f766e';
-        logBtn.style.borderBottomColor = 'transparent';
-        logBtn.style.color = '#6b7488';
-        if (logContent) logContent.style.display = 'none';
-        if (appContent) appContent.style.display = 'block';
-        // Set default month filter to current month
+      const isLog = tab === 'log';
+      logBtn.className = isLog ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-outline-secondary';
+      appBtn.className = !isLog ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-outline-secondary';
+      logBtn.style.fontWeight = '700';
+      appBtn.style.fontWeight = '700';
+      if (logContent) logContent.style.display = isLog ? 'block' : 'none';
+      if (appContent) appContent.style.display = isLog ? 'none' : 'block';
+
+      if (!isLog) {
         const monthInput = document.getElementById('otApprovalMonth');
         if (monthInput && !monthInput.value) {
           const now = new Date();
@@ -27936,18 +28210,52 @@ async function fetchMultiLiveDetections() {
       }
     }
 
-    function renderOtApprovalList() {
+    function renderOtApprovalPagination(totalItems, totalPages, startIndex, endIndex) {
+      const startEl = document.getElementById('otApprovalShowingStart');
+      const endEl = document.getElementById('otApprovalShowingEnd');
+      const totalEl = document.getElementById('otApprovalShowingTotal');
+      const controls = document.getElementById('otApprovalPageControls');
+      if (startEl) startEl.textContent = totalItems === 0 ? 0 : startIndex + 1;
+      if (endEl) endEl.textContent = endIndex;
+      if (totalEl) totalEl.textContent = totalItems;
+      if (!controls) return;
+      controls.innerHTML = '';
+
+      const previous = document.createElement('button');
+      previous.className = 'app-page-btn';
+      previous.innerHTML = '<i class="fa-solid fa-chevron-left"></i> Previous';
+      previous.disabled = otApprovalCurrentPage === 1;
+      previous.onclick = () => renderOtApprovalList(false, otApprovalCurrentPage - 1);
+      controls.appendChild(previous);
+
+      for (let page = 1; page <= totalPages; page++) {
+        const button = document.createElement('button');
+        button.className = `app-page-btn ${page === otApprovalCurrentPage ? 'active' : ''}`;
+        button.textContent = page;
+        button.onclick = () => renderOtApprovalList(false, page);
+        controls.appendChild(button);
+      }
+
+      const next = document.createElement('button');
+      next.className = 'app-page-btn';
+      next.innerHTML = 'Next <i class="fa-solid fa-chevron-right"></i>';
+      next.disabled = otApprovalCurrentPage >= totalPages;
+      next.onclick = () => renderOtApprovalList(false, otApprovalCurrentPage + 1);
+      controls.appendChild(next);
+    }
+
+    function renderOtApprovalList(resetPage = true, requestedPage = null) {
       const tbody = document.getElementById('otApprovalTableBody');
       if (!tbody) return;
+      if (requestedPage !== null) otApprovalCurrentPage = requestedPage;
+      else if (resetPage) otApprovalCurrentPage = 1;
 
       const search = (document.getElementById('otApprovalSearch')?.value || '').toLowerCase().trim();
       const monthFilter = document.getElementById('otApprovalMonth')?.value || '';
 
-      // Group all records by user_id
       let records = _allOvertimeRecords;
       if (monthFilter) records = records.filter(r => (r.ot_date || '').startsWith(monthFilter));
 
-      // Build employee map
       const empMap = {};
       records.forEach(r => {
         const uid = r.user_id;
@@ -27967,14 +28275,26 @@ async function fetchMultiLiveDetections() {
       });
 
       let emps = Object.values(empMap).filter(employee => employee.pending.length > 0);
-      if (search) emps = emps.filter(e => e.user_name.toLowerCase().includes(search) || String(e.user_id).includes(search));
-      // Sort by pending count desc
+      if (search) {
+        emps = emps.filter(e =>
+          e.user_name.toLowerCase().includes(search) ||
+          String(e.user_id).includes(search) ||
+          formatOtEmpId(e.user_id).toLowerCase().includes(search)
+        );
+      }
       emps.sort((a,b) => b.pending.length - a.pending.length);
 
-      // Update badge on tab
       const totalPending = _allOvertimeRecords.filter(r => (r.status||'pending').toLowerCase()==='pending').length;
       const badge = document.getElementById('otApprovalBadge');
       if (badge) badge.textContent = totalPending > 0 ? totalPending : '';
+
+      const totalItems = emps.length;
+      const totalPages = Math.ceil(totalItems / otApprovalPageSize) || 1;
+      otApprovalCurrentPage = Math.max(1, Math.min(otApprovalCurrentPage, totalPages));
+      const startIndex = (otApprovalCurrentPage - 1) * otApprovalPageSize;
+      const endIndex = Math.min(startIndex + otApprovalPageSize, totalItems);
+      const pageEmps = emps.slice(startIndex, endIndex);
+      renderOtApprovalPagination(totalItems, totalPages, startIndex, endIndex);
 
       if (!emps.length) {
         ['otAcceptAllBtn', 'otRejectAllBtn'].forEach(id => {
@@ -27990,7 +28310,7 @@ async function fetchMultiLiveDetections() {
         if (button) button.disabled = false;
       });
 
-      tbody.innerHTML = emps.map(e => {
+      tbody.innerHTML = pageEmps.map(e => {
         const pendingHrs = e.pending.reduce((s,r)=>s+parseFloat(r.hours||0),0);
         const approvedHrs = e.approved.reduce((s,r)=>s+parseFloat(r.hours||0),0);
         const rejectedHrs = e.rejected.reduce((s,r)=>s+parseFloat(r.hours||0),0);
@@ -28002,7 +28322,8 @@ async function fetchMultiLiveDetections() {
           <tr style="${hasPending ? 'background:#fffdf0;' : ''}">
             <td>
               <div style="font-weight:700; color:#0f172a;">${escapeOtHtml(e.user_name)}</div>
-              <small class="text-muted">ID: #${e.user_id} &bull; ${escapeOtHtml(e.department || 'General')}</small>
+              <small class="text-muted" style="font-family:'JetBrains Mono',monospace; color:#0284c7; font-weight:700;">${formatOtEmpId(e.user_id)}</small>
+              <small class="text-muted"> &bull; ${escapeOtHtml(e.department || 'General')}</small>
             </td>
             <td class="text-center">${pendingBadge}</td>
             <td class="text-center" style="font-weight:700; color:#b45309;">${pendingHrs.toFixed(1)} hrs</td>
@@ -28183,7 +28504,10 @@ async function fetchMultiLiveDetections() {
       const departmentEl = document.getElementById('otDetailEmpDept');
       const positionEl = document.getElementById('otDetailEmpPosition');
       if (nameEl) nameEl.textContent = _otDetailUserName;
-      if (idEl) idEl.textContent = `Employee ID: #${userId}`;
+      if (idEl) {
+        idEl.textContent = formatOtEmpId(userId);
+        idEl.style.fontFamily = "'JetBrains Mono', monospace";
+      }
       if (avatarEl) avatarEl.textContent = _otDetailUserName.charAt(0).toUpperCase() || '?';
       if (departmentEl) departmentEl.textContent = payrollEmployee?.department || overtimeEmployee?.department || 'Unassigned';
       if (positionEl) positionEl.textContent = payrollEmployee?.designation || overtimeEmployee?.designation || 'Staff Member';
@@ -28270,6 +28594,7 @@ async function fetchMultiLiveDetections() {
       if (!_otDetailRecords.length) {
         tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted p-4">No overtime was applied for this employee in the selected month.</td></tr>';
         if (footerInfo) footerInfo.textContent = '';
+        syncOtDetailBulkButtons();
         return;
       }
 
@@ -28306,10 +28631,25 @@ async function fetchMultiLiveDetections() {
             ` : `<span class="text-muted small">${st === 'approved' ? 'Approved' : (st === 'rejected' ? 'Rejected' : '')}</span>`}</td>
           </tr>`;
       }).join('');
+
+      tbody.querySelectorAll('.otDetailCheck').forEach((cb) => {
+        cb.addEventListener('change', syncOtDetailBulkButtons);
+      });
+      syncOtDetailBulkButtons();
+    }
+
+    function syncOtDetailBulkButtons() {
+      const selectedCount = document.querySelectorAll('.otDetailCheck:checked:not([disabled])').length;
+      const approveBtn = document.getElementById('otDetailApproveBtn');
+      const rejectBtn = document.getElementById('otDetailRejectBtn');
+      const disabled = selectedCount === 0;
+      if (approveBtn) approveBtn.disabled = disabled;
+      if (rejectBtn) rejectBtn.disabled = disabled;
     }
 
     function otDetailToggleSelectAll(checked) {
       document.querySelectorAll('.otDetailCheck:not([disabled])').forEach(cb => { cb.checked = checked; });
+      syncOtDetailBulkButtons();
     }
 
     function otDetailGetSelectedPendingIds() {
@@ -28438,6 +28778,8 @@ async function fetchMultiLiveDetections() {
     // Explicitly expose Overtime functions to window
     window.openAddOvertimeModal = openAddOvertimeModal;
     window.closeAddOvertimeModal = closeAddOvertimeModal;
+    window.filterOtEmployees = filterOtEmployees;
+    window.syncOtDetailBulkButtons = syncOtDetailBulkButtons;
     window.submitOvertimeLog = submitOvertimeLog;
     window.updateOvertimeStatus = updateOvertimeStatus;
     window.deleteOvertimeRecord = deleteOvertimeRecord;
