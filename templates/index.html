@@ -8820,9 +8820,9 @@ async function fetchMultiLiveDetections() {
               </tbody>
             </table>
           </div>
-          <div id="mainReportEmpty" class="rpt-empty" style="display:none;">
-            <i class="fa-solid fa-folder-open"></i>
-            <p>No attendance records match the selected filter criteria.</p>
+          <div id="mainReportEmpty" class="rpt-empty" style="display:block;">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <p>Loading attendance records...</p>
           </div>
           <div id="mainReportPaginationBar" class="app-table-pagination rpt-pagination">
             <div id="mainReportPaginationInfo" class="app-page-info">Showing 0 of 0 records</div>
@@ -13032,6 +13032,8 @@ async function fetchMultiLiveDetections() {
         try { if (typeof loadBranchSettings === 'function') loadBranchSettings(); } catch(e) { console.error("loadBranchSettings error:", e); }
         try { if (typeof loadDepartmentDropdowns === 'function') loadDepartmentDropdowns(); } catch(e) { console.error("loadDepartmentDropdowns error:", e); }
         try { if (typeof loadLiveCameras === 'function') loadLiveCameras(); } catch(e) { console.error("loadLiveCameras error:", e); }
+        // Attendance Reports is the default landing tab; entitlements init loads it when
+        // reports-view stays active (switchTab is not called on a plain browser refresh).
 
         // 2. Perform backend initialization in background
         try {
@@ -14114,6 +14116,10 @@ async function fetchMultiLiveDetections() {
             else if (window.entitledModules.overtime) switchTab('overtime-view');
             else if (window.entitledModules.shifts) switchTab('shifts-view');
             else openSettingsWithAuth();
+          } else if (currentViewId === 'reports-view' && typeof initMainReportsTab === 'function') {
+            // Browser refresh lands on Attendance Reports (default active). switchTab is not
+            // called again, so load the light report here or the page stays empty.
+            initMainReportsTab();
           }
         } catch (e) {
           console.error("Failed to update module entitlements:", e);
@@ -16425,6 +16431,11 @@ async function fetchMultiLiveDetections() {
       let mainReportFetchSeq = 0;
 
       async function initMainReportsTab() {
+        const emptyEl = document.getElementById('mainReportEmpty');
+        if (emptyEl && !mainReportData) {
+          emptyEl.style.display = 'block';
+          emptyEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><p>Loading attendance records...</p>';
+        }
         fetchMainDepartments();
         fetchMainReport();
       }
@@ -16912,7 +16923,10 @@ async function fetchMultiLiveDetections() {
         }
 
         if (!records || records.length === 0) {
-          if (emptyState) emptyState.style.display = 'block';
+          if (emptyState) {
+            emptyState.style.display = 'block';
+            emptyState.innerHTML = '<i class="fa-solid fa-folder-open"></i><p>No attendance records match the selected filter criteria.</p>';
+          }
           updateMainExportAvailability(totalCount);
           return;
         }
