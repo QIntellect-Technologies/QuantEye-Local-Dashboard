@@ -16926,7 +16926,7 @@ async function fetchMultiLiveDetections() {
           const initial = r.name ? r.name.charAt(0).toUpperCase() : '?';
           let photoHtml = `<div style="width:32px; height:32px; border-radius:50%; background:#8b7bf7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; flex-shrink:0;">${initial}</div>`;
           if (r.photo_path) {
-            photoHtml = `<img src="/api/users/${r.user_id}/photo" style="width:32px; height:32px; border-radius:50%; object-fit:cover; flex-shrink:0;" onerror="this.onerror=null; this.outerHTML='<div style=\\'width:32px; height:32px; border-radius:50%; background:#8b7bf7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; flex-shrink:0;\\'>${initial}</div>'">`;
+            photoHtml = `<img loading="lazy" decoding="async" src="/api/users/${r.user_id}/photo" style="width:32px; height:32px; border-radius:50%; object-fit:cover; flex-shrink:0;" onerror="this.onerror=null; this.outerHTML='<div style=\\'width:32px; height:32px; border-radius:50%; background:#8b7bf7; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; flex-shrink:0;\\'>${initial}</div>'">`;
           }
 
           const empIdDisp = `EMP-${String(r.user_id).padStart(3, '0')}`;

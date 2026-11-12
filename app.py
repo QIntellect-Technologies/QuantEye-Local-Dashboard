@@ -5325,8 +5325,9 @@ def api_reports_attendance():
 
     current_tenant = get_current_tenant_id()
     current_branch = get_current_branch_id()
-    # Force full detail when a single employee drill-down is requested or light=0.
-    if use_light and user_id is None:
+    # Page Refresh / list: always light (Present/Absent MIN/MAX only).
+    # Complete View drill-down and Excel/PDF/CSV export use light=0 / export routes (full detail).
+    if use_light:
         report = db.get_light_attendance_report(
             target_date=target_date,
             start_date=start_date,
@@ -5334,6 +5335,7 @@ def api_reports_attendance():
             department=department,
             status_filter=status,
             search_query=search,
+            user_id=user_id,
             organization_id=current_tenant,
             branch_id=current_branch,
         )

@@ -4604,12 +4604,14 @@ def _resolve_attendance_report_window(
         start_date, end_date = cursor.fetchone()
         is_multi_day = True
     elif target_date and not start_date:
-        # Keep legacy target_date parsing in the caller for full detail path;
-        # light path reuses the same block below via get_detailed for complex labels.
         td_str = str(target_date).strip()
-        start_date = td_str
-        end_date = td_str
-        is_multi_day = False
+        if ' to ' in td_str:
+            s_part, e_part = td_str.split(' to ', 1)
+            start_date, end_date = s_part.strip()[:10], e_part.strip()[:10]
+        else:
+            start_date = td_str[:10]
+            end_date = td_str[:10]
+        is_multi_day = (start_date != end_date)
     else:
         end_date = end_date or start_date
         start_date = start_date or end_date
@@ -4639,46 +4641,30 @@ def get_light_attendance_report(
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Fast Attendance Report page loader.
+    """Fast Attendance Report page loader (Refresh / list).
 
     One row per staff member for the selected dates using only:
       MIN(timestamp) / MAX(timestamp) presence marks.
+    Present = at least one mark that day; Absent = none.
     No camera, place, shift, holiday, or leave lookups on this path.
     Uses sargable timestamp range bounds so the attendance index is used.
+    Never falls back to the full detailed report.
     """
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # Reuse the same date preset resolution as the full report for common filters.
-            if target_date in (
-                'today', 'yesterday', 'this_week', 'this_month', 'last7', 'last30'
-            ) or (not target_date and start_date) or (not target_date and not start_date):
-                start_date, end_date, is_multi_day, total_days, date_list = _resolve_attendance_report_window(
-                    cursor, target_date=target_date, start_date=start_date, end_date=end_date
-                )
-            else:
-                # Fall back to full parser for uncommon date labels.
-                return get_detailed_attendance_report(
-                    target_date=target_date,
-                    start_date=start_date,
-                    end_date=end_date,
-                    department=department,
-                    status_filter=status_filter,
-                    search_query=search_query,
-                    user_id=user_id,
-                    organization_id=organization_id,
-                    branch_id=branch_id,
-                )
+            # Always stay on the light path — resolve presets, ISO dates, and custom ranges here.
+            start_date, end_date, is_multi_day, total_days, date_list = _resolve_attendance_report_window(
+                cursor, target_date=target_date, start_date=start_date, end_date=end_date
+            )
 
             report_org = organization_id or 'DEFAULT_ORG'
+            # Staff list only — no shift/camera/holiday/leave joins.
             user_query = '''
-                SELECT u.id, u.name, u.email, u.phone, u.department, u.photo_path, u.cnic, u.position,
-                       COALESCE(u.shift_id, 1) as shift_id,
-                       COALESCE(s.name, 'General Morning Shift') as shift_name
+                SELECT u.id, u.name, u.email, u.phone, u.department, u.photo_path, u.cnic, u.position
                 FROM users u
-                LEFT JOIN shifts s ON COALESCE(u.shift_id, 1) = s.id
                 WHERE (u.active = 1 OR (u.exit_date IS NOT NULL AND u.exit_date >= ?))
             '''
             user_params: List[Any] = [start_date]
@@ -4727,24 +4713,23 @@ def get_light_attendance_report(
                     'departments': [],
                 }
 
-            user_ids = [int(u['id']) for u in users]
-            placeholders = ','.join('?' for _ in user_ids)
+            user_id_set = {int(u['id']) for u in users}
             start_ts = f"{start_date} 00:00:00"
             end_excl = (datetime.strptime(end_date, "%Y-%m-%d").date() + timedelta(days=1)).strftime("%Y-%m-%d")
             end_ts = f"{end_excl} 00:00:00"
 
-            # Indexed range only in WHERE (never date(timestamp)). Group by calendar day via substr.
-            att_sql = f'''
+            # Indexed range only in WHERE (never date(timestamp)).
+            # Prefer org+timestamp / timestamp indexes — do not use a huge user_id IN (...).
+            att_sql = '''
                 SELECT user_id,
                        substr(timestamp, 1, 10) AS log_date,
                        MIN(timestamp) AS first_seen,
                        MAX(timestamp) AS last_seen
                 FROM attendance
-                WHERE user_id IN ({placeholders})
-                  AND timestamp >= ?
+                WHERE timestamp >= ?
                   AND timestamp < ?
             '''
-            att_params: List[Any] = list(user_ids) + [start_ts, end_ts]
+            att_params: List[Any] = [start_ts, end_ts]
             if report_org and report_org != 'all':
                 if report_org == 'DEFAULT_ORG':
                     att_sql += " AND (organization_id = 'DEFAULT_ORG' OR organization_id IS NULL)"
@@ -4762,6 +4747,8 @@ def get_light_attendance_report(
             marks_by_user: Dict[int, Dict[str, Dict[str, Any]]] = {}
             for row in cursor.fetchall():
                 uid = int(row['user_id'])
+                if uid not in user_id_set:
+                    continue
                 log_date = str(row['log_date'] or '')[:10]
                 if not log_date:
                     continue
@@ -4826,8 +4813,8 @@ def get_light_attendance_report(
                         'position': u.get('position') or 'Staff Member',
                         'cnic': u.get('cnic') or '',
                         'photo_path': u.get('photo_path'),
-                        'shift_name': u.get('shift_name') or 'General Morning Shift',
-                        'shift_id': u.get('shift_id'),
+                        'shift_name': '—',
+                        'shift_id': None,
                         'status': st_val,
                         'attendance_status': st_val,
                         'status_display': 'Present' if st_val == 'present' else 'Absent',
@@ -4865,8 +4852,8 @@ def get_light_attendance_report(
                         'position': u.get('position') or 'Staff Member',
                         'cnic': u.get('cnic') or '',
                         'photo_path': u.get('photo_path'),
-                        'shift_name': u.get('shift_name') or 'General Morning Shift',
-                        'shift_id': u.get('shift_id'),
+                        'shift_name': '—',
+                        'shift_id': None,
                         'total_days': total_days,
                         'working_days': total_days,
                         'present_days': present_days,
