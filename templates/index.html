@@ -442,6 +442,7 @@
         }
       }
       .main-panel {
+        position: relative;
         width: calc(100% - 252px);
         margin-left: 252px;
         min-height: 100vh;
@@ -4783,6 +4784,50 @@
         margin: 0;
         font-size: 12px;
       }
+      /* Shared one-loader for every module page (same look as Attendance Reports). */
+      .app-page-loader {
+        position: absolute;
+        inset: 0;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(238, 248, 255, 0.72);
+        backdrop-filter: blur(2px);
+        pointer-events: all;
+      }
+      .app-page-loader[hidden] {
+        display: none !important;
+      }
+      .app-page-loader-card {
+        min-width: 220px;
+        padding: 28px 32px;
+        text-align: center;
+        color: #64748b;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #dbe5ec;
+        border-radius: 16px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+      }
+      .app-page-loader-card i {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 42px;
+        height: 42px;
+        margin-bottom: 12px;
+        border: 1px solid #e3e8f5;
+        border-radius: 12px;
+        background: rgba(246, 247, 253, 0.9);
+        color: #94a3b8;
+        font-size: 14px;
+      }
+      .app-page-loader-card p {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 600;
+        color: #64748b;
+      }
       #reports-view .rpt-pagination {
         display: flex;
         align-items: center;
@@ -7722,6 +7767,12 @@
 
     <!-- Right Main Content Panel -->
     <div class="main-panel">
+      <div id="appPageLoader" class="app-page-loader" hidden aria-live="polite" aria-busy="false">
+        <div class="app-page-loader-card">
+          <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+          <p id="appPageLoaderText">Loading...</p>
+        </div>
+      </div>
       <!-- Global topbar removed per request; sidebar provides status/user/logout -->
       <!-- ================= PAGE 1: DASHBOARD OVERVIEW ================= -->
       <div id="dashboard-view" class="page-view">
@@ -8820,9 +8871,9 @@ async function fetchMultiLiveDetections() {
               </tbody>
             </table>
           </div>
-          <div id="mainReportEmpty" class="rpt-empty" style="display:block;">
-            <i class="fa-solid fa-spinner fa-spin"></i>
-            <p>Loading attendance records...</p>
+          <div id="mainReportEmpty" class="rpt-empty" style="display:none;">
+            <i class="fa-solid fa-folder-open"></i>
+            <p>No attendance records match the selected filter criteria.</p>
           </div>
           <div id="mainReportPaginationBar" class="app-table-pagination rpt-pagination">
             <div id="mainReportPaginationInfo" class="app-page-info">Showing 0 of 0 records</div>
@@ -13022,18 +13073,11 @@ async function fetchMultiLiveDetections() {
           "system",
         );
 
-        // 1. Unconditionally initialize all UI tabs and data views immediately
-        try { loadStats(); } catch(e) { console.error("loadStats error:", e); }
-        try { loadAttendanceLogs(); } catch(e) { console.error("loadAttendanceLogs error:", e); }
-        try { loadEnrolledUsers(); } catch(e) { console.error("loadEnrolledUsers error:", e); }
-        try { loadTabStaffDirectory(); } catch(e) { console.error("loadTabStaffDirectory error:", e); }
-        try { if (typeof loadCameraAssignmentDropdowns === 'function') loadCameraAssignmentDropdowns(); } catch(e) { console.error("loadCameraAssignmentDropdowns error:", e); }
-        try { if (window.entitledModules && window.entitledModules.shifts && typeof loadShiftsList === 'function') loadShiftsList(); } catch(e) { console.error("loadShiftsList error:", e); }
+        // Shared config only. Active tab data is loaded once via switchTab restore
+        // (one shared loader — do not preload every module on refresh).
         try { if (typeof loadBranchSettings === 'function') loadBranchSettings(); } catch(e) { console.error("loadBranchSettings error:", e); }
         try { if (typeof loadDepartmentDropdowns === 'function') loadDepartmentDropdowns(); } catch(e) { console.error("loadDepartmentDropdowns error:", e); }
-        try { if (typeof loadLiveCameras === 'function') loadLiveCameras(); } catch(e) { console.error("loadLiveCameras error:", e); }
-        // Attendance Reports is the default landing tab; entitlements init loads it when
-        // reports-view stays active (switchTab is not called on a plain browser refresh).
+        try { if (typeof loadCameraAssignmentDropdowns === 'function') loadCameraAssignmentDropdowns(); } catch(e) { console.error("loadCameraAssignmentDropdowns error:", e); }
 
         // 2. Perform backend initialization in background
         try {
@@ -13049,9 +13093,13 @@ async function fetchMultiLiveDetections() {
           console.warn("Init API notice:", e);
         }
 
-        // 3. Auto-start camera monitoring & live ticker feed automatically
-        isStreaming = true;
-        try { if (typeof startTickerFeed === 'function') startTickerFeed(); } catch(e) {}
+        // 3. Live camera ticker only when Live Monitoring is the restored/active tab
+        const activeAfterRestore = document.querySelector('.page-view.active');
+        if (activeAfterRestore && activeAfterRestore.id === 'live-view') {
+          isStreaming = true;
+          try { if (typeof loadLiveCameras === 'function') loadLiveCameras(); } catch(e) {}
+          try { if (typeof startTickerFeed === 'function') startTickerFeed(); } catch(e) {}
+        }
 
         window.triggerCentralDataSync = function() {
           try { if (typeof loadStats === 'function') loadStats(); } catch(e) {}
@@ -13781,8 +13829,9 @@ async function fetchMultiLiveDetections() {
         document.getElementById('finalizePayrollButton').disabled = true;
         const toolbarFinalize = document.getElementById('finalizePayrollToolbarButton');
         if (toolbarFinalize) toolbarFinalize.disabled = true;
-        message.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin"></i> Loading database payroll rows...</div>';
-        tbody.innerHTML = `<tr><td colspan="${getPayrollActiveColspan()}" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading payroll...</td></tr>`;
+        message.innerHTML = '';
+        tbody.innerHTML = '';
+        if (typeof showAppPageLoader === 'function') showAppPageLoader('Loading payroll...');
         try {
           const response = await fetch(`${API_BASE}/payroll?month=${encodeURIComponent(month)}`);
           const result = await response.json();
@@ -13807,6 +13856,7 @@ async function fetchMultiLiveDetections() {
           });
           document.getElementById('payrollReviewPanel').hidden = true;
         } finally {
+          if (typeof hideAppPageLoader === 'function') hideAppPageLoader();
           calculateButton.disabled = Boolean(currentPayrollPreview?.is_finalized && currentPayrollPreview.payroll_month === month);
           updatePayrollMonthNavigation();
         }
@@ -14106,24 +14156,77 @@ async function fetchMultiLiveDetections() {
           if (settingsItem) settingsItem.style.display = '';
           applySettingsTabEntitlements();
 
-          // If currently active view is not entitled, switch to the first entitled view
-          const currentActive = document.querySelector('.page-view.active');
-          const currentViewId = currentActive ? currentActive.id : 'reports-view';
-          if (!isViewEntitled(currentViewId)) {
-            if (window.entitledModules.attendance) switchTab('reports-view');
-            else if (window.entitledModules.payroll) switchTab('payroll-view');
-            else if (window.entitledModules.leave) switchTab('leaves-view');
-            else if (window.entitledModules.overtime) switchTab('overtime-view');
-            else if (window.entitledModules.shifts) switchTab('shifts-view');
-            else openSettingsWithAuth();
-          } else if (currentViewId === 'reports-view' && typeof initMainReportsTab === 'function') {
-            // Browser refresh lands on Attendance Reports (default active). switchTab is not
-            // called again, so load the light report here or the page stays empty.
-            initMainReportsTab();
+          // Restore last tab on browser refresh (Staff Directory stays Staff Directory).
+          // Load only that one page — do not kick every module loader at once.
+          if (!window._quanteyeTabRestored) {
+            window._quanteyeTabRestored = true;
+            switchTab((typeof pickStartupTab === 'function') ? pickStartupTab() : 'reports-view');
+          } else {
+            const currentActive = document.querySelector('.page-view.active');
+            const currentViewId = currentActive ? currentActive.id : 'reports-view';
+            if (!isViewEntitled(currentViewId)) {
+              if (window.entitledModules.attendance) switchTab('reports-view');
+              else if (window.entitledModules.payroll) switchTab('payroll-view');
+              else if (window.entitledModules.leave) switchTab('leaves-view');
+              else if (window.entitledModules.overtime) switchTab('overtime-view');
+              else if (window.entitledModules.shifts) switchTab('shifts-view');
+              else openSettingsWithAuth();
+            }
           }
         } catch (e) {
           console.error("Failed to update module entitlements:", e);
         }
+      }
+
+      const QUANTEYE_ACTIVE_TAB_KEY = 'quanteye-active-tab';
+      let _appPageLoaderDepth = 0;
+
+      function showAppPageLoader(message) {
+        _appPageLoaderDepth += 1;
+        const el = document.getElementById('appPageLoader');
+        const text = document.getElementById('appPageLoaderText');
+        if (text) text.textContent = message || 'Loading...';
+        if (el) {
+          el.hidden = false;
+          el.setAttribute('aria-busy', 'true');
+        }
+      }
+      function hideAppPageLoader() {
+        _appPageLoaderDepth = Math.max(0, _appPageLoaderDepth - 1);
+        if (_appPageLoaderDepth > 0) return;
+        const el = document.getElementById('appPageLoader');
+        if (el) {
+          el.hidden = true;
+          el.setAttribute('aria-busy', 'false');
+        }
+      }
+      window.showAppPageLoader = showAppPageLoader;
+      window.hideAppPageLoader = hideAppPageLoader;
+
+      function saveActiveTab(viewId) {
+        try {
+          if (viewId) sessionStorage.setItem(QUANTEYE_ACTIVE_TAB_KEY, String(viewId));
+        } catch (e) {}
+      }
+      function readSavedActiveTab() {
+        try {
+          return String(sessionStorage.getItem(QUANTEYE_ACTIVE_TAB_KEY) || '').trim();
+        } catch (e) {
+          return '';
+        }
+      }
+      function pickStartupTab() {
+        const saved = readSavedActiveTab();
+        if (saved && document.getElementById(saved) && isViewEntitled(saved)) return saved;
+        const currentActive = document.querySelector('.page-view.active');
+        const currentViewId = currentActive ? currentActive.id : '';
+        if (currentViewId && isViewEntitled(currentViewId)) return currentViewId;
+        if (window.entitledModules?.attendance) return 'reports-view';
+        if (window.entitledModules?.payroll) return 'payroll-view';
+        if (window.entitledModules?.leave) return 'leaves-view';
+        if (window.entitledModules?.overtime) return 'overtime-view';
+        if (window.entitledModules?.shifts) return 'shifts-view';
+        return 'settings-view';
       }
 
       function switchTab(viewId, element) {
@@ -14131,6 +14234,7 @@ async function fetchMultiLiveDetections() {
           void appAlert("This module is not included in your organization's subscription.", 'Access restricted');
           return false;
         }
+        saveActiveTab(viewId);
 
         if (mobileSidebarQuery.matches) {
           document.body.classList.add('sidebar-collapsed');
@@ -16432,10 +16536,7 @@ async function fetchMultiLiveDetections() {
 
       async function initMainReportsTab() {
         const emptyEl = document.getElementById('mainReportEmpty');
-        if (emptyEl && !mainReportData) {
-          emptyEl.style.display = 'block';
-          emptyEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><p>Loading attendance records...</p>';
-        }
+        if (emptyEl && !mainReportData) emptyEl.style.display = 'none';
         fetchMainDepartments();
         fetchMainReport();
       }
@@ -16651,8 +16752,9 @@ async function fetchMultiLiveDetections() {
         const seq = ++mainReportFetchSeq;
         const emptyEl = document.getElementById('mainReportEmpty');
         // AR-3 / Ticket 12: keep prior rows visible during refresh; never flash empty state mid-flight.
-        if (emptyEl && (showRefreshState || mainReportData)) emptyEl.style.display = 'none';
+        if (emptyEl) emptyEl.style.display = 'none';
         url += `_t=${Date.now()}`;
+        if (typeof showAppPageLoader === 'function') showAppPageLoader('Loading attendance records...');
 
         try {
           const res = await fetch(url, { cache: 'no-store', signal: mainReportFetchController.signal });
@@ -16676,6 +16778,7 @@ async function fetchMultiLiveDetections() {
           }
           if (typeof showAppToast === 'function') showAppToast(err.message || 'Failed to refresh attendance report.', 'error');
         } finally {
+          if (seq === mainReportFetchSeq && typeof hideAppPageLoader === 'function') hideAppPageLoader();
           if (showRefreshState && refreshButton && seq === mainReportFetchSeq) {
             refreshButton.disabled = false;
             refreshButton.innerHTML = originalButtonHTML;
@@ -17824,6 +17927,9 @@ async function fetchMultiLiveDetections() {
           refreshButton.disabled = true;
           refreshButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Refreshing...';
         }
+        const emptyEl = document.getElementById('tabStaffEmpty');
+        if (emptyEl) emptyEl.style.display = 'none';
+        if (typeof showAppPageLoader === 'function') showAppPageLoader('Loading staff directory...');
         try {
           const res = await fetch(`${API_BASE}/users`, { cache: 'no-store' });
           const data = await res.json();
@@ -17835,10 +17941,11 @@ async function fetchMultiLiveDetections() {
           filterTabStaffTable();
         } catch (err) {
           console.error("Failed to load staff list:", err);
-          if (showRefreshState && typeof showAppToast === 'function') {
+          if (typeof showAppToast === 'function') {
             showAppToast(err.message || 'Failed to refresh staff list.', 'error');
           }
         } finally {
+          if (typeof hideAppPageLoader === 'function') hideAppPageLoader();
           if (showRefreshState && refreshButton) {
             refreshButton.disabled = false;
             refreshButton.innerHTML = originalButtonHTML;
@@ -18829,6 +18936,7 @@ async function fetchMultiLiveDetections() {
           refreshButton.disabled = true;
           refreshButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Refreshing...';
         }
+        if (typeof showAppPageLoader === 'function') showAppPageLoader('Loading shifts...');
         try {
           const [resp, userResp] = await Promise.all([
             fetch(`${API_BASE}/shifts`, { cache: 'no-store' }),
@@ -18854,6 +18962,7 @@ async function fetchMultiLiveDetections() {
             showAppToast(e.message || 'Failed to refresh shifts.', 'error');
           }
         } finally {
+          if (typeof hideAppPageLoader === 'function') hideAppPageLoader();
           if (showRefreshState && refreshButton) {
             refreshButton.disabled = false;
             refreshButton.innerHTML = originalButtonHTML;
@@ -24963,12 +25072,17 @@ async function fetchMultiLiveDetections() {
       else if (subtab === 'holidays') loadCompanyHolidays();
     }
 
-    function refreshActiveLeaveSubtab() {
+    async function refreshActiveLeaveSubtab() {
       const subtab = window._activeLeaveSubtab || 'requests';
-      if (subtab === 'balances') loadLeaveBalances();
-      else if (subtab === 'types') loadLeaveTypes();
-      else if (subtab === 'holidays') loadCompanyHolidays();
-      else loadLeaveRequests();
+      if (typeof showAppPageLoader === 'function') showAppPageLoader('Loading leave data...');
+      try {
+        if (subtab === 'balances') await loadLeaveBalances();
+        else if (subtab === 'types') await loadLeaveTypes();
+        else if (subtab === 'holidays') await loadCompanyHolidays();
+        else await loadLeaveRequests();
+      } finally {
+        if (typeof hideAppPageLoader === 'function') hideAppPageLoader();
+      }
     }
     window.refreshActiveLeaveSubtab = refreshActiveLeaveSubtab;
 
@@ -25028,7 +25142,7 @@ async function fetchMultiLiveDetections() {
         const d = new Date();
         monthInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       }
-      tbody.innerHTML = (window.leaveModuleLoader || ((c) => `<tr><td colspan="${c}" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.35rem; color:#0d9488;"></i></td></tr>`))(7);
+      tbody.innerHTML = '';
       try {
         // Always refresh leave types so request chips/complete-view resolve the latest names.
         try {
@@ -27237,7 +27351,8 @@ async function fetchMultiLiveDetections() {
     async function loadOvertimeRecords() {
       const tbody = document.getElementById('overtimeTableBody');
       if (!tbody) return;
-      tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading overtime records...</td></tr>';
+      tbody.innerHTML = '';
+      if (typeof showAppPageLoader === 'function') showAppPageLoader('Loading overtime...');
       try {
         const [otRes, staffRes] = await Promise.all([
           fetch('/api/overtime'),
@@ -27271,6 +27386,8 @@ async function fetchMultiLiveDetections() {
       } catch (e) {
         console.error("Load overtime records error:", e);
         tbody.innerHTML = '<tr><td colspan="12" class="text-center text-danger p-4"><i class="fa-solid fa-circle-exclamation"></i> Error loading overtime records.</td></tr>';
+      } finally {
+        if (typeof hideAppPageLoader === 'function') hideAppPageLoader();
       }
     }
 
