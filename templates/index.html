@@ -7886,7 +7886,7 @@
                 {% if not is_client_session or client_module_entitlements.payroll %}
                 <div class="col-md-6 payroll-only-ui">
                   <label class="form-label" for="enrollSalary">Basic Salary (PKR)</label>
-                  <input type="number" class="form-control" id="enrollSalary" placeholder="0" min="0.01" required />
+                  <input type="number" class="form-control payroll-amount-input" id="enrollSalary" placeholder="10000" min="10000" step="0.01" required />
                 </div>
                 {% endif %}
                 <div class="col-md-6">
@@ -10633,6 +10633,10 @@ async function fetchMultiLiveDetections() {
               Decimal places
               <input id="payrollDecimalPlaces" class="form-control" type="number" min="0" max="6" step="1" value="2" style="width:90px; margin-top:4px;">
             </label>
+            <label style="font-size:0.86em; font-weight:700; color:#475569;">
+              Minimum basic salary
+              <input id="payrollMinBasicSalary" class="form-control payroll-amount-input" type="number" min="0" step="1" value="10000" style="width:130px; margin-top:4px;" title="Used for new staff, salary package, and bulk salary changes">
+            </label>
             <label style="font-size:0.86em; font-weight:700; color:#475569; min-width:240px;">
               Join or leave mid-month
               <select id="payrollProrationBasis" class="form-select" style="margin-top:4px;" onchange="previewPayrollSettingsImpact()">
@@ -10779,8 +10783,9 @@ async function fetchMultiLiveDetections() {
               </select>
             </label>
             <label class="payroll-rule-field" id="payrollComponentDefaultWrap"><span id="payrollComponentDefaultLabel">Amount (PKR)</span>
-              <input id="payrollComponentDefault" class="form-control" type="number" min="0" step="0.01" value="0" placeholder="5000">
+              <input id="payrollComponentDefault" class="form-control payroll-amount-input" type="number" min="0.01" step="0.01" value="" placeholder="5000">
             </label>
+            <p class="payroll-panel-help" style="margin:0 0 8px;">Amount must be greater than 0 (or greater than 0% for percent items). To set the amount per person later, use <strong>Who it applies to</strong> after adding an item with a real default amount.</p>
             <div class="payroll-rule-actions">
               <button type="submit" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">Add item</button>
             </div>
@@ -11792,7 +11797,7 @@ async function fetchMultiLiveDetections() {
             <ol>
               <li>Pick the bonus month.</li>
               <li>Download the sheet.</li>
-              <li>Type an amount for each person. People with no bonus can stay at 0.</li>
+              <li>Type an amount for each person. Leave 0 or blank to keep an existing bonus — uploading 0 does not remove it.</li>
               <li>Upload the sheet. This is for that month only.</li>
             </ol>
             <table class="payroll-guide-table">
@@ -12620,7 +12625,7 @@ async function fetchMultiLiveDetections() {
             <div class="col-md-6">
               <label class="form-label" style="font-weight: 700; color: #334155; font-size: 0.85em;">Basic Salary (PKR) *</label>
               <div style="position: relative;">
-                <input type="number" id="modalSalaryBasic" class="form-control" placeholder="0.00" min="0.01" max="50000000" step="0.01" required oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #0f172a;" />
+                <input type="number" id="modalSalaryBasic" class="form-control payroll-amount-input" placeholder="0.00" min="10000" max="50000000" step="0.01" required oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #0f172a;" />
                 <span style="position: absolute; right: 12px; top: 8px; font-size: 0.75em; color: #94a3b8; font-weight: 700;">PKR</span>
               </div>
               <small style="font-size: 0.75em; color: #64748b;">Synchronized with employee payroll base.</small>
@@ -13512,7 +13517,7 @@ async function fetchMultiLiveDetections() {
               return `<tr>
                 <td class="fw-semibold">
                   <div style="color:#173042; font-weight:700;">
-                    ${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
+                    <span dir="auto">${payrollEscape(row.employee_name)}</span> <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
                     ${joinBadgeHtml}${exitBadgeHtml}
                   </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
@@ -13535,7 +13540,7 @@ async function fetchMultiLiveDetections() {
               return `<tr>
                 <td class="fw-semibold">
                   <div style="color:#173042; font-weight:700;">
-                    ${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
+                    <span dir="auto">${payrollEscape(row.employee_name)}</span> <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
                     ${joinBadgeHtml}${exitBadgeHtml}
                   </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
@@ -13558,7 +13563,7 @@ async function fetchMultiLiveDetections() {
               return `<tr>
                 <td class="fw-semibold">
                   <div style="color:#173042; font-weight:700;">
-                    ${payrollEscape(row.employee_name)} <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
+                    <span dir="auto">${payrollEscape(row.employee_name)}</span> <small style="color:#94a3b8; font-weight:500;">#${payrollEscape(row.employee_id)}</small>
                     ${joinBadgeHtml}${exitBadgeHtml}
                   </div>
                   <div style="font-size:0.75em; color:#64748b;">${payrollEscape(row.department || 'General')} &bull; ${payrollEscape(row.designation || 'Staff')}</div>
@@ -13574,7 +13579,7 @@ async function fetchMultiLiveDetections() {
             } else {
               return `<tr>
                 <td class="fw-semibold">#${payrollEscape(row.employee_id)}</td>
-                <td class="fw-semibold">${payrollEscape(row.employee_name)}${joinBadgeHtml}${exitBadgeHtml}</td>
+                <td class="fw-semibold"><span dir="auto">${payrollEscape(row.employee_name)}</span>${joinBadgeHtml}${exitBadgeHtml}</td>
                 <td>${payrollEscape(row.department || 'Unassigned')}</td>
                 <td>${payrollEscape(row.designation || 'Staff Member')}</td>
                 <td class="text-end">${payrollMoney(row.basic_salary)}${row.is_prorated && row.proration_explanation ? `<div style="font-size:0.72em; color:#64748b;" title="${payrollEscape(row.proration_explanation)}">${payrollEscape(row.proration_explanation)}</div>` : ''}</td>
@@ -14333,8 +14338,10 @@ async function fetchMultiLiveDetections() {
       function validateStaffNameValue(value, required = true) {
         const v = String(value || '').trim();
         if (!v) return required ? 'Full name is required.' : '';
-        if (!/^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(v)) {
-          return 'Name may only contain letters, spaces, hyphens, and apostrophes.';
+        if (v.length > 100) return 'Full name cannot exceed 100 characters.';
+        // QA-106: Latin + Urdu/Arabic letters; refuse emoji/symbols.
+        if (!/^(?=.*[\u0600-\u06FFA-Za-z])[\u0600-\u06FFA-Za-z0-9\s.'’-]+$/u.test(v)) {
+          return 'Name may use letters (including Urdu), numbers, spaces, hyphens, apostrophes, and periods only — no emoji or special symbols.';
         }
         return '';
       }
@@ -14495,6 +14502,16 @@ async function fetchMultiLiveDetections() {
           const jObj = new Date(jy, jm - 1, jd);
           if (isNaN(jObj.getTime()) || jObj.getFullYear() !== jy || jObj.getMonth() !== jm - 1 || jObj.getDate() !== jd) {
             showMessage("enrollmentMessage", "Joining date is invalid (this date does not exist on the calendar). Please pick a real date.", "error");
+            return;
+          }
+        }
+        if (salaryField) {
+          const basicMin = (typeof payrollBasicSalaryMinimum === 'function') ? payrollBasicSalaryMinimum() : 10000;
+          const salaryParsed = (typeof parseMoney2dpOrError === 'function')
+            ? parseMoney2dpOrError(salary, 'Basic salary', { min: basicMin, requireMinPositive: true })
+            : { value: Number(salary) };
+          if (salaryParsed.error) {
+            showMessage("enrollmentMessage", salaryParsed.error, "error");
             return;
           }
         }
@@ -18996,7 +19013,7 @@ async function fetchMultiLiveDetections() {
               <div style="display:flex; align-items:center; gap:9px;">
                 <div style="width:32px; height:32px; border-radius:50%; background:#e0f2fe; color:#0284c7; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; flex-shrink:0;">${initial}</div>
                 <div>
-                  <div style="font-weight:700; color:#173042; font-size:0.86rem;">${user.name}</div>
+                  <div style="font-weight:700; color:#173042; font-size:0.86rem;" dir="auto">${user.name}</div>
                   <div style="font-size:0.72rem; color:#64748b;">${user.position || "Staff Member"}</div>
                 </div>
               </div>
@@ -20084,8 +20101,12 @@ async function fetchMultiLiveDetections() {
           if (currencyInput) currencyInput.value = settings.currency_code || 'PKR';
           const decimalInput = document.getElementById('payrollDecimalPlaces');
           if (decimalInput) decimalInput.value = settings.decimal_places ?? 2;
+          const minBasicInput = document.getElementById('payrollMinBasicSalary');
+          if (minBasicInput) minBasicInput.value = settings.min_basic_salary ?? 10000;
           window._payrollCurrencyCode = settings.currency_code || 'PKR';
           window._payrollDecimalPlaces = settings.decimal_places ?? 2;
+          window._payrollMinBasicSalary = settings.min_basic_salary ?? 10000;
+          if (typeof applyPayrollAmountInputSteps === 'function') applyPayrollAmountInputSteps();
           const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
           setVal('holidayOtPayMode', settings.holiday_ot_pay_mode || 'percent');
           setVal('nonWorkingDayOtPayMode', settings.non_working_day_ot_pay_mode || 'percent');
@@ -20944,7 +20965,7 @@ async function fetchMultiLiveDetections() {
           <div class="invoice-meta">
             <div>
               <small>Pay to</small>
-              <strong>${payrollEscape(emp.employee_name || 'Staff')}</strong>
+              <strong dir="auto">${payrollEscape(emp.employee_name || 'Staff')}</strong>
               <div>#${payrollEscape(emp.employee_id || '')} · ${payrollEscape(emp.department || 'General')} · ${payrollEscape(emp.designation || 'Staff')}</div>
             </div>
             <div>
@@ -21241,12 +21262,19 @@ async function fetchMultiLiveDetections() {
 
       async function savePayrollComponentType() {
         const calcMode = document.getElementById('payrollComponentMode')?.value || 'fixed';
-        const defaultAmt = Number(document.getElementById('payrollComponentDefault')?.value || 0);
-
-        if ((calcMode === 'percent_basic' || calcMode === 'percent_gross') && (defaultAmt < 0 || defaultAmt > 100)) {
-          showAppToast('Percentage must be between 0 and 100%', 'error');
+        const rawDefault = document.getElementById('payrollComponentDefault')?.value || '0';
+        const isPercent = calcMode === 'percent_basic' || calcMode === 'percent_gross';
+        const parsed = parseMoney2dpOrError(rawDefault, isPercent ? 'Percent' : 'Amount', {
+          min: 0.000001,
+          requireMinPositive: true,
+          decimals: isPercent ? 2 : payrollAmountDecimalPlaces(),
+          max: isPercent ? 100 : 10000000,
+        });
+        if (parsed.error) {
+          showAppToast(parsed.error, 'error');
           return;
         }
+        const defaultAmt = parsed.value;
 
         const payload = {
           name: document.getElementById('payrollComponentName')?.value,
@@ -21273,7 +21301,7 @@ async function fetchMultiLiveDetections() {
           if (document.getElementById('payrollComponentKind')) document.getElementById('payrollComponentKind').value = 'earning';
           if (document.getElementById('payrollComponentCategory')) document.getElementById('payrollComponentCategory').value = 'allowance';
           if (document.getElementById('payrollComponentMode')) document.getElementById('payrollComponentMode').value = 'fixed';
-          if (document.getElementById('payrollComponentDefault')) document.getElementById('payrollComponentDefault').value = '0';
+          if (document.getElementById('payrollComponentDefault')) document.getElementById('payrollComponentDefault').value = '';
           if (typeof updatePayrollComponentFieldLabels === 'function') updatePayrollComponentFieldLabels();
 
           showAppToast(`"${payload.name || 'Pay line'}" added successfully.`, 'success');
@@ -21787,6 +21815,7 @@ async function fetchMultiLiveDetections() {
               attendance_pay_mode: document.getElementById('payrollAttendancePayMode')?.value || 'full_salary',
               currency_code: (document.getElementById('payrollCurrencyCode')?.value || 'PKR').trim().toUpperCase(),
               decimal_places: Number(document.getElementById('payrollDecimalPlaces')?.value || 2),
+              min_basic_salary: Number(document.getElementById('payrollMinBasicSalary')?.value || 10000),
               holiday_ot_pay_mode: document.getElementById('holidayOtPayMode')?.value || 'percent',
               non_working_day_ot_pay_mode: document.getElementById('nonWorkingDayOtPayMode')?.value || 'percent',
               holiday_ot_multiplier: Number(document.getElementById('holidayOtMultiplier')?.value || 1.5),
@@ -21818,6 +21847,8 @@ async function fetchMultiLiveDetections() {
           }
           window._payrollCurrencyCode = result.settings?.currency_code || 'PKR';
           window._payrollDecimalPlaces = result.settings?.decimal_places ?? 2;
+          window._payrollMinBasicSalary = result.settings?.min_basic_salary ?? 10000;
+          if (typeof applyPayrollAmountInputSteps === 'function') applyPayrollAmountInputSteps();
           _payslipLetterheadDirty = false;
           applyPayslipLetterhead(result.settings || collectPayslipLetterhead());
           if (quotaMode) quotaMode.value = result.settings?.half_leave_quota_mode || 'category';
@@ -22412,26 +22443,59 @@ async function fetchMultiLiveDetections() {
       }
       window.isRealCalendarDateValue = isRealCalendarDateValue;
 
-      function parseMoney2dpOrError(raw, label, { min = 0, max = 50000000, requireMinPositive = false } = {}) {
+      function payrollAmountDecimalPlaces() {
+        const n = Number(window._payrollDecimalPlaces ?? 2);
+        return Number.isFinite(n) ? Math.max(0, Math.min(6, Math.trunc(n))) : 2;
+      }
+      function payrollBasicSalaryMinimum() {
+        const n = Number(window._payrollMinBasicSalary ?? 10000);
+        return Number.isFinite(n) && n >= 0 ? n : 10000;
+      }
+      function applyPayrollAmountInputSteps() {
+        const places = payrollAmountDecimalPlaces();
+        const step = places <= 0 ? '1' : `0.${'0'.repeat(places - 1)}1`;
+        [
+          'payrollComponentDefault', 'payLineAmount', 'modalSalaryBasic', 'modalSalaryAllowances',
+          'modalSalaryDeductions', 'modalSalaryOtRate', 'modalSalaryComponentAmount',
+          'payrollExceptionAmount', 'payrollRuleFixed', 'offDayAttendancePayFixedAmount',
+          'holidayOtFixedAmount', 'nonWorkingDayOtFixedAmount'
+        ].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.setAttribute('step', step);
+        });
+        const basic = document.getElementById('modalSalaryBasic');
+        if (basic) basic.setAttribute('min', String(payrollBasicSalaryMinimum()));
+        document.querySelectorAll('input[type="number"].payroll-amount-input').forEach((el) => {
+          el.setAttribute('step', step);
+        });
+      }
+      function parseMoney2dpOrError(raw, label, { min = 0, max = 50000000, requireMinPositive = false, decimals = null } = {}) {
         const text = String(raw ?? '').trim();
         if (!text) return { error: `${label} is required.` };
-        if (/[eE]/.test(text) || !/^\d+(\.\d{1,2})?$/.test(text)) {
-          return { error: `${label} must be a number with at most 2 decimal places (for example 35000 or 35000.50).` };
+        const places = decimals == null ? payrollAmountDecimalPlaces() : Math.max(0, Math.min(6, Number(decimals) || 0));
+        const pattern = places <= 0 ? /^\d+$/ : new RegExp(`^\\d+(\\.\\d{1,${places}})?$`);
+        if (/[eE]/.test(text) || !pattern.test(text)) {
+          return { error: places <= 0
+            ? `${label} must be a whole number (0 decimal places).`
+            : `${label} must be a number with at most ${places} decimal place${places === 1 ? '' : 's'}.` };
         }
         const num = Number(text);
         if (!Number.isFinite(num)) return { error: `${label} must be a valid number.` };
-        const floor = requireMinPositive ? Math.max(min, 0.01) : min;
+        const floor = requireMinPositive ? Math.max(min, Number.EPSILON) : min;
         if (num < floor) {
+          const floorLabel = Number.isInteger(floor) ? floor.toLocaleString('en-US') : floor.toFixed(Math.min(2, places || 2));
           return { error: requireMinPositive || floor > 0
-            ? `${label} must be at least ${floor.toFixed(2)}.`
+            ? `${label} must be at least ${floorLabel}.`
             : `${label} cannot be negative.` };
         }
         if (num > max) {
           return { error: `${label} cannot exceed ${max.toLocaleString('en-US')}.` };
         }
-        return { value: Math.round(num * 100) / 100 };
+        const factor = places <= 0 ? 1 : Math.pow(10, places);
+        return { value: places <= 0 ? Math.trunc(num) : Math.round(num * factor) / factor };
       }
       window.parseMoney2dpOrError = parseMoney2dpOrError;
+      window.applyPayrollAmountInputSteps = applyPayrollAmountInputSteps;
 
       async function saveSalaryConfig() {
         const uid = document.getElementById('modalSalaryUserId')?.value;
@@ -22439,7 +22503,8 @@ async function fetchMultiLiveDetections() {
         const btn = document.getElementById('saveSalaryBtn');
         if (!uid) return;
 
-        const basicParsed = parseMoney2dpOrError(document.getElementById('modalSalaryBasic')?.value, 'Basic salary', { min: 0.01, requireMinPositive: true });
+        const basicMin = payrollBasicSalaryMinimum();
+        const basicParsed = parseMoney2dpOrError(document.getElementById('modalSalaryBasic')?.value, 'Basic salary', { min: basicMin, requireMinPositive: true });
         const allowParsed = parseMoney2dpOrError(document.getElementById('modalSalaryAllowances')?.value || '0', 'Allowances', { min: 0 });
         const deductParsed = parseMoney2dpOrError(document.getElementById('modalSalaryDeductions')?.value || '0', 'Deductions', { min: 0 });
         const otParsed = parseMoney2dpOrError(document.getElementById('modalSalaryOtRate')?.value || '0', 'OT rate', { min: 0 });

@@ -1037,17 +1037,19 @@ def create_user():
     if is_client_browser_session():
         payroll_required = bool(licensed_module_flags(session_licensed_modules()).get('payroll'))
     salary_raw = data.get('salary', None)
+    basic_floor = db.get_basic_salary_minimum(get_current_tenant_id(), get_current_branch_id())
     try:
         if salary_raw is None or str(salary_raw).strip() == '':
             salary = 0.0 if not payroll_required else None
         else:
             salary = db.parse_salary_amount(
-                salary_raw, default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True
+                salary_raw, default=None, min_amount=basic_floor, require_two_decimals=True
             )
     except ValueError as salary_err:
         return jsonify({'error': str(salary_err), 'field': 'salary'}), 400
-    if payroll_required and (salary is None or salary < db.BASIC_SALARY_MIN):
-        return jsonify({'error': f'Basic salary must be at least {db.BASIC_SALARY_MIN:.2f}.', 'field': 'salary'}), 400
+    if payroll_required and (salary is None or salary < basic_floor):
+        floor_label = f'{basic_floor:,.0f}' if float(basic_floor).is_integer() else f'{basic_floor:.2f}'
+        return jsonify({'error': f'Basic salary must be at least {floor_label}.', 'field': 'salary'}), 400
     if salary is None:
         salary = 0.0
     join_date = str(data.get('join_date') or '').strip()
@@ -4760,8 +4762,9 @@ def api_add_staff():
     current_tenant = get_current_tenant_id()
     current_branch = get_current_branch_id()
     try:
+        basic_floor = db.get_basic_salary_minimum(current_tenant, current_branch)
         salary = db.parse_salary_amount(
-            data.get('salary', 0), default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True
+            data.get('salary', 0), default=None, min_amount=basic_floor, require_two_decimals=True
         )
         join_date = db.validate_calendar_date(data.get('join_date', ''), 'Joining date', required=False) or ''
     except ValueError as salary_err:
@@ -4825,14 +4828,20 @@ def api_update_user(user_id):
 
     salary_val = data.get('salary')
     try:
-        salary = (
-            db.parse_salary_amount(salary_val, default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True)
-            if salary_val is not None and str(salary_val).strip() != '' else None
-        )
+        salary = None
+        if salary_val is not None and str(salary_val).strip() != '':
+            places = max(0, min(6, int((db.get_payroll_settings(organization_id=get_current_tenant_id(), branch_id=get_current_branch_id()) or {}).get('decimal_places') or 2)))
+            basic_floor = db.get_basic_salary_minimum(get_current_tenant_id(), get_current_branch_id())
+            salary = db.parse_salary_amount(
+                salary_val, default=None, min_amount=basic_floor,
+                require_two_decimals=(places == 2), max_decimals=places,
+            )
     except ValueError as salary_err:
         return jsonify({'error': str(salary_err)}), 400
 
     join_date = data.get('join_date')
+    if join_date is not None and not str(join_date).strip():
+        join_date = None  # QA-72: do not wipe join_date with empty string
     if join_date is not None and str(join_date).strip():
         try:
             join_date = db.validate_calendar_date(join_date, 'Joining date')
@@ -6646,31 +6655,37 @@ def api_set_salary(user_id=None):
         if not u_target:
             return jsonify({'success': False, 'message': f'Employee #{uid} not found or access denied'}), 404
 
-        # QA-97 / QA-73: strict basic floor, 2dp, one max; refuse bad effective_from
+        # QA-97 / QA-102 / QA-103: company basic floor + decimal_places setting
         try:
+            places = max(0, min(6, int((db.get_payroll_settings(organization_id=current_tenant, branch_id=get_current_branch_id()) or {}).get('decimal_places') or 2)))
+            basic_floor = db.get_basic_salary_minimum(current_tenant, get_current_branch_id())
             basic_salary = db.parse_salary_amount(
                 data.get('basic_salary', basic_salary),
                 default=None,
-                min_amount=db.BASIC_SALARY_MIN,
-                require_two_decimals=True,
+                min_amount=basic_floor,
+                require_two_decimals=(places == 2),
+                max_decimals=places,
             )
             allowances = db.parse_salary_amount(
                 data.get('allowances', allowances),
                 default=0.0,
                 min_amount=0.0,
-                require_two_decimals=True,
+                require_two_decimals=(places == 2),
+                max_decimals=places,
             )
             deductions = db.parse_salary_amount(
                 data.get('deductions', deductions),
                 default=0.0,
                 min_amount=0.0,
-                require_two_decimals=True,
+                require_two_decimals=(places == 2),
+                max_decimals=places,
             )
             ot_rate = db.parse_salary_amount(
                 data.get('ot_rate', ot_rate),
                 default=0.0,
                 min_amount=0.0,
-                require_two_decimals=True,
+                require_two_decimals=(places == 2),
+                max_decimals=places,
             )
             effective_from = data.get('effective_from')
             if effective_from is not None and str(effective_from).strip():
@@ -6950,7 +6965,9 @@ def api_payroll_bonus_template():
         sheet.append([])
         sheet.append(['Instructions'])
         sheet.append(['Match employees by Employee ID, Email, or exact Name.'])
-        sheet.append(['Amount is the bonus for this payroll month. Leave 0 if none.'])
+        sheet.append(['Amount is the bonus for this payroll month.'])
+        sheet.append(['Leave 0 or blank to keep the previously assigned bonus (0 does not remove it).'])
+        sheet.append(['To remove a bonus, clear it in Payroll with a dedicated Remove bonus action — do not upload 0.'])
         sheet.append(['Off-days follow each employee Shift schedule, not a fixed Sunday.'])
         buffer = io.BytesIO()
         workbook.save(buffer)
@@ -7799,6 +7816,7 @@ def api_update_payroll_settings():
             attendance_pay_mode=data.get('attendance_pay_mode', current_settings.get('attendance_pay_mode')),
             currency_code=data.get('currency_code', current_settings.get('currency_code')),
             decimal_places=data.get('decimal_places', current_settings.get('decimal_places')),
+            min_basic_salary=data.get('min_basic_salary', current_settings.get('min_basic_salary')),
             holiday_ot_pay_mode=data.get('holiday_ot_pay_mode', current_settings.get('holiday_ot_pay_mode')),
             non_working_day_ot_pay_mode=data.get('non_working_day_ot_pay_mode', current_settings.get('non_working_day_ot_pay_mode')),
             holiday_ot_multiplier=data.get('holiday_ot_multiplier', current_settings.get('holiday_ot_multiplier')),

@@ -52,6 +52,7 @@ DEFAULT_PAYROLL_SETTINGS = {
     "attendance_pay_mode": DEFAULT_ATTENDANCE_PAY_MODE,
     "currency_code": DEFAULT_CURRENCY,
     "decimal_places": DEFAULT_DECIMAL_PLACES,
+    "min_basic_salary": 10000.0,
     "holiday_ot_pay_mode": "percent",
     "non_working_day_ot_pay_mode": "percent",
     "holiday_ot_multiplier": DEFAULT_EXAMPLE_MULTIPLIER,

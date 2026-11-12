@@ -70,6 +70,8 @@ class QaBatchFutureJoinAndPayslip(unittest.TestCase):
             db.parse_salary_amount("1e-7", default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True)
         with self.assertRaises(ValueError):
             db.parse_salary_amount("99999999", default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True)
+        with self.assertRaises(ValueError):
+            db.parse_salary_amount("0.01", default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True)
         self.assertEqual(
             db.parse_salary_amount("500000", default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True),
             500000.0,
@@ -80,6 +82,25 @@ class QaBatchFutureJoinAndPayslip(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             db.parse_salary_amount("20000.123", default=None, min_amount=db.BASIC_SALARY_MIN, require_two_decimals=True)
+
+    def test_qa_72_join_marker_uses_saved_join_date_not_today(self):
+        today = date.today()
+        month = today.strftime("%Y-%m")
+        # Join later this month (or skip if already near month end).
+        try:
+            join = today.replace(day=min(28, today.day + 10))
+        except ValueError:
+            self.skipTest("Cannot build a future join date in-month")
+        if join.strftime("%Y-%m") != month or join <= today:
+            self.skipTest("Need a future join date still inside the current month")
+        uid = self._emp("Join Marker Staff", 60000, join_date=join.isoformat())
+        preview = db.calculate_monthly_payroll(month, organization_id=self.org, branch_id=self.branch)
+        row = next(r for r in preview["records"] if int(r["employee_id"]) == int(uid))
+        self.assertEqual(row.get("join_date"), join.isoformat())
+        self.assertIn(join.strftime("%d %b"), row.get("join_marker") or "")
+        self.assertNotIn(today.strftime("%d %b"), row.get("join_marker") or "")
+        self.assertEqual(float(row.get("absent_days") or 0), 0.0)
+        self.assertEqual(float(row.get("absence_deduction") or 0), 0.0)
 
     def test_qa_72_future_join_no_absence_and_marker(self):
         today = date.today()

@@ -75,21 +75,51 @@ sqlite3.connect = _safe_sqlite3_connect
 SALARY_MIN = 0.0
 # Single published ceiling used by enroll, salary package, and API messages (QA-97).
 SALARY_MAX = 50_000_000.0
-BASIC_SALARY_MIN = 0.01
+# QA-102: realistic basic-salary floor (company can override via payroll_settings.min_basic_salary).
+BASIC_SALARY_MIN = 10000.0
+PERCENT_DECIMAL_PLACES = 2
 
 
-def parse_salary_amount(value: Any, default: Optional[float] = 0.0, *, min_amount: Optional[float] = None, require_two_decimals: bool = False) -> float:
+def get_basic_salary_minimum(organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> float:
+    """QA-102: company-level basic salary minimum (defaults to BASIC_SALARY_MIN)."""
+    try:
+        settings = get_payroll_settings(organization_id=organization_id, branch_id=branch_id)
+        raw = settings.get('min_basic_salary')
+        if raw is None or str(raw).strip() == '':
+            return float(BASIC_SALARY_MIN)
+        val = float(raw)
+        if val < 0:
+            return float(BASIC_SALARY_MIN)
+        return val
+    except Exception:
+        return float(BASIC_SALARY_MIN)
+
+
+def parse_salary_amount(
+    value: Any,
+    default: Optional[float] = 0.0,
+    *,
+    min_amount: Optional[float] = None,
+    require_two_decimals: bool = False,
+    max_decimals: Optional[int] = None,
+) -> float:
     """Reject negative or absurd salary amounts before they are stored."""
     if value is None or (isinstance(value, str) and str(value).strip() == ''):
         if default is None:
             raise ValueError('Salary is required')
         value = default
     raw = str(value).strip() if not isinstance(value, (int, float)) else value
+    places = 2 if require_two_decimals else (None if max_decimals is None else int(max_decimals))
     if isinstance(raw, str) and re.search(r'[eE]', raw):
-        raise ValueError('Salary must be a plain number with at most 2 decimal places')
-    if require_two_decimals and isinstance(raw, str):
-        if not re.fullmatch(r'\d+(\.\d{1,2})?', raw):
-            raise ValueError('Salary must use at most 2 decimal places')
+        if places is None:
+            raise ValueError('Amount must be a plain number')
+        raise ValueError(f'Amount must be a plain number with at most {places} decimal place{"s" if places != 1 else ""}')
+    if places is not None and isinstance(raw, str):
+        if places <= 0:
+            if not re.fullmatch(r'\d+', raw):
+                raise ValueError('Amount must be a whole number (0 decimal places)')
+        elif not re.fullmatch(rf'\d+(\.\d{{1,{places}}})?', raw):
+            raise ValueError(f'Amount may use at most {places} decimal place{"s" if places != 1 else ""}')
     try:
         amount = float(raw)
     except (TypeError, ValueError):
@@ -97,15 +127,23 @@ def parse_salary_amount(value: Any, default: Optional[float] = 0.0, *, min_amoun
     floor = SALARY_MIN if min_amount is None else float(min_amount)
     if amount < floor:
         if floor > 0:
-            raise ValueError(f'Salary must be at least {floor:.2f}')
+            floor_label = f'{floor:,.0f}' if float(floor).is_integer() else f'{floor:.2f}'
+            raise ValueError(f'Salary must be at least {floor_label}')
         raise ValueError('Salary cannot be negative')
     if amount > SALARY_MAX:
         raise ValueError('Salary cannot exceed {:,.0f}'.format(SALARY_MAX))
     if amount != amount:  # NaN
         raise ValueError('Salary must be a valid number')
-    if require_two_decimals and round(amount, 2) != amount:
-        raise ValueError('Salary must use at most 2 decimal places')
-    return round(amount, 2) if require_two_decimals else amount
+    if places is not None:
+        if places <= 0:
+            if amount != int(amount):
+                raise ValueError('Amount must be a whole number (0 decimal places)')
+            return float(int(amount))
+        rounded = round(amount, places)
+        if abs(rounded - amount) > 1e-12:
+            raise ValueError(f'Amount may use at most {places} decimal place{"s" if places != 1 else ""}')
+        return rounded
+    return amount
 
 
 def validate_calendar_date(value: Any, field_label: str = 'Date', *, required: bool = True) -> Optional[str]:
@@ -1170,6 +1208,7 @@ def init_db():
                 ("payslip_bank_title", "TEXT NOT NULL DEFAULT 'QIntellect Technologies'"),
                 ("payslip_bank_name", "TEXT NOT NULL DEFAULT 'United Bank Limited (UBL)'"),
                 ("payslip_bank_iban", "TEXT NOT NULL DEFAULT 'PK46UNIL0109000400912116'"),
+                ("min_basic_salary", "REAL NOT NULL DEFAULT 10000"),
             ]:
                 if column not in payroll_setting_columns:
                     cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -1721,8 +1760,15 @@ def _validate_staff_fields(name: str, email: Optional[str], phone: Optional[str]
     clean_position = str(position or '').strip()
     clean_notes = str(notes or '').strip()
     clean_cnic = str(cnic or '').strip()
-    if not re.match(r"^(?=.*[A-Za-z])[A-Za-z0-9\s.'-]+$", clean_name):
-        raise ValueError('Full name must contain letters and may use numbers, spaces, hyphens, apostrophes, and periods only')
+    # QA-106: allow Latin + Arabic/Urdu letters; refuse emoji and odd symbols.
+    if not re.match(
+        r"^(?=.*[\u0600-\u06FFA-Za-z])[\u0600-\u06FFA-Za-z0-9\s.'’-]+$",
+        clean_name,
+        flags=re.UNICODE,
+    ):
+        raise ValueError(
+            'Full name may use letters (including Urdu/Arabic), numbers, spaces, hyphens, apostrophes, and periods only — no emoji or special symbols'
+        )
     if len(clean_name) > 100:
         raise ValueError('Full name cannot exceed 100 characters')
     if clean_email and (len(clean_email) > 120 or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', clean_email)):
@@ -2200,6 +2246,10 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
 
             effective_join = str(join_date).strip()[:10] if (join_date is not None and str(join_date).strip()) else (str(existing_join_date).strip()[:10] if existing_join_date else None)
             norm_exit = str(exit_date).strip()[:10] if (exit_date is not None and str(exit_date).strip()) else (None if exit_date is not None else '__KEEP__')
+
+            # QA-72: empty string must NOT wipe join_date via COALESCE('', join_date).
+            if join_date is not None and not str(join_date).strip():
+                join_date = None
 
             if join_date is not None and str(join_date).strip() != str(existing_join_date or '').strip() and effective_join:
                 join_m = effective_join[:7]
@@ -9521,7 +9571,8 @@ def _get_following_workday_attendance_status(cursor: sqlite3.Cursor, user_id: in
         today = date.today()
         for i in range(1, 8):
             next_d = ot_dt + timedelta(days=i)
-            if next_d > today:
+            # QA-105: do not treat "today" as a completed absent day while the day is still open.
+            if next_d >= today:
                 return None
             next_d_str = next_d.isoformat()
             day_type = _get_overtime_day_type(cursor, user_id, next_d_str)
@@ -10118,6 +10169,8 @@ def get_all_salary_configs(active_only: bool = True, department: Optional[str] =
                     CASE WHEN s.user_id IS NOT NULL THEN 1 ELSE 0 END as is_configured,
                     s.updated_at,
                     COALESCE(
+                        NULLIF(TRIM(u.join_date), ''),
+                        (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
                         (SELECT MIN(c.effective_from) FROM payroll_employee_components c 
                          WHERE c.active = 1
                            AND (c.organization_id IS NULL OR c.organization_id = '' OR COALESCE(c.organization_id, 'DEFAULT_ORG') = COALESCE(u.organization_id, 'DEFAULT_ORG'))
@@ -10136,9 +10189,7 @@ def get_all_salary_configs(active_only: bool = True, department: Optional[str] =
                                  AND exc.active = 1
                            )
                         ),
-                        (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
                         substr(s.updated_at, 1, 10),
-                        u.join_date,
                         '2026-01-01'
                     ) as effective_from,
                     (SELECT COUNT(DISTINCT c.component_type_id) FROM payroll_employee_components c 
@@ -10311,11 +10362,25 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
             return False
         raise_if_payroll_month_locked(str(effective_from or date.today().isoformat())[:10], owner[1], owner[2])
         settings = get_payroll_settings(organization_id=owner[1], branch_id=owner[2])
-        # QA-97: basic floor 0.01, max 2 decimals, one clear SALARY_MAX ceiling
-        b_sal = parse_salary_amount(basic_salary, default=None, min_amount=BASIC_SALARY_MIN, require_two_decimals=True)
-        allow = parse_salary_amount(allowances, default=0.0, min_amount=0.0, require_two_decimals=True)
-        deduct = parse_salary_amount(deductions, default=0.0, min_amount=0.0, require_two_decimals=True)
-        ot = parse_salary_amount(ot_rate, default=0.0, min_amount=0.0, require_two_decimals=True)
+        places = max(0, min(6, int(settings.get('decimal_places') or DEFAULT_DECIMAL_PLACES)))
+        # QA-102: company minimum basic salary
+        basic_floor = get_basic_salary_minimum(owner[1], owner[2])
+        b_sal = parse_salary_amount(
+            basic_salary, default=None, min_amount=basic_floor,
+            require_two_decimals=(places == 2), max_decimals=places,
+        )
+        allow = parse_salary_amount(
+            allowances, default=0.0, min_amount=0.0,
+            require_two_decimals=(places == 2), max_decimals=places,
+        )
+        deduct = parse_salary_amount(
+            deductions, default=0.0, min_amount=0.0,
+            require_two_decimals=(places == 2), max_decimals=places,
+        )
+        ot = parse_salary_amount(
+            ot_rate, default=0.0, min_amount=0.0,
+            require_two_decimals=(places == 2), max_decimals=places,
+        )
         if effective_from is not None and str(effective_from).strip():
             effective_from = validate_calendar_date(effective_from, 'Effective from')
         with sqlite3.connect(DB_PATH) as conn:
@@ -10337,6 +10402,23 @@ def set_salary_config(user_id: int, basic_salary: float = 0.0, allowances: float
                 (user_id, b_sal, allow, deduct, ot, owner[1], owner[2])
             )
             cursor.execute("UPDATE users SET salary = ? WHERE id = ?", (b_sal, user_id))
+            # QA-72: if joining date still looks like an auto-enrollment stamp (blank/today),
+            # align it to the package effective_from so payroll uses the same date.
+            if effective_from:
+                today_iso = date.today().isoformat()
+                row_u = cursor.execute(
+                    "SELECT join_date, date(created_at), date(enrollment_date) FROM users WHERE id = ?",
+                    (user_id,),
+                ).fetchone()
+                cur_join = str((row_u[0] if row_u else '') or '').strip()[:10]
+                created_d = str((row_u[1] if row_u else '') or '').strip()[:10]
+                enroll_d = str((row_u[2] if row_u else '') or '').strip()[:10]
+                if (not cur_join) or cur_join == today_iso or cur_join == created_d or cur_join == enroll_d:
+                    if str(effective_from)[:10] != cur_join:
+                        cursor.execute(
+                            "UPDATE users SET join_date = ? WHERE id = ?",
+                            (str(effective_from)[:10], user_id),
+                        )
             if _payroll_flag_on(settings, 'enable_salary_revisions'):
                 start = str(effective_from or date.today().isoformat())[:10]
                 cursor.execute(
@@ -11295,6 +11377,7 @@ def update_payroll_settings(
     attendance_pay_mode: Optional[str] = None,
     currency_code: Optional[str] = None,
     decimal_places: Optional[int] = None,
+    min_basic_salary: Optional[float] = None,
     holiday_ot_pay_mode: Optional[str] = None,
     non_working_day_ot_pay_mode: Optional[str] = None,
     holiday_ot_multiplier: Optional[float] = None,
@@ -11325,6 +11408,7 @@ def update_payroll_settings(
             attendance_pay_mode=d.get('attendance_pay_mode', attendance_pay_mode),
             currency_code=d.get('currency_code', currency_code),
             decimal_places=d.get('decimal_places', decimal_places),
+            min_basic_salary=d.get('min_basic_salary', min_basic_salary),
             holiday_ot_pay_mode=d.get('holiday_ot_pay_mode', holiday_ot_pay_mode),
             non_working_day_ot_pay_mode=d.get('non_working_day_ot_pay_mode', non_working_day_ot_pay_mode),
             holiday_ot_multiplier=d.get('holiday_ot_multiplier', holiday_ot_multiplier),
@@ -11389,6 +11473,16 @@ def update_payroll_settings(
         raise ValueError('Decimal places must be a whole number from 0 to 6.')
     if not 0 <= places <= 6:
         raise ValueError('Decimal places must be a whole number from 0 to 6.')
+    try:
+        min_basic = float(
+            min_basic_salary if min_basic_salary is not None else current.get('min_basic_salary', BASIC_SALARY_MIN)
+        )
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError('Minimum basic salary must be a valid number.')
+    if min_basic < 0 or min_basic != min_basic:
+        raise ValueError('Minimum basic salary cannot be negative.')
+    if min_basic > SALARY_MAX:
+        raise ValueError(f'Minimum basic salary cannot exceed {SALARY_MAX:,.0f}.')
     h_mode = _normalize_ot_pay_mode(
         holiday_ot_pay_mode if holiday_ot_pay_mode is not None else current.get('holiday_ot_pay_mode'),
         'percent',
@@ -11455,6 +11549,7 @@ def update_payroll_settings(
         "attendance_pay_mode = ?",
         "currency_code = ?",
         "decimal_places = ?",
+        "min_basic_salary = ?",
         "holiday_ot_pay_mode = ?",
         "non_working_day_ot_pay_mode = ?",
         "holiday_ot_multiplier = ?",
@@ -11496,6 +11591,7 @@ def update_payroll_settings(
         pay_mode,
         currency,
         places,
+        min_basic,
         h_mode,
         nw_mode,
         h_mult,
@@ -11525,6 +11621,7 @@ def update_payroll_settings(
         "attendance_pay_mode",
         "currency_code",
         "decimal_places",
+        "min_basic_salary",
         "holiday_ot_pay_mode",
         "non_working_day_ot_pay_mode",
         "holiday_ot_multiplier",
@@ -11744,6 +11841,7 @@ def replace_payroll_bonuses(
                 errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount cannot be negative"})
                 continue
             if amount == 0:
+                # QA-104 / QA-30: excel 0 or blank keeps the previously assigned bonus.
                 if source == 'excel':
                     continue
                 errors.append({'row': excel_row, 'employee': emp_label, 'field': 'amount', 'error': f"Row {excel_row} ({emp_label}): Amount cannot be zero"})
@@ -11797,7 +11895,9 @@ def replace_payroll_bonuses(
 
         if commit and not errors:
             cursor = conn.cursor()
-            if source != 'excel' or not preview:
+            # QA-104: never wipe the month when an Excel upload only has blanks/zeros
+            # (those rows are skipped so preview can be empty — keep existing bonuses).
+            if source != 'excel':
                 cursor.execute(
                     """DELETE FROM payroll_bonuses
                        WHERE year = ? AND month = ?
@@ -11805,6 +11905,18 @@ def replace_payroll_bonuses(
                          AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
                     (int(year), int(month), org, branch),
                 )
+            if source == 'excel' and not preview:
+                conn.commit()
+                return {
+                    'imported': 0,
+                    'preview': [],
+                    'errors': [],
+                    'unmatched': [],
+                    'committed': True,
+                    'duplicate_policy': 'reject',
+                    'bonuses': list_payroll_bonuses(year, month, org, branch),
+                    'message': 'No bonus amounts to apply. Existing bonuses were kept (0 or blank cells do not remove a bonus).',
+                }
             for item in preview:
                 cursor.execute(
                     """
@@ -11890,20 +12002,36 @@ def save_payroll_component_type(
         raise ValueError("Short code cannot exceed 20 characters")
     if clean_code and clean_code[0] in ('=', '+', '-', '@'):
         raise ValueError("Short code cannot start with =, +, -, or @")
+    org, branch = _tenant_ids(organization_id, branch_id)
+    places = PERCENT_DECIMAL_PLACES if mode == 'percent_basic' else int(
+        (get_payroll_settings(organization_id=org, branch_id=branch) or {}).get('decimal_places') or DEFAULT_DECIMAL_PLACES
+    )
+    places = max(0, min(6, places))
     if default_amount is not None:
         raw_amt_str = str(default_amount).strip()
-        if '.' in raw_amt_str and len(raw_amt_str.split('.')[1].rstrip('0')) > 2:
-            raise ValueError("Amount cannot have more than 2 decimal places")
+        if mode == 'percent_basic':
+            if '.' in raw_amt_str and len(raw_amt_str.split('.')[1].rstrip('0')) > PERCENT_DECIMAL_PLACES:
+                raise ValueError(f"Percent may use at most {PERCENT_DECIMAL_PLACES} decimal places")
+        elif places <= 0:
+            if '.' in raw_amt_str and any(ch != '0' for ch in raw_amt_str.split('.', 1)[1]):
+                raise ValueError('Amount must be a whole number (0 decimal places)')
+        elif '.' in raw_amt_str and len(raw_amt_str.split('.')[1].rstrip('0')) > places:
+            raise ValueError(f"Amount may use at most {places} decimal place{'s' if places != 1 else ''}")
     try:
-        def_amt = round(float(default_amount or 0), 2)
+        def_amt = float(default_amount or 0)
     except (TypeError, ValueError, OverflowError):
         raise ValueError("Amount must be numeric")
-    if def_amt < 0 or def_amt > 10_000_000:
-        raise ValueError("Amount must be between 0 and 10,000,000 (max 2 decimals)")
+    def_amt = round(def_amt, places) if places > 0 else float(int(round(def_amt)))
+    # QA-101: refuse zero catalog amounts (0 PKR / 0%). Per-person overrides stay optional downstream.
+    if def_amt <= 0:
+        if mode == 'percent_basic':
+            raise ValueError("Percent must be greater than 0. Use Who it applies to if the amount is set per person later.")
+        raise ValueError("Amount must be greater than 0. Use Who it applies to if the amount is set per person later.")
+    if def_amt > 10_000_000:
+        raise ValueError("Amount must be between 0 and 10,000,000")
     default_amount = def_amt
     if kind_n not in VALID_COMPONENT_KINDS or cat not in VALID_COMPONENT_CATEGORIES or mode not in VALID_CALC_MODES:
         return None
-    org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
         # QA-42: Check duplicate name or code within tenant
         dup_row = conn.execute(
@@ -12922,8 +13050,16 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                    COALESCE(sc.allowances, 0.0) AS allowances,
                    COALESCE(sc.deductions, 0.0) AS custom_deductions,
                    COALESCE(sc.ot_rate, 0.0) AS ot_rate,
-                   COALESCE(NULLIF(TRIM(u.join_date), ''), date(u.enrollment_date), date(u.created_at)) AS employed_from,
-                   u.join_date,
+                   COALESCE(
+                       NULLIF(TRIM(u.join_date), ''),
+                       (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id),
+                       date(u.enrollment_date),
+                       date(u.created_at)
+                   ) AS employed_from,
+                   COALESCE(
+                       NULLIF(TRIM(u.join_date), ''),
+                       (SELECT MIN(r.effective_from) FROM salary_revisions r WHERE r.user_id = u.id)
+                   ) AS join_date,
                    u.exit_date,
                    u.active,
                    COALESCE(u.shift_id, 0) AS shift_id
