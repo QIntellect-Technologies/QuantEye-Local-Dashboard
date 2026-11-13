@@ -11,6 +11,7 @@ from weekday_utils import WorkingDaysError, default_working_days, parse_working_
 from payroll_policy_schema import (
     DEFAULT_CURRENCY,
     DEFAULT_DECIMAL_PLACES,
+    DEFAULT_HALF_LEAVE_LATE_GRACE_MODE,
     DEFAULT_OT_DIVISOR,
     DEFAULT_PAYROLL_SETTINGS,
     PAYSLIP_LETTERHEAD_FIELDS,
@@ -18,9 +19,12 @@ from payroll_policy_schema import (
     DEFAULT_OT_ROUNDING,
     LEGACY_OT_ROUNDING,
     LEGACY_PRORATION_BASIS,
+    VALID_HALF_LEAVE_LATE_GRACE_MODES,
     VALID_PRORATION_BASES,
     VALID_OT_ROUNDING,
+    normalize_half_leave_late_grace_mode as _normalize_half_leave_late_grace_mode,
     normalize_ot_rounding as _normalize_ot_rounding,
+    resolve_checkin_late_deadline_minutes as _resolve_checkin_late_deadline_minutes,
     VALID_OFF_DAY_ATTENDANCE_MODES,
     normalize_attendance_pay_mode as _normalize_attendance_pay_mode,
     VALID_OT_PAY_MODES,
@@ -1214,6 +1218,8 @@ def init_db():
                 ("payslip_bank_name", "TEXT NOT NULL DEFAULT 'United Bank Limited (UBL)'"),
                 ("payslip_bank_iban", "TEXT NOT NULL DEFAULT 'PK46UNIL0109000400912116'"),
                 ("min_basic_salary", "REAL NOT NULL DEFAULT 10000"),
+                # QA-118: keep current Late rule until the company chooses Option A/B.
+                ("half_leave_late_grace_mode", "TEXT NOT NULL DEFAULT 'shift_start'"),
             ]:
                 if column not in payroll_setting_columns:
                     cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -4121,11 +4127,18 @@ def _record_automatic_checkout_overtime(
     return overtime_hours
 
 
-def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> bool:
+def _restore_worked_leave_if_applicable(
+    cursor,
+    user_id: int,
+    log_date: str,
+    checkin_time: Optional[str] = None,
+) -> bool:
     """
     LV-05: When an employee with approved leave is subsequently recorded as present on that date,
     restore their leave entitlement unless payroll for that month is already finalized.
-    Includes half-day leave: presence on that leave day restores the half-day balance.
+    Includes half-day leave: presence *during* the half-leave window restores the half-day balance.
+    QA-118: check-in after the half-leave end time is a return-to-work punch — keep the leave
+    and let Late/Present follow the company half-leave late-grace setting.
     Safe against duplicate calls (idempotent via restored_dates tracking).
     Returns True when at least one leave row was restored for this date.
     """
@@ -4135,9 +4148,17 @@ def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> 
         if payroll_month_is_finalized(month_str, org_id, branch_id):
             return False
 
+        checkin_mins = None
+        if checkin_time:
+            try:
+                time_part = str(checkin_time).split(' ')[-1] if ' ' in str(checkin_time) else str(checkin_time).split('T')[-1]
+                checkin_mins = parse_time_to_minutes(time_part)
+            except Exception:
+                checkin_mins = None
+
         cursor.execute("""
             SELECT id, leave_type, leave_duration, start_date, end_date, status,
-                   paid_status, unpaid_status, restored_dates, reason
+                   paid_status, unpaid_status, restored_dates, reason, start_time, end_time
             FROM leave_requests
             WHERE user_id = ?
               AND status IN ('approved', 'partially_approved')
@@ -4153,6 +4174,8 @@ def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> 
                 lr_end = lr[4]
                 lr_status = lr[5]
                 lr_restored_dates = lr[8]
+                lr_start_time = lr[10] if len(lr) > 10 else None
+                lr_end_time = lr[11] if len(lr) > 11 else None
             else:
                 leave_id = lr['id']
                 lr_duration = lr['leave_duration']
@@ -4160,14 +4183,33 @@ def _restore_worked_leave_if_applicable(cursor, user_id: int, log_date: str) -> 
                 lr_end = lr['end_date']
                 lr_status = lr['status']
                 lr_restored_dates = lr['restored_dates']
+                lr_start_time = lr['start_time'] if 'start_time' in lr.keys() else None
+                lr_end_time = lr['end_time'] if 'end_time' in lr.keys() else None
 
             restored = [d.strip() for d in str(lr_restored_dates or '').split(',') if d.strip()]
             if log_date in restored:
                 continue
 
+            is_half = str(lr_duration or '').lower() == 'half'
+            # QA-118: returning after a timed half leave must not cancel that leave.
+            if is_half and lr_end_time and checkin_mins is not None:
+                try:
+                    leave_end_mins = parse_time_to_minutes(str(lr_end_time))
+                    leave_start_mins = (
+                        parse_time_to_minutes(str(lr_start_time))
+                        if lr_start_time else None
+                    )
+                    if leave_start_mins is not None:
+                        in_leave_window = leave_start_mins <= checkin_mins <= leave_end_mins
+                    else:
+                        in_leave_window = checkin_mins <= leave_end_mins
+                    if not in_leave_window:
+                        continue
+                except Exception:
+                    pass
+
             restored.append(log_date)
             restored_str = ','.join(sorted(restored))
-            is_half = str(lr_duration or '').lower() == 'half'
             all_restored = False
             try:
                 if is_half:
@@ -4270,7 +4312,8 @@ def log_attendance(user_id: int, detected_name: str, confidence: float, source: 
                 'DELETE FROM manual_absent WHERE user_id = ? AND date = date(?)',
                 (user_id, log_date_str)
             )
-            _restore_worked_leave_if_applicable(cursor, user_id, log_date_str)
+            punch_ts = attendance_time.strftime('%Y-%m-%d %H:%M:%S')
+            _restore_worked_leave_if_applicable(cursor, user_id, log_date_str, checkin_time=punch_ts)
             cursor.execute("SELECT organization_id, branch_id FROM users WHERE id = ?", (user_id,))
             u_row = cursor.fetchone()
             u_org = (u_row[0] if u_row else None) or 'DEFAULT_ORG'
@@ -4281,7 +4324,7 @@ def log_attendance(user_id: int, detected_name: str, confidence: float, source: 
                        checkout_camera_id, checkout_location, timestamp, organization_id, branch_id
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (user_id, detected_name, confidence, source, location, device_id,
-                 checkout_camera_id, checkout_location, attendance_time.strftime('%Y-%m-%d %H:%M:%S'),
+                 checkout_camera_id, checkout_location, punch_ts,
                  u_org, u_branch)
             )
             att_id = cursor.lastrowid
@@ -4925,6 +4968,49 @@ def get_light_attendance_report(
                     if day.get('shift_id') is None and row['shift_id'] is not None:
                         day['shift_id'] = row['shift_id']
 
+            # QA-118: half-leave end times for Late-after-half-leave (same rule as detailed).
+            try:
+                half_leave_late_grace_mode = _normalize_half_leave_late_grace_mode(
+                    get_payroll_settings(
+                        organization_id=organization_id,
+                        branch_id=branch_id,
+                    ).get('half_leave_late_grace_mode')
+                )
+            except Exception:
+                half_leave_late_grace_mode = DEFAULT_HALF_LEAVE_LATE_GRACE_MODE
+            half_leave_end_by_user_date: Dict[Tuple[int, str], Dict[str, Optional[str]]] = {}
+            try:
+                light_uids = tuple(user_id_set)
+                if light_uids:
+                    ph = ','.join('?' for _ in light_uids)
+                    cursor.execute(
+                        f'''
+                        SELECT user_id, start_date, end_date, start_time, end_time
+                        FROM leave_requests
+                        WHERE user_id IN ({ph})
+                          AND leave_duration = 'half'
+                          AND status IN ('approved', 'partially_approved')
+                          AND end_date >= ? AND start_date <= ?
+                          AND end_time IS NOT NULL AND TRIM(end_time) != ''
+                        ''',
+                        (*light_uids, start_date, end_date),
+                    )
+                    for lr in cursor.fetchall():
+                        try:
+                            cur_l = datetime.strptime(str(lr['start_date'])[:10], "%Y-%m-%d")
+                            end_l = datetime.strptime(str(lr['end_date'])[:10], "%Y-%m-%d")
+                        except Exception:
+                            continue
+                        while cur_l <= end_l:
+                            day_key = cur_l.strftime("%Y-%m-%d")
+                            half_leave_end_by_user_date[(int(lr['user_id']), day_key)] = {
+                                'start_time': lr['start_time'],
+                                'end_time': lr['end_time'],
+                            }
+                            cur_l += timedelta(days=1)
+            except Exception:
+                half_leave_end_by_user_date = {}
+
             def _resolve_light_shift(uid: int, day_key: str, mark: Optional[Dict[str, Any]], user_row: Dict[str, Any]) -> Dict[str, Any]:
                 rec_shift_id = (mark or {}).get('shift_id')
                 if rec_shift_id is not None:
@@ -4972,7 +5058,13 @@ def get_light_attendance_report(
                     'grace_period_minutes': int(user_row.get('grace_period_minutes') or 15),
                 }
 
-            def _classify_light_status(mark: Optional[Dict[str, Any]], shift_info: Dict[str, Any]) -> str:
+            def _classify_light_status(
+                mark: Optional[Dict[str, Any]],
+                shift_info: Dict[str, Any],
+                *,
+                uid: Optional[int] = None,
+                day_key: Optional[str] = None,
+            ) -> str:
                 if not mark:
                     return 'absent'
                 try:
@@ -4981,7 +5073,25 @@ def get_light_attendance_report(
                     checkin_mins = parse_time_to_minutes(time_part)
                     start_mins = parse_time_to_minutes(shift_info.get('start_time') or '09:00')
                     grace_mins = int(shift_info.get('grace_period_minutes') or 0)
-                    if checkin_mins > start_mins + grace_mins:
+                    half_leave_end_mins = None
+                    if uid is not None and day_key:
+                        hl = half_leave_end_by_user_date.get((int(uid), day_key))
+                        if hl and hl.get('end_time'):
+                            try:
+                                half_leave_end_mins = parse_time_to_minutes(str(hl.get('end_time')))
+                                if hl.get('start_time'):
+                                    hl_start = parse_time_to_minutes(str(hl.get('start_time')))
+                                    if checkin_mins < hl_start:
+                                        half_leave_end_mins = None
+                            except Exception:
+                                half_leave_end_mins = None
+                    deadline = _resolve_checkin_late_deadline_minutes(
+                        start_mins,
+                        grace_mins,
+                        half_leave_end_mins=half_leave_end_mins,
+                        mode=half_leave_late_grace_mode,
+                    )
+                    if checkin_mins > deadline:
                         return 'late'
                     return 'present'
                 except Exception:
@@ -5024,7 +5134,7 @@ def get_light_attendance_report(
                         continue
                     attended_days += 1
                     shift_info = _resolve_light_shift(uid, day_key, mark, u)
-                    if _classify_light_status(mark, shift_info) == 'late':
+                    if _classify_light_status(mark, shift_info, uid=uid, day_key=day_key) == 'late':
                         late_days += 1
                 present_days = attended_days  # attended includes late (payable-style count)
                 absent_days = max(0, total_days - attended_days)
@@ -5043,7 +5153,7 @@ def get_light_attendance_report(
                     day_key = start_date
                     mark = day_marks.get(day_key)
                     shift_info = _resolve_light_shift(uid, day_key, mark, u)
-                    st_val = _classify_light_status(mark, shift_info)
+                    st_val = _classify_light_status(mark, shift_info, uid=uid, day_key=day_key)
                     if sf == 'present' and st_val not in ('present', 'late', 'checked_out'):
                         continue
                     if sf == 'absent' and st_val != 'absent':
@@ -5586,7 +5696,7 @@ def get_detailed_attendance_report(
             cursor.execute(f'''
                   SELECT lr.id, lr.user_id, lr.start_date, lr.end_date, lr.leave_type, lr.leave_duration,
                       lr.paid_days, lr.unpaid_days, lr.paid_through_date, lr.paid_status, lr.unpaid_status,
-                      lr.status, lr.restored_dates,
+                      lr.status, lr.restored_dates, lr.start_time, lr.end_time,
                        COALESCE(lt.is_paid, CASE WHEN lr.leave_type = 'unpaid' THEN 0 ELSE 1 END) as is_paid
                 FROM leave_requests lr
                 LEFT JOIN leave_types lt ON lt.code = lr.leave_type OR lt.name = lr.leave_type
@@ -5600,6 +5710,16 @@ def get_detailed_attendance_report(
             ''', (*user_ids, start_date, end_date))
             leave_rows = cursor.fetchall()
             leave_map = {}
+            # QA-118: company Late-after-half-leave setting (default = current shift-start rule).
+            try:
+                half_leave_late_grace_mode = _normalize_half_leave_late_grace_mode(
+                    get_payroll_settings(
+                        organization_id=organization_id,
+                        branch_id=branch_id,
+                    ).get('half_leave_late_grace_mode')
+                )
+            except Exception:
+                half_leave_late_grace_mode = DEFAULT_HALF_LEAVE_LATE_GRACE_MODE
             approved_leave_dates = set()
             # AR-2: calendar leave-day markers (includes restored / cancelled_worked dates)
             # so Present on a leave day still shows “Leave Day” in multi-day Complete View.
@@ -5689,6 +5809,8 @@ def get_detailed_attendance_report(
                             'leave_type': l_type,
                             'is_paid': is_paid_day,
                             'is_half_leave': is_half_leave,
+                            'start_time': lr['start_time'] if is_half_leave else None,
+                            'end_time': lr['end_time'] if is_half_leave else None,
                         }
                         cur_l += timedelta(days=1)
                 except Exception:
@@ -5796,6 +5918,7 @@ def get_detailed_attendance_report(
                     start_mins = parse_time_to_minutes(shift_start)
                     grace_deadline_mins = start_mins + grace_mins
                     dt_obj = datetime.strptime(cur_date, "%Y-%m-%d")
+                    # Placeholder; QA-118 may rewrite grace_deadline_mins after leave_info is known.
                     day_name = dt_obj.strftime("%a")
                     shift_end_mins_raw = parse_time_to_minutes(shift_end)
                     is_overnight_shift = shift_end_mins_raw < start_mins
@@ -5882,9 +6005,11 @@ def get_detailed_attendance_report(
                         emp_absent_days += 1
                         emp_working_days += 1
                     elif att:
-                        # LV-05: Presence on an approved leave day restores entitlement,
-                        # including half-day leave (full day worked cancels the half leave charge).
-                        if leave_info and _restore_worked_leave_if_applicable(cursor, uid, cur_date):
+                        # LV-05: Presence during an approved leave window restores entitlement.
+                        # QA-118: check-in after a timed half leave ends keeps the leave.
+                        if leave_info and _restore_worked_leave_if_applicable(
+                            cursor, uid, cur_date, checkin_time=att.get('first_seen')
+                        ):
                             leave_info = None
                         first_seen = att['first_seen']
                         raw_last_seen = att['last_seen']
@@ -5921,6 +6046,29 @@ def get_detailed_attendance_report(
                             time_part = str(first_seen).split(' ')[-1] if ' ' in str(first_seen) else str(first_seen).split('T')[-1]
                             checkin_mins = parse_time_to_minutes(time_part)
                             shift_end_mins = parse_time_to_minutes(shift_end)
+
+                            # QA-118: when returning after a timed half leave, Late uses leave end (± grace).
+                            half_leave_end_mins = None
+                            if leave_info and leave_info.get('is_half_leave') and leave_info.get('end_time'):
+                                try:
+                                    half_leave_end_mins = parse_time_to_minutes(str(leave_info.get('end_time')))
+                                    half_leave_start_mins = (
+                                        parse_time_to_minutes(str(leave_info.get('start_time')))
+                                        if leave_info.get('start_time') else None
+                                    )
+                                    # Only apply after/return-from half leave (check-in at/after leave end,
+                                    # or after leave start when mode is active). Morning work before an
+                                    # afternoon half leave still uses shift-start grace.
+                                    if half_leave_start_mins is not None and checkin_mins < half_leave_start_mins:
+                                        half_leave_end_mins = None
+                                except Exception:
+                                    half_leave_end_mins = None
+                            grace_deadline_mins = _resolve_checkin_late_deadline_minutes(
+                                start_mins,
+                                grace_mins,
+                                half_leave_end_mins=half_leave_end_mins,
+                                mode=half_leave_late_grace_mode,
+                            )
 
                             # Determine if last_seen is a genuine Check-Out at or near shift end time
                             is_genuine_checkout = False
@@ -6724,9 +6872,8 @@ def mark_user_present_today(
                 if organization_id != 'DEFAULT_ORG' and user_org != organization_id:
                     return False
             
-            # Clear manual absent and restore worked leave entitlement
+            # Clear manual absent; restore leave after check-in time is known (QA-118).
             cursor.execute('DELETE FROM manual_absent WHERE user_id = ? AND date = ?', (user_id, actual_date))
-            _restore_worked_leave_if_applicable(cursor, user_id, actual_date)
             
             # Resolve applicable shift
             selected_shift = None
@@ -6774,6 +6921,10 @@ def mark_user_present_today(
                 ci_clean = str(existing_first).split(' ')[-1][:5]
             else:
                 ci_clean = shift_start[:5]
+
+            _restore_worked_leave_if_applicable(
+                cursor, user_id, actual_date, checkin_time=f"{actual_date} {ci_clean}:00"
+            )
 
             # Determine check-out time & validate
             co_clean = None
@@ -11344,6 +11495,9 @@ def get_payroll_settings(
                 settings[key] = DEFAULT_PAYROLL_SETTINGS.get(key) or ''
             else:
                 settings[key] = str(settings.get(key) or '')
+        settings['half_leave_late_grace_mode'] = _normalize_half_leave_late_grace_mode(
+            settings.get('half_leave_late_grace_mode')
+        )
         try:
             absence_count = cursor.execute(
                 """SELECT COUNT(*) FROM payroll_rules
@@ -12048,6 +12202,7 @@ def update_payroll_settings(
     off_day_attendance_pay_mode: Optional[str] = None,
     off_day_attendance_pay_multiplier: Optional[float] = None,
     off_day_attendance_pay_fixed_amount: Optional[float] = None,
+    half_leave_late_grace_mode: Optional[str] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
     letterhead: Optional[Dict[str, Any]] = None,
 ) -> bool:
@@ -12079,6 +12234,7 @@ def update_payroll_settings(
             off_day_attendance_pay_mode=d.get('off_day_attendance_pay_mode', off_day_attendance_pay_mode),
             off_day_attendance_pay_multiplier=d.get('off_day_attendance_pay_multiplier', off_day_attendance_pay_multiplier),
             off_day_attendance_pay_fixed_amount=d.get('off_day_attendance_pay_fixed_amount', off_day_attendance_pay_fixed_amount),
+            half_leave_late_grace_mode=d.get('half_leave_late_grace_mode', half_leave_late_grace_mode),
             feature_flags=d.get('feature_flags', feature_flags),
             letterhead=d.get('letterhead', letterhead),
         )
@@ -12101,6 +12257,21 @@ def update_payroll_settings(
         raise ValueError('Overtime premiums must be between 0% and 100% (max 2 decimals).')
     org, branch = _tenant_ids(organization_id, branch_id)
     current = get_payroll_settings(organization_id=org, branch_id=branch)
+    late_grace_mode = _normalize_half_leave_late_grace_mode(
+        half_leave_late_grace_mode
+        if half_leave_late_grace_mode is not None
+        else current.get('half_leave_late_grace_mode', DEFAULT_HALF_LEAVE_LATE_GRACE_MODE)
+    )
+    if (
+        half_leave_late_grace_mode is not None
+        and str(half_leave_late_grace_mode).strip().lower() not in (
+            *VALID_HALF_LEAVE_LATE_GRACE_MODES,
+            'a', 'b', 'option_a', 'option_b', 'option-a', 'option-b',
+            'with_grace', 'without_grace', 'legacy', 'current', 'shift',
+            'grace_after_half_leave', 'no_grace_after_half_leave',
+        )
+    ):
+        raise ValueError('Choose Option A (grace after half leave) or Option B (no grace after half leave).')
     try:
         divisor = float(ot_hour_divisor if ot_hour_divisor is not None else current.get('ot_hour_divisor', DEFAULT_OT_DIVISOR))
     except (TypeError, ValueError, OverflowError):
@@ -12201,6 +12372,7 @@ def update_payroll_settings(
         "deduct_unpaid_leave = ?",
         "half_leave_quota_mode = ?",
         "half_leaves_per_quota_day = ?",
+        "half_leave_late_grace_mode = ?",
         "holiday_ot_premium_percent = ?",
         "non_working_day_ot_premium_percent = ?",
         "holiday_ot_premium_active = ?",
@@ -12243,6 +12415,7 @@ def update_payroll_settings(
         int(bool(deduct_unpaid_leave)),
         mode,
         conversion_count,
+        late_grace_mode,
         holiday_premium,
         non_working_premium,
         holiday_active,
@@ -12273,6 +12446,7 @@ def update_payroll_settings(
         "deduct_unpaid_leave",
         "half_leave_quota_mode",
         "half_leaves_per_quota_day",
+        "half_leave_late_grace_mode",
         "holiday_ot_premium_percent",
         "non_working_day_ot_premium_percent",
         "holiday_ot_premium_active",
@@ -14578,6 +14752,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 'calc_decimal_places': calc_decimal_places,
                 'deduct_unpaid_leave': deduct_unpaid_leave,
                 'currency_code': payroll_settings.get('currency_code'),
+                'half_leave_late_grace_mode': _normalize_half_leave_late_grace_mode(
+                    payroll_settings.get('half_leave_late_grace_mode')
+                ),
             },
             'rules': active_rules,
             'pay_lines': extra_maps.get('assignments') if isinstance(extra_maps, dict) else [],

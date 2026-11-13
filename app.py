@@ -8221,6 +8221,23 @@ def api_update_payroll_settings():
         return jsonify({'error': 'half_leaves_per_quota_day must be a positive integer'}), 400
     if conversion_count < 1:
         return jsonify({'error': 'half_leaves_per_quota_day must be a positive integer'}), 400
+    late_grace_raw = data.get(
+        'half_leave_late_grace_mode',
+        current_settings.get('half_leave_late_grace_mode', 'shift_start'),
+    )
+    late_grace_mode = str(late_grace_raw or 'shift_start').strip().lower()
+    late_grace_aliases = {
+        'a': 'apply_grace', 'option_a': 'apply_grace', 'option-a': 'apply_grace',
+        'with_grace': 'apply_grace', 'grace_after_half_leave': 'apply_grace',
+        'b': 'no_grace', 'option_b': 'no_grace', 'option-b': 'no_grace',
+        'without_grace': 'no_grace', 'no_grace_after_half_leave': 'no_grace',
+        'legacy': 'shift_start', 'current': 'shift_start', 'shift': 'shift_start',
+    }
+    late_grace_mode = late_grace_aliases.get(late_grace_mode, late_grace_mode)
+    if late_grace_mode not in ('shift_start', 'apply_grace', 'no_grace'):
+        return jsonify({
+            'error': 'Choose Option A (grace after half leave) or Option B (no grace after half leave).'
+        }), 400
     try:
         holiday_premium = float(data.get('holiday_ot_premium_percent', current_settings.get('holiday_ot_premium_percent', 0)))
         non_working_premium = float(data.get('non_working_day_ot_premium_percent', current_settings.get('non_working_day_ot_premium_percent', 0)))
@@ -8259,6 +8276,7 @@ def api_update_payroll_settings():
                 'off_day_attendance_pay_fixed_amount',
                 current_settings.get('off_day_attendance_pay_fixed_amount'),
             ),
+            half_leave_late_grace_mode=late_grace_mode,
             feature_flags={key: data.get(key, current_settings.get(key)) for key in db.FEATURE_FLAGS},
             letterhead={key: data.get(key, current_settings.get(key)) for key in db.PAYSLIP_LETTERHEAD_FIELDS},
         )

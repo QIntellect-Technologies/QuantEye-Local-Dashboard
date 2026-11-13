@@ -27,6 +27,9 @@ DEFAULT_ATTENDANCE_PAY_MODE = "full_salary"
 VALID_OT_PAY_MODES = ("percent", "multiplier", "fixed_hour")
 VALID_OFF_DAY_ATTENDANCE_MODES = ("multiplier", "fixed_day")
 DEFAULT_EXAMPLE_MULTIPLIER = 1.5
+# QA-118: Late after half leave. Default keeps shift-start + grace until a company chooses A/B.
+VALID_HALF_LEAVE_LATE_GRACE_MODES = ("shift_start", "apply_grace", "no_grace")
+DEFAULT_HALF_LEAVE_LATE_GRACE_MODE = "shift_start"
 
 DEFAULT_LEAVE_TYPES = (
     ("Casual Leave", "casual", 10.0, 1, "Short-term casual leave"),
@@ -40,6 +43,7 @@ DEFAULT_PAYROLL_SETTINGS = {
     "deduct_unpaid_leave": 0,
     "half_leave_quota_mode": "category",
     "half_leaves_per_quota_day": 2,
+    "half_leave_late_grace_mode": DEFAULT_HALF_LEAVE_LATE_GRACE_MODE,
     "holiday_ot_premium_percent": 0.0,
     "non_working_day_ot_premium_percent": 0.0,
     "holiday_ot_premium_active": 0,
@@ -516,6 +520,8 @@ def _migrate_payroll_settings(cursor) -> None:
         ("payslip_bank_title", "TEXT NOT NULL DEFAULT 'QIntellect Technologies'"),
         ("payslip_bank_name", "TEXT NOT NULL DEFAULT 'United Bank Limited (UBL)'"),
         ("payslip_bank_iban", "TEXT NOT NULL DEFAULT 'PK46UNIL0109000400912116'"),
+        # QA-118: existing orgs keep shift_start (current Late rule) until they choose A/B.
+        ("half_leave_late_grace_mode", "TEXT NOT NULL DEFAULT 'shift_start'"),
     ):
         if column not in cols:
             cursor.execute(f"ALTER TABLE payroll_settings ADD COLUMN {column} {column_type}")
@@ -919,6 +925,45 @@ def seed_leave_types_if_empty(cursor, organization_id: str, branch_id: str = DEF
         """,
         [(*item, org, branch) for item in DEFAULT_LEAVE_TYPES],
     )
+
+
+def normalize_half_leave_late_grace_mode(value: Any) -> str:
+    """QA-118: Option A = apply_grace, Option B = no_grace; shift_start = current default."""
+    mode = str(value or DEFAULT_HALF_LEAVE_LATE_GRACE_MODE).strip().lower()
+    aliases = {
+        "a": "apply_grace",
+        "option_a": "apply_grace",
+        "option-a": "apply_grace",
+        "with_grace": "apply_grace",
+        "grace_after_half_leave": "apply_grace",
+        "b": "no_grace",
+        "option_b": "no_grace",
+        "option-b": "no_grace",
+        "without_grace": "no_grace",
+        "no_grace_after_half_leave": "no_grace",
+        "legacy": "shift_start",
+        "current": "shift_start",
+        "shift": "shift_start",
+    }
+    mode = aliases.get(mode, mode)
+    return mode if mode in VALID_HALF_LEAVE_LATE_GRACE_MODES else DEFAULT_HALF_LEAVE_LATE_GRACE_MODE
+
+
+def resolve_checkin_late_deadline_minutes(
+    shift_start_mins: int,
+    grace_mins: int,
+    *,
+    half_leave_end_mins: Optional[int] = None,
+    mode: Any = DEFAULT_HALF_LEAVE_LATE_GRACE_MODE,
+) -> int:
+    """Latest Present check-in minute; later than this is Late (QA-118)."""
+    resolved = normalize_half_leave_late_grace_mode(mode)
+    grace = max(0, int(grace_mins or 0))
+    if half_leave_end_mins is not None and resolved == "apply_grace":
+        return int(half_leave_end_mins) + grace
+    if half_leave_end_mins is not None and resolved == "no_grace":
+        return int(half_leave_end_mins)
+    return int(shift_start_mins) + grace
 
 
 def ensure_payroll_settings_row(cursor, organization_id: Optional[str], branch_id: Optional[str]) -> None:

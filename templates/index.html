@@ -11866,6 +11866,38 @@ async function fetchMultiLiveDetections() {
         </div>
         {% endif %}
 
+        {% if not is_client_session or client_module_entitlements.leave %}
+        <div id="halfLeaveLateGraceSection" style="margin:0 0 16px; padding:14px 14px 12px; border:1px solid #cfe8f7; border-radius:12px; background:#f8fcff;">
+          <div style="font-weight:700; color:#173042; margin-bottom:4px;">Late after half leave (QA-118)</div>
+          <p class="payroll-panel-help" style="margin-bottom:10px;">
+            Choose how Late is worked out when someone returns after a half leave.
+            Until this company picks an option, Late still uses the normal shift start + grace rule.
+            Finalized payroll months do not change when you change this setting.
+          </p>
+          <div id="halfLeaveLateGraceLegacyNote" class="alert alert-secondary py-2 px-3 mb-2" style="font-size:0.82rem; border-radius:8px;" hidden>
+            Current behaviour is still active (shift start + grace). Select Option A or Option B below to set the half-leave return rule for this company.
+          </div>
+          <label style="display:flex; align-items:flex-start; gap:10px; margin:0 0 10px; padding:10px 12px; border:1px solid #dbeafe; border-radius:10px; background:#fff; cursor:pointer;">
+            <input type="radio" name="halfLeaveLateGraceMode" id="halfLeaveLateGraceApply" value="apply_grace" style="margin-top:3px;" onchange="saveHalfLeaveLateGraceMode()">
+            <span>
+              <strong style="color:#0f172a;">Option A — Grace period applies after the half leave ends</strong>
+              <div style="font-size:0.82rem; color:#475569; margin-top:4px; line-height:1.4;">
+                Example: half leave ends 10:00, grace 30 minutes → check-in 10:01 is Present, check-in 10:31 is Late.
+              </div>
+            </span>
+          </label>
+          <label style="display:flex; align-items:flex-start; gap:10px; margin:0; padding:10px 12px; border:1px solid #dbeafe; border-radius:10px; background:#fff; cursor:pointer;">
+            <input type="radio" name="halfLeaveLateGraceMode" id="halfLeaveLateGraceNone" value="no_grace" style="margin-top:3px;" onchange="saveHalfLeaveLateGraceMode()">
+            <span>
+              <strong style="color:#0f172a;">Option B — No grace period after a half leave</strong>
+              <div style="font-size:0.82rem; color:#475569; margin-top:4px; line-height:1.4;">
+                Example: half leave ends 10:00 → check-in 10:00 is Present, check-in 10:01 is Late.
+              </div>
+            </span>
+          </label>
+        </div>
+        {% endif %}
+
         <fieldset id="payrollAbsenceBracketsFieldset" style="border:none; padding:0; margin:0; min-inline-size:0;">
         <div style="font-weight:700; color:#173042; margin:8px 0 6px;">Missed-day rules</div>
         <form id="payrollRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); savePayrollRule();">
@@ -21326,6 +21358,45 @@ async function fetchMultiLiveDetections() {
       }
       window.scrollToPayrollExceptions = scrollToPayrollExceptions;
 
+      function getHalfLeaveLateGraceMode() {
+        const checked = document.querySelector('input[name="halfLeaveLateGraceMode"]:checked');
+        if (checked && checked.value) return String(checked.value).trim();
+        return String(window._payrollSettings?.half_leave_late_grace_mode || 'shift_start');
+      }
+      window.getHalfLeaveLateGraceMode = getHalfLeaveLateGraceMode;
+
+      function applyHalfLeaveLateGraceModeUI(mode) {
+        const resolved = String(mode || 'shift_start').trim().toLowerCase();
+        const applyRadio = document.getElementById('halfLeaveLateGraceApply');
+        const noneRadio = document.getElementById('halfLeaveLateGraceNone');
+        const legacyNote = document.getElementById('halfLeaveLateGraceLegacyNote');
+        if (applyRadio) applyRadio.checked = resolved === 'apply_grace';
+        if (noneRadio) noneRadio.checked = resolved === 'no_grace';
+        if (legacyNote) legacyNote.hidden = resolved === 'apply_grace' || resolved === 'no_grace';
+      }
+      window.applyHalfLeaveLateGraceModeUI = applyHalfLeaveLateGraceModeUI;
+
+      async function saveHalfLeaveLateGraceMode() {
+        const mode = getHalfLeaveLateGraceMode();
+        if (!['apply_grace', 'no_grace'].includes(mode)) return;
+        try {
+          const payload = buildPayrollSettingsPayload(
+            undefined,
+            { half_leave_late_grace_mode: mode }
+          );
+          await persistPayrollSettingsPayload(payload, {
+            successToast: mode === 'apply_grace'
+              ? 'Option A saved: grace applies after half leave ends.'
+              : 'Option B saved: no grace after half leave.',
+            restoreToggle: false,
+          });
+          applyHalfLeaveLateGraceModeUI(window._payrollSettings?.half_leave_late_grace_mode || mode);
+        } catch (error) {
+          showAppToast(error.message || 'Failed to save Late after half leave setting', 'error');
+        }
+      }
+      window.saveHalfLeaveLateGraceMode = saveHalfLeaveLateGraceMode;
+
       async function loadPayrollSettings() {
         const toggle = document.getElementById('deductUnpaidLeaveToggle');
         const message = document.getElementById('payrollSettingsMessage');
@@ -21338,7 +21409,7 @@ async function fetchMultiLiveDetections() {
         const overtimeMaxPeriod = document.getElementById('overtimeMaxPeriod');
         const overtimeLimitMessage = document.getElementById('overtimeLimitSettingsMessage');
         // Leave Settings tab only has half-day controls — still load so Save works without payroll UI.
-        if (!toggle && !overtimeMaxHours && !document.getElementById('payrollRuleForm') && !quotaMode) return;
+        if (!toggle && !overtimeMaxHours && !document.getElementById('payrollRuleForm') && !quotaMode && !document.getElementById('halfLeaveLateGraceSection')) return;
         if (toggle) toggle.disabled = true;
         if (quotaMode || toggle) {
           if (typeof loadHalfLeaveSpecificRules === 'function') loadHalfLeaveSpecificRules();
@@ -21356,6 +21427,9 @@ async function fetchMultiLiveDetections() {
           if (quotaMode) quotaMode.value = settings.half_leave_quota_mode || 'category';
           if (conversionCount) {
             conversionCount.value = settings.half_leaves_per_quota_day || 2;
+          }
+          if (typeof applyHalfLeaveLateGraceModeUI === 'function') {
+            applyHalfLeaveLateGraceModeUI(settings.half_leave_late_grace_mode || 'shift_start');
           }
           if (typeof updateHalfLeaveQuotaModeUI === 'function') updateHalfLeaveQuotaModeUI();
           if (typeof upgradeLeaveSettingsDropdowns === 'function') upgradeLeaveSettingsDropdowns();
@@ -23261,7 +23335,12 @@ async function fetchMultiLiveDetections() {
             half_leaves_per_quota_day: Math.max(
               1,
               parseInt(conversionCount?.value || current.half_leaves_per_quota_day || '2', 10) || 1
-            )
+            ),
+            half_leave_late_grace_mode: (
+              typeof getHalfLeaveLateGraceMode === 'function'
+                ? getHalfLeaveLateGraceMode()
+                : (current.half_leave_late_grace_mode || 'shift_start')
+            ),
           };
           const response = await fetch(`${API_BASE}/settings/payroll`, {
             method: 'PUT',
@@ -23307,6 +23386,11 @@ async function fetchMultiLiveDetections() {
           deduct_unpaid_leave: resolvedDeduct,
           half_leave_quota_mode: quotaMode?.value || 'category',
           half_leaves_per_quota_day: Math.max(1, parseInt(conversionCount?.value || '2', 10) || 1),
+          half_leave_late_grace_mode: (
+            typeof getHalfLeaveLateGraceMode === 'function'
+              ? getHalfLeaveLateGraceMode()
+              : (current.half_leave_late_grace_mode || 'shift_start')
+          ),
           holiday_ot_premium_percent: Number(document.getElementById('holidayOtPremiumPercent')?.value || 0) || 0,
           non_working_day_ot_premium_percent: Number(document.getElementById('nonWorkingDayOtPremiumPercent')?.value || 0) || 0,
           ot_hour_divisor: (() => {
@@ -23382,6 +23466,13 @@ async function fetchMultiLiveDetections() {
           if (quotaMode) quotaMode.value = result.settings?.half_leave_quota_mode || 'category';
           if (conversionCount) {
             conversionCount.value = result.settings?.half_leaves_per_quota_day || 2;
+          }
+          if (typeof applyHalfLeaveLateGraceModeUI === 'function') {
+            applyHalfLeaveLateGraceModeUI(
+              result.settings?.half_leave_late_grace_mode
+              || payload.half_leave_late_grace_mode
+              || 'shift_start'
+            );
           }
           updateHalfLeaveQuotaModeUI();
           updatePayrollFeatureSectionsVisibility(result.settings);
