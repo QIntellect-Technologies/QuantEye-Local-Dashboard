@@ -8275,6 +8275,157 @@ def update_leave_status(
         return False
 
 
+def decide_leave_excess(
+    leave_id: int,
+    decision: str,
+    approved_by: str = 'Admin',
+    organization_id: Optional[str] = None,
+    rejection_reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    """QA-113: Admin decides over-quota (excess) days — paid, unpaid, or reject with reason.
+
+    Excess is stored as pending unpaid_days when the request exceeds quota.
+    - paid: move excess into paid override and approve the request
+    - unpaid: approve unpaid excess as LWP (and approve within-quota paid portion)
+    - rejected: reject unpaid excess with a required reason; approve within-quota paid portion
+    """
+    decision_norm = str(decision or '').strip().lower()
+    if decision_norm not in ('paid', 'unpaid', 'rejected'):
+        return {'success': False, 'message': 'Choose paid, unpaid, or rejected for the excess days.'}
+    reason = str(rejection_reason or '').strip()
+    if decision_norm == 'rejected' and not reason:
+        return {'success': False, 'message': 'A rejection reason is required for excess days.'}
+    if len(reason) > 500:
+        return {'success': False, 'message': 'Rejection reason cannot exceed 500 characters.'}
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('BEGIN IMMEDIATE')
+            cursor.execute(
+                """SELECT id, user_id, start_date, end_date, organization_id, branch_id,
+                          paid_days, unpaid_days, quota_days, paid_through_date, quota_through_date,
+                          paid_status, unpaid_status, status, leave_type, leave_duration
+                   FROM leave_requests WHERE id = ?""",
+                (leave_id,),
+            )
+            leave = cursor.fetchone()
+            if not leave:
+                return {'success': False, 'message': 'Leave request not found.'}
+            if organization_id and organization_id != 'all':
+                if organization_id == 'DEFAULT_ORG':
+                    if leave['organization_id'] not in ('DEFAULT_ORG', None):
+                        return {'success': False, 'message': 'Leave request not found or unauthorized.'}
+                elif leave['organization_id'] != organization_id:
+                    return {'success': False, 'message': 'Leave request not found or unauthorized.'}
+
+            raise_if_payroll_month_locked(
+                str(leave['start_date'])[:10],
+                leave['organization_id'],
+                leave['branch_id'] if 'branch_id' in leave.keys() else None,
+            )
+
+            try:
+                paid_days = int(float(leave['paid_days'] or 0))
+            except (TypeError, ValueError):
+                paid_days = 0
+            try:
+                unpaid_days = int(float(leave['unpaid_days'] or 0))
+            except (TypeError, ValueError):
+                unpaid_days = 0
+            unpaid_status = str(leave['unpaid_status'] or leave['status'] or 'pending').lower()
+            if unpaid_days <= 0 or unpaid_status not in ('pending', ''):
+                return {
+                    'success': False,
+                    'message': 'There are no pending excess days waiting for an admin decision on this request.',
+                }
+
+            new_paid_days = paid_days
+            new_unpaid_days = unpaid_days
+            new_paid_status = str(leave['paid_status'] or 'pending').lower() or 'pending'
+            new_unpaid_status = unpaid_status
+            new_paid_through = leave['paid_through_date']
+            reason_val = None
+
+            if decision_norm == 'paid':
+                new_paid_days = paid_days + unpaid_days
+                new_unpaid_days = 0
+                new_paid_status = 'approved'
+                new_unpaid_status = 'approved'
+                new_paid_through = leave['end_date']
+            elif decision_norm == 'unpaid':
+                new_paid_status = 'approved' if paid_days > 0 else new_paid_status
+                new_unpaid_status = 'approved'
+            else:
+                new_paid_status = 'approved' if paid_days > 0 else 'rejected'
+                new_unpaid_status = 'rejected'
+                reason_val = reason
+
+            if new_unpaid_days > 0 and new_paid_days > 0:
+                if new_paid_status == 'approved' and new_unpaid_status == 'approved':
+                    overall = 'approved'
+                elif new_paid_status == 'rejected' and new_unpaid_status == 'rejected':
+                    overall = 'rejected'
+                elif new_paid_status == 'approved' or new_unpaid_status == 'approved':
+                    overall = 'partially_approved'
+                elif new_paid_status == 'rejected' or new_unpaid_status == 'rejected':
+                    overall = 'partially_rejected'
+                else:
+                    overall = 'pending'
+            elif new_unpaid_days > 0:
+                overall = new_unpaid_status
+            else:
+                overall = new_paid_status if new_paid_days > 0 else new_unpaid_status
+
+            if overall in ('pending', 'approved', 'partially_approved'):
+                conflict = _find_active_leave_overlap(
+                    cursor, leave['user_id'], leave['start_date'], leave['end_date'], exclude_id=leave_id
+                )
+                if conflict:
+                    return {
+                        'success': False,
+                        'reason_code': 'overlapping_leave',
+                        'message': 'This leave request overlaps another active leave.',
+                    }
+
+            cursor.execute(
+                """UPDATE leave_requests
+                   SET paid_days = ?, unpaid_days = ?, paid_through_date = ?,
+                       paid_status = ?, unpaid_status = ?, status = ?, approved_by = ?,
+                       rejection_reason = COALESCE(?, rejection_reason)
+                   WHERE id = ?""",
+                (
+                    new_paid_days,
+                    new_unpaid_days,
+                    new_paid_through,
+                    new_paid_status,
+                    new_unpaid_status,
+                    overall,
+                    approved_by,
+                    reason_val,
+                    leave_id,
+                ),
+            )
+            conn.commit()
+            full_leave = cursor.execute("SELECT * FROM leave_requests WHERE id = ?", (leave_id,)).fetchone()
+            if full_leave:
+                _cloud_mirror("mirror_leave", dict(full_leave))
+            return {
+                'success': True,
+                'decision': decision_norm,
+                'status': overall,
+                'paid_days': new_paid_days,
+                'unpaid_days': new_unpaid_days,
+                'rejection_reason': reason_val,
+            }
+    except ValueError as exc:
+        return {'success': False, 'message': str(exc)}
+    except Exception as e:
+        logger.error(f"decide_leave_excess error: {e}")
+        return {'success': False, 'message': 'Could not save the excess leave decision.'}
+
+
 def delete_leave_request(leave_id: int, organization_id: Optional[str] = None) -> bool:
     """Delete a leave request, ensuring tenant authorization."""
     try:
@@ -9765,6 +9916,38 @@ def check_leave_quota(
                 msg = (f"This half-leave would use {req_str} {leave_name} quota day(s), but only {rem_str} remain."
                        if duration == 'half' else
                        f"{leave_name} only has {rem_str} allowed paid days for this employee. You cannot request {req_str} days. Please adjust the dates or file the excess days under Unpaid Leave (LWP).")
+                within_quota_days = int(min(remaining, quota_days_requested))
+                excess_days = int(max(0, quota_days_requested - within_quota_days))
+                excess_info = {
+                    'within_quota_days': within_quota_days,
+                    'excess_days': excess_days,
+                    'within_quota_range': None,
+                    'excess_range': None,
+                    'excess_dates': [],
+                }
+                if user_id and start_date and end_date and duration != 'half':
+                    quota_range, excess_range = split_leave_request_dates(
+                        int(user_id), start_date, end_date, within_quota_days
+                    )
+                    excess_info['within_quota_range'] = (
+                        {'start': quota_range[0], 'end': quota_range[1]} if quota_range else None
+                    )
+                    excess_info['excess_range'] = (
+                        {'start': excess_range[0], 'end': excess_range[1]} if excess_range else None
+                    )
+                    if excess_range:
+                        try:
+                            d1 = datetime.strptime(excess_range[0], '%Y-%m-%d')
+                            d2 = datetime.strptime(excess_range[1], '%Y-%m-%d')
+                            excess_info['excess_dates'] = [
+                                (d1 + timedelta(days=i)).strftime('%Y-%m-%d')
+                                for i in range((d2 - d1).days + 1)
+                            ]
+                        except Exception:
+                            excess_info['excess_dates'] = [excess_range[0]]
+                elif duration == 'half' and start_date:
+                    excess_info['excess_range'] = {'start': start_date, 'end': end_date or start_date}
+                    excess_info['excess_dates'] = [start_date]
                 return {
                     'allowed': False,
                     'reason_code': 'quota_exceeded',
@@ -9775,7 +9958,8 @@ def check_leave_quota(
                     'allocated_days': allocated,
                     'used_days': already_used,
                     'leave_type_name': leave_name,
-                    'is_paid': 1
+                    'is_paid': 1,
+                    **excess_info,
                 }
 
             return {

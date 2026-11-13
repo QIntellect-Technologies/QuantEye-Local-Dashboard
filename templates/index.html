@@ -12878,12 +12878,19 @@ async function fetchMultiLiveDetections() {
         <div id="excessLeaveContainer" style="display:none; background: #fffbeb; border: 1px solid #fde68a; padding: 12px; border-radius: 8px; margin-bottom: 15px;">
             <label class="form-label" style="font-weight: 600; color: #92400e; margin-bottom: 5px;"><i class="fa-solid fa-triangle-exclamation"></i> Leave Limit Exceeded</label>
             <p style="font-size: 0.85rem; color: #b45309; margin-bottom: 8px;" id="excessLeaveMsg"></p>
+            <div id="excessLeaveDatesDetail" style="font-size: 0.82rem; color: #92400e; margin-bottom: 10px; font-weight: 600;"></div>
             <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #92400e;">How should the excess days be treated?</label>
-            <select id="modalExcessTreatment" class="form-select form-select-sm" onchange="updateLeaveCalculationSummary(currentLeaveQuotaData); validateLeaveRequestForm();" style="border-color: #fcd34d;">
-              <option value="" selected disabled>Choose paid or unpaid</option>
-                <option value="unpaid">OPTION B - Treat excess as UNPAID (LWP)</option>
-                <option value="paid">OPTION A - Treat excess as PAID (Override Quota)</option>
+            <select id="modalExcessTreatment" class="form-select form-select-sm" onchange="onExcessTreatmentChange()" style="border-color: #fcd34d;">
+              <option value="" selected disabled>Choose paid, unpaid, or reject</option>
+                <option value="paid">Treat excess as PAID (override quota)</option>
+                <option value="unpaid">Treat excess as UNPAID (LWP)</option>
+                <option value="rejected">Reject excess days (reason required)</option>
             </select>
+            <div id="excessRejectReasonWrap" style="display:none; margin-top:10px;">
+              <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #92400e;">Rejection reason <span style="color:#dc2626;">*</span></label>
+              <textarea id="modalExcessRejectReason" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="Reason shown to the employee in the mobile app" oninput="validateLeaveRequestForm()"></textarea>
+              <small id="modalExcessRejectReasonError" class="text-danger" role="alert"></small>
+            </div>
         </div>
       </div>
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 24px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -12921,6 +12928,15 @@ async function fetchMultiLiveDetections() {
           <div><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">Status</div><div id="leaveCompleteStatus" style="color:#334155; font-weight:700;"></div></div>
           <div><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">By Admin</div><div id="leaveCompleteApprover" style="color:#334155; font-weight:700;"></div></div>
           <div style="grid-column:1/-1;"><div style="font-size:0.74rem; color:#64748b; font-weight:700; text-transform:uppercase;">Remaining Leave Balances</div><div id="leaveCompleteBalance" aria-live="polite" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;"><span class="text-muted">Loading balances...</span></div></div>
+        </div>
+        <div id="leaveExcessDecisionCard" style="display:none; margin:16px 0 0; padding:14px 16px; background:#fffbeb; border:1px solid #fde68a; border-radius:12px;">
+          <div style="font-weight:800; color:#92400e; margin-bottom:6px;"><i class="fa-solid fa-circle-exclamation"></i> Days over the quota</div>
+          <div id="leaveExcessDecisionSummary" style="font-size:0.88rem; color:#b45309; margin-bottom:12px; line-height:1.45;"></div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            <button type="button" class="btn btn-success btn-sm" onclick="decideLeaveExcessFromComplete('paid')"><i class="fa-solid fa-check"></i> Treat excess as Paid</button>
+            <button type="button" class="btn btn-warning btn-sm" onclick="decideLeaveExcessFromComplete('unpaid')"><i class="fa-solid fa-sack-xmark"></i> Treat excess as Unpaid</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="decideLeaveExcessFromComplete('rejected')"><i class="fa-solid fa-xmark"></i> Reject excess with reason</button>
+          </div>
         </div>
         <h4 style="font-size:0.95rem; color:#151b25; font-weight:800; margin:20px 0 10px;"><i class="fa-solid fa-list-check" style="color:#8b7bf7;"></i> Allocation Details</h4>
         <div id="leaveCompleteAllocationSummary" role="status" style="margin:0 0 10px; padding:10px 12px; background:#f3f0ff; border-left:3px solid #8b7bf7; border-radius:8px; color:#334155; font-size:0.84em; line-height:1.45;"></div>
@@ -26555,6 +26571,38 @@ async function fetchMultiLiveDetections() {
           ? `Showing all ${requests.length} leave requests for ${firstReq.user_name || 'this employee'}: ${minDate} to ${maxDate} (${totalRequestedDays} total days). ${totalPaidDays} paid + ${totalUnpaidDays} unpaid.`
           : `Leave request: ${firstReq.start_date || '--'} to ${firstReq.end_date || '--'} (${totalRequestedDays} day(s)). ${totalPaidDays} paid + ${totalUnpaidDays} unpaid.`;
       }
+
+      // QA-113: show excess decision card when unpaid excess is still pending admin action.
+      const excessCard = document.getElementById('leaveExcessDecisionCard');
+      const excessSummary = document.getElementById('leaveExcessDecisionSummary');
+      const pendingExcessReq = (!isMulti ? requests : requests).find((req) => {
+        const unpaid = Number(req.unpaid_days || 0);
+        const unpaidSt = String(req.unpaid_status || req.status || 'pending').toLowerCase();
+        return unpaid > 0 && unpaidSt === 'pending';
+      });
+      window._leaveExcessDecisionId = pendingExcessReq ? Number(pendingExcessReq.id) : null;
+      if (excessCard && excessSummary) {
+        if (pendingExcessReq) {
+          const excessDays = Number(pendingExcessReq.unpaid_days || 0);
+          const quotaThrough = pendingExcessReq.quota_through_date || pendingExcessReq.paid_through_date;
+          const nextIsoDateLocal = (dateValue, startFallback) => {
+            if (!dateValue) return startFallback;
+            const [year, month, day] = String(dateValue).split('-').map(Number);
+            const nextDate = new Date(year, month - 1, day + 1);
+            return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
+          };
+          const excessStart = nextIsoDateLocal(quotaThrough, pendingExcessReq.start_date);
+          const excessEnd = pendingExcessReq.end_date || excessStart;
+          const dateLabel = excessStart === excessEnd
+            ? formatLeaveExcessDateLabel(excessStart)
+            : `${formatLeaveExcessDateLabel(excessStart)} – ${formatLeaveExcessDateLabel(excessEnd)}`;
+          excessSummary.textContent = `${excessDays} day${excessDays === 1 ? '' : 's'} over the quota: ${dateLabel}. Choose paid, unpaid, or reject with a reason. The employee will see this decision in the mobile app.`;
+          excessCard.style.display = 'block';
+        } else {
+          excessCard.style.display = 'none';
+          excessSummary.textContent = '';
+        }
+      }
       putText('leaveCompleteRequestedDays', `${totalRequestedDays} day(s)`);
       putText('leaveCompletePaidDays', `${totalPaidDays} day(s)`);
       putText('leaveCompleteUnpaidDays', `${totalUnpaidDays} day(s)`);
@@ -26771,19 +26819,66 @@ async function fetchMultiLiveDetections() {
       });
     })();
 
+    async function decideLeaveExcessFromComplete(decision) {
+      const leaveId = Number(window._leaveExcessDecisionId || 0);
+      if (!leaveId || !['paid', 'unpaid', 'rejected'].includes(decision)) return;
+      let rejectionReason = null;
+      if (decision === 'rejected') {
+        const inputReason = await openLeaveRejectReasonModal({
+          title: 'Reject Excess Leave Days',
+          required: true,
+          subtitle: 'Required — the employee will see this reason in the mobile app'
+        });
+        if (inputReason === null) return;
+        rejectionReason = String(inputReason || '').trim();
+        if (!rejectionReason) {
+          showAppToast('A rejection reason is required for excess days.', 'error');
+          return;
+        }
+      }
+      try {
+        const res = await fetch(`/api/leaves/${leaveId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            excess_decision: decision,
+            rejection_reason: rejectionReason,
+            approved_by: 'Admin'
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          showAppToast(data.message || data.error || 'Could not save the excess leave decision.', 'error');
+          return;
+        }
+        const labels = { paid: 'paid', unpaid: 'unpaid', rejected: 'rejected' };
+        showAppToast(`Excess days marked as ${labels[decision]}.`, 'success');
+        closeLeaveCompleteView();
+        if (typeof loadLeaveRequests === 'function') loadLeaveRequests();
+        if (typeof loadLeaveBalances === 'function') loadLeaveBalances();
+      } catch (e) {
+        showAppToast('Network error while saving excess decision.', 'error');
+      }
+    }
+    window.decideLeaveExcessFromComplete = decideLeaveExcessFromComplete;
+
     async function updateLeaveRequestGroupStatus(selectedSegments, status) {
       const items = Array.isArray(selectedSegments) ? selectedSegments : [];
       if (!items.length || !['approved', 'rejected'].includes(status)) return;
       let rejectionReason = null;
       if (status === 'rejected') {
-        // Existing rule: rejection reason is optional.
+        // QA-113: rejection reason required so the employee can see it on mobile.
         const inputReason = await openLeaveRejectReasonModal({
           title: 'Reject Leave Request',
-          required: false,
-          subtitle: 'Optional — leave blank if no reason is needed'
+          required: true,
+          subtitle: 'Required — the employee will see this reason in the mobile app'
         });
         if (inputReason === null) return;
-        rejectionReason = String(inputReason || '').trim() || undefined;
+        rejectionReason = String(inputReason || '').trim();
+        if (!rejectionReason) {
+          showAppToast('A rejection reason is required.', 'error');
+          return;
+        }
       }
       // Coalesce duplicate leave IDs so paid+unpaid (or repeated paid rows) become one PUT.
       // Parallel PUTs on the same leave_id race and leave portions stale in other list views.
@@ -27298,6 +27393,14 @@ async function fetchMultiLiveDetections() {
       if (alertDiv) { alertDiv.style.display = 'none'; alertDiv.innerHTML = ''; }
       if (excessContainer) excessContainer.style.display = 'none';
       if (excessSelect) excessSelect.value = '';
+      const excessRejectWrap = document.getElementById('excessRejectReasonWrap');
+      const excessRejectReason = document.getElementById('modalExcessRejectReason');
+      const excessRejectErr = document.getElementById('modalExcessRejectReasonError');
+      const excessDatesDetail = document.getElementById('excessLeaveDatesDetail');
+      if (excessRejectWrap) excessRejectWrap.style.display = 'none';
+      if (excessRejectReason) excessRejectReason.value = '';
+      if (excessRejectErr) excessRejectErr.textContent = '';
+      if (excessDatesDetail) excessDatesDetail.textContent = '';
       currentLeaveQuotaValid = true;
       currentLeaveQuotaMsg = '';
       currentLeaveQuotaData = null;
@@ -27451,10 +27554,69 @@ async function fetchMultiLiveDetections() {
         return;
       }
       const paidDays = !isPaid ? 0 : (overQuota && treatment !== 'paid' ? Math.min(requested, remaining) : requested);
-      const unpaidDays = requested - paidDays;
-      const excessNote = overQuota && !treatment ? '<div class="text-warning mt-1">Choose how to treat the excess before submitting.</div>' : '';
-      summary.innerHTML = `<strong>Request total:</strong> ${requested} scheduled day(s) &nbsp; <strong style="color:#047857;">Paid:</strong> ${paidDays} &nbsp; <strong style="color:#b91c1c;">Unpaid:</strong> ${unpaidDays}${excessNote}`;
+      const unpaidDays = treatment === 'rejected' ? 0 : (requested - paidDays);
+      const rejectedDays = treatment === 'rejected' ? Math.max(0, requested - paidDays) : 0;
+      const excessNote = overQuota && !treatment
+        ? '<div class="text-warning mt-1">Choose how to treat the excess before submitting.</div>'
+        : (treatment === 'rejected'
+          ? `<div class="text-danger mt-1">${rejectedDays} excess day(s) will be rejected with your reason.</div>`
+          : '');
+      summary.innerHTML = `<strong>Request total:</strong> ${requested} scheduled day(s) &nbsp; <strong style="color:#047857;">Paid:</strong> ${paidDays} &nbsp; <strong style="color:#b91c1c;">Unpaid:</strong> ${unpaidDays}${rejectedDays ? ` &nbsp; <strong style="color:#b91c1c;">Rejected:</strong> ${rejectedDays}` : ''}${excessNote}`;
     }
+
+    function formatLeaveExcessDateLabel(iso) {
+      if (!iso) return '';
+      try {
+        const d = new Date(`${iso}T00:00:00`);
+        return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+      } catch (_) {
+        return iso;
+      }
+    }
+
+    function renderExcessLeaveDetails(data) {
+      const detail = document.getElementById('excessLeaveDatesDetail');
+      const msg = document.getElementById('excessLeaveMsg');
+      if (!data) {
+        if (detail) detail.textContent = '';
+        return;
+      }
+      const within = Number(data.within_quota_days ?? data.remaining_days ?? 0);
+      const excess = Number(data.excess_days ?? Math.max(0, Number(data.quota_days_requested || data.requested_days || 0) - within));
+      const excessRange = data.excess_range || {};
+      const excessDates = Array.isArray(data.excess_dates) ? data.excess_dates : [];
+      let dateBit = '';
+      if (excessDates.length === 1) {
+        dateBit = formatLeaveExcessDateLabel(excessDates[0]);
+      } else if (excessRange.start && excessRange.end) {
+        dateBit = excessRange.start === excessRange.end
+          ? formatLeaveExcessDateLabel(excessRange.start)
+          : `${formatLeaveExcessDateLabel(excessRange.start)} – ${formatLeaveExcessDateLabel(excessRange.end)}`;
+      } else if (excessDates.length > 1) {
+        dateBit = excessDates.map(formatLeaveExcessDateLabel).join(', ');
+      }
+      if (msg) {
+        msg.textContent = `${within} day(s) within quota, ${excess} day(s) over the quota${dateBit ? `: ${dateBit}` : ''}.`;
+      }
+      if (detail) {
+        detail.textContent = excess > 0
+          ? `${excess} day${excess === 1 ? '' : 's'} over the quota${dateBit ? `: ${dateBit}` : ''}. Choose paid, unpaid, or reject with a reason.`
+          : '';
+      }
+    }
+
+    function onExcessTreatmentChange() {
+      const treatment = document.getElementById('modalExcessTreatment')?.value || '';
+      const wrap = document.getElementById('excessRejectReasonWrap');
+      if (wrap) wrap.style.display = treatment === 'rejected' ? 'block' : 'none';
+      if (treatment !== 'rejected') {
+        const err = document.getElementById('modalExcessRejectReasonError');
+        if (err) err.textContent = '';
+      }
+      updateLeaveCalculationSummary(currentLeaveQuotaData);
+      validateLeaveRequestForm();
+    }
+    window.onExcessTreatmentChange = onExcessTreatmentChange;
 
     function canSubmitLeaveWithQuota() {
       if (currentLeaveQuotaValid) return true;
@@ -27462,12 +27624,19 @@ async function fetchMultiLiveDetections() {
       const excessVisible = excessContainer && excessContainer.style.display !== 'none';
       const treatment = document.getElementById('modalExcessTreatment')?.value || '';
       const reasonCode = currentLeaveQuotaData?.reason_code || '';
-      // QA-111: quota exceeded is informational once paid/unpaid excess treatment is chosen.
-      return Boolean(
-        excessVisible
-        && reasonCode === 'quota_exceeded'
-        && (treatment === 'paid' || treatment === 'unpaid')
-      );
+      if (!(excessVisible && reasonCode === 'quota_exceeded')) return false;
+      if (treatment === 'paid' || treatment === 'unpaid') return true;
+      if (treatment === 'rejected') {
+        const reason = String(document.getElementById('modalExcessRejectReason')?.value || '').trim();
+        const err = document.getElementById('modalExcessRejectReasonError');
+        if (!reason) {
+          if (err) err.textContent = 'Rejection reason is required.';
+          return false;
+        }
+        if (err) err.textContent = '';
+        return true;
+      }
+      return false;
     }
     window.canSubmitLeaveWithQuota = canSubmitLeaveWithQuota;
 
@@ -27554,8 +27723,7 @@ async function fetchMultiLiveDetections() {
               const excessContainer = document.getElementById('excessLeaveContainer');
               if (excessContainer) {
                   excessContainer.style.display = 'block';
-                  const quotaRequested = Number(data.quota_days_requested ?? requested);
-                  document.getElementById('excessLeaveMsg').innerText = `This request uses ${quotaRequested} quota day(s), but only ${remaining} day(s) are available. Choose paid or unpaid for the extra day(s), then submit.`;
+                  renderExcessLeaveDetails(data);
               }
           } else {
               const excessContainer = document.getElementById('excessLeaveContainer');
@@ -27691,14 +27859,22 @@ async function fetchMultiLiveDetections() {
       }
 
       let excessTreatment = null;
+      let excessRejectionReason = null;
       if (!currentLeaveQuotaValid) {
-        // TICKET-12: Excess Leave: Paid/Unpaid Selection via UI
+        // QA-111/113: Excess Leave — paid, unpaid, or reject with reason
         const excessContainer = document.getElementById('excessLeaveContainer');
         if (excessContainer && excessContainer.style.display !== 'none') {
             excessTreatment = document.getElementById('modalExcessTreatment').value;
-            if (!['paid', 'unpaid'].includes(excessTreatment)) {
-              alert('Choose whether the excess leave should be paid or unpaid.');
+            if (!['paid', 'unpaid', 'rejected'].includes(excessTreatment)) {
+              alert('Choose whether the excess leave should be paid, unpaid, or rejected.');
               return;
+            }
+            if (excessTreatment === 'rejected') {
+              excessRejectionReason = String(document.getElementById('modalExcessRejectReason')?.value || '').trim();
+              if (!excessRejectionReason) {
+                alert('A rejection reason is required for excess days.');
+                return;
+              }
             }
         } else {
           if (currentLeaveQuotaData?.reason_code !== 'overlapping_leave') alert(currentLeaveQuotaMsg);
@@ -27707,10 +27883,7 @@ async function fetchMultiLiveDetections() {
       }
 
       try {
-        const res = await fetch('/api/leaves', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const payload = {
             user_id: parseInt(userId),
             leave_type: leaveType,
             leave_duration: leaveDuration,
@@ -27720,7 +27893,12 @@ async function fetchMultiLiveDetections() {
             end_time: endTime,
             reason: reason,
             excess_treatment: excessTreatment
-          })
+        };
+        if (excessRejectionReason) payload.excess_rejection_reason = excessRejectionReason;
+        const res = await fetch('/api/leaves', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (data.success) {

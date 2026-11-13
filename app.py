@@ -4411,9 +4411,67 @@ def api_mobile_leave_requests():
         item = dict(r)
         code = item.get('leave_type')
         item['type_name'] = name_map.get(code, code)
+        try:
+            paid_days = int(float(item.get('paid_days') or 0))
+        except (TypeError, ValueError):
+            paid_days = 0
+        try:
+            unpaid_days = int(float(item.get('unpaid_days') or 0))
+        except (TypeError, ValueError):
+            unpaid_days = 0
+        unpaid_status = str(item.get('unpaid_status') or item.get('status') or 'pending').lower()
+        paid_status = str(item.get('paid_status') or item.get('status') or 'pending').lower()
+        overall = str(item.get('status') or 'pending').lower()
+        needs_admin = unpaid_days > 0 and unpaid_status == 'pending'
+        item['within_quota_days'] = paid_days
+        item['excess_days'] = unpaid_days
+        item['needs_admin_excess'] = needs_admin
+        if needs_admin:
+            item['display_status'] = 'waiting_admin'
+            item['display_status_label'] = 'Waiting for admin decision'
+        elif unpaid_days > 0 and unpaid_status == 'rejected' and paid_days > 0 and paid_status == 'approved':
+            item['display_status'] = 'partially_rejected'
+            item['display_status_label'] = 'Excess rejected'
+        elif unpaid_days > 0 and unpaid_status == 'approved' and paid_status == 'approved':
+            item['display_status'] = 'approved'
+            item['display_status_label'] = 'Approved (paid + unpaid)'
+        elif overall == 'approved' and unpaid_days > 0 and unpaid_status == 'approved' and paid_days == 0:
+            item['display_status'] = 'approved_unpaid'
+            item['display_status_label'] = 'Approved as unpaid'
+        elif overall == 'approved':
+            item['display_status'] = 'approved'
+            item['display_status_label'] = 'Approved as paid' if paid_days > 0 else 'Approved'
+        elif overall == 'rejected':
+            item['display_status'] = 'rejected'
+            item['display_status_label'] = 'Rejected'
+        else:
+            item['display_status'] = overall or 'pending'
+            item['display_status_label'] = (overall or 'pending').replace('_', ' ').title()
         enriched.append(item)
     enriched.sort(key=lambda x: (x.get('start_date') or '', x.get('id') or 0), reverse=True)
     return jsonify({'success': True, 'requests': enriched})
+
+
+@app.route('/api/mobile/leave-requests/check-quota', methods=['GET'])
+def api_mobile_check_leave_quota():
+    """QA-112: preview within-quota vs over-quota days before mobile submit."""
+    user_id = session.get('mobile_employee_id')
+    organization_id = session.get('mobile_organization_id')
+    if not user_id or not organization_id:
+        return jsonify({'success': False, 'message': 'Please log in.'}), 401
+    ent = get_mobile_organization_entitlements(str(organization_id))
+    if not ent.get('modules', {}).get('leave', True):
+        return jsonify({'success': False, 'message': 'Leave Management is not licensed for this organization.'}), 403
+    leave_type = (request.args.get('leave_type') or '').strip()
+    start_date = (request.args.get('start_date') or '').strip() or None
+    end_date = (request.args.get('end_date') or '').strip() or None
+    leave_duration = request.args.get('leave_duration', 'full')
+    if not leave_type:
+        return jsonify({'success': False, 'message': 'Please select a leave type.'}), 400
+    quota = db.check_leave_quota(
+        int(user_id), leave_type, start_date, end_date, leave_duration=leave_duration
+    )
+    return jsonify({'success': True, **quota})
 
 
 @app.route('/api/mobile/leave-requests', methods=['POST'])
@@ -4476,6 +4534,60 @@ def api_mobile_add_leave_request():
         h_date = holiday.get('matched_date') or start_date
         return jsonify({'success': False, 'message': f'{h_name} is a holiday on {h_date}. Leave cannot be requested on a holiday.'}), 400
 
+    # QA-112: split within-quota vs excess; excess waits for admin paid/unpaid/reject.
+    quota = db.check_leave_quota(
+        int(user_id), leave_type, start_date, end_date, leave_duration=leave_duration
+    )
+    requested_days = int(quota.get('requested_days') or 0)
+    quota_days_requested = int(quota.get('quota_days_requested', requested_days) or 0)
+    paid_days = 0
+    unpaid_days = 0
+    quota_days = 0
+    paid_through_date = None
+    quota_through_date = None
+    needs_admin_excess = False
+
+    if not quota.get('allowed', True):
+        if quota.get('reason_code') != 'quota_exceeded':
+            return jsonify({
+                'success': False,
+                'message': quota.get('message') or 'Leave request not allowed.',
+                'reason_code': quota.get('reason_code'),
+            }), 400
+        within = int(quota.get('within_quota_days', min(
+            max(0, int(float(quota.get('remaining_days') or 0))),
+            quota_days_requested,
+        )))
+        excess = int(quota.get('excess_days', max(0, quota_days_requested - within)))
+        if leave_duration == 'half':
+            # Half-day over quota: entire request waits as excess pending admin decision.
+            paid_days = 0
+            unpaid_days = 1
+            quota_days = 0
+            needs_admin_excess = True
+        else:
+            paid_days = within
+            unpaid_days = max(0, requested_days - within) if excess else excess
+            if unpaid_days <= 0 and excess > 0:
+                unpaid_days = excess
+            quota_days = within
+            needs_admin_excess = unpaid_days > 0
+            if within > 0:
+                quota_range, _ = db.split_leave_request_dates(int(user_id), start_date, end_date, within)
+                if quota_range:
+                    quota_through_date = quota_range[1]
+                    paid_through_date = quota_range[1]
+    elif int(quota.get('is_paid', 1)) == 0:
+        unpaid_days = requested_days if leave_duration != 'half' else 1
+    else:
+        paid_days = requested_days if leave_duration != 'half' else 1
+        quota_days = quota_days_requested if leave_duration != 'half' else 1
+        if leave_duration != 'half' and quota_days > 0:
+            quota_range, _ = db.split_leave_request_dates(int(user_id), start_date, end_date, quota_days)
+            if quota_range:
+                quota_through_date = quota_range[1]
+                paid_through_date = quota_range[1]
+
     try:
         req_id = db.add_leave_request(
             user_id=int(user_id),
@@ -4487,6 +4599,11 @@ def api_mobile_add_leave_request():
             leave_duration=leave_duration,
             start_time=start_time,
             end_time=end_time,
+            paid_days=paid_days,
+            unpaid_days=unpaid_days,
+            quota_days=quota_days,
+            paid_through_date=paid_through_date,
+            quota_through_date=quota_through_date,
             status='pending',
             organization_id=str(organization_id),
             branch_id=str(branch_id),
@@ -4499,10 +4616,18 @@ def api_mobile_add_leave_request():
     except ValueError as e:
         return jsonify({'success': False, 'message': str(e)}), 400
 
+    message = (
+        'Leave request submitted. Extra days over your quota are waiting for an admin decision.'
+        if needs_admin_excess else
+        'Leave request submitted successfully.'
+    )
     return jsonify({
         'success': True,
-        'message': 'Leave request submitted successfully.',
+        'message': message,
         'request_id': req_id,
+        'within_quota_days': paid_days,
+        'excess_days': unpaid_days if needs_admin_excess else 0,
+        'needs_admin_excess': needs_admin_excess,
     })
 
 
@@ -5937,6 +6062,7 @@ def api_add_leave():
         }), 400
 
     excess_treatment = data.get('excess_treatment')
+    excess_rejection_reason = str(data.get('excess_rejection_reason') or data.get('rejection_reason') or '').strip()
     quota = db.check_leave_quota(
         int(user_id), leave_type, start_date, end_date,
         leave_duration=leave_duration,
@@ -5949,6 +6075,7 @@ def api_add_leave():
     unpaid_days = 0
     paid_through_date = None
     quota_through_date = None
+    post_create_excess_decision = None
 
     if not quota.get('allowed', True):
         if quota.get('reason_code') != 'quota_exceeded':
@@ -5963,25 +6090,46 @@ def api_add_leave():
                 'error': quota.get('message'),
                 'message': quota.get('message')
             }), 400
-        if excess_treatment not in ('paid', 'unpaid'):
-            return jsonify({'success': False, 'message': 'Choose whether excess leave should be paid or unpaid.'}), 400
+        # QA-113: paid / unpaid / reject (reason required for reject).
+        if excess_treatment not in ('paid', 'unpaid', 'rejected'):
+            return jsonify({'success': False, 'message': 'Choose whether excess leave should be paid, unpaid, or rejected.'}), 400
+        if excess_treatment == 'rejected' and not excess_rejection_reason:
+            return jsonify({'success': False, 'message': 'A rejection reason is required for excess days.'}), 400
 
-        quota_days = min(quota_days_requested, max(0, int(quota.get('remaining_days', 0))))
+        quota_days = min(quota_days_requested, max(0, int(float(quota.get('remaining_days', 0) or 0))))
         quota_range, _ = db.split_leave_request_dates(int(user_id), start_date, end_date, quota_days)
         if quota_range:
             quota_through_date = quota_range[1]
         if leave_duration == 'half':
             if excess_treatment == 'paid':
                 quota_days = quota_days_requested
+                paid_days = 1
+            elif excess_treatment == 'unpaid':
+                unpaid_days = 1
+                quota_days = 0
+            else:
+                unpaid_days = 1
+                quota_days = 0
+                post_create_excess_decision = 'rejected'
         elif excess_treatment == 'paid':
             paid_days = requested_days
-        else:
+            quota_days = requested_days
+        elif excess_treatment == 'unpaid':
             paid_days = quota_days
             unpaid_days = max(0, requested_days - quota_days)
             if paid_days > 0:
                 paid_through_date = quota_through_date
+        else:
+            # Reject excess: keep within-quota as paid, excess as unpaid pending then auto-reject.
+            paid_days = quota_days
+            unpaid_days = max(0, requested_days - quota_days)
+            if paid_days > 0:
+                paid_through_date = quota_through_date
+            post_create_excess_decision = 'rejected'
     elif leave_duration == 'half':
         quota_days = quota_days_requested
+        paid_days = 1 if int(quota.get('is_paid', 1)) != 0 else 0
+        unpaid_days = 0 if paid_days else 1
     elif int(quota.get('is_paid', 1)) == 0:
         unpaid_days = requested_days
     else:
@@ -6041,12 +6189,28 @@ def api_add_leave():
         return jsonify({'success': False, 'error': str(exc), 'message': str(exc)}), 400
     if not lid:
         return jsonify({'success': False, 'message': 'This leave request overlaps an existing active leave or could not be saved. Please review the employee\'s leave dates.'}), 409
+
+    final_paid = paid_days
+    final_unpaid = unpaid_days
+    if post_create_excess_decision == 'rejected' and unpaid_days > 0:
+        decide = db.decide_leave_excess(
+            leave_id=lid,
+            decision='rejected',
+            approved_by=data.get('approved_by') or 'Admin',
+            organization_id=get_current_tenant_id(),
+            rejection_reason=excess_rejection_reason,
+        )
+        if decide.get('success'):
+            final_paid = decide.get('paid_days', final_paid)
+            final_unpaid = decide.get('unpaid_days', final_unpaid)
+
     return jsonify({
         'success': True,
         'id': lid,
         'requested_days': requested_days,
-        'paid_days': paid_days,
-        'unpaid_days': unpaid_days,
+        'paid_days': final_paid,
+        'unpaid_days': final_unpaid,
+        'excess_treatment': excess_treatment,
     }), 201
 
 
@@ -6076,6 +6240,19 @@ def api_update_leave(leave_id):
     if not leave:
         return jsonify({'success': False, 'message': 'Leave request not found or unauthorized'}), 404
     data = request.get_json() or {}
+    # QA-113: dedicated excess decision (paid / unpaid / reject with required reason).
+    if data.get('excess_decision'):
+        result = db.decide_leave_excess(
+            leave_id=leave_id,
+            decision=data.get('excess_decision'),
+            approved_by=data.get('approved_by', 'Admin'),
+            organization_id=current_tenant,
+            rejection_reason=data.get('rejection_reason'),
+        )
+        if not result.get('success'):
+            status = 409 if result.get('reason_code') == 'overlapping_leave' else 400
+            return jsonify(result), status
+        return jsonify(result)
     try:
         updated = db.update_leave_status(
             leave_id=leave_id,
