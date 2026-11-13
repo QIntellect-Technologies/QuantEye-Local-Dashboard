@@ -12879,7 +12879,7 @@ async function fetchMultiLiveDetections() {
             <label class="form-label" style="font-weight: 600; color: #92400e; margin-bottom: 5px;"><i class="fa-solid fa-triangle-exclamation"></i> Leave Limit Exceeded</label>
             <p style="font-size: 0.85rem; color: #b45309; margin-bottom: 8px;" id="excessLeaveMsg"></p>
             <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #92400e;">How should the excess days be treated?</label>
-            <select id="modalExcessTreatment" class="form-select form-select-sm" onchange="updateLeaveCalculationSummary(currentLeaveQuotaData)" style="border-color: #fcd34d;">
+            <select id="modalExcessTreatment" class="form-select form-select-sm" onchange="updateLeaveCalculationSummary(currentLeaveQuotaData); validateLeaveRequestForm();" style="border-color: #fcd34d;">
               <option value="" selected disabled>Choose paid or unpaid</option>
                 <option value="unpaid">OPTION B - Treat excess as UNPAID (LWP)</option>
                 <option value="paid">OPTION A - Treat excess as PAID (Override Quota)</option>
@@ -27446,7 +27446,7 @@ async function fetchMultiLiveDetections() {
       const isHalfLeave = document.getElementById('modalLeaveDurationSelect')?.value === 'half';
       const overQuota = isPaid && quotaDaysRequested > remaining;
       if (isHalfLeave) {
-        const excessNote = overQuota && treatment !== 'paid' ? '<div class="text-warning mt-1">This half-leave would exceed the remaining quota. Choose the excess treatment before submitting.</div>' : '';
+        const excessNote = overQuota && !treatment ? '<div class="text-warning mt-1">This half-leave would exceed the remaining quota. Choose the excess treatment before submitting.</div>' : '';
         summary.innerHTML = `<strong>Half-leave occurrences:</strong> 1 &nbsp; <strong>Full quota days charged:</strong> ${quotaDaysRequested}${excessNote}`;
         return;
       }
@@ -27455,6 +27455,21 @@ async function fetchMultiLiveDetections() {
       const excessNote = overQuota && !treatment ? '<div class="text-warning mt-1">Choose how to treat the excess before submitting.</div>' : '';
       summary.innerHTML = `<strong>Request total:</strong> ${requested} scheduled day(s) &nbsp; <strong style="color:#047857;">Paid:</strong> ${paidDays} &nbsp; <strong style="color:#b91c1c;">Unpaid:</strong> ${unpaidDays}${excessNote}`;
     }
+
+    function canSubmitLeaveWithQuota() {
+      if (currentLeaveQuotaValid) return true;
+      const excessContainer = document.getElementById('excessLeaveContainer');
+      const excessVisible = excessContainer && excessContainer.style.display !== 'none';
+      const treatment = document.getElementById('modalExcessTreatment')?.value || '';
+      const reasonCode = currentLeaveQuotaData?.reason_code || '';
+      // QA-111: quota exceeded is informational once paid/unpaid excess treatment is chosen.
+      return Boolean(
+        excessVisible
+        && reasonCode === 'quota_exceeded'
+        && (treatment === 'paid' || treatment === 'unpaid')
+      );
+    }
+    window.canSubmitLeaveWithQuota = canSubmitLeaveWithQuota;
 
     async function validateModalLeaveQuotaInternal() {
       const requestSequence = ++leaveQuotaRequestSequence;
@@ -27529,32 +27544,50 @@ async function fetchMultiLiveDetections() {
           currentLeaveQuotaValid = false;
           currentLeaveQuotaMsg = data.message || 'Leave request not allowed';
           const isOverlappingLeave = data.reason_code === 'overlapping_leave';
+          const isQuotaExceeded = data.reason_code === 'quota_exceeded'
+            && Number(data.quota_days_requested ?? data.requested_days) > data.remaining_days
+            && data.remaining_days >= 0
+            && data.leave_type_name !== 'Unpaid Leave (LWP)'
+            && data.leave_type_name !== 'Excess Paid Leave';
           
-          if (data.reason_code === 'quota_exceeded' && Number(data.quota_days_requested ?? data.requested_days) > data.remaining_days && data.remaining_days >= 0 && data.leave_type_name !== 'Unpaid Leave (LWP)' && data.leave_type_name !== 'Excess Paid Leave') {
+          if (isQuotaExceeded) {
               const excessContainer = document.getElementById('excessLeaveContainer');
               if (excessContainer) {
                   excessContainer.style.display = 'block';
                   const quotaRequested = Number(data.quota_days_requested ?? requested);
-                  document.getElementById('excessLeaveMsg').innerText = `This request uses ${quotaRequested} quota day(s), but only ${remaining} day(s) are available.`;
+                  document.getElementById('excessLeaveMsg').innerText = `This request uses ${quotaRequested} quota day(s), but only ${remaining} day(s) are available. Choose paid or unpaid for the extra day(s), then submit.`;
               }
           } else {
               const excessContainer = document.getElementById('excessLeaveContainer');
               if (excessContainer) excessContainer.style.display = 'none';
           }
           
+          // QA-111: quota-exceeded is informational once excess treatment is offered (not a hard block).
           alertDiv.style.display = 'block';
-          alertDiv.style.background = isOverlappingLeave ? '#f0fdfa' : '#fef2f2';
-          alertDiv.style.color = isOverlappingLeave ? '#0f766e' : '#991b1b';
-          alertDiv.style.border = isOverlappingLeave ? '1px solid #99f6e4' : '1px solid #f87171';
-          const alertIcon = isOverlappingLeave ? 'fa-calendar-check' : 'fa-circle-exclamation';
-          const iconColor = isOverlappingLeave ? '#0f766e' : '#dc2626';
+          if (isOverlappingLeave) {
+            alertDiv.style.background = '#f0fdfa';
+            alertDiv.style.color = '#0f766e';
+            alertDiv.style.border = '1px solid #99f6e4';
+          } else if (isQuotaExceeded) {
+            alertDiv.style.background = '#fffbeb';
+            alertDiv.style.color = '#92400e';
+            alertDiv.style.border = '1px solid #fde68a';
+          } else {
+            alertDiv.style.background = '#fef2f2';
+            alertDiv.style.color = '#991b1b';
+            alertDiv.style.border = '1px solid #f87171';
+          }
+          const alertIcon = isOverlappingLeave ? 'fa-calendar-check' : (isQuotaExceeded ? 'fa-circle-info' : 'fa-circle-exclamation');
+          const iconColor = isOverlappingLeave ? '#0f766e' : (isQuotaExceeded ? '#b45309' : '#dc2626');
           alertDiv.innerHTML = `<i class="fa-solid ${alertIcon}" style="margin-right:6px; color:${iconColor};"></i> ${escapeHtml(currentLeaveQuotaMsg)}`;
           if (badgeDiv) {
             const remLabel = Number.isInteger(Number(remaining)) ? String(Number(remaining)) : String(remaining);
             const reqLabel = leaveDuration === 'half' ? '1 half-day' : `${requested} day(s)`;
             badgeDiv.innerHTML = isOverlappingLeave
               ? '<span style="color:#0f766e; font-weight:700;"><i class="fa-solid fa-calendar-check"></i> Existing leave already covers these dates</span>'
-              : `<span style="color:#dc2626; font-weight:700;"><i class="fa-solid fa-xmark"></i> Remaining Quota: ${remLabel} day(s) | Requested: ${reqLabel}</span>`;
+              : (isQuotaExceeded
+                ? `<span style="color:#b45309; font-weight:700;"><i class="fa-solid fa-circle-info"></i> Remaining Quota: ${remLabel} day(s) | Requested: ${reqLabel}</span>`
+                : `<span style="color:#dc2626; font-weight:700;"><i class="fa-solid fa-xmark"></i> Remaining Quota: ${remLabel} day(s) | Requested: ${reqLabel}</span>`);
           }
         } else {
           currentLeaveQuotaValid = true;
@@ -27954,7 +27987,10 @@ async function fetchMultiLiveDetections() {
       setFieldError('modalLeaveStartDateError', start ? '' : 'Start date is required.');
       setFieldError('modalLeaveEndDateError', !start ? 'Select a start date first.' : !end ? 'End date is required.' : end < start ? 'End date cannot be earlier than start date.' : '');
       setFieldError('modalLeaveReasonError', containsUnsafeInput(reason) ? 'Reason contains unsupported HTML or script content.' : reason.length > 500 ? 'Reason cannot exceed 500 characters.' : '');
-      const valid = Boolean(user && leaveType && datesValid && !containsUnsafeInput(reason) && reason.length <= 500 && currentLeaveQuotaValid);
+      const quotaOk = (typeof canSubmitLeaveWithQuota === 'function')
+        ? canSubmitLeaveWithQuota()
+        : Boolean(currentLeaveQuotaValid);
+      const valid = Boolean(user && leaveType && datesValid && !containsUnsafeInput(reason) && reason.length <= 500 && quotaOk);
       const button = document.getElementById('submitLeaveRequestBtn');
       if (button) button.disabled = !valid;
       return valid;

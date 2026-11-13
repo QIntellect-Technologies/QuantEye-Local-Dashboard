@@ -4764,12 +4764,10 @@ def get_light_attendance_report(
 ) -> Dict[str, Any]:
     """Fast Attendance Report page loader (Refresh / list).
 
-    One row per staff member for the selected dates using only:
-      MIN(timestamp) / MAX(timestamp) presence marks.
-    Present = at least one mark that day; Absent = none.
-    No camera, place, shift, holiday, or leave lookups on this path.
-    Uses sargable timestamp range bounds so the attendance index is used.
-    Never falls back to the full detailed report.
+    One row per staff member for the selected dates using presence marks from an
+    indexed timestamp range. SQA-110: Present vs Late uses the same rule as the
+    detailed report — first check-in after shift start + grace is Late (manual
+    and machine punches). Holiday/leave/camera enrichment stay on the detailed path.
     """
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -4782,10 +4780,15 @@ def get_light_attendance_report(
             )
 
             report_org = organization_id or 'DEFAULT_ORG'
-            # Staff list only — no shift/camera/holiday/leave joins.
+            # Staff list + assigned shift (for Late vs Present).
             user_query = '''
-                SELECT u.id, u.name, u.email, u.phone, u.department, u.photo_path, u.cnic, u.position
+                SELECT u.id, u.name, u.email, u.phone, u.department, u.photo_path, u.cnic, u.position,
+                       u.shift_id,
+                       s.name AS shift_name,
+                       COALESCE(s.start_time, '09:00') AS start_time,
+                       COALESCE(s.grace_period_minutes, 15) AS grace_period_minutes
                 FROM users u
+                LEFT JOIN shifts s ON s.id = COALESCE(u.shift_id, 1)
                 WHERE (u.active = 1 OR (u.exit_date IS NOT NULL AND u.exit_date >= ?))
             '''
             user_params: List[Any] = [start_date]
@@ -4839,13 +4842,48 @@ def get_light_attendance_report(
             end_excl = (datetime.strptime(end_date, "%Y-%m-%d").date() + timedelta(days=1)).strftime("%Y-%m-%d")
             end_ts = f"{end_excl} 00:00:00"
 
+            # Shift lookup for attendance.shift_id overrides (manual mark often stamps shift_id).
+            cursor.execute(
+                "SELECT id, name, start_time, COALESCE(grace_period_minutes, 15) AS grace_period_minutes FROM shifts"
+            )
+            shifts_lookup = {
+                int(r['id']): {
+                    'name': r['name'],
+                    'start_time': r['start_time'] or '09:00',
+                    'grace_period_minutes': int(r['grace_period_minutes'] or 15),
+                }
+                for r in cursor.fetchall()
+            }
+
+            # Effective shift from history for the report window (same precedence family as detailed).
+            hist_by_user: Dict[int, List[Dict[str, Any]]] = {}
+            try:
+                cursor.execute(
+                    '''
+                    SELECT user_id, shift_id, start_time, grace_period_minutes, effective_from
+                    FROM employee_shift_history
+                    WHERE effective_from <= ?
+                    ORDER BY user_id ASC, effective_from DESC, id DESC
+                    ''',
+                    (end_date,),
+                )
+                for row in cursor.fetchall():
+                    uid = int(row['user_id'])
+                    if uid not in user_id_set:
+                        continue
+                    hist_by_user.setdefault(uid, []).append({
+                        'shift_id': row['shift_id'],
+                        'start_time': row['start_time'] or '09:00',
+                        'grace_period_minutes': int(row['grace_period_minutes'] if row['grace_period_minutes'] is not None else 15),
+                        'effective_from': str(row['effective_from'] or '')[:10],
+                    })
+            except Exception:
+                hist_by_user = {}
+
             # Indexed range only in WHERE (never date(timestamp)).
-            # Prefer org+timestamp / timestamp indexes — do not use a huge user_id IN (...).
+            # Walk punches once so first-seen keeps shift_id/source for Late + Manual label.
             att_sql = '''
-                SELECT user_id,
-                       substr(timestamp, 1, 10) AS log_date,
-                       MIN(timestamp) AS first_seen,
-                       MAX(timestamp) AS last_seen
+                SELECT user_id, timestamp, shift_id, source
                 FROM attendance
                 WHERE timestamp >= ?
                   AND timestamp < ?
@@ -4863,23 +4901,95 @@ def get_light_attendance_report(
                 else:
                     att_sql += " AND (branch_id = ? OR branch_id IS NULL)"
                     att_params.append(branch_id)
-            att_sql += " GROUP BY user_id, substr(timestamp, 1, 10)"
+            att_sql += " ORDER BY user_id ASC, timestamp ASC"
             cursor.execute(att_sql, att_params)
             marks_by_user: Dict[int, Dict[str, Dict[str, Any]]] = {}
             for row in cursor.fetchall():
                 uid = int(row['user_id'])
                 if uid not in user_id_set:
                     continue
-                log_date = str(row['log_date'] or '')[:10]
+                ts = str(row['timestamp'] or '')
+                log_date = ts.split('T', 1)[0].split(' ', 1)[0][:10]
                 if not log_date:
                     continue
-                marks_by_user.setdefault(uid, {})[log_date] = {
-                    'first_seen': row['first_seen'],
-                    'last_seen': row['last_seen'],
+                day = marks_by_user.setdefault(uid, {}).get(log_date)
+                if day is None:
+                    marks_by_user[uid][log_date] = {
+                        'first_seen': row['timestamp'],
+                        'last_seen': row['timestamp'],
+                        'shift_id': row['shift_id'],
+                        'source': row['source'],
+                    }
+                else:
+                    day['last_seen'] = row['timestamp']
+                    if day.get('shift_id') is None and row['shift_id'] is not None:
+                        day['shift_id'] = row['shift_id']
+
+            def _resolve_light_shift(uid: int, day_key: str, mark: Optional[Dict[str, Any]], user_row: Dict[str, Any]) -> Dict[str, Any]:
+                rec_shift_id = (mark or {}).get('shift_id')
+                if rec_shift_id is not None:
+                    try:
+                        rec_shift_id = int(rec_shift_id)
+                    except (TypeError, ValueError):
+                        rec_shift_id = None
+                if rec_shift_id and rec_shift_id in shifts_lookup:
+                    info = shifts_lookup[rec_shift_id]
+                    return {
+                        'shift_id': rec_shift_id,
+                        'shift_name': info['name'],
+                        'start_time': info['start_time'],
+                        'grace_period_minutes': info['grace_period_minutes'],
+                    }
+                for hist in hist_by_user.get(uid, []):
+                    if hist['effective_from'] and hist['effective_from'] <= day_key:
+                        sid = hist.get('shift_id')
+                        if sid and int(sid) in shifts_lookup:
+                            info = shifts_lookup[int(sid)]
+                            return {
+                                'shift_id': int(sid),
+                                'shift_name': info['name'],
+                                'start_time': hist.get('start_time') or info['start_time'],
+                                'grace_period_minutes': int(
+                                    hist.get('grace_period_minutes')
+                                    if hist.get('grace_period_minutes') is not None
+                                    else info['grace_period_minutes']
+                                ),
+                            }
+                        return {
+                            'shift_id': sid,
+                            'shift_name': user_row.get('shift_name') or '—',
+                            'start_time': hist.get('start_time') or user_row.get('start_time') or '09:00',
+                            'grace_period_minutes': int(
+                                hist.get('grace_period_minutes')
+                                if hist.get('grace_period_minutes') is not None
+                                else (user_row.get('grace_period_minutes') or 15)
+                            ),
+                        }
+                return {
+                    'shift_id': user_row.get('shift_id'),
+                    'shift_name': user_row.get('shift_name') or '—',
+                    'start_time': user_row.get('start_time') or '09:00',
+                    'grace_period_minutes': int(user_row.get('grace_period_minutes') or 15),
                 }
+
+            def _classify_light_status(mark: Optional[Dict[str, Any]], shift_info: Dict[str, Any]) -> str:
+                if not mark:
+                    return 'absent'
+                try:
+                    first_seen = str(mark.get('first_seen') or '')
+                    time_part = first_seen.split(' ')[-1] if ' ' in first_seen else first_seen.split('T')[-1]
+                    checkin_mins = parse_time_to_minutes(time_part)
+                    start_mins = parse_time_to_minutes(shift_info.get('start_time') or '09:00')
+                    grace_mins = int(shift_info.get('grace_period_minutes') or 0)
+                    if checkin_mins > start_mins + grace_mins:
+                        return 'late'
+                    return 'present'
+                except Exception:
+                    return 'present'
 
             records = []
             total_present_days_all = 0
+            total_late_days_all = 0
             total_absent_days_all = 0
             attended_users_count = 0
             dept_stats: Dict[str, Dict[str, Any]] = {}
@@ -4906,25 +5016,41 @@ def get_light_attendance_report(
                     continue
 
                 day_marks = marks_by_user.get(uid, {})
-                present_days = len(day_marks)
-                absent_days = max(0, total_days - present_days)
-                if present_days:
+                attended_days = 0
+                late_days = 0
+                for day_key in date_list:
+                    mark = day_marks.get(day_key)
+                    if not mark:
+                        continue
+                    attended_days += 1
+                    shift_info = _resolve_light_shift(uid, day_key, mark, u)
+                    if _classify_light_status(mark, shift_info) == 'late':
+                        late_days += 1
+                present_days = attended_days  # attended includes late (payable-style count)
+                absent_days = max(0, total_days - attended_days)
+                if attended_days:
                     attended_users_count += 1
                     dept_stats[dept]['attended_staff'] += 1
                 total_present_days_all += present_days
+                total_late_days_all += late_days
                 total_absent_days_all += absent_days
                 dept_stats[dept]['present_days'] += present_days
                 dept_stats[dept]['absent_days'] += absent_days
+                dept_stats[dept]['late_days'] += late_days
                 rate = round((present_days / total_days * 100), 1) if total_days else 0.0
 
                 if not is_multi_day:
                     day_key = start_date
                     mark = day_marks.get(day_key)
-                    st_val = 'present' if mark else 'absent'
-                    if sf == 'present' and st_val != 'present':
+                    shift_info = _resolve_light_shift(uid, day_key, mark, u)
+                    st_val = _classify_light_status(mark, shift_info)
+                    if sf == 'present' and st_val not in ('present', 'late', 'checked_out'):
                         continue
                     if sf == 'absent' and st_val != 'absent':
                         continue
+                    if sf == 'late' and st_val != 'late':
+                        continue
+                    source = str((mark or {}).get('source') or '')
                     records.append({
                         'user_id': uid,
                         'name': u.get('name'),
@@ -4934,27 +5060,30 @@ def get_light_attendance_report(
                         'position': u.get('position') or 'Staff Member',
                         'cnic': u.get('cnic') or '',
                         'photo_path': u.get('photo_path'),
-                        'shift_name': '—',
-                        'shift_id': None,
+                        'shift_name': shift_info.get('shift_name') or '—',
+                        'shift_id': shift_info.get('shift_id'),
+                        'shift_start': shift_info.get('start_time'),
                         'status': st_val,
                         'attendance_status': st_val,
-                        'status_display': 'Present' if st_val == 'present' else 'Absent',
+                        'status_display': (
+                            'Late' if st_val == 'late' else ('Present' if st_val == 'present' else 'Absent')
+                        ),
                         'first_seen': (mark or {}).get('first_seen'),
                         'last_seen': (mark or {}).get('last_seen'),
                         'date': start_date,
-                        'present_days': int(st_val == 'present'),
+                        'present_days': int(st_val in ('present', 'late', 'checked_out')),
                         'absent_days': int(st_val == 'absent'),
-                        'late_days': 0,
+                        'late_days': int(st_val == 'late'),
                         'leave_days': 0,
                         'paid_leave_days': 0,
                         'unpaid_leave_days': 0,
                         'working_days': 1,
-                        'checkin_camera': '—',
+                        'checkin_camera': 'Manual' if source.lower() == 'manual' else '—',
                         'checkout_camera': '—',
                         'checkin_location': '—',
                         'checkout_location': '—',
                         'location': '—',
-                        'source': 'auto' if mark else '',
+                        'source': source or ('auto' if mark else ''),
                         'notes': '',
                         'light': True,
                         'daily_records': [],
@@ -4964,6 +5093,8 @@ def get_light_attendance_report(
                         continue
                     if sf == 'absent' and absent_days == 0:
                         continue
+                    if sf == 'late' and late_days == 0:
+                        continue
                     records.append({
                         'user_id': uid,
                         'name': u.get('name'),
@@ -4973,13 +5104,13 @@ def get_light_attendance_report(
                         'position': u.get('position') or 'Staff Member',
                         'cnic': u.get('cnic') or '',
                         'photo_path': u.get('photo_path'),
-                        'shift_name': '—',
-                        'shift_id': None,
+                        'shift_name': u.get('shift_name') or '—',
+                        'shift_id': u.get('shift_id'),
                         'total_days': total_days,
                         'working_days': total_days,
                         'present_days': present_days,
                         'absent_days': absent_days,
-                        'late_days': 0,
+                        'late_days': late_days,
                         'leave_days': 0,
                         'paid_leave_days': 0,
                         'unpaid_leave_days': 0,
@@ -5006,8 +5137,8 @@ def get_light_attendance_report(
                     'present': ddata['present_days'],
                     'absent_days': ddata['absent_days'],
                     'absent': ddata['absent_days'],
-                    'late_days': 0,
-                    'late': 0,
+                    'late_days': ddata['late_days'],
+                    'late': ddata['late_days'],
                     'paid_leave_days': 0,
                     'unpaid_leave_days': 0,
                     'attendance_rate': round((ddata['present_days'] / max_d * 100), 1),
@@ -5028,7 +5159,7 @@ def get_light_attendance_report(
                     'attended_count': attended_users_count,
                     'zero_attendance_count': max(0, len(users) - attended_users_count),
                     'total_present_days': total_present_days_all,
-                    'total_late_days': 0,
+                    'total_late_days': total_late_days_all,
                     'total_absent_days': total_absent_days_all,
                     'attendance_rate': overall_rate,
                 },
@@ -6164,6 +6295,7 @@ def get_detailed_attendance_report(
                         'leave_days': int(st_val in ('on_leave', 'on_leave_unpaid')),
                         'present_days': int(st_val in ('present', 'late', 'checked_out')),
                         'absent_days': int(st_val == 'absent'),
+                        'late_days': int(st_val == 'late') if not emp_late_days else emp_late_days,
                         'payable_days': int(st_val in ('present', 'late', 'checked_out', 'on_leave')),
                         'working_days': int(bool(day_entry.get('scheduled_workday'))),
                         'date': start_date,

@@ -5353,7 +5353,7 @@ def generate_report_filename(report_data: dict, department: str = None, shift: s
 def api_reports_attendance():
     """Return attendance report with combinable filters.
 
-    Default page loads use light=1 (Present/Absent only, indexed timestamp range).
+    Default page loads use light=1 (indexed timestamp range; Present/Late/Absent).
     Excel export and Complete View keep the full detailed report.
     """
     target_date = request.args.get('date', '').strip() or None
@@ -5372,7 +5372,7 @@ def api_reports_attendance():
 
     current_tenant = get_current_tenant_id()
     current_branch = get_current_branch_id()
-    # Page Refresh / list: always light (Present/Absent MIN/MAX only).
+    # Page Refresh / list: light path (Present vs Late via shift start + grace; SQA-110).
     # Complete View drill-down and Excel/PDF/CSV export use light=0 / export routes (full detail).
     if use_light:
         report = db.get_light_attendance_report(
