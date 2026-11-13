@@ -13269,16 +13269,31 @@ async function fetchMultiLiveDetections() {
             <p style="font-size: 0.85rem; color: #b45309; margin-bottom: 8px;" id="excessLeaveMsg"></p>
             <div id="excessLeaveDatesDetail" style="font-size: 0.82rem; color: #92400e; margin-bottom: 10px; font-weight: 600;"></div>
             <div id="excessLeaveMonthBreakdown" style="display:none; font-size: 0.8rem; color: #92400e; margin-bottom: 10px; line-height: 1.45;"></div>
-            <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #92400e;" for="modalExcessTreatment">How should the excess days be treated?</label>
-            <select id="modalExcessTreatment" class="form-select form-select-sm" style="border-color: #fcd34d;">
-              <option value="">Choose how to treat excess days...</option>
+            <div style="font-size: 0.85rem; font-weight: 600; color: #92400e; margin-bottom: 8px;">How should the excess days be treated?</div>
+            <!-- Keep a hidden native select for compatibility with existing JS readers -->
+            <select id="modalExcessTreatment" data-native-select="1" style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;" tabindex="-1" aria-hidden="true">
+              <option value="" selected>Choose how to treat excess days...</option>
               <option value="paid">OPTION A - Treat excess as PAID (Override Quota)</option>
               <option value="unpaid">OPTION B - Treat excess as UNPAID</option>
               <option value="rejected">OPTION C - Reject excess days</option>
             </select>
+            <div id="modalExcessTreatmentRadios" style="display:flex; flex-direction:column; gap:8px;">
+              <label style="display:flex; align-items:flex-start; gap:8px; margin:0; padding:8px 10px; border:1px solid #fde68a; border-radius:8px; background:#fff; cursor:pointer;">
+                <input type="radio" name="modalExcessTreatmentRadio" value="paid" style="margin-top:3px;" onchange="setFileLeaveExcessTreatment('paid')">
+                <span style="font-size:0.84rem; color:#92400e; font-weight:600;">OPTION A - Treat excess as PAID (Override Quota)</span>
+              </label>
+              <label style="display:flex; align-items:flex-start; gap:8px; margin:0; padding:8px 10px; border:1px solid #fde68a; border-radius:8px; background:#fff; cursor:pointer;">
+                <input type="radio" name="modalExcessTreatmentRadio" value="unpaid" style="margin-top:3px;" onchange="setFileLeaveExcessTreatment('unpaid')">
+                <span style="font-size:0.84rem; color:#92400e; font-weight:600;">OPTION B - Treat excess as UNPAID</span>
+              </label>
+              <label style="display:flex; align-items:flex-start; gap:8px; margin:0; padding:8px 10px; border:1px solid #fde68a; border-radius:8px; background:#fff; cursor:pointer;">
+                <input type="radio" name="modalExcessTreatmentRadio" value="rejected" style="margin-top:3px;" onchange="setFileLeaveExcessTreatment('rejected')">
+                <span style="font-size:0.84rem; color:#92400e; font-weight:600;">OPTION C - Reject excess days</span>
+              </label>
+            </div>
             <div id="excessRejectReasonWrap" style="display:none; margin-top:10px;">
               <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #92400e;" for="modalExcessRejectReason">Rejection reason <span style="color:#dc2626;">*</span></label>
-              <textarea id="modalExcessRejectReason" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="Required — shown to the employee in the mobile app"></textarea>
+              <textarea id="modalExcessRejectReason" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="Required — shown to the employee in the mobile app" oninput="validateLeaveRequestForm()"></textarea>
               <small id="modalExcessRejectReasonError" class="text-danger" role="alert"></small>
             </div>
         </div>
@@ -19344,15 +19359,14 @@ async function fetchMultiLiveDetections() {
       }
 
       function upgradeSelectToCameraStyle(selectEl, options = {}) {
-        // Opt-out only when explicitly marked native (rare OS-level cases).
+        // Opt-out only when explicitly marked native (File Leave excess uses radios + hidden select).
         if (selectEl && selectEl.dataset.nativeSelect === '1') {
           const staleWrap = selectEl.closest('.app-camera-select');
           if (staleWrap && staleWrap.parentNode) {
             staleWrap.parentNode.insertBefore(selectEl, staleWrap);
             staleWrap.remove();
           }
-          selectEl.style.display = '';
-          selectEl.classList.add('form-select');
+          // Do not reset styles — caller may intentionally hide this select.
           return null;
         }
         if (!selectEl || selectEl.tagName !== 'SELECT' || selectEl.multiple) return null;
@@ -19434,7 +19448,7 @@ async function fetchMultiLiveDetections() {
           'deptPageSize', 'desigPageSize',
           'enrollShiftId', 'enrollDepartment', 'enrollPosition',
           'modalLeaveDeptSelect', 'modalLeaveUserSelect', 'modalLeaveTypeSelect',
-          'modalLeaveDurationSelect', 'modalExcessTreatment',
+          'modalLeaveDurationSelect',
           'modalLeaveTypeIsPaid', 'modalLeaveTypePeriod', 'modalHalfLeaveMode',
           'modalHalfLeaveQuotaType',
           // GUI-04: Settings → Leave Settings
@@ -27950,6 +27964,9 @@ async function fetchMultiLiveDetections() {
       if (alertDiv) { alertDiv.style.display = 'none'; alertDiv.innerHTML = ''; }
       if (excessContainer) excessContainer.style.display = 'none';
       if (excessSelect) excessSelect.value = '';
+      document.querySelectorAll('input[name="modalExcessTreatmentRadio"]').forEach((radio) => {
+        radio.checked = false;
+      });
       const excessRejectWrap = document.getElementById('excessRejectReasonWrap');
       const excessRejectReason = document.getElementById('modalExcessRejectReason');
       const excessRejectErr = document.getElementById('modalExcessRejectReasonError');
@@ -28103,7 +28120,9 @@ async function fetchMultiLiveDetections() {
       const quotaDaysRequested = Math.max(0, Number(data.quota_days_requested ?? requested) || 0);
       const remaining = Math.max(0, Number(data.remaining_days) || 0);
       const isPaid = Number(data.is_paid == null ? 1 : data.is_paid) !== 0;
-      const treatment = document.getElementById('modalExcessTreatment')?.value || '';
+      const treatment = (typeof getFileLeaveExcessTreatment === 'function'
+        ? getFileLeaveExcessTreatment()
+        : String(document.getElementById('modalExcessTreatment')?.value || '')).trim();
       const isHalfLeave = document.getElementById('modalLeaveDurationSelect')?.value === 'half';
       const overQuota = isPaid && quotaDaysRequested > remaining;
       if (isHalfLeave) {
@@ -28184,9 +28203,39 @@ async function fetchMultiLiveDetections() {
       }
     }
 
+    function getFileLeaveExcessTreatment() {
+      const checked = document.querySelector('input[name="modalExcessTreatmentRadio"]:checked');
+      if (checked && checked.value) return String(checked.value).trim();
+      return String(document.getElementById('modalExcessTreatment')?.value || '').trim();
+    }
+    window.getFileLeaveExcessTreatment = getFileLeaveExcessTreatment;
+
+    function setFileLeaveExcessTreatment(value) {
+      const treatment = String(value || '').trim();
+      const select = document.getElementById('modalExcessTreatment');
+      if (select) select.value = treatment;
+      document.querySelectorAll('input[name="modalExcessTreatmentRadio"]').forEach((radio) => {
+        radio.checked = radio.value === treatment;
+      });
+      onExcessTreatmentChange();
+    }
+    window.setFileLeaveExcessTreatment = setFileLeaveExcessTreatment;
+
     function wireFileLeaveExcessControls() {
       const excessSelect = document.getElementById('modalExcessTreatment');
       const rejectReason = document.getElementById('modalExcessRejectReason');
+      // Never upgrade this control to camera-style — that kept Submit disabled on Railway.
+      if (excessSelect) {
+        excessSelect.dataset.nativeSelect = '1';
+        const wrap = excessSelect.closest('.app-camera-select');
+        if (wrap && wrap.parentNode) {
+          wrap.parentNode.insertBefore(excessSelect, wrap);
+          wrap.remove();
+        }
+        excessSelect.style.position = 'absolute';
+        excessSelect.style.left = '-9999px';
+        excessSelect.style.opacity = '0';
+      }
       if (excessSelect && excessSelect.dataset.excessBound !== '1') {
         excessSelect.dataset.excessBound = '1';
         excessSelect.addEventListener('change', () => onExcessTreatmentChange());
@@ -28195,16 +28244,13 @@ async function fetchMultiLiveDetections() {
         rejectReason.dataset.excessBound = '1';
         rejectReason.addEventListener('input', () => validateLeaveRequestForm());
       }
-      if (excessSelect && typeof upgradeSelectToCameraStyle === 'function') {
-        upgradeSelectToCameraStyle(excessSelect);
-      } else if (excessSelect && typeof refreshAppCameraSelect === 'function') {
-        refreshAppCameraSelect(excessSelect);
-      }
     }
     window.wireFileLeaveExcessControls = wireFileLeaveExcessControls;
 
     function onExcessTreatmentChange() {
-      const treatment = String(document.getElementById('modalExcessTreatment')?.value || '').trim();
+      const treatment = getFileLeaveExcessTreatment();
+      const select = document.getElementById('modalExcessTreatment');
+      if (select && select.value !== treatment) select.value = treatment;
       const wrap = document.getElementById('excessRejectReasonWrap');
       if (wrap) wrap.style.display = treatment === 'rejected' ? 'block' : 'none';
       if (treatment !== 'rejected') {
@@ -28230,7 +28276,7 @@ async function fetchMultiLiveDetections() {
     function canSubmitLeaveWithQuota() {
       if (currentLeaveQuotaValid) return true;
       const excessVisible = isFileLeaveExcessVisible();
-      const treatment = String(document.getElementById('modalExcessTreatment')?.value || '').trim();
+      const treatment = getFileLeaveExcessTreatment();
       const reasonCode = String(currentLeaveQuotaData?.reason_code || '');
       const remaining = Number(currentLeaveQuotaData?.remaining_days);
       const requested = Number(
@@ -28484,7 +28530,9 @@ async function fetchMultiLiveDetections() {
         // QA-111/113: Excess Leave — paid, unpaid, or reject with reason
         const excessContainer = document.getElementById('excessLeaveContainer');
         if (excessContainer && excessContainer.style.display !== 'none') {
-            excessTreatment = document.getElementById('modalExcessTreatment').value;
+            excessTreatment = (typeof getFileLeaveExcessTreatment === 'function'
+              ? getFileLeaveExcessTreatment()
+              : String(document.getElementById('modalExcessTreatment')?.value || '')).trim();
             if (!['paid', 'unpaid', 'rejected'].includes(excessTreatment)) {
               alert('Choose whether the excess leave should be paid, unpaid, or rejected.');
               return;
