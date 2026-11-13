@@ -4419,25 +4419,51 @@ def api_mobile_leave_requests():
             unpaid_days = int(float(item.get('unpaid_days') or 0))
         except (TypeError, ValueError):
             unpaid_days = 0
+        try:
+            quota_days = int(float(item.get('quota_days') or 0))
+        except (TypeError, ValueError):
+            quota_days = 0
         unpaid_status = str(item.get('unpaid_status') or item.get('status') or 'pending').lower()
         paid_status = str(item.get('paid_status') or item.get('status') or 'pending').lower()
         overall = str(item.get('status') or 'pending').lower()
         needs_admin = unpaid_days > 0 and unpaid_status == 'pending'
-        item['within_quota_days'] = paid_days
-        item['excess_days'] = unpaid_days
+        # QA-112: keep within/over split after admin decides (incl. excess treated as paid).
+        if unpaid_days > 0:
+            within = quota_days if quota_days > 0 else max(0, paid_days)
+            excess = unpaid_days
+            excess_outcome = 'waiting_admin' if needs_admin else (
+                'rejected' if unpaid_status == 'rejected' else 'unpaid'
+            )
+        elif quota_days > 0 and paid_days > quota_days:
+            within = quota_days
+            excess = paid_days - quota_days
+            excess_outcome = 'paid'
+        else:
+            within = paid_days if paid_days > 0 else quota_days
+            excess = 0
+            excess_outcome = None
+        item['within_quota_days'] = within
+        item['excess_days'] = excess
         item['needs_admin_excess'] = needs_admin
+        item['excess_outcome'] = excess_outcome
         if needs_admin:
             item['display_status'] = 'waiting_admin'
             item['display_status_label'] = 'Waiting for admin decision'
         elif unpaid_days > 0 and unpaid_status == 'rejected' and paid_days > 0 and paid_status == 'approved':
             item['display_status'] = 'partially_rejected'
             item['display_status_label'] = 'Excess rejected'
+        elif unpaid_days > 0 and unpaid_status == 'rejected':
+            item['display_status'] = 'rejected'
+            item['display_status_label'] = 'Rejected'
         elif unpaid_days > 0 and unpaid_status == 'approved' and paid_status == 'approved':
             item['display_status'] = 'approved'
             item['display_status_label'] = 'Approved (paid + unpaid)'
         elif overall == 'approved' and unpaid_days > 0 and unpaid_status == 'approved' and paid_days == 0:
             item['display_status'] = 'approved_unpaid'
             item['display_status_label'] = 'Approved as unpaid'
+        elif overall in ('approved', 'partially_approved') and excess_outcome == 'paid':
+            item['display_status'] = 'approved'
+            item['display_status_label'] = 'Approved (excess as paid)'
         elif overall == 'approved':
             item['display_status'] = 'approved'
             item['display_status_label'] = 'Approved as paid' if paid_days > 0 else 'Approved'

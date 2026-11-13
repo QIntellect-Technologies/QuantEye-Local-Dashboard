@@ -7678,22 +7678,47 @@ def split_leave_request_dates(user_id: int, start_date: str, end_date: str, avai
         return (start_date, end_date), None
 
 def _find_active_leave_overlap(cursor, user_id: int, start_date: str, end_date: str, exclude_id: Optional[int] = None):
+    """Find an overlapping active leave. Rejected excess days do not block new requests."""
     query = """
         SELECT lr.id, COALESCE(lt.name, lr.leave_type) AS type_name,
-               lr.start_date, lr.end_date, LOWER(COALESCE(lr.status, 'pending')) AS status
+               lr.start_date, lr.end_date, LOWER(COALESCE(lr.status, 'pending')) AS status,
+               lr.paid_through_date, lr.quota_through_date, lr.unpaid_status, lr.unpaid_days, lr.paid_days
         FROM leave_requests lr
         LEFT JOIN leave_types lt ON lt.code = lr.leave_type OR lt.name = lr.leave_type
         WHERE lr.user_id = ?
-          AND LOWER(COALESCE(lr.status, 'pending')) IN ('pending', 'approved', 'partially_approved')
+          AND LOWER(COALESCE(lr.status, 'pending')) IN (
+                'pending', 'approved', 'partially_approved', 'partially_rejected'
+          )
           AND lr.start_date <= ? AND lr.end_date >= ?
     """
     params = [user_id, end_date, start_date]
     if exclude_id is not None:
         query += " AND lr.id != ?"
         params.append(exclude_id)
-    query += " ORDER BY lr.start_date, lr.id LIMIT 1"
+    query += " ORDER BY lr.start_date, lr.id"
     cursor.execute(query, params)
-    return cursor.fetchone()
+    rows = cursor.fetchall()
+    for row in rows:
+        effective_end = row['end_date']
+        unpaid_st = str(row['unpaid_status'] or '').lower()
+        try:
+            unpaid_days = int(float(row['unpaid_days'] or 0))
+        except (TypeError, ValueError):
+            unpaid_days = 0
+        # QA-113: rejected excess is not leave — only the within-quota / paid span remains active.
+        if unpaid_days > 0 and unpaid_st == 'rejected':
+            clip = row['paid_through_date'] or row['quota_through_date']
+            try:
+                paid_days = int(float(row['paid_days'] or 0))
+            except (TypeError, ValueError):
+                paid_days = 0
+            if paid_days <= 0:
+                continue
+            if clip:
+                effective_end = clip
+        if row['start_date'] <= end_date and effective_end >= start_date:
+            return row
+    return None
 
 
 def _find_attendance_dates_in_range(
@@ -8226,16 +8251,16 @@ def update_leave_status(
                 new_paid_status = norm_status
                 new_unpaid_status = norm_status
 
-            # Derive overall status
+            # Derive overall status (check rejection before partial-approved)
             if unpaid_days > 0 and paid_days > 0:
                 if new_paid_status == 'approved' and new_unpaid_status == 'approved':
                     overall_status = 'approved'
                 elif new_paid_status == 'rejected' and new_unpaid_status == 'rejected':
                     overall_status = 'rejected'
-                elif new_paid_status == 'approved' or new_unpaid_status == 'approved':
-                    overall_status = 'partially_approved'
                 elif new_paid_status == 'rejected' or new_unpaid_status == 'rejected':
                     overall_status = 'partially_rejected'
+                elif new_paid_status == 'approved' or new_unpaid_status == 'approved':
+                    overall_status = 'partially_approved'
                 else:
                     overall_status = 'pending'
             elif unpaid_days > 0:
@@ -8347,6 +8372,14 @@ def decide_leave_excess(
             new_unpaid_status = unpaid_status
             new_paid_through = leave['paid_through_date']
             reason_val = None
+            # Preserve original within-quota count so mobile can still show the split
+            # after excess is absorbed into paid_days.
+            try:
+                existing_quota = int(float(leave['quota_days'] or 0))
+            except (TypeError, ValueError):
+                existing_quota = 0
+            if existing_quota <= 0 and paid_days > 0:
+                existing_quota = paid_days
 
             if decision_norm == 'paid':
                 new_paid_days = paid_days + unpaid_days
@@ -8358,6 +8391,7 @@ def decide_leave_excess(
                 new_paid_status = 'approved' if paid_days > 0 else new_paid_status
                 new_unpaid_status = 'approved'
             else:
+                # Keep unpaid_days so the employee still sees how many days were rejected.
                 new_paid_status = 'approved' if paid_days > 0 else 'rejected'
                 new_unpaid_status = 'rejected'
                 reason_val = reason
@@ -8367,10 +8401,11 @@ def decide_leave_excess(
                     overall = 'approved'
                 elif new_paid_status == 'rejected' and new_unpaid_status == 'rejected':
                     overall = 'rejected'
+                elif new_paid_status == 'rejected' or new_unpaid_status == 'rejected':
+                    # QA-113/112: paid+rejected-excess must not look fully/partially approved.
+                    overall = 'partially_rejected'
                 elif new_paid_status == 'approved' or new_unpaid_status == 'approved':
                     overall = 'partially_approved'
-                elif new_paid_status == 'rejected' or new_unpaid_status == 'rejected':
-                    overall = 'partially_rejected'
                 else:
                     overall = 'pending'
             elif new_unpaid_days > 0:
@@ -8391,13 +8426,14 @@ def decide_leave_excess(
 
             cursor.execute(
                 """UPDATE leave_requests
-                   SET paid_days = ?, unpaid_days = ?, paid_through_date = ?,
+                   SET paid_days = ?, unpaid_days = ?, quota_days = ?, paid_through_date = ?,
                        paid_status = ?, unpaid_status = ?, status = ?, approved_by = ?,
                        rejection_reason = COALESCE(?, rejection_reason)
                    WHERE id = ?""",
                 (
                     new_paid_days,
                     new_unpaid_days,
+                    existing_quota if existing_quota > 0 else leave['quota_days'],
                     new_paid_through,
                     new_paid_status,
                     new_unpaid_status,
@@ -8417,6 +8453,7 @@ def decide_leave_excess(
                 'status': overall,
                 'paid_days': new_paid_days,
                 'unpaid_days': new_unpaid_days,
+                'quota_days': existing_quota if existing_quota > 0 else leave['quota_days'],
                 'rejection_reason': reason_val,
             }
     except ValueError as exc:
@@ -9136,21 +9173,26 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
         return []
 
 
-def _count_scheduled_leave_days(cursor, user_id: int, start_date: str, end_date: str) -> int:
-    """Calculate the number of scheduled working days in a leave period."""
+def _list_scheduled_leave_dates(cursor, user_id: int, start_date: str, end_date: str) -> List[str]:
+    """Return scheduled working dates in [start_date, end_date] for the employee."""
+    if not start_date or not end_date:
+        return []
+    try:
+        d1 = datetime.strptime(start_date, '%Y-%m-%d')
+        d2 = datetime.strptime(end_date, '%Y-%m-%d')
+    except Exception:
+        return []
+    if d2 < d1:
+        return []
+
     if not user_id:
-        try:
-            d1 = datetime.strptime(start_date, '%Y-%m-%d')
-            d2 = datetime.strptime(end_date, '%Y-%m-%d')
-            return max(0, (d2 - d1).days + 1)
-        except Exception:
-            return 0
+        return [(d1 + timedelta(days=i)).strftime('%Y-%m-%d') for i in range((d2 - d1).days + 1)]
 
     cursor.execute('''SELECT working_days FROM shifts WHERE id = (
         SELECT shift_id FROM users WHERE id = ?
     )''', (user_id,))
     row = cursor.fetchone()
-    working_days = set(_normalize_shift_working_days(row['working_days'])) if row and row['working_days'] else {0,1,2,3,4,5,6}
+    working_days = set(_normalize_shift_working_days(row['working_days'])) if row and row['working_days'] else {0, 1, 2, 3, 4, 5, 6}
 
     org_id, branch_id = _user_tenant(cursor, user_id)
     cursor.execute(
@@ -9178,24 +9220,24 @@ def _count_scheduled_leave_days(cursor, user_id: int, start_date: str, end_date:
     )
     overrides = {r['calendar_date']: r['override_type'] for r in cursor.fetchall()}
 
-    try:
-        d1 = datetime.strptime(start_date, '%Y-%m-%d')
-        d2 = datetime.strptime(end_date, '%Y-%m-%d')
-    except Exception:
-        return 0
-
-    days = 0
+    dates: List[str] = []
     for i in range((d2 - d1).days + 1):
         curr_date = d1 + timedelta(days=i)
         curr_str = curr_date.strftime('%Y-%m-%d')
         override = overrides.get(curr_str)
         if override:
-            if override == 'working_day': days += 1
+            if override == 'working_day':
+                dates.append(curr_str)
         elif curr_str in holidays:
-            pass
+            continue
         elif curr_date.weekday() in working_days:
-            days += 1
-    return days
+            dates.append(curr_str)
+    return dates
+
+
+def _count_scheduled_leave_days(cursor, user_id: int, start_date: str, end_date: str) -> int:
+    """Calculate the number of scheduled working days in a leave period."""
+    return len(_list_scheduled_leave_dates(cursor, user_id, start_date, end_date))
 
 
 def resolve_half_leave_rule(
@@ -9913,11 +9955,16 @@ def check_leave_quota(
             if quota_days_requested > remaining:
                 rem_str = int(remaining) if remaining.is_integer() else remaining
                 req_str = int(quota_days_requested) if float(quota_days_requested).is_integer() else quota_days_requested
-                msg = (f"This half-leave would use {req_str} {leave_name} quota day(s), but only {rem_str} remain."
-                       if duration == 'half' else
-                       f"{leave_name} only has {rem_str} allowed paid days for this employee. You cannot request {req_str} days. Please adjust the dates or file the excess days under Unpaid Leave (LWP).")
                 within_quota_days = int(min(remaining, quota_days_requested))
                 excess_days = int(max(0, quota_days_requested - within_quota_days))
+                # QA-112/113: over-quota is allowed with admin decision — do not sound like a hard block.
+                msg = (
+                    f"This half-leave needs admin approval: only {rem_str} {leave_name} quota day(s) remain."
+                    if duration == 'half' else
+                    f"{within_quota_days} day(s) within {leave_name} quota, {excess_days} day(s) over the quota "
+                    f"(remaining paid allowance: {rem_str} of {req_str} requested). "
+                    f"Admin can treat the extra day(s) as paid, unpaid, or reject them with a reason."
+                )
                 excess_info = {
                     'within_quota_days': within_quota_days,
                     'excess_days': excess_days,
@@ -9936,15 +9983,10 @@ def check_leave_quota(
                         {'start': excess_range[0], 'end': excess_range[1]} if excess_range else None
                     )
                     if excess_range:
-                        try:
-                            d1 = datetime.strptime(excess_range[0], '%Y-%m-%d')
-                            d2 = datetime.strptime(excess_range[1], '%Y-%m-%d')
-                            excess_info['excess_dates'] = [
-                                (d1 + timedelta(days=i)).strftime('%Y-%m-%d')
-                                for i in range((d2 - d1).days + 1)
-                            ]
-                        except Exception:
-                            excess_info['excess_dates'] = [excess_range[0]]
+                        # Only scheduled working days — matches the excess day count shown to admin/employee.
+                        excess_info['excess_dates'] = _list_scheduled_leave_dates(
+                            cursor, int(user_id), excess_range[0], excess_range[1]
+                        ) or [excess_range[0]]
                 elif duration == 'half' and start_date:
                     excess_info['excess_range'] = {'start': start_date, 'end': end_date or start_date}
                     excess_info['excess_dates'] = [start_date]

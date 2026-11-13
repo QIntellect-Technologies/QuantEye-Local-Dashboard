@@ -26584,6 +26584,11 @@ async function fetchMultiLiveDetections() {
       if (excessCard && excessSummary) {
         if (pendingExcessReq) {
           const excessDays = Number(pendingExcessReq.unpaid_days || 0);
+          const withinDays = Number(
+            pendingExcessReq.quota_days != null
+              ? pendingExcessReq.quota_days
+              : (pendingExcessReq.paid_days || 0)
+          );
           const quotaThrough = pendingExcessReq.quota_through_date || pendingExcessReq.paid_through_date;
           const nextIsoDateLocal = (dateValue, startFallback) => {
             if (!dateValue) return startFallback;
@@ -26593,10 +26598,18 @@ async function fetchMultiLiveDetections() {
           };
           const excessStart = nextIsoDateLocal(quotaThrough, pendingExcessReq.start_date);
           const excessEnd = pendingExcessReq.end_date || excessStart;
-          const dateLabel = excessStart === excessEnd
-            ? formatLeaveExcessDateLabel(excessStart)
-            : `${formatLeaveExcessDateLabel(excessStart)} – ${formatLeaveExcessDateLabel(excessEnd)}`;
-          excessSummary.textContent = `${excessDays} day${excessDays === 1 ? '' : 's'} over the quota: ${dateLabel}. Choose paid, unpaid, or reject with a reason. The employee will see this decision in the mobile app.`;
+          const prelisted = Array.isArray(pendingExcessReq.excess_dates) ? pendingExcessReq.excess_dates.filter(Boolean) : [];
+          let dateLabel = '';
+          if (prelisted.length === 1) {
+            dateLabel = formatLeaveExcessDateLabel(prelisted[0]);
+          } else if (prelisted.length > 1 && prelisted.length <= 5) {
+            dateLabel = prelisted.map(formatLeaveExcessDateLabel).join(', ');
+          } else {
+            dateLabel = excessStart === excessEnd
+              ? formatLeaveExcessDateLabel(excessStart)
+              : `${formatLeaveExcessDateLabel(excessStart)} – ${formatLeaveExcessDateLabel(excessEnd)}`;
+          }
+          excessSummary.textContent = `${withinDays} day${withinDays === 1 ? '' : 's'} within quota, ${excessDays} day${excessDays === 1 ? '' : 's'} over the quota: ${dateLabel}. Choose paid, unpaid, or reject with a reason. The employee will see this decision in the mobile app.`;
           excessCard.style.display = 'block';
         } else {
           excessCard.style.display = 'none';
@@ -27588,6 +27601,8 @@ async function fetchMultiLiveDetections() {
       let dateBit = '';
       if (excessDates.length === 1) {
         dateBit = formatLeaveExcessDateLabel(excessDates[0]);
+      } else if (excessDates.length > 1 && excessDates.length <= 5) {
+        dateBit = excessDates.map(formatLeaveExcessDateLabel).join(', ');
       } else if (excessRange.start && excessRange.end) {
         dateBit = excessRange.start === excessRange.end
           ? formatLeaveExcessDateLabel(excessRange.start)

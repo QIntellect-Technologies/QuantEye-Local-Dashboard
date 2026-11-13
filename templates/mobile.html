@@ -1660,17 +1660,24 @@
             let splitHtml = '';
             if (excess > 0 || r.needs_admin_excess) {
               const unpaidSt = String(r.unpaid_status || '').toLowerCase();
+              const outcomeKey = String(r.excess_outcome || '').toLowerCase();
               let excessOutcome = 'waiting for admin decision';
-              if (unpaidSt === 'approved') excessOutcome = 'approved as unpaid';
-              else if (unpaidSt === 'rejected') excessOutcome = 'rejected';
-              else if (Number(r.paid_days || 0) > within && String(r.paid_status || '').toLowerCase() === 'approved' && unpaidSt !== 'pending') {
+              if (outcomeKey === 'paid' || (Number(r.paid_days || 0) > within && unpaidSt !== 'pending' && unpaidSt !== 'rejected')) {
                 excessOutcome = 'approved as paid';
+              } else if (outcomeKey === 'unpaid' || unpaidSt === 'approved') {
+                excessOutcome = 'approved as unpaid';
+              } else if (outcomeKey === 'rejected' || unpaidSt === 'rejected') {
+                excessOutcome = 'rejected';
+              } else if (r.needs_admin_excess || unpaidSt === 'pending') {
+                excessOutcome = 'waiting for admin decision';
               }
-              splitHtml = `<div class="leave-history-reason" style="color:#92400e;">${within} day(s) within quota · ${excess} day(s) over quota — ${excessOutcome}</div>`;
+              splitHtml = `<div class="leave-history-reason" style="color:#92400e;">${within} day(s) within your quota, ${excess} day(s) over quota — ${excessOutcome}</div>`;
             } else if (within > 0 && String(r.status || '').toLowerCase() === 'approved') {
-              splitHtml = `<div class="leave-history-reason">${within} day(s) within quota</div>`;
+              splitHtml = `<div class="leave-history-reason">${within} day(s) within your quota</div>`;
             }
-            const rejectionHtml = r.rejection_reason ? `<div class="leave-history-rejection">Admin reason: ${r.rejection_reason}</div>` : '';
+            const rejectionHtml = r.rejection_reason
+              ? `<div class="leave-history-rejection">Admin reason: ${String(r.rejection_reason).replace(/</g, '&lt;')}</div>`
+              : '';
             const reasonHtml = r.reason ? `<div class="leave-history-reason">"${r.reason}"</div>` : '';
 
             return `
