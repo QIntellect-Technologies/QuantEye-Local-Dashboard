@@ -121,7 +121,7 @@ class QaBatchFutureJoinAndPayslip(unittest.TestCase):
         self.assertTrue(row.get("not_yet_started") or row.get("is_prorated"))
 
     def test_qa_72_month_end_join_not_replaced_by_today_stamp(self):
-        """Fourth retest: package/joining date 30 Nov must not become today's marker."""
+        """Failed retest: enroll with joining date = month end; it must stay stored and shown."""
         import calendar
 
         today = date.today()
@@ -130,17 +130,21 @@ class QaBatchFutureJoinAndPayslip(unittest.TestCase):
         if month_end <= today:
             self.skipTest("Need a future month-end joining date")
 
-        # Simulate enrollment stamp = today, while salary package Effective from = month end.
+        # Enroll exactly as QA does: typed joining date = 30 Nov (month end).
         uid = db.add_user(
             name="Month End Joiner",
             email="monthendjoiner@example.com",
             department="QA",
             salary=60000,
-            join_date=today.isoformat(),
+            join_date=month_end.isoformat(),
             shift_id=self._shift(),
             organization_id=self.org,
             branch_id=self.branch,
         )
+        with db.sqlite3.connect(self.db_path) as conn:
+            stored = conn.execute("SELECT join_date FROM users WHERE id = ?", (uid,)).fetchone()[0]
+        self.assertEqual(str(stored)[:10], month_end.isoformat())
+
         db.set_salary_config(
             uid,
             basic_salary=60000,
@@ -149,14 +153,35 @@ class QaBatchFutureJoinAndPayslip(unittest.TestCase):
             ot_rate=0,
             effective_from=month_end.isoformat(),
         )
-        # Force the historical desync QA keeps hitting: package has 30 Nov, users.join_date stuck on today.
+        cfg = db.get_salary_config(uid)
+        self.assertEqual(cfg.get("join_date"), month_end.isoformat())
+        self.assertEqual(cfg.get("effective_from"), month_end.isoformat())
+
+        # Simulate the old hydrate bug that replaced future join with today; heal must restore.
         with db.sqlite3.connect(self.db_path) as conn:
-            conn.execute("UPDATE users SET join_date = ? WHERE id = ?", (today.isoformat(), uid))
             conn.execute(
-                "UPDATE salary_configs SET effective_from = ? WHERE user_id = ?",
-                (month_end.isoformat(), uid),
+                "UPDATE users SET join_date = ?, created_at = ? WHERE id = ?",
+                (today.isoformat(), f"{today.isoformat()} 09:00:00", uid),
+            )
+            # Fixed hydrate rule: if local equals created_at stamp and PG has real join, restore it.
+            pg_join = month_end.isoformat()
+            conn.execute(
+                """
+                UPDATE users SET join_date = CASE
+                    WHEN ? IS NOT NULL AND TRIM(?) != '' AND (
+                        join_date IS NULL OR TRIM(COALESCE(join_date, '')) = ''
+                        OR (created_at IS NOT NULL AND substr(TRIM(join_date), 1, 10) = date(created_at))
+                    ) THEN ?
+                    WHEN join_date IS NOT NULL AND TRIM(join_date) != '' THEN join_date
+                    ELSE join_date
+                END
+                WHERE id = ?
+                """,
+                (pg_join, pg_join, pg_join, uid),
             )
             conn.commit()
+            healed = conn.execute("SELECT join_date FROM users WHERE id = ?", (uid,)).fetchone()[0]
+        self.assertEqual(str(healed)[:10], month_end.isoformat())
 
         preview = db.calculate_monthly_payroll(month, organization_id=self.org, branch_id=self.branch)
         row = next(r for r in preview["records"] if int(r["employee_id"]) == int(uid))

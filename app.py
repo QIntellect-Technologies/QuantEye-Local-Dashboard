@@ -1088,10 +1088,57 @@ def create_user():
         field = 'join_date' if 'finalized' in err_msg.lower() else ('name' if 'name' in err_msg.lower() else None)
         return jsonify({'error': err_msg, 'field': field}), 400
     if user_id:
+        # QA-72: keep salary package Effective from aligned to the typed joining date
+        # so Configure Salary Package never opens on "today" for a future hire.
+        if salary and float(salary) > 0:
+            try:
+                db.set_salary_config(
+                    user_id=int(user_id),
+                    basic_salary=float(salary),
+                    allowances=0.0,
+                    deductions=0.0,
+                    ot_rate=0.0,
+                    effective_from=join_date,
+                )
+            except Exception as salary_cfg_err:
+                logger.warning(
+                    "Enrollment salary package not saved for user %s: %s",
+                    user_id,
+                    salary_cfg_err,
+                )
+        # Re-read to confirm joining date was stored exactly as typed (QA-72).
+        saved = None
+        try:
+            with db.sqlite3.connect(db.DB_PATH) as conn:
+                row = conn.execute(
+                    "SELECT join_date FROM users WHERE id = ?",
+                    (int(user_id),),
+                ).fetchone()
+                saved = str((row[0] if row else '') or '').strip()[:10]
+        except Exception:
+            saved = None
+        if saved and saved != join_date:
+            logger.error(
+                "QA-72 join_date mismatch after enroll: typed=%s stored=%s user_id=%s",
+                join_date,
+                saved,
+                user_id,
+            )
+            try:
+                with db.sqlite3.connect(db.DB_PATH) as conn:
+                    conn.execute(
+                        "UPDATE users SET join_date = ? WHERE id = ?",
+                        (join_date, int(user_id)),
+                    )
+                    conn.commit()
+                saved = join_date
+            except Exception as heal_err:
+                logger.warning("Could not heal join_date after enroll: %s", heal_err)
         return jsonify({
             'success': True,
             'user_id': user_id,
             'name': name,
+            'join_date': saved or join_date,
             'organization_id': current_tenant,
             'message': f'User {name} created successfully'
         }), 201

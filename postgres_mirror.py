@@ -140,6 +140,14 @@ def _with_read_cursor(work):
         conn.close()
 
 
+def _ensure_employees_join_date_column(cur) -> None:
+    """QA-72: persist joining date in Postgres so hydrate cannot invent created_at."""
+    try:
+        cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS join_date TEXT")
+    except Exception:
+        pass
+
+
 def mirror_employee(user: Dict[str, Any]) -> None:
     org_id = str(user.get("organization_id") or "").strip()
     branch_id = str(user.get("branch_id") or "BR-01").strip() or "BR-01"
@@ -157,15 +165,22 @@ def mirror_employee(user: Dict[str, Any]) -> None:
     roll_number = str(user.get("roll_number") or "").strip() or None
     guardian_name = str(user.get("guardian_name") or "").strip() or None
     guardian_phone = str(user.get("guardian_phone") or "").strip() or None
+    join_date = str(user.get("join_date") or "").strip()[:10] or None
+    if join_date:
+        try:
+            datetime.strptime(join_date, "%Y-%m-%d")
+        except ValueError:
+            join_date = None
 
     def _write(cur):
         _ensure_tenant(cur, org_id, branch_id, str(user.get("organization_name") or ""))
+        _ensure_employees_join_date_column(cur)
         cur.execute(
             """
             INSERT INTO employees (
                 id, organization_id, branch_id, employee_code, name, email, phone, is_active, shift_id,
-                person_type, class_id, roll_number, guardian_name, guardian_phone
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                person_type, class_id, roll_number, guardian_name, guardian_phone, join_date
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (organization_id, id) DO UPDATE SET
                 name = EXCLUDED.name,
                 email = EXCLUDED.email,
@@ -177,6 +192,7 @@ def mirror_employee(user: Dict[str, Any]) -> None:
                 roll_number = EXCLUDED.roll_number,
                 guardian_name = EXCLUDED.guardian_name,
                 guardian_phone = EXCLUDED.guardian_phone,
+                join_date = COALESCE(EXCLUDED.join_date, employees.join_date),
                 updated_at = CURRENT_TIMESTAMP
             """,
             (
@@ -194,6 +210,7 @@ def mirror_employee(user: Dict[str, Any]) -> None:
                 roll_number,
                 guardian_name,
                 guardian_phone,
+                join_date,
             ),
         )
 
@@ -830,6 +847,10 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                 cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS mobile_login INT DEFAULT 0")
             except Exception:
                 pass
+            try:
+                _ensure_employees_join_date_column(cur)
+            except Exception:
+                pass
             cur.execute(
                 """
                 SELECT id, employee_code, name, email, phone, is_active,
@@ -841,7 +862,8 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                        class_id,
                        roll_number,
                        guardian_name,
-                       guardian_phone
+                       guardian_phone,
+                       NULLIF(TRIM(COALESCE(join_date::text, '')), '') as join_date
                 FROM employees
                 WHERE organization_id = %s AND branch_id = %s
                 """,
@@ -862,7 +884,16 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                 pw_hash = row.get("password_hash") or None
                 mob_login = int(row.get("mobile_login", 0) or 0)
                 row_created = str(row.get("created_at") or "").split("+")[0].strip() or None
-                join_date_val = row_created.split()[0] if row_created else None
+                # QA-72: use real joining date from Postgres. NEVER invent created_at as join_date —
+                # that replaced future hire dates (e.g. 30 Nov) with today on every staff refresh.
+                pg_join_raw = str(row.get("join_date") or "").strip()[:10]
+                pg_join = None
+                if pg_join_raw:
+                    try:
+                        datetime.strptime(pg_join_raw, "%Y-%m-%d")
+                        pg_join = pg_join_raw
+                    except ValueError:
+                        pg_join = None
                 s_id_raw = row.get("shift_id")
                 try:
                     emp_shift_id = int(str(s_id_raw).strip()) if s_id_raw is not None and str(s_id_raw).strip() != "" else None
@@ -891,8 +922,22 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             password_hash = COALESCE(?, password_hash),
                             mobile_login = MAX(?, COALESCE(mobile_login, 0)),
                             created_at = COALESCE(?, created_at),
-                            join_date = CASE WHEN join_date IS NULL OR join_date = '' OR (join_date > ? AND ? IS NOT NULL) THEN COALESCE(?, join_date) ELSE join_date END,
-                            enrollment_date = CASE WHEN enrollment_date IS NULL OR enrollment_date = '' OR (enrollment_date > ? AND ? IS NOT NULL) THEN COALESCE(?, enrollment_date) ELSE enrollment_date END,
+                            -- QA-72: keep a deliberate saved joining date (including future
+                            -- hires). Only fill/heal when local is blank or still equal to
+                            -- created_at (the old hydrate "today stamp"). Never write created_at
+                            -- into join_date.
+                            join_date = CASE
+                                WHEN ? IS NOT NULL AND TRIM(?) != '' AND (
+                                    join_date IS NULL OR TRIM(COALESCE(join_date, '')) = ''
+                                    OR (
+                                        created_at IS NOT NULL
+                                        AND substr(TRIM(join_date), 1, 10) = date(created_at)
+                                    )
+                                ) THEN ?
+                                WHEN join_date IS NOT NULL AND TRIM(join_date) != '' THEN join_date
+                                ELSE join_date
+                            END,
+                            enrollment_date = COALESCE(enrollment_date, ?),
                             person_type = COALESCE(?, person_type),
                             class_id = COALESCE(?, class_id),
                             roll_number = COALESCE(?, roll_number),
@@ -911,11 +956,9 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                             pw_hash,
                             mob_login,
                             row_created,
-                            join_date_val,
-                            join_date_val,
-                            join_date_val,
-                            row_created,
-                            row_created,
+                            pg_join,
+                            pg_join,
+                            pg_join,
                             row_created,
                             p_type,
                             c_id,
@@ -946,7 +989,7 @@ def hydrate_branch_employees(organization_id: str, branch_id: str) -> int:
                         pw_hash,
                         mob_login,
                         row_created,
-                        join_date_val,
+                        pg_join,
                         row_created,
                         p_type,
                         c_id,

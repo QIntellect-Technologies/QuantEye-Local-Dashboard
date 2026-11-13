@@ -13384,12 +13384,11 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         # charge absences for days before they start (or for future days not yet worked).
         not_yet_started = employed_from > period_end
         join_marker = ''
-        # QA-72 / QA-108: marker uses the saved users.join_date (not package Effective from).
-        # Show "Joins …" only when that date is still after today — already-joined people never get it.
-        marker_join = str(
-            employee.get('raw_join_date') or employee.get('join_date') or emp_start_str or ''
-        ).strip()[:10]
-        raw_join = marker_join
+        # QA-72 / QA-108: marker uses the resolved joining date (saved hire date, or package
+        # Effective from only when join_date is still a today-stamp). Show "Joins …" only
+        # while that date is still after today — already-joined people never get it.
+        marker_join = str(employee.get('join_date') or emp_start_str or '').strip()[:10]
+        raw_join = str(employee.get('raw_join_date') or marker_join or '').strip()[:10]
         if marker_join:
             try:
                 join_dt = datetime.strptime(marker_join, "%Y-%m-%d").date()

@@ -44,7 +44,7 @@
     {% if is_client_session %}
     <style id="server-rendered-client-entitlements">
       {% if not client_module_entitlements.attendance %}.sidebar-menu .menu-item[data-module="attendance"] { display: none !important; } #reports-view, #staff-view, #live-view, #enroll-view, #cameras-tab { display: none !important; } .settings-nav-btn[data-settings-module="attendance"] { display: none !important; }{% endif %}
-      {% if not client_module_entitlements.payroll %}.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; } #payroll-view, #payroll-calendar-tab, #salary-config-tab { display: none !important; } .settings-nav-btn[data-settings-module="payroll"]:not([data-settings-also-module="overtime"]), .payroll-only-ui { display: none !important; }{% if not client_module_entitlements.overtime %}#payroll-rules-tab { display: none !important; } .settings-nav-btn[data-settings-also-module="overtime"] { display: none !important; }{% endif %}{% endif %}
+      {% if not client_module_entitlements.payroll %}.sidebar-menu .menu-item[data-module="payroll"] { display: none !important; } #payroll-view, #payroll-calendar-tab, #salary-config-tab { display: none !important; } #payrollRulesNavBtn, .settings-nav-btn[data-settings-module="payroll"], .payroll-only-ui { display: none !important; }{% if not client_module_entitlements.overtime %}#payroll-rules-tab { display: none !important; }{% endif %}{% endif %}
       {% if not client_module_entitlements.leave %}.sidebar-menu .menu-item[data-module="leave"] { display: none !important; } #leaves-view { display: none !important; } .settings-leave-only, .payroll-leave-only { display: none !important; }{% endif %}
       {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; } #overtime-view { display: none !important; } .settings-overtime-only, .payroll-overtime-only { display: none !important; }{% endif %}
       {% if not client_module_entitlements.shifts %}.sidebar-menu .menu-item[data-module="shifts"] { display: none !important; } #shifts-view { display: none !important; } .settings-shifts-only { display: none !important; }{% endif %}
@@ -7033,20 +7033,22 @@
       box-shadow: none !important;
       filter: grayscale(0.15);
     }
-    /* OT-07: Complete View actions stay one horizontal row */
+    /* OT-07: Complete View footer + row actions stay one horizontal row */
     #otDetailModal .ot-detail-footer {
       display: flex !important;
       flex-direction: row !important;
       flex-wrap: nowrap !important;
       align-items: center !important;
-      justify-content: space-between !important;
+      justify-content: flex-end !important;
       gap: 12px !important;
       padding: 14px 22px !important;
       border-top: 1px solid #edf0f9 !important;
       background: #f8fafc !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
     }
     #otDetailModal .ot-detail-actions {
-      display: inline-flex !important;
+      display: flex !important;
       flex-direction: row !important;
       flex-wrap: nowrap !important;
       align-items: center !important;
@@ -7054,12 +7056,15 @@
       gap: 8px !important;
       margin: 0 !important;
       padding: 0 !important;
-      min-width: 0;
-      max-width: 100%;
+      flex: 0 0 auto !important;
+      width: auto !important;
+      max-width: none !important;
+      white-space: nowrap !important;
       overflow-x: auto;
       overflow-y: hidden;
     }
-    #otDetailModal .ot-detail-actions .btn {
+    #otDetailModal .ot-detail-actions .btn,
+    #otDetailModal .ot-detail-row-actions .btn {
       display: inline-flex !important;
       flex: 0 0 auto !important;
       align-items: center !important;
@@ -7070,10 +7075,25 @@
       min-height: 34px !important;
       padding: 0 12px !important;
       margin: 0 !important;
+      float: none !important;
     }
     #otDetailModal #otDetailFooterInfo {
       flex: 1 1 auto !important;
       min-width: 0 !important;
+      margin-right: auto !important;
+    }
+    #otDetailModal .ot-detail-row-actions {
+      display: inline-flex !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 4px !important;
+      white-space: nowrap !important;
+    }
+    #otDetailModal .ot-detail-row-actions .btn {
+      min-width: 32px !important;
+      padding: 0 8px !important;
     }
     /* Shared Refresh / Export buttons across modules (GUI-02) */
     .rpt-btn {
@@ -7258,6 +7278,162 @@
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 12px;
       align-items: end;
+    }
+
+    /* OT-25/26: Overtime Settings layout + standard dropdowns */
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] {
+      max-width: 980px;
+    }
+    #payroll-rules-tab .ot-settings-section {
+      padding: 16px 16px 18px;
+      margin-bottom: 16px;
+      background: #f8fafc;
+      border: 1px solid #dbe5ec;
+      border-radius: 10px;
+      overflow: visible;
+    }
+    #payroll-rules-tab .ot-settings-section > h5,
+    #payroll-rules-tab .ot-settings-section-title {
+      margin: 0 0 4px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #173042;
+    }
+    #payroll-rules-tab .ot-settings-help {
+      margin: 0 0 14px;
+      font-size: 0.82em;
+      color: #64748b;
+      line-height: 1.45;
+    }
+    #payroll-rules-tab .ot-settings-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px 14px;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+    #payroll-rules-tab .ot-settings-row.is-actions {
+      align-items: end;
+      margin-bottom: 0;
+    }
+    #payroll-rules-tab .ot-settings-field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+      margin: 0;
+      font-size: 0.86em;
+      font-weight: 700;
+      color: #475569;
+    }
+    #payroll-rules-tab .ot-settings-field .form-control,
+    #payroll-rules-tab .ot-settings-field .form-select,
+    #payroll-rules-tab .ot-settings-field .app-camera-select {
+      width: 100%;
+      min-width: 0;
+      min-height: 40px;
+    }
+    #payroll-rules-tab .ot-settings-field .app-camera-select-trigger {
+      min-height: 40px;
+      background: #ffffff;
+      border: 1.5px solid #cfe8f7;
+      border-radius: 10px;
+      font-size: 13px;
+      color: #173042;
+    }
+    #payroll-rules-tab .ot-settings-field .app-camera-select-trigger:hover {
+      border-color: #3d9fd4;
+      background: #fcfdfe;
+    }
+    #payroll-rules-tab .ot-settings-field .app-camera-select-trigger.active {
+      border-color: #8b7bf7;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.16);
+      background: #ffffff;
+    }
+    #payroll-rules-tab .ot-settings-field .app-camera-select-label,
+    #payroll-rules-tab .ot-settings-field .app-camera-select-chip {
+      font-size: 13px;
+      font-weight: 600;
+      color: #173042;
+    }
+    #payroll-rules-tab .ot-settings-field .form-control,
+    #payroll-rules-tab .ot-settings-field .form-select {
+      border: 1.5px solid #cfe8f7 !important;
+      border-radius: 10px !important;
+      background: #ffffff !important;
+      color: #173042 !important;
+      font-size: 13px !important;
+      min-height: 40px;
+    }
+    #payroll-rules-tab .ot-settings-field .form-control:focus,
+    #payroll-rules-tab .ot-settings-field .form-select:focus {
+      border-color: #8b7bf7 !important;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.16) !important;
+    }
+    #payroll-rules-tab .ot-settings-field .field-error {
+      display: none;
+      color: #dc2626;
+      font-size: 0.78em;
+      font-weight: 600;
+      margin-top: 2px;
+      min-height: 1.1em;
+    }
+    #payroll-rules-tab .ot-settings-field .field-error.is-visible {
+      display: block;
+    }
+    #payroll-rules-tab .ot-settings-actions {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding-top: 2px;
+    }
+    #payroll-rules-tab .ot-settings-actions .btn,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .btn-primary.btn-sm {
+      min-height: 40px;
+      min-width: 118px;
+      padding: 0 14px;
+      border-radius: 10px;
+      font-weight: 700;
+      background: #3d9fd4;
+      border: none;
+    }
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .payroll-rule-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      align-items: start;
+      padding: 14px;
+      margin-bottom: 12px;
+      background: #ffffff;
+      border: 1px solid #cfe8f7;
+      border-radius: 10px;
+      overflow: visible;
+    }
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .payroll-rule-field {
+      display: grid;
+      gap: 6px;
+      align-content: start;
+    }
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .payroll-rule-actions {
+      display: flex;
+      align-items: flex-end;
+      min-height: 40px;
+      padding-top: 22px;
+    }
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .app-camera-select-host,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .payroll-rule-form,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .payroll-rule-field,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .ot-settings-section {
+      overflow: visible !important;
+    }
+    @media (max-width: 720px) {
+      #payroll-rules-tab .ot-settings-row,
+      #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .payroll-rule-form {
+        grid-template-columns: 1fr;
+      }
+      #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .payroll-rule-actions {
+        padding-top: 0;
+      }
     }
 
     /* GUI-11: shared form design system */
@@ -10063,20 +10239,20 @@ async function fetchMultiLiveDetections() {
                   <th>Reason / Task</th>
                   <th style="width:110px; text-align:center;">Status</th>
                   <th style="width:140px;">By Admin</th>
-                  <th style="width:80px;">Actions</th>
+                  <th style="width:120px; min-width:120px; text-align:center;">Actions</th>
                 </tr>
               </thead>
               <tbody id="otDetailTableBody"><tr><td colspan="9" class="text-center text-muted p-4">Loading...</td></tr></tbody>
             </table>
           </div>
         </div>
-        <div class="ot-detail-footer" style="display:flex; flex-direction:row; flex-wrap:nowrap; align-items:center; justify-content:space-between; gap:12px;">
-          <div id="otDetailFooterInfo" style="font-size:0.88em; color:#475569; font-weight:600; flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
-          <div class="ot-detail-actions" role="group" aria-label="Overtime review actions" style="display:inline-flex; flex-direction:row; flex-wrap:nowrap; align-items:center; gap:8px; white-space:nowrap;">
-            <button type="button" class="btn btn-success btn-sm" id="otDetailAcceptAllBtn" onclick="otDetailAcceptAllPending()" style="white-space:nowrap;"><i class="fa-solid fa-check-double"></i> Accept All (Month)</button>
-            <button type="button" class="btn btn-success btn-sm" id="otDetailApproveBtn" onclick="otDetailApproveSelected()" disabled style="white-space:nowrap;"><i class="fa-solid fa-check"></i> Approve Selected</button>
-            <button type="button" class="btn btn-danger btn-sm" id="otDetailRejectBtn" onclick="otDetailRejectSelected()" disabled style="white-space:nowrap;"><i class="fa-solid fa-xmark"></i> Reject Selected</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closeOtDetailModal()" style="white-space:nowrap;">Close</button>
+        <div class="ot-detail-footer">
+          <div id="otDetailFooterInfo" style="font-size:0.88em; color:#475569; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+          <div class="ot-detail-actions" role="group" aria-label="Overtime review actions">
+            <button type="button" class="btn btn-success btn-sm" id="otDetailAcceptAllBtn" onclick="otDetailAcceptAllPending()"><i class="fa-solid fa-check-double"></i> Accept All (Month)</button>
+            <button type="button" class="btn btn-success btn-sm" id="otDetailApproveBtn" onclick="otDetailApproveSelected()" disabled><i class="fa-solid fa-check"></i> Approve Selected</button>
+            <button type="button" class="btn btn-danger btn-sm" id="otDetailRejectBtn" onclick="otDetailRejectSelected()" disabled><i class="fa-solid fa-xmark"></i> Reject Selected</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closeOtDetailModal()">Close</button>
           </div>
         </div>
       </div>
@@ -10640,12 +10816,10 @@ async function fetchMultiLiveDetections() {
         <i class="fa-solid fa-video"></i> Camera Management
       </button>
       {% endif %}
-      {% if not is_client_session or client_module_entitlements.payroll or client_module_entitlements.overtime %}
-      <button id="payrollRulesNavBtn" class="btn btn-sm settings-nav-btn" data-settings-module="payroll" data-settings-also-module="overtime" onclick="switchSettingsTab('payroll-rules-tab', this)" style="border-radius: 8px; font-weight: 700;">
+      {% if not is_client_session or client_module_entitlements.payroll %}
+      <button id="payrollRulesNavBtn" class="btn btn-sm settings-nav-btn" data-settings-module="payroll" onclick="switchSettingsTab('payroll-rules-tab', this)" style="border-radius: 8px; font-weight: 700;">
         <i class="fa-solid fa-percent"></i> Payroll Rules
       </button>
-      {% endif %}
-      {% if not is_client_session or client_module_entitlements.payroll %}
       <button id="payrollCalendarNavBtn" class="btn btn-sm settings-nav-btn" data-settings-module="payroll" onclick="switchSettingsTab('payroll-calendar-tab', this)" style="border-radius: 8px; font-weight: 700;">
         <i class="fa-solid fa-calendar-days"></i> Payroll Calendar
       </button>
@@ -10950,16 +11124,16 @@ async function fetchMultiLiveDetections() {
       <div class="card p-4 shadow-sm" style="background:#ffffff; border:1px solid #cfe8f7; border-radius:16px;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
           <div>
-            <h3 style="font-weight:800; color:#173042; margin:0;">
+            <h3 id="payrollRulesCardTitle" style="font-weight:800; color:#173042; margin:0;">
               <i class="fa-solid fa-percent" style="color:#3d9fd4; margin-right:6px;"></i> Payroll Settings
             </h3>
-            <p style="color:#64748b; margin:6px 0 0;">Take-home pay = basic salary + extras − deductions. Open Payroll Guide for formulas and examples.</p>
+            <p id="payrollRulesCardSubtitle" style="color:#64748b; margin:6px 0 0;">Take-home pay = basic salary + extras − deductions. Open Payroll Guide for formulas and examples.</p>
           </div>
           <div class="payroll-quick-links">
-            <button type="button" class="btn btn-outline-primary btn-sm" onclick="openPayrollGuide()" style="border-color:#3d9fd4; color:#0f4c6d; font-weight:700;">
+            <button type="button" class="btn btn-outline-primary btn-sm" id="payrollGuideHeaderBtn" onclick="openPayrollGuide()" style="border-color:#3d9fd4; color:#0f4c6d; font-weight:700;">
               <i class="fa-solid fa-book-open" style="margin-right:6px;"></i>Payroll Guide
             </button>
-            <button type="button" class="btn btn-primary btn-sm" onclick="switchTab('payroll-view', document.getElementById('menuItemPayroll'))" style="background:#148f77; border:none; font-weight:700;">Open Payroll</button>
+            <button type="button" class="btn btn-primary btn-sm payroll-only-ui" id="otOpenPayrollBtn" onclick="switchTab('payroll-view', document.getElementById('menuItemPayroll'))" style="background:#148f77; border:none; font-weight:700;">Open Payroll</button>
           </div>
         </div>
         <div class="payroll-hub-tabs-mount"></div>
@@ -11373,86 +11547,98 @@ async function fetchMultiLiveDetections() {
         </section>
         </div>
 
-        <div class="payroll-hub-pane settings-overtime-only" data-payroll-hub-pane="overtime" data-module="overtime">
-        <section class="payroll-panel settings-overtime-only">
+        <div class="payroll-hub-pane settings-overtime-only app-camera-select-host" data-payroll-hub-pane="overtime" data-module="overtime">
+        <section class="payroll-panel settings-overtime-only app-camera-select-host">
           <h4>Overtime</h4>
           <p class="payroll-panel-help">Only approved overtime is paid. Pending overtime waits until someone approves it.</p>
-        <div class="settings-overtime-only" style="padding:0 0 12px; margin-bottom:12px;">
-          <div style="font-weight:700; color:#173042;">Overtime hourly rate</div>
-          <div style="font-size:0.82em; color:#64748b; margin:4px 0 10px;">
+
+        <div class="ot-settings-section settings-overtime-only app-camera-select-host">
+          <div class="ot-settings-section-title">Overtime hourly rate</div>
+          <p class="ot-settings-help">
             If a person has no overtime rate on their salary package, payroll uses
             <strong>basic ÷ (weekly shift hours × 52 ÷ 12)</strong> from that person’s shift.
             Use <em>Auto-Set OT Rates (Shift Schedule Base)</em> on Salary packages to write those rates into each package.
             A person who needs a different rate can be given one under OT Hourly Rate on their package.
-          </div>
+          </p>
           <input type="hidden" id="payrollOtHourDivisor" value="208">
-          <label style="display:block; margin-top:12px; font-size:0.86em; font-weight:700; color:#475569; max-width:420px;">
-            Rounding
-            <select id="payrollOtRounding" class="form-select" style="margin-top:4px;" onchange="previewPayrollSettingsImpact()">
-              <option value="round_rate_first">Round the hourly rate first</option>
-              <option value="round_at_end">Round the overtime amount at the end</option>
-            </select>
-          </label>
-          <p class="payroll-panel-help" style="margin-top:8px;">Choose when to round overtime. Payroll Guide shows a full example. Locked months are not changed.</p>
+          <div class="ot-settings-row">
+            <label class="ot-settings-field" for="payrollOtRounding">
+              Rounding
+              <select id="payrollOtRounding" class="form-select ot-settings-select" onchange="previewPayrollSettingsImpact(); validateOvertimeSettingsLive();">
+                <option value="round_rate_first">Round the hourly rate first</option>
+                <option value="round_at_end">Round the overtime amount at the end</option>
+              </select>
+              <span class="field-error" id="payrollOtRoundingError"></span>
+            </label>
+          </div>
+          <p class="ot-settings-help" style="margin-bottom:0;">Choose when to round overtime. Payroll Guide shows a full example. Locked months are not changed.</p>
           <div id="payrollLegacyOtRoundRateFirstBanner" class="alert alert-info py-2 mt-3 mb-0" hidden>
             This company rounds the hourly rate first.
           </div>
         </div>
         <div id="payrollSettingsImpactPreview" class="small" hidden style="margin:8px 0 12px; color:#475569;"></div>
-        <div class="settings-overtime-only" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
-          <div style="flex:1; min-width:260px;">
-            <div style="font-weight:700; color:#173042;">Maximum overtime</div>
-            <div style="font-size:0.82em; color:#64748b;">Set a maximum. 0 turns this off. If someone types overtime over the max, it is not saved. Camera overtime over the max is saved as pending. A manager then approves or rejects the whole record. Hours are not split (for example 10 paid and 4 pending).</div>
-            <div id="overtimeLimitSettingsMessage" role="status" style="font-size:0.8em; color:#64748b; margin-top:4px;">Loading overtime limit...</div>
-          </div>
-          <label for="overtimeMaxHours" style="display:flex; align-items:center; gap:8px; margin:0; font-size:0.86em; font-weight:700; color:#475569;">
-            Maximum hours
-            <input id="overtimeMaxHours" class="form-control" type="number" min="0" max="744" step="0.25" value="0" style="width:110px;">
-          </label>
-          <label for="overtimeMaxPeriod" style="display:flex; align-items:center; gap:8px; margin:0; font-size:0.86em; font-weight:700; color:#475569;">
-            Limit applies
-            <select id="overtimeMaxPeriod" class="form-select" style="width:190px;">
-              <option value="per_entry">Each OT entry</option>
-              <option value="day">Per day</option>
-              <option value="week">Per week</option>
-              <option value="month">Per calendar month</option>
-            </select>
-          </label>
-          <button id="saveOvertimeLimitButton" type="button" class="btn btn-primary btn-sm" onclick="saveOvertimeLimitSettings()" style="background:#3d9fd4; border:none; font-weight:700;">Save limit</button>
 
-          <!-- Department/Employee Specific Overtime Limit Rules -->
-          <div style="width:100%; margin-top:16px; border-top:1px solid #dbe5ec; padding-top:12px;">
-            <div style="font-weight:700; color:#173042; margin-bottom:8px;">Overtime limit for one group</div>
-            <div style="font-size:0.82em; color:#64748b; margin-bottom:10px;">Use a different overtime limit for one department or one person.</div>
-            <form id="overtimeLimitSpecificRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); saveSpecificOvertimeLimitRule();">
-              <label class="payroll-rule-field">
+        <div class="ot-settings-section settings-overtime-only app-camera-select-host">
+          <div class="ot-settings-section-title">Maximum overtime</div>
+          <p class="ot-settings-help">Set a maximum. 0 turns this off. If someone types overtime over the max, it is not saved. Camera overtime over the max is saved as pending. A manager then approves or rejects the whole record. Hours are not split (for example 10 paid and 4 pending).</p>
+          <div id="overtimeLimitSettingsMessage" role="status" class="ot-settings-help">Loading overtime limit...</div>
+          <div class="ot-settings-row is-actions">
+            <label class="ot-settings-field" for="overtimeMaxHours">
+              Maximum hours
+              <input id="overtimeMaxHours" class="form-control" type="number" min="0" max="744" step="0.25" value="0" required data-ot-validate="max-hours" oninput="validateOvertimeSettingsLive()" onchange="validateOvertimeSettingsLive()">
+              <span class="field-error" id="overtimeMaxHoursError"></span>
+            </label>
+            <label class="ot-settings-field" for="overtimeMaxPeriod">
+              Limit applies
+              <select id="overtimeMaxPeriod" class="form-select ot-settings-select" data-ot-validate="required-select" onchange="validateOvertimeSettingsLive()">
+                <option value="per_entry">Each OT entry</option>
+                <option value="day">Per day</option>
+                <option value="week">Per week</option>
+                <option value="month">Per calendar month</option>
+              </select>
+              <span class="field-error" id="overtimeMaxPeriodError"></span>
+            </label>
+            <div class="ot-settings-actions">
+              <button id="saveOvertimeLimitButton" type="button" class="btn btn-primary btn-sm" onclick="saveOvertimeLimitSettings()">Save limit</button>
+            </div>
+          </div>
+
+          <div style="margin-top:16px; border-top:1px solid #dbe5ec; padding-top:14px;">
+            <div class="ot-settings-section-title">Overtime limit for one group</div>
+            <p class="ot-settings-help">Use a different overtime limit for one department or one person.</p>
+            <form id="overtimeLimitSpecificRuleForm" class="payroll-rule-form app-camera-select-host" onsubmit="event.preventDefault(); saveSpecificOvertimeLimitRule();" oninput="validateOvertimeSettingsLive()">
+              <label class="payroll-rule-field ot-settings-field">
                 Applies to
-                <select class="form-select" id="overtimeLimitRuleScope" onchange="updateOvertimeLimitRuleScopeOptions()">
+                <select class="form-select ot-settings-select" id="overtimeLimitRuleScope" onchange="updateOvertimeLimitRuleScopeOptions(); validateOvertimeSettingsLive();">
                   <option value="department">Department</option>
                   <option value="employee">One person</option>
                 </select>
+                <span class="field-error"></span>
               </label>
-              <label class="payroll-rule-field">
+              <label class="payroll-rule-field ot-settings-field">
                 Choose
-                <select class="form-select" id="overtimeLimitRuleTarget">
+                <select class="form-select ot-settings-select" id="overtimeLimitRuleTarget" data-ot-validate="rule-target" onchange="validateOvertimeSettingsLive()">
                   <option value="">Select…</option>
                 </select>
+                <span class="field-error" id="overtimeLimitRuleTargetError"></span>
               </label>
-              <label class="payroll-rule-field" style="max-width:120px;">
+              <label class="payroll-rule-field ot-settings-field">
                 Max hours
-                <input class="form-control" type="number" min="0" max="744" step="0.25" id="overtimeLimitRuleHours" value="0">
+                <input class="form-control" type="number" min="0" max="744" step="0.25" id="overtimeLimitRuleHours" value="0" data-ot-validate="max-hours" oninput="validateOvertimeSettingsLive()">
+                <span class="field-error" id="overtimeLimitRuleHoursError"></span>
               </label>
-              <label class="payroll-rule-field">
+              <label class="payroll-rule-field ot-settings-field">
                 Limit applies
-                <select class="form-select" id="overtimeLimitRulePeriod">
+                <select class="form-select ot-settings-select" id="overtimeLimitRulePeriod" onchange="validateOvertimeSettingsLive()">
                   <option value="per_entry">Each OT entry</option>
                   <option value="day">Per day</option>
                   <option value="week">Per week</option>
                   <option value="month">Per calendar month</option>
                 </select>
+                <span class="field-error"></span>
               </label>
               <div class="payroll-rule-actions">
-                <button type="submit" class="btn btn-primary btn-sm" style="min-height:38px; background:#3d9fd4; border:none; font-weight:700;">
+                <button type="submit" id="addOvertimeLimitRuleBtn" class="btn btn-primary btn-sm">
                   <i class="fa-solid fa-plus me-1"></i> Add Rule
                 </button>
               </div>
@@ -11475,108 +11661,132 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
 
-        <div class="settings-overtime-only" style="padding:12px 14px; margin-bottom:16px; background:#f8fafc; border:1px solid #dbe5ec; border-radius:8px;">
-          <div style="font-weight:700; color:#173042;">Holiday / rest-day extra pay</div>
-          <div style="font-size:0.82em; color:#64748b; margin:3px 0 10px;">Extra overtime pay on public holidays and rest days. Rest days come from each person’s shift week, not from a fixed Sunday.</div>
-          <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px;">
-            <label style="font-size:0.86em; font-weight:700; color:#475569;">
+        <div class="ot-settings-section settings-overtime-only app-camera-select-host">
+          <div class="ot-settings-section-title">Holiday / rest-day extra pay</div>
+          <p class="ot-settings-help">Extra overtime pay on public holidays and rest days. Rest days come from each person’s shift week, not from a fixed Sunday.</p>
+          <div class="ot-settings-row is-actions">
+            <label class="ot-settings-field" for="holidayOtPayMode">
               Public holiday extra
-              <select id="holidayOtPayMode" class="form-select" style="margin-top:4px; width:210px;" onchange="updatePayrollExtraPayModeUI()">
+              <select id="holidayOtPayMode" class="form-select ot-settings-select" onchange="updatePayrollExtraPayModeUI(); validateOvertimeSettingsLive();">
                 <option value="percent">Percentage extra</option>
                 <option value="multiplier">Multiplier (e.g. 1.5×)</option>
                 <option value="fixed_hour">Fixed extra per hour</option>
               </select>
+              <span class="field-error"></span>
             </label>
-            <label id="holidayOtPercentWrap" style="font-size:0.86em; font-weight:700; color:#475569;">
+            <label id="holidayOtPercentWrap" class="ot-settings-field" for="holidayOtPremiumPercent">
               Extra %
-              <input id="holidayOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" value="0" style="width:110px; margin-top:4px;">
+              <input id="holidayOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" value="0" data-ot-validate="percent" oninput="validateOvertimeSettingsLive()">
+              <span class="field-error" id="holidayOtPremiumPercentError"></span>
             </label>
-            <label id="holidayOtMultiplierWrap" style="font-size:0.86em; font-weight:700; color:#475569; display:none;">
+            <label id="holidayOtMultiplierWrap" class="ot-settings-field" for="holidayOtMultiplier" style="display:none;">
               Holiday OT multiplier
-              <input id="holidayOtMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" style="width:110px; margin-top:4px;">
+              <input id="holidayOtMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" data-ot-validate="multiplier" oninput="validateOvertimeSettingsLive()">
+              <span class="field-error" id="holidayOtMultiplierError"></span>
             </label>
-            <label id="holidayOtFixedWrap" style="font-size:0.86em; font-weight:700; color:#475569; display:none;">
+            <label id="holidayOtFixedWrap" class="ot-settings-field" for="holidayOtFixedAmount" style="display:none;">
               Extra per OT hour
-              <input id="holidayOtFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" style="width:110px; margin-top:4px;">
+              <input id="holidayOtFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" data-ot-validate="fixed" oninput="validateOvertimeSettingsLive()">
+              <span class="field-error" id="holidayOtFixedAmountError"></span>
             </label>
-            <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; align-self:flex-end;">Save holiday extra</button>
+            <div class="ot-settings-actions">
+              <button type="button" id="saveHolidayOtExtraBtn" class="btn btn-primary btn-sm" onclick="if (validateOvertimeSettingsLive()) savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)">Save holiday extra</button>
+            </div>
           </div>
-          <div style="display:flex; gap:14px; flex-wrap:wrap;">
-            <label style="font-size:0.86em; font-weight:700; color:#475569;">
+          <div class="ot-settings-row is-actions">
+            <label class="ot-settings-field" for="nonWorkingDayOtPayMode">
               Rest-day extra
-              <select id="nonWorkingDayOtPayMode" class="form-select" style="margin-top:4px; width:210px;" onchange="updatePayrollExtraPayModeUI()">
+              <select id="nonWorkingDayOtPayMode" class="form-select ot-settings-select" onchange="updatePayrollExtraPayModeUI(); validateOvertimeSettingsLive();">
                 <option value="percent">Percentage extra</option>
                 <option value="multiplier">Multiplier (e.g. 1.5×)</option>
                 <option value="fixed_hour">Fixed extra per hour</option>
               </select>
+              <span class="field-error"></span>
             </label>
-            <label id="nonWorkingOtPercentWrap" style="font-size:0.86em; font-weight:700; color:#475569;">
+            <label id="nonWorkingOtPercentWrap" class="ot-settings-field" for="nonWorkingDayOtPremiumPercent">
               Extra %
-              <input id="nonWorkingDayOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" value="0" style="width:110px; margin-top:4px;">
+              <input id="nonWorkingDayOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" value="0" data-ot-validate="percent" oninput="validateOvertimeSettingsLive()">
+              <span class="field-error" id="nonWorkingDayOtPremiumPercentError"></span>
             </label>
-            <label id="nonWorkingOtMultiplierWrap" style="font-size:0.86em; font-weight:700; color:#475569; display:none;">
+            <label id="nonWorkingOtMultiplierWrap" class="ot-settings-field" for="nonWorkingDayOtMultiplier" style="display:none;">
               Rest-day OT multiplier
-              <input id="nonWorkingDayOtMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" style="width:110px; margin-top:4px;">
+              <input id="nonWorkingDayOtMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" data-ot-validate="multiplier" oninput="validateOvertimeSettingsLive()">
+              <span class="field-error" id="nonWorkingDayOtMultiplierError"></span>
             </label>
-            <label id="nonWorkingOtFixedWrap" style="font-size:0.86em; font-weight:700; color:#475569; display:none;">
+            <label id="nonWorkingOtFixedWrap" class="ot-settings-field" for="nonWorkingDayOtFixedAmount" style="display:none;">
               Extra per OT hour
-              <input id="nonWorkingDayOtFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" style="width:110px; margin-top:4px;">
+              <input id="nonWorkingDayOtFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" data-ot-validate="fixed" oninput="validateOvertimeSettingsLive()">
+              <span class="field-error" id="nonWorkingDayOtFixedAmountError"></span>
             </label>
-            <button type="button" class="btn btn-primary btn-sm" onclick="savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)" style="background:#3d9fd4; border:none; font-weight:700; align-self:flex-end;">Save rest-day extra</button>
+            <div class="ot-settings-actions">
+              <button type="button" id="saveRestDayOtExtraBtn" class="btn btn-primary btn-sm" onclick="if (validateOvertimeSettingsLive()) savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)">Save rest-day extra</button>
+            </div>
           </div>
+
           <div style="margin-top:14px; padding-top:12px; border-top:1px solid #dbe5ec;">
-            <div style="font-weight:700; color:#173042;">Premium for a specific holiday</div>
-            <div style="font-size:0.82em; color:#64748b; margin:3px 0 10px;">Different extra pay for one holiday.</div>
-            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-              <select id="holidaySpecificOtSelect" class="form-select" onchange="updateHolidaySpecificOtPremiumInput()" style="width:auto; min-width:250px; max-width:100%;">
-                <option value="">Loading holidays...</option>
-              </select>
-              <label for="holidaySpecificOtPremiumPercent" style="display:flex; align-items:center; gap:7px; margin:0; font-size:0.86em; font-weight:700; color:#475569;">
-                Holiday premium (%)
-                <input id="holidaySpecificOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" placeholder="Default rate" style="width:125px;" disabled>
+            <div class="ot-settings-section-title">Premium for a specific holiday</div>
+            <p class="ot-settings-help">Different extra pay for one holiday.</p>
+            <div class="ot-settings-row is-actions">
+              <label class="ot-settings-field" for="holidaySpecificOtSelect">
+                Premium for a specific holiday
+                <select id="holidaySpecificOtSelect" class="form-select ot-settings-select" onchange="updateHolidaySpecificOtPremiumInput(); validateOvertimeSettingsLive();">
+                  <option value="">Loading holidays...</option>
+                </select>
+                <span class="field-error" id="holidaySpecificOtSelectError"></span>
               </label>
-              <button id="saveHolidaySpecificOtPremiumButton" type="button" class="btn btn-primary btn-sm" onclick="saveHolidaySpecificOtPremium()" style="background:#3d9fd4; border:none; font-weight:700;" disabled>Save Holiday Premium</button>
+              <label class="ot-settings-field" for="holidaySpecificOtPremiumPercent">
+                Holiday premium (%)
+                <input id="holidaySpecificOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" placeholder="Default rate" disabled data-ot-validate="percent-optional" oninput="validateOvertimeSettingsLive()">
+                <span class="field-error" id="holidaySpecificOtPremiumPercentError"></span>
+              </label>
+              <div class="ot-settings-actions">
+                <button id="saveHolidaySpecificOtPremiumButton" type="button" class="btn btn-primary btn-sm" onclick="saveHolidaySpecificOtPremium()" disabled>Save Holiday Premium</button>
+              </div>
             </div>
             <div id="holidaySpecificOtPremiumMessage" role="status" style="font-size:0.8em; color:#64748b; margin-top:6px;"></div>
           </div>
+
           <div style="margin-top:16px; border-top:1px solid #dbe5ec; padding-top:12px;">
-            <div style="font-weight:700; color:#173042; margin-bottom:8px;">Current overtime extras</div>
+            <div class="ot-settings-section-title" style="margin-bottom:8px;">Current overtime extras</div>
             <div id="overtimePremiumRulesList" aria-live="polite" style="overflow-x:auto;">
               <div class="text-muted small">Loading overtime rules...</div>
             </div>
           </div>
 
-          <!-- Department/Employee Specific Overtime Rules -->
           <div style="margin-top:16px; border-top:1px solid #dbe5ec; padding-top:12px;">
-            <div style="font-weight:700; color:#173042; margin-bottom:8px;">Extra overtime for one group</div>
-            <div style="font-size:0.82em; color:#64748b; margin-bottom:10px;">Different extra pay for one department or one person.</div>
-            <form id="overtimeSpecificRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); saveOvertimeSpecificRule();">
-              <label class="payroll-rule-field">
+            <div class="ot-settings-section-title">Extra overtime for one group</div>
+            <p class="ot-settings-help">Different extra pay for one department or one person.</p>
+            <form id="overtimeSpecificRuleForm" class="payroll-rule-form app-camera-select-host" onsubmit="event.preventDefault(); saveOvertimeSpecificRule();" oninput="validateOvertimeSettingsLive()">
+              <label class="payroll-rule-field ot-settings-field">
                 Applies to
-                <select class="form-select" id="overtimeRuleScope" onchange="updateOvertimePremiumRuleScopeOptions()">
+                <select class="form-select ot-settings-select" id="overtimeRuleScope" onchange="updateOvertimePremiumRuleScopeOptions(); validateOvertimeSettingsLive();">
                   <option value="department">Department</option>
                   <option value="employee">One person</option>
                 </select>
+                <span class="field-error"></span>
               </label>
-              <label class="payroll-rule-field">
+              <label class="payroll-rule-field ot-settings-field">
                 Target
-                <select class="form-select" id="overtimeRuleTarget">
+                <select class="form-select ot-settings-select" id="overtimeRuleTarget" data-ot-validate="rule-target" onchange="validateOvertimeSettingsLive()">
                   <option value="">Select…</option>
                 </select>
+                <span class="field-error" id="overtimeRuleTargetError"></span>
               </label>
-              <label class="payroll-rule-field">
+              <label class="payroll-rule-field ot-settings-field">
                 Day type
-                <select class="form-select" id="overtimeRuleDayType">
+                <select class="form-select ot-settings-select" id="overtimeRuleDayType" onchange="validateOvertimeSettingsLive()">
                   <option value="non_working_day">Rest day</option>
                   <option value="holiday">Public holiday</option>
                 </select>
+                <span class="field-error"></span>
               </label>
-              <label class="payroll-rule-field">
+              <label class="payroll-rule-field ot-settings-field">
                 Premium (%)
-                <input class="form-control" type="number" min="0" max="1000" step="0.01" id="overtimeRuleValue">
+                <input class="form-control" type="number" min="0" max="1000" step="0.01" id="overtimeRuleValue" data-ot-validate="percent" oninput="validateOvertimeSettingsLive()">
+                <span class="field-error" id="overtimeRuleValueError"></span>
               </label>
               <div class="payroll-rule-actions">
-                <button type="submit" class="btn btn-primary btn-sm" style="min-height:38px; background:#3d9fd4; border:none; font-weight:700;">
+                <button type="submit" id="addOvertimePremiumRuleBtn" class="btn btn-primary btn-sm">
                   <i class="fa-solid fa-plus me-1"></i> Add Rule
                 </button>
               </div>
@@ -11939,16 +12149,16 @@ async function fetchMultiLiveDetections() {
       </div>
       <div class="payroll-guide-body">
         <nav class="payroll-guide-nav" aria-label="Guide sections">
-          <button type="button" class="is-active" data-guide-section="guide-overview" onclick="showPayrollGuideSection('guide-overview', this)">Simple Guide</button>
-          <button type="button" data-guide-section="guide-advanced" onclick="showPayrollGuideSection('guide-advanced', this)">Advanced Rules</button>
-          <button type="button" data-guide-section="guide-general" onclick="showPayrollGuideSection('guide-general', this)">1. General</button>
-          <button type="button" data-guide-section="guide-attendance" onclick="showPayrollGuideSection('guide-attendance', this)">2. Attendance</button>
-          <button type="button" data-guide-section="guide-extras" onclick="showPayrollGuideSection('guide-extras', this)">3. Extra pay</button>
-          <button type="button" data-guide-section="guide-leave" onclick="showPayrollGuideSection('guide-leave', this)">4. Leave</button>
-          <button type="button" data-guide-section="guide-overtime" onclick="showPayrollGuideSection('guide-overtime', this)">5. Overtime</button>
-          <button type="button" data-guide-section="guide-packages" onclick="showPayrollGuideSection('guide-packages', this)">6. Salary packages</button>
-          <button type="button" data-guide-section="guide-calendar" onclick="showPayrollGuideSection('guide-calendar', this)">7. Special dates</button>
-          <button type="button" data-guide-section="guide-payslip" onclick="showPayrollGuideSection('guide-payslip', this)">8. Payslip</button>
+          <button type="button" class="is-active" data-guide-section="guide-overview" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-overview', this)">Simple Guide</button>
+          <button type="button" data-guide-section="guide-advanced" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-advanced', this)">Advanced Rules</button>
+          <button type="button" data-guide-section="guide-general" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-general', this)">1. General</button>
+          <button type="button" data-guide-section="guide-attendance" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-attendance', this)">2. Attendance</button>
+          <button type="button" data-guide-section="guide-extras" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-extras', this)">3. Extra pay</button>
+          <button type="button" data-guide-section="guide-leave" data-guide-module="leave" onclick="showPayrollGuideSection('guide-leave', this)">4. Leave</button>
+          <button type="button" data-guide-section="guide-overtime" data-guide-module="overtime" onclick="showPayrollGuideSection('guide-overtime', this)">5. Overtime</button>
+          <button type="button" data-guide-section="guide-packages" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-packages', this)">6. Salary packages</button>
+          <button type="button" data-guide-section="guide-calendar" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-calendar', this)">7. Special dates</button>
+          <button type="button" data-guide-section="guide-payslip" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-payslip', this)">8. Payslip</button>
         </nav>
         <div class="payroll-guide-content">
           <section id="guide-overview">
@@ -14406,6 +14616,61 @@ async function fetchMultiLiveDetections() {
         return Boolean(window.entitledModules[reqMod]);
       }
 
+      function applyOtSettingsChrome() {
+        const mods = window.entitledModules || {};
+        const payrollOn = Boolean(mods.payroll);
+        const otOn = Boolean(mods.overtime);
+        const otOnly = otOn && !payrollOn;
+        const openPayrollBtn = document.getElementById('otOpenPayrollBtn');
+        if (openPayrollBtn) {
+          if (payrollOn) openPayrollBtn.style.removeProperty('display');
+          else openPayrollBtn.style.setProperty('display', 'none', 'important');
+        }
+        document.querySelectorAll('.payroll-only-ui').forEach((el) => {
+          if (payrollOn) el.style.removeProperty('display');
+          else el.style.setProperty('display', 'none', 'important');
+        });
+        const titleEl = document.getElementById('payrollRulesCardTitle');
+        const subEl = document.getElementById('payrollRulesCardSubtitle');
+        if (titleEl) {
+          titleEl.innerHTML = otOnly
+            ? '<i class="fa-solid fa-clock-rotate-left" style="color:#3d9fd4; margin-right:6px;"></i> Overtime Settings'
+            : '<i class="fa-solid fa-percent" style="color:#3d9fd4; margin-right:6px;"></i> Payroll Settings';
+        }
+        if (subEl) {
+          subEl.textContent = otOnly
+            ? 'Set how overtime hours are paid, including holiday and rest-day extras. Only approved overtime is paid.'
+            : 'Take-home pay = basic salary + extras − deductions. Open Payroll Guide for formulas and examples.';
+        }
+        document.querySelectorAll('#payroll-rules-tab .payroll-hub-tabs-mount, #payroll-rules-tab [data-payroll-hub-step]').forEach((el) => {
+          el.style.display = otOnly ? 'none' : '';
+        });
+        if (typeof applyPayrollGuideEntitlements === 'function') applyPayrollGuideEntitlements();
+      }
+      window.applyOtSettingsChrome = applyOtSettingsChrome;
+
+      function applyPayrollGuideEntitlements() {
+        const mods = window.entitledModules || {};
+        const overlay = document.getElementById('payrollGuideOverlay');
+        const headerBtn = document.getElementById('payrollGuideHeaderBtn');
+        let visibleCount = 0;
+        const buttons = overlay
+          ? overlay.querySelectorAll('.payroll-guide-nav button[data-guide-module]')
+          : document.querySelectorAll('.payroll-guide-nav button[data-guide-module]');
+        buttons.forEach((btn) => {
+          const mod = btn.getAttribute('data-guide-module') || 'payroll';
+          const show = Boolean(mods[mod]);
+          btn.style.display = show ? '' : 'none';
+          if (show) visibleCount += 1;
+        });
+        if (headerBtn) {
+          if (visibleCount > 0) headerBtn.style.removeProperty('display');
+          else headerBtn.style.setProperty('display', 'none', 'important');
+        }
+        return visibleCount;
+      }
+      window.applyPayrollGuideEntitlements = applyPayrollGuideEntitlements;
+
       function openOvertimeSettingsTab(btn) {
         // OT-01: Overtime module → Overtime Settings nav stays active and opens the Overtime hub pane.
         const otBtn = btn || document.getElementById('overtimeSettingsNavBtn') || document.getElementById('payrollRulesNavBtn');
@@ -14430,6 +14695,9 @@ async function fetchMultiLiveDetections() {
           const settingsSubEl = document.getElementById('settingsPageSubtitle');
           if (topbarTitle) topbarTitle.textContent = 'Overtime Settings';
           if (settingsSubEl) settingsSubEl.textContent = 'Set how overtime hours are paid, including holiday and rest-day extras. Only approved overtime is paid.';
+          applyOtSettingsChrome();
+          if (typeof upgradeOtSettingsDropdowns === 'function') upgradeOtSettingsDropdowns();
+          if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
           if (typeof loadPayrollSettings === 'function') loadPayrollSettings();
         };
         requestAnimationFrame(() => setTimeout(activateOtHub, 0));
@@ -14444,10 +14712,16 @@ async function fetchMultiLiveDetections() {
         document.querySelectorAll('.settings-nav-btn[data-settings-module]').forEach((btn) => {
           const mod = btn.getAttribute('data-settings-module');
           const also = btn.getAttribute('data-settings-also-module');
+          // OT-22: Payroll Rules is payroll-only (no overtime dual-key).
           const show = Boolean(mods[mod]) || (also && Boolean(mods[also]));
           if (show) btn.style.removeProperty('display');
           else btn.style.setProperty('display', 'none', 'important');
         });
+        const payrollRulesBtn = document.getElementById('payrollRulesNavBtn');
+        if (payrollRulesBtn) {
+          if (payrollOn) payrollRulesBtn.style.removeProperty('display');
+          else payrollRulesBtn.style.setProperty('display', 'none', 'important');
+        }
 
         // OT-01: keep Overtime Settings nav + hub tab/panes synced with module entitlement.
         let otEntStyle = document.getElementById('ot-settings-entitlement-style');
@@ -14473,7 +14747,7 @@ async function fetchMultiLiveDetections() {
             .payroll-hub-pane[data-payroll-hub-pane="overtime"]:not(.is-active) { display: none !important; }
             .payroll-hub-pane.settings-overtime-only.is-active,
             .payroll-hub-pane[data-payroll-hub-pane="overtime"].is-active { display: block !important; }
-            ${payrollOn || otOn ? '#payroll-rules-tab.settings-sub-tab { /* visibility controlled by switchSettingsTab */ }' : ''}
+            ${!payrollOn ? '#payrollRulesNavBtn { display: none !important; }' : ''}
           `;
           document.querySelectorAll('.settings-overtime-only, .payroll-overtime-only').forEach((el) => {
             if (el.matches('.payroll-hub-pane, [data-payroll-hub-pane]')) return;
@@ -14483,7 +14757,7 @@ async function fetchMultiLiveDetections() {
             }
             el.style.removeProperty('display');
           });
-          // OT-only clients: keep Payroll Rules available but focus hub on Overtime.
+          // OT-only: hide payroll hub chrome; Overtime Settings is the only entry.
           if (!payrollOn) {
             document.querySelectorAll('.payroll-hub-tab').forEach((btn) => {
               const key = btn.getAttribute('data-payroll-hub');
@@ -14504,6 +14778,7 @@ async function fetchMultiLiveDetections() {
             [data-payroll-hub-pane="overtime"] { display: none !important; }
           `;
         }
+        applyOtSettingsChrome();
         if (!otOn && typeof lastPayrollHubTab !== 'undefined' && lastPayrollHubTab === 'overtime' && typeof switchPayrollHubTab === 'function') {
           switchPayrollHubTab('general');
         }
@@ -18740,7 +19015,12 @@ async function fetchMultiLiveDetections() {
           'modalLeaveTypeIsPaid', 'modalLeaveTypePeriod', 'modalHalfLeaveMode',
           'modalHalfLeaveQuotaType',
           // GUI-04: Settings → Leave Settings
-          'halfLeaveQuotaMode', 'halfLeaveRuleScope', 'halfLeaveRuleTarget'
+          'halfLeaveQuotaMode', 'halfLeaveRuleScope', 'halfLeaveRuleTarget',
+          // OT-25: Settings → Overtime Settings
+          'payrollOtRounding', 'overtimeMaxPeriod',
+          'overtimeLimitRuleScope', 'overtimeLimitRuleTarget', 'overtimeLimitRulePeriod',
+          'holidayOtPayMode', 'nonWorkingDayOtPayMode', 'holidaySpecificOtSelect',
+          'overtimeRuleScope', 'overtimeRuleTarget', 'overtimeRuleDayType'
         ];
         ids.forEach(id => {
           const el = document.getElementById(id);
@@ -18758,13 +19038,32 @@ async function fetchMultiLiveDetections() {
           }
         });
       }
+      function upgradeOtSettingsDropdowns() {
+        [
+          'payrollOtRounding', 'overtimeMaxPeriod',
+          'overtimeLimitRuleScope', 'overtimeLimitRuleTarget', 'overtimeLimitRulePeriod',
+          'holidayOtPayMode', 'nonWorkingDayOtPayMode', 'holidaySpecificOtSelect',
+          'overtimeRuleScope', 'overtimeRuleTarget', 'overtimeRuleDayType'
+        ].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el && typeof upgradeSelectToCameraStyle === 'function') {
+            upgradeSelectToCameraStyle(el);
+          }
+        });
+      }
       window.upgradeLeaveSettingsDropdowns = upgradeLeaveSettingsDropdowns;
+      window.upgradeOtSettingsDropdowns = upgradeOtSettingsDropdowns;
       window.initListedAppCameraSelects = initListedAppCameraSelects;
       window.upgradeSelectToCameraStyle = upgradeSelectToCameraStyle;
       window.refreshAppCameraSelect = refreshAppCameraSelect;
       window.renderAppCameraOptions = renderAppCameraOptions;
       document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(initListedAppCameraSelects, 50);
+        setTimeout(() => {
+          initListedAppCameraSelects();
+          if (typeof applyPayrollGuideEntitlements === 'function') applyPayrollGuideEntitlements();
+          if (typeof applyOtSettingsChrome === 'function') applyOtSettingsChrome();
+          if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
+        }, 50);
       });
       window.addEventListener('resize', () => closeAllAppCameraPanels());
       // GUI-08: do not close the panel when the user scrolls inside it.
@@ -20155,9 +20454,16 @@ async function fetchMultiLiveDetections() {
           if (settingsSubEl) settingsSubEl.textContent = 'Mark holidays, extra work days, or off days that override the weekly shift.';
           if (typeof loadPayrollCalendar === 'function') loadPayrollCalendar();
         } else {
-          showPayrollSettingsSubTab('payroll-rules-tab', 'payrollRulesNavBtn');
-          if (topbarTitle) topbarTitle.textContent = 'Payroll Settings';
-          if (settingsSubEl) settingsSubEl.textContent = 'Use the tabs to set salary rules one step at a time. Open Payroll Guide for formulas and examples.';
+          const payrollOn = Boolean(window.entitledModules?.payroll);
+          const navId = (!payrollOn && key === 'overtime') ? 'overtimeSettingsNavBtn' : 'payrollRulesNavBtn';
+          showPayrollSettingsSubTab('payroll-rules-tab', navId);
+          if (!payrollOn && key === 'overtime') {
+            if (topbarTitle) topbarTitle.textContent = 'Overtime Settings';
+            if (settingsSubEl) settingsSubEl.textContent = 'Set how overtime hours are paid, including holiday and rest-day extras. Only approved overtime is paid.';
+          } else {
+            if (topbarTitle) topbarTitle.textContent = 'Payroll Settings';
+            if (settingsSubEl) settingsSubEl.textContent = 'Use the tabs to set salary rules one step at a time. Open Payroll Guide for formulas and examples.';
+          }
           document.querySelectorAll('#payroll-rules-tab .payroll-hub-pane').forEach((pane) => {
             pane.classList.toggle('is-active', pane.getAttribute('data-payroll-hub-pane') === key);
           });
@@ -20167,6 +20473,7 @@ async function fetchMultiLiveDetections() {
           if (key === 'payslip' && typeof refreshPayslipLetterheadPreview === 'function') {
             refreshPayslipLetterheadPreview();
           }
+          if (typeof applyOtSettingsChrome === 'function') applyOtSettingsChrome();
         }
         paintPayrollHubTabs(key);
         return false;
@@ -20677,14 +20984,188 @@ async function fetchMultiLiveDetections() {
             await updateOvertimePremiumRuleScopeOptions();
           }
           await previewPayrollSettingsImpact();
+          if (typeof upgradeOtSettingsDropdowns === 'function') upgradeOtSettingsDropdowns();
+          if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
         } catch (error) {
           if (message) message.textContent = 'Could not load payroll settings.';
         } finally {
           if (toggle) toggle.disabled = false;
+          if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
         }
       }
 
+      function setOtSettingsFieldError(el, message) {
+        if (!el) return !message;
+        const host = el.closest('.ot-settings-field, .payroll-rule-field') || el.parentElement;
+        el.classList.toggle('is-invalid', Boolean(message));
+        let err = host ? host.querySelector(':scope > .field-error') : null;
+        if (!err && host) {
+          err = document.createElement('span');
+          err.className = 'field-error';
+          host.appendChild(err);
+        }
+        if (err) {
+          err.textContent = message || '';
+          err.classList.toggle('is-visible', Boolean(message));
+          err.style.display = message ? 'block' : 'none';
+        }
+        return !message;
+      }
+
+      function validateOtNumberField(el, { min = null, max = null, required = true, label = 'This field' } = {}) {
+        if (!el || el.disabled || (el.offsetParent === null && getComputedStyle(el).display === 'none')) {
+          return setOtSettingsFieldError(el, '');
+        }
+        const wrap = el.closest('[style*="display:none"], [hidden]');
+        if (wrap && wrap !== el && (wrap.hasAttribute('hidden') || wrap.style.display === 'none')) {
+          return setOtSettingsFieldError(el, '');
+        }
+        const raw = String(el.value ?? '').trim();
+        if (!raw) {
+          return setOtSettingsFieldError(el, required ? `${label} is required.` : '');
+        }
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return setOtSettingsFieldError(el, 'Enter a valid number.');
+        if (min != null && n < min) return setOtSettingsFieldError(el, `Minimum is ${min}.`);
+        if (max != null && n > max) return setOtSettingsFieldError(el, `Maximum is ${max}.`);
+        return setOtSettingsFieldError(el, '');
+      }
+
+      function validateOtSelectField(el, { required = true, label = 'This field' } = {}) {
+        if (!el || el.disabled) return setOtSettingsFieldError(el, '');
+        const raw = String(el.value ?? '').trim();
+        if (required && !raw) return setOtSettingsFieldError(el, `${label} is required.`);
+        return setOtSettingsFieldError(el, '');
+      }
+
+      function isOtFieldVisible(el) {
+        if (!el) return false;
+        if (el.disabled) return false;
+        const host = el.closest('label, .ot-settings-field, .payroll-rule-field') || el;
+        if (host.hasAttribute('hidden')) return false;
+        const style = window.getComputedStyle(host);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        return true;
+      }
+
+      function validateOvertimeSettingsLive() {
+        const pane = document.querySelector('#payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"]');
+        if (!pane) return true;
+
+        const maxHoursOk = validateOtNumberField(document.getElementById('overtimeMaxHours'), {
+          min: 0, max: 744, required: true, label: 'Maximum hours'
+        });
+        const maxPeriodOk = validateOtSelectField(document.getElementById('overtimeMaxPeriod'), {
+          required: true, label: 'Limit applies'
+        });
+        const roundingOk = validateOtSelectField(document.getElementById('payrollOtRounding'), {
+          required: true, label: 'Rounding'
+        });
+
+        const limitTarget = document.getElementById('overtimeLimitRuleTarget');
+        const limitHours = document.getElementById('overtimeLimitRuleHours');
+        const limitTouched = Boolean(
+          (limitTarget && String(limitTarget.value || '').trim())
+          || (limitHours && String(limitHours.value || '').trim() !== '' && String(limitHours.value) !== '0')
+        );
+        const limitTargetOk = validateOtSelectField(limitTarget, {
+          required: limitTouched, label: 'Choose'
+        });
+        const limitHoursOk = validateOtNumberField(limitHours, {
+          min: 0, max: 744, required: limitTouched, label: 'Max hours'
+        });
+        const limitPeriodOk = validateOtSelectField(document.getElementById('overtimeLimitRulePeriod'), {
+          required: true, label: 'Limit applies'
+        });
+
+        let holidayModeOk = true;
+        const holidayPercent = document.getElementById('holidayOtPremiumPercent');
+        const holidayMult = document.getElementById('holidayOtMultiplier');
+        const holidayFixed = document.getElementById('holidayOtFixedAmount');
+        if (isOtFieldVisible(holidayPercent)) {
+          holidayModeOk = validateOtNumberField(holidayPercent, { min: 0, max: 1000, required: true, label: 'Extra %' }) && holidayModeOk;
+        } else setOtSettingsFieldError(holidayPercent, '');
+        if (isOtFieldVisible(holidayMult)) {
+          holidayModeOk = validateOtNumberField(holidayMult, { min: 0, max: 20, required: true, label: 'Holiday OT multiplier' }) && holidayModeOk;
+        } else setOtSettingsFieldError(holidayMult, '');
+        if (isOtFieldVisible(holidayFixed)) {
+          holidayModeOk = validateOtNumberField(holidayFixed, { min: 0, max: null, required: true, label: 'Extra per OT hour' }) && holidayModeOk;
+        } else setOtSettingsFieldError(holidayFixed, '');
+
+        let restModeOk = true;
+        const restPercent = document.getElementById('nonWorkingDayOtPremiumPercent');
+        const restMult = document.getElementById('nonWorkingDayOtMultiplier');
+        const restFixed = document.getElementById('nonWorkingDayOtFixedAmount');
+        if (isOtFieldVisible(restPercent)) {
+          restModeOk = validateOtNumberField(restPercent, { min: 0, max: 1000, required: true, label: 'Extra %' }) && restModeOk;
+        } else setOtSettingsFieldError(restPercent, '');
+        if (isOtFieldVisible(restMult)) {
+          restModeOk = validateOtNumberField(restMult, { min: 0, max: 20, required: true, label: 'Rest-day OT multiplier' }) && restModeOk;
+        } else setOtSettingsFieldError(restMult, '');
+        if (isOtFieldVisible(restFixed)) {
+          restModeOk = validateOtNumberField(restFixed, { min: 0, max: null, required: true, label: 'Extra per OT hour' }) && restModeOk;
+        } else setOtSettingsFieldError(restFixed, '');
+
+        const holidaySelect = document.getElementById('holidaySpecificOtSelect');
+        const holidayPremium = document.getElementById('holidaySpecificOtPremiumPercent');
+        const holidaySelected = Boolean(holidaySelect && String(holidaySelect.value || '').trim());
+        const holidaySelectOk = setOtSettingsFieldError(holidaySelect, '');
+        let holidayPremiumOk = true;
+        if (holidaySelected && holidayPremium && !holidayPremium.disabled) {
+          holidayPremiumOk = validateOtNumberField(holidayPremium, {
+            min: 0, max: 1000, required: true, label: 'Holiday premium (%)'
+          });
+        } else {
+          setOtSettingsFieldError(holidayPremium, '');
+        }
+
+        const premiumTarget = document.getElementById('overtimeRuleTarget');
+        const premiumValue = document.getElementById('overtimeRuleValue');
+        const premiumTouched = Boolean(
+          (premiumTarget && String(premiumTarget.value || '').trim())
+          || (premiumValue && String(premiumValue.value || '').trim() !== '')
+        );
+        const premiumTargetOk = validateOtSelectField(premiumTarget, {
+          required: premiumTouched, label: 'Target'
+        });
+        const premiumValueOk = validateOtNumberField(premiumValue, {
+          min: 0, max: 1000, required: premiumTouched, label: 'Premium (%)'
+        });
+
+        const globalOk = maxHoursOk && maxPeriodOk && roundingOk && holidayModeOk && restModeOk;
+        const limitRuleOk = limitTargetOk && limitHoursOk && limitPeriodOk;
+        const holidayOverrideOk = holidaySelectOk && holidayPremiumOk;
+        const premiumRuleOk = premiumTargetOk && premiumValueOk;
+
+        const saveLimitBtn = document.getElementById('saveOvertimeLimitButton');
+        if (saveLimitBtn) saveLimitBtn.disabled = !(maxHoursOk && maxPeriodOk);
+
+        const saveHolidayBtn = document.getElementById('saveHolidayOtExtraBtn');
+        if (saveHolidayBtn) saveHolidayBtn.disabled = !holidayModeOk;
+
+        const saveRestBtn = document.getElementById('saveRestDayOtExtraBtn');
+        if (saveRestBtn) saveRestBtn.disabled = !restModeOk;
+
+        const saveHolidayPremiumBtn = document.getElementById('saveHolidaySpecificOtPremiumButton');
+        if (saveHolidayPremiumBtn) {
+          saveHolidayPremiumBtn.disabled = !(holidaySelected && holidayPremiumOk && holidayPremium && !holidayPremium.disabled);
+        }
+
+        const addLimitRuleBtn = document.getElementById('addOvertimeLimitRuleBtn');
+        if (addLimitRuleBtn) addLimitRuleBtn.disabled = !(limitTouched && limitRuleOk);
+
+        const addPremiumRuleBtn = document.getElementById('addOvertimePremiumRuleBtn');
+        if (addPremiumRuleBtn) addPremiumRuleBtn.disabled = !(premiumTouched && premiumRuleOk);
+
+        return globalOk && (!limitTouched || limitRuleOk) && holidayOverrideOk && (!premiumTouched || premiumRuleOk);
+      }
+      window.validateOvertimeSettingsLive = validateOvertimeSettingsLive;
+
       async function saveOvertimeLimitSettings() {
+        if (!validateOvertimeSettingsLive()) {
+          showAppToast('Fix the highlighted overtime fields before saving.', 'error');
+          return;
+        }
         const hoursInput = document.getElementById('overtimeMaxHours');
         const periodInput = document.getElementById('overtimeMaxPeriod');
         const message = document.getElementById('overtimeLimitSettingsMessage');
@@ -20719,7 +21200,8 @@ async function fetchMultiLiveDetections() {
         } catch (error) {
           showAppToast(error.message || 'Failed to save OT limit.', 'error');
         } finally {
-          if (button) button.disabled = false;
+          if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
+          else if (button) button.disabled = false;
         }
       }
 
@@ -20753,6 +21235,7 @@ async function fetchMultiLiveDetections() {
               return `<option value="${Number(holiday.id)}">${payrollEscape(holiday.name)} · ${payrollEscape(range)}${recurring}</option>`;
             }).join('');
             if (holidays.some(holiday => String(holiday.id) === previousHolidayId)) holidaySelect.value = previousHolidayId;
+            if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(holidaySelect);
           }
 
           const holidayInput = document.getElementById('holidayOtPremiumPercent');
@@ -20811,6 +21294,7 @@ async function fetchMultiLiveDetections() {
         } catch (error) {
           container.innerHTML = `<div class="text-danger small">${payrollEscape(error.message)}</div>`;
         }
+        if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
       }
 
       function updateHolidaySpecificOtPremiumInput() {
@@ -20823,7 +21307,6 @@ async function fetchMultiLiveDetections() {
         const holiday = (window._overtimeHolidays || []).find(item => String(item.id) === holidayId);
         const override = (window._overtimeHolidayPremiumRules || []).find(item => String(item.id) === holidayId);
         premiumInput.disabled = !holiday;
-        saveButton.disabled = !holiday;
         premiumInput.value = override ? override.overtime_premium_percent : '';
         const fallbackPremium = document.getElementById('holidayOtPremiumPercent')?.value || 0;
         premiumInput.placeholder = `Default ${fallbackPremium}%`;
@@ -20834,9 +21317,14 @@ async function fetchMultiLiveDetections() {
               ? `Custom premium saved: ${override.overtime_premium_percent}%. Clear the override below to use the default ${fallbackPremium}% rate.`
               : `Currently using the default public holiday premium (${fallbackPremium}%).`;
         }
+        if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
       }
 
       async function saveHolidaySpecificOtPremium() {
+        if (!validateOvertimeSettingsLive()) {
+          showAppToast('Fix the highlighted overtime fields before saving.', 'error');
+          return;
+        }
         const holidaySelect = document.getElementById('holidaySpecificOtSelect');
         const premiumInput = document.getElementById('holidaySpecificOtPremiumPercent');
         const holidayId = Number(holidaySelect?.value);
@@ -20897,20 +21385,26 @@ async function fetchMultiLiveDetections() {
                 `<option value="${payrollEscape(row.name || row.id)}">${payrollEscape(row.name || row.id)}</option>`
               ).join('')
               : '<option value="">No departments yet</option>';
-            return;
+          } else {
+            const users = data.employees || [];
+            targetSelect.innerHTML = users.length
+              ? '<option value="">Select person…</option>' + users.map((row) =>
+                `<option value="${payrollEscape(row.id)}">${payrollEscape(row.name || row.id)}</option>`
+              ).join('')
+              : '<option value="">No people yet</option>';
           }
-          const users = data.employees || [];
-          targetSelect.innerHTML = users.length
-            ? '<option value="">Select person…</option>' + users.map((row) =>
-              `<option value="${payrollEscape(row.id)}">${payrollEscape(row.name || row.id)}</option>`
-            ).join('')
-            : '<option value="">No people yet</option>';
         } catch (error) {
           targetSelect.innerHTML = '<option value="">Could not load list</option>';
         }
+        if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(targetSelect);
+        if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
       }
 
       async function saveSpecificOvertimeLimitRule() {
+        if (!validateOvertimeSettingsLive()) {
+          showAppToast('Fix the highlighted overtime fields before saving.', 'error');
+          return;
+        }
         const scope = document.getElementById('overtimeLimitRuleScope').value;
         const targetId = document.getElementById('overtimeLimitRuleTarget').value;
         const maxHours = document.getElementById('overtimeLimitRuleHours').value;
@@ -21014,20 +21508,26 @@ async function fetchMultiLiveDetections() {
                 `<option value="${payrollEscape(row.name || row.id)}">${payrollEscape(row.name || row.id)}</option>`
               ).join('')
               : '<option value="">No departments yet</option>';
-            return;
+          } else {
+            const users = data.employees || [];
+            targetSelect.innerHTML = users.length
+              ? '<option value="">Select person…</option>' + users.map((row) =>
+                `<option value="${payrollEscape(row.id)}">${payrollEscape(row.name || row.id)}</option>`
+              ).join('')
+              : '<option value="">No people yet</option>';
           }
-          const users = data.employees || [];
-          targetSelect.innerHTML = users.length
-            ? '<option value="">Select person…</option>' + users.map((row) =>
-              `<option value="${payrollEscape(row.id)}">${payrollEscape(row.name || row.id)}</option>`
-            ).join('')
-            : '<option value="">No people yet</option>';
         } catch (error) {
           targetSelect.innerHTML = '<option value="">Could not load list</option>';
         }
+        if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(targetSelect);
+        if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
       }
 
       async function saveOvertimeSpecificRule() {
+        if (!validateOvertimeSettingsLive()) {
+          showAppToast('Fix the highlighted overtime fields before saving.', 'error');
+          return;
+        }
         const scope = document.getElementById('overtimeRuleScope')?.value;
         const targetId = document.getElementById('overtimeRuleTarget')?.value;
         const dayType = document.getElementById('overtimeRuleDayType')?.value;
@@ -21180,6 +21680,7 @@ async function fetchMultiLiveDetections() {
         const offMode = document.getElementById('offDayAttendancePayMode')?.value || 'multiplier';
         show('offDayMultiplierWrap', offMode === 'multiplier');
         show('offDayFixedWrap', offMode === 'fixed_day');
+        if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
       }
 
       function payrollBonusMonthValue() {
@@ -22221,6 +22722,13 @@ async function fetchMultiLiveDetections() {
       function openPayrollGuide() {
         const overlay = document.getElementById('payrollGuideOverlay');
         if (!overlay) return;
+        applyPayrollGuideEntitlements();
+        const visibleNav = Array.from(overlay.querySelectorAll('.payroll-guide-nav button[data-guide-module]'))
+          .filter((btn) => btn.style.display !== 'none');
+        if (!visibleNav.length) {
+          showAppToast('No guides are available for your enabled modules.', 'info');
+          return;
+        }
         overlay.classList.add('is-open');
         const guideByHub = {
           general: 'guide-general',
@@ -22231,9 +22739,10 @@ async function fetchMultiLiveDetections() {
           packages: 'guide-packages',
           calendar: 'guide-calendar'
         };
-        const sectionId = guideByHub[lastPayrollHubTab] || 'guide-overview';
-        const button = overlay.querySelector(`[data-guide-section="${sectionId}"]`)
-          || overlay.querySelector('.payroll-guide-nav button');
+        const preferredId = guideByHub[lastPayrollHubTab] || 'guide-overview';
+        let button = visibleNav.find((btn) => btn.getAttribute('data-guide-section') === preferredId)
+          || visibleNav[0];
+        const sectionId = button?.getAttribute('data-guide-section') || preferredId;
         showPayrollGuideSection(sectionId, button);
         document.addEventListener('keydown', payrollGuideEscHandler);
       }
@@ -22248,11 +22757,15 @@ async function fetchMultiLiveDetections() {
       }
 
       function showPayrollGuideSection(sectionId, button) {
+        const mods = window.entitledModules || {};
+        const navBtn = button || document.querySelector(`.payroll-guide-nav button[data-guide-section="${sectionId}"]`);
+        const reqMod = navBtn?.getAttribute('data-guide-module');
+        if (reqMod && mods[reqMod] === false) return;
         document.querySelectorAll('.payroll-guide-content > section').forEach((section) => {
           section.hidden = section.id !== sectionId;
         });
         document.querySelectorAll('.payroll-guide-nav button').forEach((item) => item.classList.remove('is-active'));
-        if (button) button.classList.add('is-active');
+        if (navBtn) navBtn.classList.add('is-active');
       }
 
       async function switchToPayableDays() {
@@ -28369,12 +28882,24 @@ async function fetchMultiLiveDetections() {
       showAppToast(data?.message || fallbackMessage, type);
     }
 
+    async function openOtRejectReasonModal(title = 'Reject Overtime') {
+      if (typeof openLeaveRejectReasonModal === 'function') {
+        return openLeaveRejectReasonModal({
+          title,
+          required: false,
+          subtitle: 'Optional — leave blank if no reason is needed'
+        });
+      }
+      return null;
+    }
+    window.openOtRejectReasonModal = openOtRejectReasonModal;
+
     async function updateOvertimeStatus(otId, newStatus) {
       let rejectionReason = null;
       if (newStatus === 'rejected') {
-        const inputReason = prompt('Optional rejection reason (leave blank if none):');
+        const inputReason = await openOtRejectReasonModal(`Reject Overtime #${otId}`);
         if (inputReason === null) return;
-        rejectionReason = inputReason.trim() || undefined;
+        rejectionReason = String(inputReason || '').trim() || undefined;
       }
       if (!await appConfirm(`Are you sure you want to mark overtime record #${otId} as ${newStatus.toUpperCase()}?`)) return;
       try {
@@ -28866,9 +29391,11 @@ async function fetchMultiLiveDetections() {
             <td class="text-center">${statusBadge}</td>
             <td style="font-size:0.86em; color:#64748b;">${escapeOtHtml(r.approved_by ? formatByAdminLabel(r.approved_by) : '--')}</td>
             <td class="text-center">${isPending ? `
-              <button class="btn btn-sm btn-outline-success me-1" onclick="otDetailApproveSingle(${r.id})" title="Approve overtime record"><i class="fa-solid fa-check"></i></button>
-              <button class="btn btn-sm btn-outline-danger me-1" onclick="otDetailRejectSingle(${r.id})" title="Reject overtime record"><i class="fa-solid fa-xmark"></i></button>
-              <button class="btn btn-sm btn-outline-secondary" onclick="deleteOvertimeRecord(${r.id})" title="Delete overtime record" aria-label="Delete overtime record"><i class="fa-solid fa-trash"></i></button>
+              <div class="ot-detail-row-actions">
+                <button type="button" class="btn btn-sm btn-outline-success" onclick="otDetailApproveSingle(${r.id})" title="Approve overtime record"><i class="fa-solid fa-check"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="otDetailRejectSingle(${r.id})" title="Reject overtime record"><i class="fa-solid fa-xmark"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deleteOvertimeRecord(${r.id})" title="Delete overtime record" aria-label="Delete overtime record"><i class="fa-solid fa-trash"></i></button>
+              </div>
             ` : `<span class="text-muted small">${st === 'approved' ? 'Approved' : (st === 'rejected' ? 'Rejected' : '')}</span>`}</td>
           </tr>`;
       }).join('');
@@ -28923,9 +29450,11 @@ async function fetchMultiLiveDetections() {
         .filter(cb => (cb.dataset.status || '').toLowerCase() === 'pending')
         .map(cb => parseInt(cb.dataset.id));
       if (!ids.length) { showAppToast('Select at least one pending record to reject.', 'warning'); return; }
-      const inputReason = prompt('Optional rejection reason (leave blank if none):');
+      const inputReason = await openOtRejectReasonModal(
+        ids.length === 1 ? `Reject Overtime #${ids[0]}` : `Reject ${ids.length} Overtime Records`
+      );
       if (inputReason === null) return;
-      const rejectionReason = inputReason.trim() || undefined;
+      const rejectionReason = String(inputReason || '').trim() || undefined;
       if (!await appConfirm(`Reject ${ids.length} selected pending OT record(s)?`)) return;
       try {
         const payload = { ids, status: 'rejected', approved_by: getActingAdminDisplayName() };
@@ -28986,9 +29515,9 @@ async function fetchMultiLiveDetections() {
         showAppToast('Only pending overtime can be rejected here.', 'warning');
         return;
       }
-      const inputReason = prompt('Optional rejection reason (leave blank if none):');
+      const inputReason = await openOtRejectReasonModal(`Reject Overtime #${id}`);
       if (inputReason === null) return;
-      const rejectionReason = inputReason.trim() || undefined;
+      const rejectionReason = String(inputReason || '').trim() || undefined;
       if (!await appConfirm('Reject this overtime record?')) return;
       try {
         const payload = { ids: [id], status: 'rejected', approved_by: getActingAdminDisplayName() };
