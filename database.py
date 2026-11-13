@@ -8995,6 +8995,152 @@ def _leave_allowance_cycle_window(reference_date: datetime, allowance_period: st
     return start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')
 
 
+def _leave_allowance_duration_months(allowance_period: str, allowance_months: Optional[int] = None) -> int:
+    legacy_months = {'monthly': 1, 'half_yearly': 6, 'yearly': 12}
+    try:
+        duration_months = int(allowance_months or legacy_months.get(str(allowance_period or 'yearly'), 12))
+    except (TypeError, ValueError):
+        duration_months = legacy_months.get(str(allowance_period or 'yearly'), 12)
+    return max(1, min(12, duration_months))
+
+
+def _count_used_leave_quota_in_cycle(
+    cursor,
+    user_id: int,
+    lt_dict: Dict[str, Any],
+    cycle_start: str,
+    cycle_end: str,
+    exclude_id: Optional[int] = None,
+) -> float:
+    """Count approved quota usage for one leave type inside a cycle window."""
+    leave_name = lt_dict.get('name')
+    leave_code = lt_dict.get('code')
+    already_used = 0.0
+    cursor.execute("""
+        SELECT id, start_date, end_date, quota_days, quota_through_date, leave_duration,
+               half_leave_quota_type_id, half_leave_quota_charge, restored_dates FROM leave_requests
+        WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved') AND (leave_type = ? OR leave_type = ?)
+          AND end_date >= ? AND start_date <= ?
+    """, (user_id, leave_code, leave_name, cycle_start, cycle_end))
+    for req in cursor.fetchall():
+        if exclude_id and req['id'] == exclude_id:
+            continue
+        restored_dates_raw = req['restored_dates'] if 'restored_dates' in req.keys() else ''
+        restored_set = set(d.strip() for d in (restored_dates_raw or '').split(',') if d.strip())
+        if req['leave_duration'] == 'half':
+            if req['start_date'] in restored_set:
+                continue
+            if req['half_leave_quota_charge'] and req['half_leave_quota_type_id'] == lt_dict['id']:
+                already_used += 1.0
+            else:
+                already_used += 0.5
+            continue
+        try:
+            clipped_start = max(req['start_date'], cycle_start)
+            clipped_end = min(req['end_date'], cycle_end)
+            restored_in_range = sum(1 for d in restored_set if clipped_start <= d <= clipped_end)
+            if req['quota_days'] is None:
+                already_used += max(0.0, _count_scheduled_leave_days(cursor, user_id, clipped_start, clipped_end) - restored_in_range)
+            else:
+                quota_end = min(clipped_end, req['quota_through_date'] or req['end_date'])
+                if quota_end >= clipped_start:
+                    already_used += max(0.0, _count_scheduled_leave_days(cursor, user_id, clipped_start, quota_end) - restored_in_range)
+        except Exception:
+            already_used += 1.0
+    cursor.execute("""
+        SELECT COUNT(*) FROM leave_requests
+        WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved') AND leave_duration = 'half'
+          AND half_leave_quota_charge = 1 AND half_leave_quota_type_id = ?
+          AND leave_type != ? AND leave_type != ?
+          AND end_date >= ? AND start_date <= ?
+          AND (
+            restored_dates IS NULL OR TRIM(restored_dates) = ''
+            OR INSTR(',' || REPLACE(restored_dates, ' ', '') || ',', ',' || start_date || ',') = 0
+          )
+    """, (user_id, lt_dict['id'], leave_code, leave_name, cycle_start, cycle_end))
+    already_used += int(cursor.fetchone()[0] or 0)
+    return float(already_used)
+
+
+def _evaluate_monthly_leave_quota_span(
+    cursor,
+    user_id: int,
+    lt_dict: Dict[str, Any],
+    start_date: str,
+    end_date: str,
+    allocated: float,
+    exclude_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """QA-117: charge each scheduled leave day against that day's month quota."""
+    scheduled_dates = _list_scheduled_leave_dates(cursor, user_id, start_date, end_date)
+    if not scheduled_dates:
+        return {
+            'requested_days': 0,
+            'within_quota_days': 0,
+            'excess_days': 0,
+            'remaining_days': float(allocated),
+            'used_days': 0.0,
+            'month_breakdown': [],
+            'within_dates': [],
+            'excess_dates': [],
+        }
+
+    by_month: Dict[str, List[str]] = {}
+    for day in scheduled_dates:
+        by_month.setdefault(day[:7], []).append(day)
+
+    month_breakdown = []
+    within_dates: List[str] = []
+    excess_dates: List[str] = []
+    total_used_sample = 0.0
+    remaining_samples = []
+
+    for month_key in sorted(by_month.keys()):
+        dates = by_month[month_key]
+        ref = datetime.strptime(dates[0], '%Y-%m-%d')
+        cycle_start, cycle_end = _leave_allowance_cycle_window(
+            ref, lt_dict.get('allowance_period', 'monthly'), lt_dict.get('allowance_months')
+        )
+        used = _count_used_leave_quota_in_cycle(
+            cursor, user_id, lt_dict, cycle_start, cycle_end, exclude_id=exclude_id
+        )
+        remaining = max(0.0, float(allocated) - used)
+        requested = len(dates)
+        within = int(min(requested, int(remaining)))
+        excess = max(0, requested - within)
+        month_within = dates[:within]
+        month_excess = dates[within:]
+        within_dates.extend(month_within)
+        excess_dates.extend(month_excess)
+        total_used_sample = max(total_used_sample, used)
+        remaining_samples.append(remaining)
+        month_breakdown.append({
+            'month': month_key,
+            'month_label': ref.strftime('%b %Y'),
+            'cycle_start': cycle_start,
+            'cycle_end': cycle_end,
+            'requested_days': requested,
+            'remaining_days': remaining,
+            'used_days': used,
+            'within_quota_days': within,
+            'excess_days': excess,
+            'within_dates': month_within,
+            'excess_dates': month_excess,
+        })
+
+    return {
+        'requested_days': len(scheduled_dates),
+        'within_quota_days': len(within_dates),
+        'excess_days': len(excess_dates),
+        'remaining_days': min(remaining_samples) if remaining_samples else float(allocated),
+        'remaining_days_total': sum(remaining_samples) if remaining_samples else float(allocated),
+        'used_days': total_used_sample,
+        'month_breakdown': month_breakdown,
+        'within_dates': within_dates,
+        'excess_dates': excess_dates,
+    }
+
+
 def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organization_id: Optional[str] = None) -> List[Dict]:
     """Get employee leave balances for a year, auto-initializing rows if needed, scoped by tenant."""
     try:
@@ -9143,6 +9289,26 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
                             })
                     total_override_days = round(max(allocated_override, 0.0) + request_override_days, 2)
 
+                    remaining_val = max(0.0, alloc - used_val)
+                    cycle_months = _leave_allowance_duration_months(allowance_period, lt.get('allowance_months'))
+                    if cycle_months == 1:
+                        period_label = datetime(year, reference_month, 1).strftime('%b')
+                        remaining_text = (
+                            f"{int(remaining_val) if float(remaining_val).is_integer() else remaining_val} "
+                            f"day(s) left in {period_label}"
+                        )
+                    elif cycle_months < 12:
+                        period_label = f"{cycle_start[5:7]}/{cycle_start[:4]}–{cycle_end[5:7]}/{cycle_end[:4]}"
+                        remaining_text = (
+                            f"{int(remaining_val) if float(remaining_val).is_integer() else remaining_val} "
+                            f"day(s) left in this {cycle_months}-month cycle"
+                        )
+                    else:
+                        period_label = str(year)
+                        remaining_text = (
+                            f"{int(remaining_val) if float(remaining_val).is_integer() else remaining_val} "
+                            f"day(s) left in {year}"
+                        )
                     u_balances['balances'][lt['code']] = {
                         'type_name': lt['name'],
                         'standard_quota': standard_quota,
@@ -9151,7 +9317,11 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
                         'request_overrides': req_overrides,
                         'total_override_days': total_override_days,
                         'used': used_val,
-                        'remaining': max(0.0, alloc - used_val),
+                        'remaining': remaining_val,
+                        'remaining_period_label': period_label,
+                        'remaining_text': remaining_text,
+                        'cycle_start': cycle_start,
+                        'cycle_end': cycle_end,
                         'half_leave_count': half_leave_count,
                         'half_leave_remaining': half_leave_remaining,
                         'half_leave_enabled': half_rule_res['half_leave_enabled'],
@@ -9894,85 +10064,95 @@ def check_leave_quota(
                     if bal_alloc > allocated:
                         allocated = bal_alloc
 
-            # Sum already approved days in this year/month
+            # Sum already approved days in this year/month (QA-117: split monthly spans)
             already_used = 0.0
-            if user_id:
-                allowance_period = lt_dict.get('allowance_period', 'yearly')
-                cycle_start, cycle_end = _leave_allowance_cycle_window(
-                    reference_date,
-                    allowance_period,
-                    lt_dict.get('allowance_months')
+            month_breakdown = []
+            within_quota_days = 0
+            excess_days = 0
+            excess_dates: List[str] = []
+            within_dates: List[str] = []
+            allowance_period = lt_dict.get('allowance_period', 'yearly')
+            duration_months = _leave_allowance_duration_months(allowance_period, lt_dict.get('allowance_months'))
+            use_monthly_span = (
+                bool(user_id and start_date and end_date and duration != 'half')
+                and duration_months == 1
+            )
+            if use_monthly_span:
+                span = _evaluate_monthly_leave_quota_span(
+                    cursor,
+                    int(user_id),
+                    lt_dict,
+                    start_date.strip(),
+                    end_date.strip(),
+                    allocated,
+                    exclude_id=exclude_id,
                 )
-                cursor.execute("""
-                    SELECT id, start_date, end_date, quota_days, quota_through_date, leave_duration,
-                           half_leave_quota_type_id, half_leave_quota_charge, restored_dates FROM leave_requests
-                    WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved') AND (leave_type = ? OR leave_type = ?)
-                      AND end_date >= ? AND start_date <= ?
-                """, (user_id, lt_dict['code'], lt_dict['name'], cycle_start, cycle_end))
-                approved_requests = cursor.fetchall()
-
-                for req in approved_requests:
-                    if exclude_id and req['id'] == exclude_id:
-                        continue
-                    restored_dates_raw = req['restored_dates'] if 'restored_dates' in req.keys() else ''
-                    restored_set = set(d.strip() for d in (restored_dates_raw or '').split(',') if d.strip())
-                    if req['leave_duration'] == 'half':
-                        if req['start_date'] in restored_set:
-                            continue
-                        if req['half_leave_quota_charge'] and req['half_leave_quota_type_id'] == lt_dict['id']:
-                            already_used += 1.0
-                        else:
-                            already_used += 0.5
-                        continue
-                    try:
-                        clipped_start = max(req['start_date'], cycle_start)
-                        clipped_end = min(req['end_date'], cycle_end)
-                        restored_in_range = sum(1 for d in restored_set if clipped_start <= d <= clipped_end)
-                        if req['quota_days'] is None:
-                            already_used += max(0.0, _count_scheduled_leave_days(cursor, user_id, clipped_start, clipped_end) - restored_in_range)
-                        else:
-                            quota_end = min(clipped_end, req['quota_through_date'] or req['end_date'])
-                            if quota_end >= clipped_start:
-                                already_used += max(0.0, _count_scheduled_leave_days(cursor, user_id, clipped_start, quota_end) - restored_in_range)
-                    except Exception:
-                        already_used += 1.0
-                cursor.execute("""
-                    SELECT COUNT(*) FROM leave_requests
-                    WHERE user_id = ? AND (status = 'approved' OR paid_status = 'approved') AND leave_duration = 'half'
-                      AND half_leave_quota_charge = 1 AND half_leave_quota_type_id = ?
-                      AND leave_type != ? AND leave_type != ?
-                      AND end_date >= ? AND start_date <= ?
-                      AND (
-                        restored_dates IS NULL OR TRIM(restored_dates) = ''
-                        OR INSTR(',' || REPLACE(restored_dates, ' ', '') || ',', ',' || start_date || ',') = 0
-                      )
-                """, (user_id, lt_dict['id'], lt_dict['code'], lt_dict['name'], cycle_start, cycle_end))
-                already_used += int(cursor.fetchone()[0] or 0)
-            quota_days_requested = requested_days
-
-            remaining = max(0.0, allocated - already_used)
-
-            if quota_days_requested > remaining:
-                rem_str = int(remaining) if remaining.is_integer() else remaining
-                req_str = int(quota_days_requested) if float(quota_days_requested).is_integer() else quota_days_requested
+                requested_days = int(span['requested_days'])
+                quota_days_requested = requested_days
+                already_used = float(span.get('used_days') or 0.0)
+                remaining = float(span.get('remaining_days_total') if span.get('month_breakdown') else span.get('remaining_days') or 0.0)
+                # Form badge: show remaining capacity usable for this request (sum across months).
+                remaining_for_request = float(span.get('remaining_days_total') or 0.0)
+                within_quota_days = int(span.get('within_quota_days') or 0)
+                excess_days = int(span.get('excess_days') or 0)
+                month_breakdown = span.get('month_breakdown') or []
+                within_dates = list(span.get('within_dates') or [])
+                excess_dates = list(span.get('excess_dates') or [])
+                remaining = remaining_for_request
+            else:
+                if user_id:
+                    cycle_start, cycle_end = _leave_allowance_cycle_window(
+                        reference_date,
+                        allowance_period,
+                        lt_dict.get('allowance_months')
+                    )
+                    already_used = _count_used_leave_quota_in_cycle(
+                        cursor, int(user_id), lt_dict, cycle_start, cycle_end, exclude_id=exclude_id
+                    )
+                quota_days_requested = requested_days
+                remaining = max(0.0, allocated - already_used)
                 within_quota_days = int(min(remaining, quota_days_requested))
                 excess_days = int(max(0, quota_days_requested - within_quota_days))
+
+            if quota_days_requested > remaining or excess_days > 0:
+                rem_str = int(remaining) if float(remaining).is_integer() else remaining
+                req_str = int(quota_days_requested) if float(quota_days_requested).is_integer() else quota_days_requested
+                if not use_monthly_span:
+                    within_quota_days = int(min(remaining, quota_days_requested))
+                    excess_days = int(max(0, quota_days_requested - within_quota_days))
                 # QA-112/113: over-quota is allowed with admin decision — do not sound like a hard block.
-                msg = (
-                    f"This half-leave needs admin approval: only {rem_str} {leave_name} quota day(s) remain."
-                    if duration == 'half' else
-                    f"{within_quota_days} day(s) within {leave_name} quota, {excess_days} day(s) over the quota "
-                    f"(remaining paid allowance: {rem_str} of {req_str} requested). "
-                    f"Admin can treat the extra day(s) as paid, unpaid, or reject them with a reason."
-                )
+                if duration == 'half':
+                    msg = f"This half-leave needs admin approval: only {rem_str} {leave_name} quota day(s) remain."
+                elif month_breakdown:
+                    parts = [
+                        f"{m['month_label']}: {m['within_quota_days']} within / {m['excess_days']} over (remaining {int(m['remaining_days']) if float(m['remaining_days']).is_integer() else m['remaining_days']})"
+                        for m in month_breakdown
+                    ]
+                    msg = (
+                        f"{within_quota_days} day(s) within {leave_name} quota, {excess_days} day(s) over the quota "
+                        f"across months ({'; '.join(parts)}). "
+                        f"Admin can treat the extra day(s) as paid, unpaid, or reject them with a reason."
+                    )
+                else:
+                    msg = (
+                        f"{within_quota_days} day(s) within {leave_name} quota, {excess_days} day(s) over the quota "
+                        f"(remaining paid allowance: {rem_str} of {req_str} requested). "
+                        f"Admin can treat the extra day(s) as paid, unpaid, or reject them with a reason."
+                    )
                 excess_info = {
                     'within_quota_days': within_quota_days,
                     'excess_days': excess_days,
                     'within_quota_range': None,
                     'excess_range': None,
-                    'excess_dates': [],
+                    'excess_dates': excess_dates,
+                    'within_dates': within_dates,
+                    'month_breakdown': month_breakdown,
                 }
-                if user_id and start_date and end_date and duration != 'half':
+                if excess_dates:
+                    excess_info['excess_range'] = {'start': excess_dates[0], 'end': excess_dates[-1]}
+                if within_dates:
+                    excess_info['within_quota_range'] = {'start': within_dates[0], 'end': within_dates[-1]}
+                elif user_id and start_date and end_date and duration != 'half' and not month_breakdown:
                     quota_range, excess_range = split_leave_request_dates(
                         int(user_id), start_date, end_date, within_quota_days
                     )
@@ -9983,7 +10163,6 @@ def check_leave_quota(
                         {'start': excess_range[0], 'end': excess_range[1]} if excess_range else None
                     )
                     if excess_range:
-                        # Only scheduled working days — matches the excess day count shown to admin/employee.
                         excess_info['excess_dates'] = _list_scheduled_leave_dates(
                             cursor, int(user_id), excess_range[0], excess_range[1]
                         ) or [excess_range[0]]
@@ -10013,7 +10192,12 @@ def check_leave_quota(
                 'allocated_days': allocated,
                 'used_days': already_used,
                 'leave_type_name': leave_name,
-                'is_paid': 1
+                'is_paid': 1,
+                'within_quota_days': within_quota_days if use_monthly_span else quota_days_requested,
+                'excess_days': excess_days if use_monthly_span else 0,
+                'month_breakdown': month_breakdown,
+                'within_dates': within_dates,
+                'excess_dates': excess_dates,
             }
     except Exception as e:
         logger.error(f"check_leave_quota error: {e}")
@@ -11986,9 +12170,11 @@ def update_payroll_settings(
         raise ValueError('Extra-pay amounts must be valid numbers.')
     if any(value < 0 or value != value for value in (h_mult, nw_mult, h_fixed, nw_fixed, off_mult, off_fixed)):
         raise ValueError('Extra-pay amounts cannot be negative.')
-    if h_mult < 1.0 or h_mult > 5.0:
+    # OT-29/30: validate each multiplier only when that side uses multiplier mode,
+    # with a shared 1.0–5.0 range that matches the Overtime Settings inputs.
+    if h_mode == 'multiplier' and (h_mult < 1.0 or h_mult > 5.0):
         raise ValueError('Holiday OT multiplier must be between 1.0 and 5.0 (max 2 decimals).')
-    if nw_mult < 1.0 or nw_mult > 5.0:
+    if nw_mode == 'multiplier' and (nw_mult < 1.0 or nw_mult > 5.0):
         raise ValueError('Rest-day OT multiplier must be between 1.0 and 5.0 (max 2 decimals).')
     if off_day_attendance_pay_active is None:
         off_active = int(bool(current.get('off_day_attendance_pay_active')))
@@ -13834,14 +14020,17 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 else:
                     present_days += 1.0
             elif st == 'late':
+                # PAY-01: late is still present for payroll Present Days; keep Late Days separate.
                 if is_half:
                     late_days += 0.5
+                    present_days += 0.5
                     if half_is_paid:
                         approved_leave_days_period += 0.5
                     else:
                         unpaid_leave_days += 0.5
                 else:
                     late_days += 1.0
+                    present_days += 1.0
             elif st == 'on_leave':
                 if is_half:
                     approved_leave_days_period += 0.5
@@ -13890,7 +14079,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             half_leave_absent_note = ""
             scheduled_workdays = 0
         absent_days = unexcused_absent_days + unpaid_leave_days
-        payable_days = min(float(scheduled_workdays), round(present_days + late_days + approved_leave_days_period, 2))
+        # PAY-01: present_days already includes late-present days, so do not add late_days again.
+        payable_days = min(float(scheduled_workdays), round(present_days + approved_leave_days_period, 2))
         
         proration_factor = _payroll_proration_factor(
             proration_basis,

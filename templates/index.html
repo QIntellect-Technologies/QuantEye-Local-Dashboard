@@ -5932,6 +5932,141 @@
       #payroll-view .stat-box:hover { transform: none; border-color: rgba(226,231,246,0.9); }
       #payroll-view .stat-value { color: var(--ink); font-weight: 600; letter-spacing: -0.02em; }
       #payroll-view .stat-label { color: var(--mut); font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+      /* PAY-02: match Attendance Reports metric cards */
+      #payroll-view .payroll-rpt-rail {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--line);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        margin-bottom: 14px;
+      }
+      #payroll-view .payroll-rpt-rail .rpt-metric {
+        position: relative;
+        display: block;
+        width: 100%;
+        padding: 15px 18px 16px;
+        border: 0;
+        text-align: left;
+        cursor: default;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.62));
+        -webkit-backdrop-filter: blur(16px);
+        backdrop-filter: blur(16px);
+        color: inherit;
+        font: inherit;
+      }
+      #payroll-view .payroll-rpt-rail button.rpt-metric { cursor: pointer; }
+      #payroll-view .payroll-rpt-rail button.rpt-metric:hover {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.88));
+      }
+      #payroll-view .rpt-metric-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      #payroll-view .rpt-metric-label {
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      #payroll-view .rpt-metric-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        font-size: 11px;
+      }
+      #payroll-view .rpt-metric-icon.tone-lilac { background: rgba(139, 123, 247, 0.12); color: #6a5cd6; }
+      #payroll-view .rpt-metric-icon.tone-mint { background: rgba(60, 196, 170, 0.14); color: #1f8d77; }
+      #payroll-view .rpt-metric-icon.tone-coral { background: rgba(214, 96, 88, 0.12); color: #b4382f; }
+      #payroll-view .rpt-metric-icon.tone-amber { background: rgba(196, 138, 44, 0.14); color: #9a6710; }
+      #payroll-view .rpt-metric-value {
+        display: block;
+        margin-top: 8px;
+        font-size: 22px;
+        font-weight: 600;
+        line-height: 1.05;
+        letter-spacing: -0.04em;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+      }
+      #payroll-view .rpt-metric-foot {
+        display: block;
+        margin-top: 4px;
+        min-height: 15px;
+        font-size: 11px;
+        color: var(--faint);
+      }
+      /* PAY-03/04: Attendance-style labeled filter bar + camera dropdowns */
+      #payroll-view .payroll-rpt-filters {
+        margin-bottom: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.86);
+      }
+      #payroll-view .payroll-rpt-filters .rpt-filters-body {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      #payroll-view .payroll-rpt-filters .rpt-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 166px;
+      }
+      #payroll-view .payroll-rpt-filters .rpt-field-label {
+        padding-left: 2px;
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      #payroll-view .payroll-rpt-filters .rpt-field--grow { flex: 1 1 250px; }
+      #payroll-view .payroll-rpt-filters .rpt-search { position: relative; }
+      #payroll-view .payroll-rpt-filters .rpt-search i {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 10.5px;
+        color: var(--faint);
+        pointer-events: none;
+      }
+      #payroll-view .payroll-rpt-filters .rpt-search input[type="search"],
+      #payroll-view .payroll-rpt-filters .form-select {
+        height: 36px;
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--ink-2);
+        font-family: inherit;
+        font-size: 12px;
+        box-shadow: none;
+      }
+      #payroll-view .payroll-rpt-filters .rpt-search input[type="search"] {
+        width: 100%;
+        padding: 0 12px 0 32px;
+      }
+      #payroll-view .payroll-rpt-filters .app-camera-select { min-width: 166px; }
+      @media (max-width: 1100px) {
+        #payroll-view .payroll-rpt-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 640px) {
+        #payroll-view .payroll-rpt-rail { grid-template-columns: 1fr; }
+      }
       /* toolbars -> glass */
       #payroll-view > .page-view > div[style*="background:#ffffff; border:1px solid #dbe5ec"],
       #payroll-view div[style*="background:#f8fafc; padding:8px 12px"] {
@@ -7960,6 +8095,196 @@
   </script>
 </head>
   <body class="{% if not is_authenticated %}auth-required{% endif %}">
+    <!-- QIntellect sign-in intro: plays once, only right after a successful sign-in -->
+    <div id="qeIntroOverlay" class="qe-intro" hidden aria-hidden="true">
+      <div class="qe-intro-aurora" aria-hidden="true"></div>
+      <div class="qe-intro-grid" aria-hidden="true"></div>
+      <div class="qe-intro-stage">
+        <div class="qe-intro-markwrap">
+          <span class="qe-intro-ring" aria-hidden="true"></span>
+          <svg class="qe-intro-mark" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="qe-intro-mark-q" cx="56" cy="56" r="34"></circle>
+            <path class="qe-intro-mark-tail" d="M78 78 L97 97"></path>
+            <circle class="qe-intro-mark-core" cx="56" cy="56" r="4.5"></circle>
+          </svg>
+        </div>
+        <div class="qe-intro-wordmark" aria-label="QIntellect">
+          <span style="--i:0">Q</span><span style="--i:1">I</span><span style="--i:2">N</span><span style="--i:3">T</span><span style="--i:4">E</span><span style="--i:5">L</span><span style="--i:6">L</span><span style="--i:7">E</span><span style="--i:8">C</span><span style="--i:9">T</span>
+        </div>
+        <div class="qe-intro-rule" aria-hidden="true"></div>
+        <p class="qe-intro-sub">TECHNOLOGIES</p>
+        <p class="qe-intro-status"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Preparing your workspace</p>
+        <div class="qe-intro-track" aria-hidden="true"><span class="qe-intro-progress"></span></div>
+      </div>
+      <p class="qe-intro-foot">QuantEye &middot; AI Attendance System</p>
+    </div>
+    <style>
+      #qeIntroOverlay.qe-intro {
+        position: fixed; inset: 0; z-index: 2147483000;
+        display: none; align-items: center; justify-content: center;
+        overflow: hidden; background: #070a16; color: #fff;
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        letter-spacing: -0.01em;
+        opacity: 1;
+      }
+      html.qe-intro-lock, html.qe-intro-lock body { overflow: hidden !important; }
+      #qeIntroOverlay .qe-intro-aurora {
+        position: absolute; inset: -20%;
+        background:
+          radial-gradient(38% 32% at 24% 22%, rgba(108, 99, 255, 0.35), transparent 70%),
+          radial-gradient(32% 28% at 78% 76%, rgba(56, 189, 248, 0.22), transparent 72%);
+        filter: blur(10px);
+        animation: qeIntroDrift 7s ease-in-out infinite alternate;
+      }
+      #qeIntroOverlay .qe-intro-grid {
+        position: absolute; inset: 0;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+        background-size: 64px 64px;
+        -webkit-mask-image: radial-gradient(ellipse 60% 55% at 50% 50%, #000 20%, transparent 78%);
+        mask-image: radial-gradient(ellipse 60% 55% at 50% 50%, #000 20%, transparent 78%);
+      }
+      #qeIntroOverlay .qe-intro-stage {
+        position: relative; z-index: 2;
+        display: flex; flex-direction: column; align-items: center;
+        padding: 24px; text-align: center;
+      }
+      #qeIntroOverlay .qe-intro-markwrap { position: relative; width: 104px; height: 104px; display: grid; place-items: center; }
+      #qeIntroOverlay .qe-intro-mark { width: 104px; height: 104px; overflow: visible; }
+      #qeIntroOverlay .qe-intro-mark-q {
+        fill: none; stroke: #ffffff; stroke-width: 2.6; stroke-linecap: round;
+        stroke-dasharray: 214; stroke-dashoffset: 214;
+        animation: qeIntroDraw 1s cubic-bezier(.65,.05,.36,1) .25s forwards;
+      }
+      #qeIntroOverlay .qe-intro-mark-tail {
+        fill: none; stroke: #8f88ff; stroke-width: 3; stroke-linecap: round;
+        stroke-dasharray: 30; stroke-dashoffset: 30;
+        animation: qeIntroDrawTail .5s cubic-bezier(.65,.05,.36,1) 1.05s forwards;
+      }
+      #qeIntroOverlay .qe-intro-mark-core {
+        fill: #8f88ff; opacity: 0; transform-origin: 56px 56px;
+        animation: qeIntroCore .55s cubic-bezier(.34,1.56,.64,1) 1.4s forwards;
+      }
+      #qeIntroOverlay .qe-intro-ring {
+        position: absolute; width: 96px; height: 96px; border-radius: 50%;
+        border: 1px solid rgba(143, 136, 255, 0.55);
+        opacity: 0;
+        animation: qeIntroPulse 2.4s ease-out 1.3s infinite;
+      }
+      #qeIntroOverlay .qe-intro-wordmark {
+        position: relative; overflow: hidden;
+        margin-top: 34px;
+        font-size: clamp(26px, 4vw, 42px); font-weight: 500;
+        letter-spacing: 0.34em; text-indent: 0.34em; line-height: 1.1;
+      }
+      #qeIntroOverlay .qe-intro-wordmark span {
+        display: inline-block; opacity: 0; transform: translateY(16px);
+        animation: qeIntroLetter .7s cubic-bezier(.22,1,.36,1) forwards;
+        animation-delay: calc(0.95s + var(--i) * 0.07s);
+      }
+      #qeIntroOverlay .qe-intro-wordmark::after {
+        content: ""; position: absolute; top: -20%; bottom: -20%; width: 34%;
+        background: linear-gradient(100deg, transparent, rgba(255,255,255,0.75), transparent);
+        transform: translateX(-260%) skewX(-14deg); mix-blend-mode: screen;
+        animation: qeIntroSweep 1.1s ease-in-out 2.05s forwards;
+      }
+      #qeIntroOverlay .qe-intro-rule {
+        width: 0; height: 1px; margin-top: 18px;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+        animation: qeIntroRule .9s cubic-bezier(.22,1,.36,1) 1.75s forwards;
+      }
+      #qeIntroOverlay .qe-intro-sub {
+        margin: 12px 0 0; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.56em; text-indent: 0.56em; color: rgba(255,255,255,0.62);
+        opacity: 0; animation: qeIntroFade .8s ease-out 1.95s forwards;
+      }
+      #qeIntroOverlay .qe-intro-status {
+        display: inline-flex; align-items: center; gap: 8px;
+        margin: 46px 0 0; font-size: 12px; letter-spacing: 0.02em;
+        color: rgba(255,255,255,0.5);
+        opacity: 0; animation: qeIntroFade .8s ease-out 2.2s forwards;
+      }
+      #qeIntroOverlay .qe-intro-status i { font-size: 11px; color: rgba(143,136,255,0.9); }
+      #qeIntroOverlay .qe-intro-track {
+        width: 220px; height: 2px; margin-top: 14px; border-radius: 999px;
+        background: rgba(255,255,255,0.12); overflow: hidden;
+      }
+      #qeIntroOverlay .qe-intro-progress {
+        display: block; height: 100%; width: 100%; border-radius: 999px;
+        background: linear-gradient(90deg, #6c63ff, #8f88ff 60%, #38bdf8);
+        transform: scaleX(0); transform-origin: left center;
+        animation: qeIntroProgress 3.6s cubic-bezier(.3,.1,.3,1) .3s forwards;
+      }
+      #qeIntroOverlay .qe-intro-foot {
+        position: absolute; bottom: 26px; left: 0; right: 0; z-index: 2;
+        margin: 0; text-align: center; font-size: 11px;
+        letter-spacing: 0.12em; text-transform: uppercase;
+        color: rgba(255,255,255,0.28);
+        opacity: 0; animation: qeIntroFade .8s ease-out 2.4s forwards;
+      }
+      #qeIntroOverlay.is-out { animation: qeIntroOut .6s cubic-bezier(.4,0,.2,1) forwards; pointer-events: none; }
+      @keyframes qeIntroDraw { to { stroke-dashoffset: 0; } }
+      @keyframes qeIntroDrawTail { to { stroke-dashoffset: 0; } }
+      @keyframes qeIntroCore { 0% { opacity: 0; transform: scale(0); } 60% { opacity: 1; transform: scale(1.25); } 100% { opacity: 1; transform: scale(1); } }
+      @keyframes qeIntroPulse {
+        0% { opacity: 0.65; transform: scale(0.92); }
+        70% { opacity: 0; transform: scale(1.55); }
+        100% { opacity: 0; transform: scale(1.55); }
+      }
+      @keyframes qeIntroLetter { to { opacity: 1; transform: translateY(0); } }
+      @keyframes qeIntroRule { to { width: 220px; } }
+      @keyframes qeIntroFade { to { opacity: 1; } }
+      @keyframes qeIntroSweep { to { transform: translateX(320%) skewX(-14deg); } }
+      @keyframes qeIntroProgress { to { transform: scaleX(1); } }
+      @keyframes qeIntroDrift {
+        from { transform: translate3d(-1.5%, -1%, 0) scale(1); }
+        to { transform: translate3d(1.5%, 1.5%, 0) scale(1.06); }
+      }
+      @keyframes qeIntroOut { to { opacity: 0; transform: translateY(-14px) scale(1.015); } }
+      @media (prefers-reduced-motion: reduce) {
+        #qeIntroOverlay .qe-intro-aurora, #qeIntroOverlay .qe-intro-ring, #qeIntroOverlay .qe-intro-wordmark::after { animation: none !important; }
+        #qeIntroOverlay .qe-intro-mark-q, #qeIntroOverlay .qe-intro-mark-tail { stroke-dashoffset: 0; animation: none !important; }
+        #qeIntroOverlay .qe-intro-mark-core, #qeIntroOverlay .qe-intro-wordmark span,
+        #qeIntroOverlay .qe-intro-sub, #qeIntroOverlay .qe-intro-status, #qeIntroOverlay .qe-intro-foot { opacity: 1; transform: none; animation: none !important; }
+        #qeIntroOverlay .qe-intro-rule { width: 220px; animation: none !important; }
+        #qeIntroOverlay .qe-intro-progress { transform: scaleX(1); animation: none !important; }
+      }
+    </style>
+    <script>
+      (function () {
+        var overlay = document.getElementById('qeIntroOverlay');
+        if (!overlay) return;
+        var play = false;
+        try {
+          play = sessionStorage.getItem('qeLoginIntro') === '1';
+          if (play) sessionStorage.removeItem('qeLoginIntro');
+        } catch (e) {}
+        if (!play) return;
+
+        var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var duration = reduce ? 1200 : 4000;
+        var done = false;
+
+        overlay.hidden = false;
+        overlay.style.display = 'flex';
+        document.documentElement.classList.add('qe-intro-lock');
+
+        function finish() {
+          if (done) return;
+          done = true;
+          overlay.classList.add('is-out');
+          document.documentElement.classList.remove('qe-intro-lock');
+          window.setTimeout(function () { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 620);
+        }
+
+        overlay.addEventListener('click', finish, { once: true });
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') finish();
+        }, { once: true });
+        window.setTimeout(finish, duration);
+      })();
+    </script>
     <!-- Global Floating Toast Container -->
     <div id="toastContainer" class="app-toast-container" aria-live="polite"></div>
     <div id="appDialogOverlay" class="app-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
@@ -9454,52 +9779,96 @@ async function fetchMultiLiveDetections() {
         </div>
       </div>
 
-      <div class="stats-grid payroll-stats-grid">
-        <div class="stat-box">
-          <div class="stat-icon" style="background:#e9f7f4; color:#148f77;"><i class="fa-solid fa-users"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollStaffCount">--</div><div class="stat-label">Employees</div></div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-icon" style="background:#eff6ff; color:#2563eb;"><i class="fa-solid fa-wallet"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollBasicTotal">--</div><div class="stat-label">Total Basic Salary</div></div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-icon" style="background:#fff7ed; color:#c2410c;"><i class="fa-solid fa-receipt"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollDeductionTotal">--</div><div class="stat-label">Total Deductions</div></div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-icon green" style="background:#e6f4ea; color:#1e8e3e;"><i class="fa-solid fa-money-bill-transfer"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollNetTotal" style="color:#148f77;">--</div><div class="stat-label">Total Payable</div></div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-icon" style="background:#fff1f2; color:#be123c;"><i class="fa-solid fa-scale-unbalanced"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollShortfallTotal">--</div><div class="stat-label">Total Shortfall</div></div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-icon" style="background:#e8f4fb; color:#247eae;"><i class="fa-solid fa-calendar-check"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollScheduledTotal">--</div><div class="stat-label">Scheduled Days</div></div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-icon" style="background:#eef2ff; color:#4f46e5;"><i class="fa-solid fa-user-check"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollPresentTotal">--</div><div class="stat-label">Present Days</div></div>
-        </div>
-        <button type="button" class="stat-box" onclick="setPayrollIssueFilter('issues')" title="Show employees with unresolved issues" style="text-align:left; border:1px solid #e2e8f0;">
-          <div class="stat-icon" style="background:#fff1f2; color:#be123c;"><i class="fa-solid fa-user-minus"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollAbsentTotal">--</div><div class="stat-label">Absent Days</div></div>
+      <section class="rpt-rail payroll-rpt-rail" aria-label="Payroll summary">
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Employees</span>
+            <span class="rpt-metric-icon tone-lilac"><i class="fa-solid fa-users"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollStaffCount">--</strong>
+          <span class="rpt-metric-foot">In this payroll run</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Total Basic Salary</span>
+            <span class="rpt-metric-icon tone-mint"><i class="fa-solid fa-wallet"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollBasicTotal">--</strong>
+          <span class="rpt-metric-foot">Sum of basic pay</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Total Deductions</span>
+            <span class="rpt-metric-icon tone-amber"><i class="fa-solid fa-receipt"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollDeductionTotal">--</strong>
+          <span class="rpt-metric-foot">All deduction types</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Total Payable</span>
+            <span class="rpt-metric-icon tone-mint"><i class="fa-solid fa-money-bill-transfer"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollNetTotal">--</strong>
+          <span class="rpt-metric-foot">Net amount to pay</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Total Shortfall</span>
+            <span class="rpt-metric-icon tone-coral"><i class="fa-solid fa-scale-unbalanced"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollShortfallTotal">--</strong>
+          <span class="rpt-metric-foot">Attendance shortfall</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Scheduled Days</span>
+            <span class="rpt-metric-icon tone-lilac"><i class="fa-solid fa-calendar-check"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollScheduledTotal">--</strong>
+          <span class="rpt-metric-foot">Workdays in period</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Present Days</span>
+            <span class="rpt-metric-icon tone-mint"><i class="fa-solid fa-user-check"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollPresentTotal">--</strong>
+          <span class="rpt-metric-foot">Includes late-present days</span>
+        </article>
+        <button type="button" class="rpt-metric" onclick="setPayrollIssueFilter('issues')" title="Show employees with unresolved issues">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Absent Days</span>
+            <span class="rpt-metric-icon tone-coral"><i class="fa-solid fa-user-minus"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollAbsentTotal">--</strong>
+          <span class="rpt-metric-foot">Click to filter issues</span>
         </button>
-        <div class="stat-box">
-          <div class="stat-icon" style="background:#fff7ed; color:#c2410c;"><i class="fa-solid fa-clock"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollLateTotal">--</div><div class="stat-label">Late Days</div></div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-icon" style="background:#ecfeff; color:#0e7490;"><i class="fa-solid fa-calendar-day"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollPayableDaysTotal">--</div><div class="stat-label">Payable Days</div></div>
-        </div>
-        <button type="button" class="stat-box" onclick="setPayrollIssueFilter('issues')" title="Filter employees with issues" style="text-align:left; border:1px solid #e2e8f0;">
-          <div class="stat-icon" style="background:#fff1f2; color:#be123c;"><i class="fa-solid fa-triangle-exclamation"></i></div>
-          <div class="stat-content"><div class="stat-value" id="payrollIssueCount">--</div><div class="stat-label">Unresolved Issues</div></div>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Late Days</span>
+            <span class="rpt-metric-icon tone-amber"><i class="fa-solid fa-clock"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollLateTotal">--</strong>
+          <span class="rpt-metric-foot">Also counted in Present</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Payable Days</span>
+            <span class="rpt-metric-icon tone-lilac"><i class="fa-solid fa-calendar-day"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollPayableDaysTotal">--</strong>
+          <span class="rpt-metric-foot">Days used for pay</span>
+        </article>
+        <button type="button" class="rpt-metric" onclick="setPayrollIssueFilter('issues')" title="Filter employees with issues">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Unresolved Issues</span>
+            <span class="rpt-metric-icon tone-coral"><i class="fa-solid fa-triangle-exclamation"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="payrollIssueCount">--</strong>
+          <span class="rpt-metric-foot">Click to filter issues</span>
         </button>
-      </div>
+      </section>
 
       <div id="payrollProjectionCards" class="payroll-projection-grid" hidden>
         <div class="payroll-projection-card">
@@ -9520,19 +9889,39 @@ async function fetchMultiLiveDetections() {
         </div>
       </div>
       <div id="payrollMessage" aria-live="polite" style="margin-bottom:12px;"></div>
-      <div style="display:flex; align-items:center; flex-wrap:wrap; gap:9px; padding:12px; margin-bottom:12px; background:#ffffff; border:1px solid #dbe5ec; border-radius:8px;">
-        <label for="payrollEmployeeSearch" style="position:relative; flex:1 1 220px; max-width:340px;">
-          <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:#94a3b8;"></i>
-          <input id="payrollEmployeeSearch" type="search" class="form-control" placeholder="Search employee or ID" oninput="applyPayrollFilters()" style="padding-left:32px; min-height:38px;">
-        </label>
-        <select id="payrollDepartmentFilter" class="form-select" aria-label="Department filter" onchange="applyPayrollFilters()" style="width:auto; min-width:150px; min-height:38px;"><option value="all">All departments</option></select>
-        <select id="payrollEmployeeStatusFilter" class="form-select" aria-label="Employee status filter" onchange="applyPayrollFilters()" style="width:auto; min-width:155px; min-height:38px;">
-          <option value="all">All employee statuses</option><option value="Draft">Draft</option><option value="Missing salary">Missing salary</option><option value="Missing payroll rule">Missing payroll rule</option><option value="Missing shift history">Missing shift history</option><option value="Finalized">Finalized</option>
-        </select>
-        <select id="payrollIssueFilter" class="form-select" aria-label="Issue filter" onchange="applyPayrollFilters()" style="width:auto; min-width:125px; min-height:38px;"><option value="all">All employees</option><option value="issues">Issues only</option><option value="clear">No issues</option></select>
-        <select id="payrollDeductionFilter" class="form-select" aria-label="Deduction type filter" onchange="applyPayrollFilters()" style="width:auto; min-width:140px; min-height:38px;"><option value="all">All deduction types</option><option value="percentage">Percentage</option><option value="fixed">Fixed PKR</option></select>
-        <select id="payrollRunStatusFilter" class="form-select" aria-label="Payroll run status filter" onchange="applyPayrollFilters()" style="width:auto; min-width:155px; min-height:38px;"><option value="all">Any payroll status</option><option value="Draft">Draft</option><option value="Ready for Finalization">Ready for Finalization</option><option value="Has unresolved issues">Has unresolved issues</option><option value="Finalized">Finalized</option></select>
-      </div>
+      <section class="rpt-filters app-camera-select-host payroll-rpt-filters" aria-label="Payroll filters">
+        <div class="rpt-filters-body">
+          <div class="rpt-field rpt-field--grow">
+            <span class="rpt-field-label">Search</span>
+            <div class="rpt-search">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input id="payrollEmployeeSearch" type="search" class="form-control" placeholder="Search employee or ID" oninput="applyPayrollFilters()" autocomplete="off">
+            </div>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Department</span>
+            <select id="payrollDepartmentFilter" class="form-select" onchange="applyPayrollFilters()"><option value="all">All departments</option></select>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Employee status</span>
+            <select id="payrollEmployeeStatusFilter" class="form-select" onchange="applyPayrollFilters()">
+              <option value="all">All employee statuses</option><option value="Draft">Draft</option><option value="Missing salary">Missing salary</option><option value="Missing payroll rule">Missing payroll rule</option><option value="Missing shift history">Missing shift history</option><option value="Finalized">Finalized</option>
+            </select>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Issues</span>
+            <select id="payrollIssueFilter" class="form-select" onchange="applyPayrollFilters()"><option value="all">All employees</option><option value="issues">Issues only</option><option value="clear">No issues</option></select>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Deduction type</span>
+            <select id="payrollDeductionFilter" class="form-select" onchange="applyPayrollFilters()"><option value="all">All deduction types</option><option value="percentage">Percentage</option><option value="fixed">Fixed PKR</option></select>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Run status</span>
+            <select id="payrollRunStatusFilter" class="form-select" onchange="applyPayrollFilters()"><option value="all">Any payroll status</option><option value="Draft">Draft</option><option value="Ready for Finalization">Ready for Finalization</option><option value="Has unresolved issues">Has unresolved issues</option><option value="Finalized">Finalized</option></select>
+          </div>
+        </div>
+      </section>
       <!-- Payroll Table Subtabs to split wide columns -->
       <div class="payroll-table-tabs" style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; flex-wrap:wrap; background:#f8fafc; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0;">
         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
@@ -11681,7 +12070,7 @@ async function fetchMultiLiveDetections() {
             </label>
             <label id="holidayOtMultiplierWrap" class="ot-settings-field" for="holidayOtMultiplier" style="display:none;">
               Holiday OT multiplier
-              <input id="holidayOtMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" data-ot-validate="multiplier" oninput="validateOvertimeSettingsLive()">
+              <input id="holidayOtMultiplier" class="form-control" type="number" min="1" max="5" step="0.01" value="1.5" data-ot-validate="multiplier" oninput="validateOvertimeSettingsLive()">
               <span class="field-error" id="holidayOtMultiplierError"></span>
             </label>
             <label id="holidayOtFixedWrap" class="ot-settings-field" for="holidayOtFixedAmount" style="display:none;">
@@ -11690,7 +12079,7 @@ async function fetchMultiLiveDetections() {
               <span class="field-error" id="holidayOtFixedAmountError"></span>
             </label>
             <div class="ot-settings-actions">
-              <button type="button" id="saveHolidayOtExtraBtn" class="btn btn-primary btn-sm" onclick="if (validateOvertimeSettingsLive()) savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)">Save holiday extra</button>
+              <button type="button" id="saveHolidayOtExtraBtn" class="btn btn-primary btn-sm" onclick="saveHolidayOtExtraSettings()">Save holiday extra</button>
             </div>
           </div>
           <div class="ot-settings-row is-actions">
@@ -11710,7 +12099,7 @@ async function fetchMultiLiveDetections() {
             </label>
             <label id="nonWorkingOtMultiplierWrap" class="ot-settings-field" for="nonWorkingDayOtMultiplier" style="display:none;">
               Rest-day OT multiplier
-              <input id="nonWorkingDayOtMultiplier" class="form-control" type="number" min="0" max="20" step="0.01" value="1.5" data-ot-validate="multiplier" oninput="validateOvertimeSettingsLive()">
+              <input id="nonWorkingDayOtMultiplier" class="form-control" type="number" min="1" max="5" step="0.01" value="1.5" data-ot-validate="multiplier" oninput="validateOvertimeSettingsLive()">
               <span class="field-error" id="nonWorkingDayOtMultiplierError"></span>
             </label>
             <label id="nonWorkingOtFixedWrap" class="ot-settings-field" for="nonWorkingDayOtFixedAmount" style="display:none;">
@@ -11719,7 +12108,7 @@ async function fetchMultiLiveDetections() {
               <span class="field-error" id="nonWorkingDayOtFixedAmountError"></span>
             </label>
             <div class="ot-settings-actions">
-              <button type="button" id="saveRestDayOtExtraBtn" class="btn btn-primary btn-sm" onclick="if (validateOvertimeSettingsLive()) savePayrollSettings(document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false)">Save rest-day extra</button>
+              <button type="button" id="saveRestDayOtExtraBtn" class="btn btn-primary btn-sm" onclick="saveRestDayOtExtraSettings()">Save rest-day extra</button>
             </div>
           </div>
 
@@ -12151,8 +12540,8 @@ async function fetchMultiLiveDetections() {
         <nav class="payroll-guide-nav" aria-label="Guide sections">
           <button type="button" class="is-active" data-guide-section="guide-overview" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-overview', this)">Simple Guide</button>
           <button type="button" data-guide-section="guide-advanced" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-advanced', this)">Advanced Rules</button>
-          <button type="button" data-guide-section="guide-general" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-general', this)">1. General</button>
-          <button type="button" data-guide-section="guide-attendance" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-attendance', this)">2. Attendance</button>
+          <button type="button" data-guide-section="guide-general" data-guide-module="general" onclick="showPayrollGuideSection('guide-general', this)">1. General</button>
+          <button type="button" data-guide-section="guide-attendance" data-guide-module="attendance" onclick="showPayrollGuideSection('guide-attendance', this)">2. Attendance</button>
           <button type="button" data-guide-section="guide-extras" data-guide-module="payroll" onclick="showPayrollGuideSection('guide-extras', this)">3. Extra pay</button>
           <button type="button" data-guide-section="guide-leave" data-guide-module="leave" onclick="showPayrollGuideSection('guide-leave', this)">4. Leave</button>
           <button type="button" data-guide-section="guide-overtime" data-guide-module="overtime" onclick="showPayrollGuideSection('guide-overtime', this)">5. Overtime</button>
@@ -12879,23 +13268,24 @@ async function fetchMultiLiveDetections() {
             <label class="form-label" style="font-weight: 600; color: #92400e; margin-bottom: 5px;"><i class="fa-solid fa-triangle-exclamation"></i> Leave Limit Exceeded</label>
             <p style="font-size: 0.85rem; color: #b45309; margin-bottom: 8px;" id="excessLeaveMsg"></p>
             <div id="excessLeaveDatesDetail" style="font-size: 0.82rem; color: #92400e; margin-bottom: 10px; font-weight: 600;"></div>
-            <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #92400e;">How should the excess days be treated?</label>
-            <select id="modalExcessTreatment" class="form-select form-select-sm" onchange="onExcessTreatmentChange()" style="border-color: #fcd34d;">
-              <option value="" selected disabled>Choose paid, unpaid, or reject</option>
-                <option value="paid">Treat excess as PAID (override quota)</option>
-                <option value="unpaid">Treat excess as UNPAID (LWP)</option>
-                <option value="rejected">Reject excess days (reason required)</option>
+            <div id="excessLeaveMonthBreakdown" style="display:none; font-size: 0.8rem; color: #92400e; margin-bottom: 10px; line-height: 1.45;"></div>
+            <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #92400e;" for="modalExcessTreatment">How should the excess days be treated?</label>
+            <select id="modalExcessTreatment" class="form-select form-select-sm" style="border-color: #fcd34d;">
+              <option value="">Choose how to treat excess days...</option>
+              <option value="paid">OPTION A - Treat excess as PAID (Override Quota)</option>
+              <option value="unpaid">OPTION B - Treat excess as UNPAID</option>
+              <option value="rejected">OPTION C - Reject excess days</option>
             </select>
             <div id="excessRejectReasonWrap" style="display:none; margin-top:10px;">
-              <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #92400e;">Rejection reason <span style="color:#dc2626;">*</span></label>
-              <textarea id="modalExcessRejectReason" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="Reason shown to the employee in the mobile app" oninput="validateLeaveRequestForm()"></textarea>
+              <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #92400e;" for="modalExcessRejectReason">Rejection reason <span style="color:#dc2626;">*</span></label>
+              <textarea id="modalExcessRejectReason" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="Required — shown to the employee in the mobile app"></textarea>
               <small id="modalExcessRejectReasonError" class="text-danger" role="alert"></small>
             </div>
         </div>
       </div>
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 24px; display: flex; justify-content: flex-end; gap: 10px;">
         <button type="button" class="btn btn-secondary" onclick="closeFileLeaveModal()">Cancel</button>
-        <button type="button" class="btn btn-primary" id="submitLeaveRequestBtn" onclick="submitLeaveRequest()" disabled style="background:#0d9488; border:none; font-weight:700;">Submit Leave Request</button>
+        <button type="button" class="btn btn-primary" id="submitLeaveRequestBtn" onclick="submitLeaveRequest()" disabled style="background:#0d9488; border:none; font-weight:700; opacity:0.55;">Submit Leave Request</button>
       </div>
     </div>
   </div>
@@ -13795,6 +14185,8 @@ async function fetchMultiLiveDetections() {
         select.innerHTML = '<option value="all">All departments</option>' +
           departments.map(department => `<option value="${payrollEscape(department)}">${payrollEscape(department)}</option>`).join('');
         if (departments.includes(selected)) select.value = selected;
+        if (typeof upgradePayrollDropdowns === 'function') upgradePayrollDropdowns();
+        else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(select);
       }
 
       function renderMonthlyPayroll(payroll) {
@@ -14665,8 +15057,18 @@ async function fetchMultiLiveDetections() {
       }
       window.applyOtSettingsChrome = applyOtSettingsChrome;
 
-      function applyPayrollGuideEntitlements() {
+      function isPayrollGuideModuleEnabled(mod) {
         const mods = window.entitledModules || {};
+        const key = String(mod || 'payroll').toLowerCase();
+        // OT-24: General stays available whenever any related module is enabled.
+        if (key === 'general') {
+          return Boolean(mods.payroll || mods.attendance || mods.leave || mods.overtime);
+        }
+        return Boolean(mods[key]);
+      }
+      window.isPayrollGuideModuleEnabled = isPayrollGuideModuleEnabled;
+
+      function applyPayrollGuideEntitlements() {
         const overlay = document.getElementById('payrollGuideOverlay');
         const headerBtn = document.getElementById('payrollGuideHeaderBtn');
         let visibleCount = 0;
@@ -14675,9 +15077,14 @@ async function fetchMultiLiveDetections() {
           : document.querySelectorAll('.payroll-guide-nav button[data-guide-module]');
         buttons.forEach((btn) => {
           const mod = btn.getAttribute('data-guide-module') || 'payroll';
-          const show = Boolean(mods[mod]);
+          const show = isPayrollGuideModuleEnabled(mod);
           btn.style.display = show ? '' : 'none';
           if (show) visibleCount += 1;
+          const sectionId = btn.getAttribute('data-guide-section');
+          if (sectionId && overlay) {
+            const section = overlay.querySelector(`#${sectionId}`);
+            if (section) section.hidden = !show;
+          }
         });
         if (headerBtn) {
           if (visibleCount > 0) headerBtn.style.removeProperty('display');
@@ -19036,7 +19443,10 @@ async function fetchMultiLiveDetections() {
           'payrollOtRounding', 'overtimeMaxPeriod',
           'overtimeLimitRuleScope', 'overtimeLimitRuleTarget', 'overtimeLimitRulePeriod',
           'holidayOtPayMode', 'nonWorkingDayOtPayMode', 'holidaySpecificOtSelect',
-          'overtimeRuleScope', 'overtimeRuleTarget', 'overtimeRuleDayType'
+          'overtimeRuleScope', 'overtimeRuleTarget', 'overtimeRuleDayType',
+          // PAY-03: Payroll module filters
+          'payrollDepartmentFilter', 'payrollEmployeeStatusFilter', 'payrollIssueFilter',
+          'payrollDeductionFilter', 'payrollRunStatusFilter'
         ];
         ids.forEach(id => {
           const el = document.getElementById(id);
@@ -19045,7 +19455,22 @@ async function fetchMultiLiveDetections() {
         document.querySelectorAll('#shiftStaffTableBody select.enterprise-select, #shiftStaffTableBody select.form-select').forEach(el => {
           upgradeSelectToCameraStyle(el);
         });
+        if (typeof upgradePayrollDropdowns === 'function') upgradePayrollDropdowns();
       }
+      function upgradePayrollDropdowns() {
+        [
+          'payrollDepartmentFilter', 'payrollEmployeeStatusFilter', 'payrollIssueFilter',
+          'payrollDeductionFilter', 'payrollRunStatusFilter'
+        ].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el && typeof upgradeSelectToCameraStyle === 'function') {
+            upgradeSelectToCameraStyle(el);
+          } else if (el && typeof refreshAppCameraSelect === 'function') {
+            refreshAppCameraSelect(el);
+          }
+        });
+      }
+      window.upgradePayrollDropdowns = upgradePayrollDropdowns;
       function upgradeLeaveSettingsDropdowns() {
         ['halfLeaveQuotaMode', 'halfLeaveRuleScope', 'halfLeaveRuleTarget'].forEach((id) => {
           const el = document.getElementById(id);
@@ -21102,7 +21527,8 @@ async function fetchMultiLiveDetections() {
           holidayModeOk = validateOtNumberField(holidayPercent, { min: 0, max: 1000, required: true, label: 'Extra %' }) && holidayModeOk;
         } else setOtSettingsFieldError(holidayPercent, '');
         if (isOtFieldVisible(holidayMult)) {
-          holidayModeOk = validateOtNumberField(holidayMult, { min: 0, max: 20, required: true, label: 'Holiday OT multiplier' }) && holidayModeOk;
+          // OT-29/30: Holiday multiplier uses its own 1.0–5.0 rule (not Rest-day).
+          holidayModeOk = validateOtNumberField(holidayMult, { min: 1, max: 5, required: true, label: 'Holiday OT multiplier' }) && holidayModeOk;
         } else setOtSettingsFieldError(holidayMult, '');
         if (isOtFieldVisible(holidayFixed)) {
           holidayModeOk = validateOtNumberField(holidayFixed, { min: 0, max: null, required: true, label: 'Extra per OT hour' }) && holidayModeOk;
@@ -21116,7 +21542,8 @@ async function fetchMultiLiveDetections() {
           restModeOk = validateOtNumberField(restPercent, { min: 0, max: 1000, required: true, label: 'Extra %' }) && restModeOk;
         } else setOtSettingsFieldError(restPercent, '');
         if (isOtFieldVisible(restMult)) {
-          restModeOk = validateOtNumberField(restMult, { min: 0, max: 20, required: true, label: 'Rest-day OT multiplier' }) && restModeOk;
+          // OT-30: Rest-day multiplier range matches input + server (1.0–5.0).
+          restModeOk = validateOtNumberField(restMult, { min: 1, max: 5, required: true, label: 'Rest-day OT multiplier' }) && restModeOk;
         } else setOtSettingsFieldError(restMult, '');
         if (isOtFieldVisible(restFixed)) {
           restModeOk = validateOtNumberField(restFixed, { min: 0, max: null, required: true, label: 'Extra per OT hour' }) && restModeOk;
@@ -22773,12 +23200,14 @@ async function fetchMultiLiveDetections() {
       }
 
       function showPayrollGuideSection(sectionId, button) {
-        const mods = window.entitledModules || {};
         const navBtn = button || document.querySelector(`.payroll-guide-nav button[data-guide-section="${sectionId}"]`);
         const reqMod = navBtn?.getAttribute('data-guide-module');
-        if (reqMod && mods[reqMod] === false) return;
+        if (reqMod && !isPayrollGuideModuleEnabled(reqMod)) return;
         document.querySelectorAll('.payroll-guide-content > section').forEach((section) => {
-          section.hidden = section.id !== sectionId;
+          const sectionNav = document.querySelector(`.payroll-guide-nav button[data-guide-section="${section.id}"]`);
+          const sectionMod = sectionNav?.getAttribute('data-guide-module');
+          const allowed = !sectionMod || isPayrollGuideModuleEnabled(sectionMod);
+          section.hidden = !(allowed && section.id === sectionId);
         });
         document.querySelectorAll('.payroll-guide-nav button').forEach((item) => item.classList.remove('is-active'));
         if (navBtn) navBtn.classList.add('is-active');
@@ -22852,63 +23281,82 @@ async function fetchMultiLiveDetections() {
       }
       window.saveLeaveSettings = saveLeaveSettings;
 
-      async function savePayrollSettings(deductUnpaidLeave) {
+      function buildPayrollSettingsPayload(deductUnpaidLeave, overrides = {}) {
         const toggle = document.getElementById('deductUnpaidLeaveToggle');
-        const message = document.getElementById('payrollSettingsMessage');
         const quotaMode = document.getElementById('halfLeaveQuotaMode');
         const conversionCount = document.getElementById('halfLeavesPerQuotaDay');
         const resolvedDeduct = (typeof deductUnpaidLeave === 'boolean')
           ? deductUnpaidLeave
           : Boolean(toggle?.checked ?? window._payrollSettings?.deduct_unpaid_leave);
-        const previousValue = toggle ? toggle.dataset.saved === 'true' : resolvedDeduct;
+        const current = window._payrollSettings || {};
+        return {
+          deduct_unpaid_leave: resolvedDeduct,
+          half_leave_quota_mode: quotaMode?.value || 'category',
+          half_leaves_per_quota_day: Math.max(1, parseInt(conversionCount?.value || '2', 10) || 1),
+          holiday_ot_premium_percent: Number(document.getElementById('holidayOtPremiumPercent')?.value || 0) || 0,
+          non_working_day_ot_premium_percent: Number(document.getElementById('nonWorkingDayOtPremiumPercent')?.value || 0) || 0,
+          ot_hour_divisor: (() => {
+            const raw = Number(document.getElementById('payrollOtHourDivisor')?.value);
+            return Number.isFinite(raw) && raw > 0 ? raw : 208;
+          })(),
+          proration_basis: document.getElementById('payrollProrationBasis')?.value || 'calendar_days',
+          ot_rounding: document.getElementById('payrollOtRounding')?.value || 'round_rate_first',
+          attendance_pay_mode: document.getElementById('payrollAttendancePayMode')?.value || 'full_salary',
+          currency_code: (document.getElementById('payrollCurrencyCode')?.value || 'PKR').trim().toUpperCase(),
+          decimal_places: Number(document.getElementById('payrollDecimalPlaces')?.value || 2),
+          min_basic_salary: Number(document.getElementById('payrollMinBasicSalary')?.value || 10000),
+          holiday_ot_pay_mode: document.getElementById('holidayOtPayMode')?.value || 'percent',
+          non_working_day_ot_pay_mode: document.getElementById('nonWorkingDayOtPayMode')?.value || 'percent',
+          holiday_ot_multiplier: Number(document.getElementById('holidayOtMultiplier')?.value || 1.5),
+          non_working_day_ot_multiplier: Number(document.getElementById('nonWorkingDayOtMultiplier')?.value || 1.5),
+          holiday_ot_fixed_amount: Number(document.getElementById('holidayOtFixedAmount')?.value || 0),
+          non_working_day_ot_fixed_amount: Number(document.getElementById('nonWorkingDayOtFixedAmount')?.value || 0),
+          off_day_attendance_pay_active: Boolean(document.getElementById('offDayAttendancePayActive')?.checked),
+          off_day_attendance_pay_mode: document.getElementById('offDayAttendancePayMode')?.value || 'multiplier',
+          off_day_attendance_pay_multiplier: Number(document.getElementById('offDayAttendancePayMultiplier')?.value || 1.5),
+          off_day_attendance_pay_fixed_amount: Number(document.getElementById('offDayAttendancePayFixedAmount')?.value || 0),
+          enable_named_components: Boolean(document.getElementById('flag_enable_named_components')?.checked),
+          enable_bonuses: Boolean(document.getElementById('flag_enable_bonuses')?.checked),
+          enable_individual_adjustments: Boolean(document.getElementById('flag_enable_individual_adjustments')?.checked),
+          enable_salary_revisions: Boolean(document.getElementById('flag_enable_salary_revisions')?.checked),
+          enable_tax: Boolean(document.getElementById('flag_enable_tax')?.checked),
+          enable_loans: Boolean(document.getElementById('flag_enable_loans')?.checked),
+          enable_advances: Boolean(document.getElementById('flag_enable_advances')?.checked),
+          enable_provident: Boolean(document.getElementById('flag_enable_provident')?.checked),
+          enable_insurance: Boolean(document.getElementById('flag_enable_insurance')?.checked),
+          ...collectPayslipLetterhead(),
+          // OT-29: keep the other side's stored values so holiday save does not
+          // re-validate a stale/out-of-range rest-day multiplier (and vice versa).
+          non_working_day_ot_pay_mode: current.non_working_day_ot_pay_mode || document.getElementById('nonWorkingDayOtPayMode')?.value || 'percent',
+          non_working_day_ot_multiplier: current.non_working_day_ot_multiplier ?? Number(document.getElementById('nonWorkingDayOtMultiplier')?.value || 1.5),
+          non_working_day_ot_premium_percent: current.non_working_day_ot_premium_percent ?? (Number(document.getElementById('nonWorkingDayOtPremiumPercent')?.value || 0) || 0),
+          non_working_day_ot_fixed_amount: current.non_working_day_ot_fixed_amount ?? Number(document.getElementById('nonWorkingDayOtFixedAmount')?.value || 0),
+          holiday_ot_pay_mode: current.holiday_ot_pay_mode || document.getElementById('holidayOtPayMode')?.value || 'percent',
+          holiday_ot_multiplier: current.holiday_ot_multiplier ?? Number(document.getElementById('holidayOtMultiplier')?.value || 1.5),
+          holiday_ot_premium_percent: current.holiday_ot_premium_percent ?? (Number(document.getElementById('holidayOtPremiumPercent')?.value || 0) || 0),
+          holiday_ot_fixed_amount: current.holiday_ot_fixed_amount ?? Number(document.getElementById('holidayOtFixedAmount')?.value || 0),
+          ...overrides,
+        };
+      }
+
+      async function persistPayrollSettingsPayload(payload, { successToast = 'Payroll settings saved.', restoreToggle = true } = {}) {
+        const toggle = document.getElementById('deductUnpaidLeaveToggle');
+        const message = document.getElementById('payrollSettingsMessage');
+        const quotaMode = document.getElementById('halfLeaveQuotaMode');
+        const conversionCount = document.getElementById('halfLeavesPerQuotaDay');
+        const previousValue = toggle ? toggle.dataset.saved === 'true' : Boolean(payload.deduct_unpaid_leave);
         if (toggle) toggle.disabled = true;
         try {
           const response = await fetch(`${API_BASE}/settings/payroll`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              deduct_unpaid_leave: resolvedDeduct,
-              half_leave_quota_mode: quotaMode?.value || 'category',
-              half_leaves_per_quota_day: Math.max(1, parseInt(conversionCount?.value || '2', 10) || 1),
-              holiday_ot_premium_percent: Number(document.getElementById('holidayOtPremiumPercent')?.value || 0) || 0,
-              non_working_day_ot_premium_percent: Number(document.getElementById('nonWorkingDayOtPremiumPercent')?.value || 0) || 0,
-              ot_hour_divisor: (() => {
-                const raw = Number(document.getElementById('payrollOtHourDivisor')?.value);
-                return Number.isFinite(raw) && raw > 0 ? raw : 208;
-              })(),
-              proration_basis: document.getElementById('payrollProrationBasis')?.value || 'calendar_days',
-              ot_rounding: document.getElementById('payrollOtRounding')?.value || 'round_rate_first',
-              attendance_pay_mode: document.getElementById('payrollAttendancePayMode')?.value || 'full_salary',
-              currency_code: (document.getElementById('payrollCurrencyCode')?.value || 'PKR').trim().toUpperCase(),
-              decimal_places: Number(document.getElementById('payrollDecimalPlaces')?.value || 2),
-              min_basic_salary: Number(document.getElementById('payrollMinBasicSalary')?.value || 10000),
-              holiday_ot_pay_mode: document.getElementById('holidayOtPayMode')?.value || 'percent',
-              non_working_day_ot_pay_mode: document.getElementById('nonWorkingDayOtPayMode')?.value || 'percent',
-              holiday_ot_multiplier: Number(document.getElementById('holidayOtMultiplier')?.value || 1.5),
-              non_working_day_ot_multiplier: Number(document.getElementById('nonWorkingDayOtMultiplier')?.value || 1.5),
-              holiday_ot_fixed_amount: Number(document.getElementById('holidayOtFixedAmount')?.value || 0),
-              non_working_day_ot_fixed_amount: Number(document.getElementById('nonWorkingDayOtFixedAmount')?.value || 0),
-              off_day_attendance_pay_active: Boolean(document.getElementById('offDayAttendancePayActive')?.checked),
-              off_day_attendance_pay_mode: document.getElementById('offDayAttendancePayMode')?.value || 'multiplier',
-              off_day_attendance_pay_multiplier: Number(document.getElementById('offDayAttendancePayMultiplier')?.value || 1.5),
-              off_day_attendance_pay_fixed_amount: Number(document.getElementById('offDayAttendancePayFixedAmount')?.value || 0),
-              enable_named_components: Boolean(document.getElementById('flag_enable_named_components')?.checked),
-              enable_bonuses: Boolean(document.getElementById('flag_enable_bonuses')?.checked),
-              enable_individual_adjustments: Boolean(document.getElementById('flag_enable_individual_adjustments')?.checked),
-              enable_salary_revisions: Boolean(document.getElementById('flag_enable_salary_revisions')?.checked),
-              enable_tax: Boolean(document.getElementById('flag_enable_tax')?.checked),
-              enable_loans: Boolean(document.getElementById('flag_enable_loans')?.checked),
-              enable_advances: Boolean(document.getElementById('flag_enable_advances')?.checked),
-              enable_provident: Boolean(document.getElementById('flag_enable_provident')?.checked),
-              enable_insurance: Boolean(document.getElementById('flag_enable_insurance')?.checked),
-              ...collectPayslipLetterhead()
-            })
+            body: JSON.stringify(payload)
           });
           const result = await response.json();
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save payroll settings');
           window._payrollSettings = result.settings || window._payrollSettings;
           if (toggle) {
-            toggle.checked = Boolean(result.settings?.deduct_unpaid_leave ?? resolvedDeduct);
+            toggle.checked = Boolean(result.settings?.deduct_unpaid_leave ?? payload.deduct_unpaid_leave);
             toggle.dataset.saved = String(toggle.checked);
           }
           window._payrollCurrencyCode = result.settings?.currency_code || 'PKR';
@@ -22929,18 +23377,105 @@ async function fetchMultiLiveDetections() {
             leaveMessage.style.color = '#15803d';
             leaveMessage.textContent = 'Leave settings saved.';
           }
-          showAppToast('Payroll settings saved.', 'success');
+          showAppToast(successToast, 'success');
           if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
             await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
           }
+          return result;
         } catch (error) {
-          if (toggle) toggle.checked = previousValue;
+          if (restoreToggle && toggle) toggle.checked = previousValue;
           if (message) message.textContent = error.message;
           showAppToast(error.message, 'error');
+          throw error;
         } finally {
           if (toggle) toggle.disabled = false;
         }
       }
+
+      async function savePayrollSettings(deductUnpaidLeave) {
+        try {
+          await persistPayrollSettingsPayload(buildPayrollSettingsPayload(deductUnpaidLeave, {
+            holiday_ot_pay_mode: document.getElementById('holidayOtPayMode')?.value || 'percent',
+            holiday_ot_multiplier: Number(document.getElementById('holidayOtMultiplier')?.value || 1.5),
+            holiday_ot_premium_percent: Number(document.getElementById('holidayOtPremiumPercent')?.value || 0) || 0,
+            holiday_ot_fixed_amount: Number(document.getElementById('holidayOtFixedAmount')?.value || 0),
+            non_working_day_ot_pay_mode: document.getElementById('nonWorkingDayOtPayMode')?.value || 'percent',
+            non_working_day_ot_multiplier: Number(document.getElementById('nonWorkingDayOtMultiplier')?.value || 1.5),
+            non_working_day_ot_premium_percent: Number(document.getElementById('nonWorkingDayOtPremiumPercent')?.value || 0) || 0,
+            non_working_day_ot_fixed_amount: Number(document.getElementById('nonWorkingDayOtFixedAmount')?.value || 0),
+          }));
+        } catch (_) { /* toast already shown */ }
+      }
+
+      async function saveHolidayOtExtraSettings() {
+        // OT-29: validate and persist only Holiday OT extra fields.
+        const holidayPercent = document.getElementById('holidayOtPremiumPercent');
+        const holidayMult = document.getElementById('holidayOtMultiplier');
+        const holidayFixed = document.getElementById('holidayOtFixedAmount');
+        let ok = true;
+        if (isOtFieldVisible(holidayPercent)) {
+          ok = validateOtNumberField(holidayPercent, { min: 0, max: 1000, required: true, label: 'Extra %' }) && ok;
+        }
+        if (isOtFieldVisible(holidayMult)) {
+          ok = validateOtNumberField(holidayMult, { min: 1, max: 5, required: true, label: 'Holiday OT multiplier' }) && ok;
+        }
+        if (isOtFieldVisible(holidayFixed)) {
+          ok = validateOtNumberField(holidayFixed, { min: 0, max: null, required: true, label: 'Extra per OT hour' }) && ok;
+        }
+        if (!ok) {
+          showAppToast('Fix the Holiday OT extra fields before saving.', 'error');
+          return;
+        }
+        const btn = document.getElementById('saveHolidayOtExtraBtn');
+        if (btn) btn.disabled = true;
+        try {
+          await persistPayrollSettingsPayload(buildPayrollSettingsPayload(undefined, {
+            holiday_ot_pay_mode: document.getElementById('holidayOtPayMode')?.value || 'percent',
+            holiday_ot_multiplier: Number(document.getElementById('holidayOtMultiplier')?.value || 1.5),
+            holiday_ot_premium_percent: Number(document.getElementById('holidayOtPremiumPercent')?.value || 0) || 0,
+            holiday_ot_fixed_amount: Number(document.getElementById('holidayOtFixedAmount')?.value || 0),
+          }), { successToast: 'Holiday OT extra saved.' });
+        } catch (_) { /* toast already shown */ }
+        finally {
+          if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
+        }
+      }
+      window.saveHolidayOtExtraSettings = saveHolidayOtExtraSettings;
+
+      async function saveRestDayOtExtraSettings() {
+        // OT-29/30: validate and persist only Rest-day OT extra fields.
+        const restPercent = document.getElementById('nonWorkingDayOtPremiumPercent');
+        const restMult = document.getElementById('nonWorkingDayOtMultiplier');
+        const restFixed = document.getElementById('nonWorkingDayOtFixedAmount');
+        let ok = true;
+        if (isOtFieldVisible(restPercent)) {
+          ok = validateOtNumberField(restPercent, { min: 0, max: 1000, required: true, label: 'Extra %' }) && ok;
+        }
+        if (isOtFieldVisible(restMult)) {
+          ok = validateOtNumberField(restMult, { min: 1, max: 5, required: true, label: 'Rest-day OT multiplier' }) && ok;
+        }
+        if (isOtFieldVisible(restFixed)) {
+          ok = validateOtNumberField(restFixed, { min: 0, max: null, required: true, label: 'Extra per OT hour' }) && ok;
+        }
+        if (!ok) {
+          showAppToast('Fix the Rest-day OT extra fields before saving.', 'error');
+          return;
+        }
+        const btn = document.getElementById('saveRestDayOtExtraBtn');
+        if (btn) btn.disabled = true;
+        try {
+          await persistPayrollSettingsPayload(buildPayrollSettingsPayload(undefined, {
+            non_working_day_ot_pay_mode: document.getElementById('nonWorkingDayOtPayMode')?.value || 'percent',
+            non_working_day_ot_multiplier: Number(document.getElementById('nonWorkingDayOtMultiplier')?.value || 1.5),
+            non_working_day_ot_premium_percent: Number(document.getElementById('nonWorkingDayOtPremiumPercent')?.value || 0) || 0,
+            non_working_day_ot_fixed_amount: Number(document.getElementById('nonWorkingDayOtFixedAmount')?.value || 0),
+          }), { successToast: 'Rest-day OT extra saved.' });
+        } catch (_) { /* toast already shown */ }
+        finally {
+          if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
+        }
+      }
+      window.saveRestDayOtExtraSettings = saveRestDayOtExtraSettings;
 
       async function loadPayrollCalendar() {
         const tbody = document.getElementById('payrollCalendarTableBody');
@@ -25712,6 +26247,7 @@ async function fetchMultiLiveDetections() {
           _applicationAuthPending = false;
 
           document.body.classList.remove('auth-required');
+          try { sessionStorage.setItem('qeLoginIntro', '1'); } catch (e) {}
           window.location.reload();
         } else {
           showAdminPwdError(data?.message || 'Incorrect credentials. Please verify your email and password.');
@@ -26662,6 +27198,10 @@ async function fetchMultiLiveDetections() {
           const name = balance.type_name || code.replace(/_/g, ' ');
           const remaining = Number(balance.remaining);
           const daysLeft = Number.isFinite(remaining) ? (Number.isInteger(remaining) ? remaining : remaining.toFixed(1)) : 0;
+          const remainingText = balance.remaining_text
+            || (balance.remaining_period_label
+              ? `${daysLeft} day(s) left in ${balance.remaining_period_label}`
+              : `${daysLeft} day(s) left`);
           let halfQuotaTag = '';
           if (balance.half_leave_quota_text) {
             halfQuotaTag = `<div style="font-size:0.85em; color:#0284c7; margin-top:3px;"><i class="fa-solid fa-clock"></i> ${escapeHtml(balance.half_leave_quota_text)}</div>`;
@@ -26670,7 +27210,7 @@ async function fetchMultiLiveDetections() {
             halfQuotaTag = `<div style="font-size:0.85em; color:#0284c7; margin-top:3px;"><i class="fa-solid fa-clock"></i> Half-leave: ${balance.half_leave_count || 0} used / ${hRemaining} remaining (${escapeHtml(balance.half_leave_period || 'month')})</div>`;
           }
           return `<div class="badge bg-light text-dark border" style="padding:8px 12px; font-size:0.82em; text-align:left; display:inline-block; margin-right:6px; margin-bottom:6px;">
-            <div>${escapeHtml(name)}: <strong>${daysLeft} day(s) left</strong></div>
+            <div>${escapeHtml(name)}: <strong>${escapeHtml(remainingText)}</strong></div>
             ${halfQuotaTag}
           </div>`;
         }).join('');
@@ -27154,7 +27694,11 @@ async function fetchMultiLiveDetections() {
             const diff = pack.allocated - pack.standard_quota;
             overrideBadge = `<span class="badge bg-warning-subtle text-warning-emphasis ms-1" title="Standard: ${pack.standard_quota}d, Override: +${diff}d" style="font-size:0.75em; padding:2px 4px;">+${diff} override</span>`;
           }
-          return `<td><span class="font-weight-bold">${pack.used || 0}</span> / ${pack.allocated || 0}${overrideBadge} <small class="text-muted">(${pack.remaining ?? 0} rem)</small></td>`;
+          const remLabel = pack.remaining_text
+            || (pack.remaining_period_label
+              ? `${pack.remaining ?? 0} left in ${pack.remaining_period_label}`
+              : `${pack.remaining ?? 0} rem`);
+          return `<td><span class="font-weight-bold">${pack.used || 0}</span> / ${pack.allocated || 0}${overrideBadge} <small class="text-muted">(${escapeHtml(String(remLabel))})</small></td>`;
         }).join('');
         return `
           <tr>
@@ -27492,10 +28036,11 @@ async function fetchMultiLiveDetections() {
           else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(typeSelect);
         }
       } catch (e) {}
-      ['modalLeaveDurationSelect', 'modalExcessTreatment'].forEach(id => {
+      ['modalLeaveDurationSelect'].forEach(id => {
         const el = document.getElementById(id);
         if (el && typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(el);
       });
+      wireFileLeaveExcessControls();
       updateLeaveDurationAvailability();
 
       // Attach event listeners for real-time quota validation
@@ -27590,8 +28135,10 @@ async function fetchMultiLiveDetections() {
     function renderExcessLeaveDetails(data) {
       const detail = document.getElementById('excessLeaveDatesDetail');
       const msg = document.getElementById('excessLeaveMsg');
+      const monthBox = document.getElementById('excessLeaveMonthBreakdown');
       if (!data) {
         if (detail) detail.textContent = '';
+        if (monthBox) { monthBox.style.display = 'none'; monthBox.innerHTML = ''; }
         return;
       }
       const within = Number(data.within_quota_days ?? data.remaining_days ?? 0);
@@ -27611,17 +28158,53 @@ async function fetchMultiLiveDetections() {
         dateBit = excessDates.map(formatLeaveExcessDateLabel).join(', ');
       }
       if (msg) {
-        msg.textContent = `${within} day(s) within quota, ${excess} day(s) over the quota${dateBit ? `: ${dateBit}` : ''}.`;
+        msg.textContent = `This request uses ${Number(data.quota_days_requested || data.requested_days || within + excess)} quota day(s), but only ${Number(data.remaining_days ?? within)} day(s) are available across the selected dates. How should the excess days be treated?`;
       }
       if (detail) {
         detail.textContent = excess > 0
-          ? `${excess} day${excess === 1 ? '' : 's'} over the quota${dateBit ? `: ${dateBit}` : ''}. Choose paid, unpaid, or reject with a reason.`
+          ? `${within} day(s) within quota, ${excess} day${excess === 1 ? '' : 's'} over the quota${dateBit ? `: ${dateBit}` : ''}.`
           : '';
+      }
+      const months = Array.isArray(data.month_breakdown) ? data.month_breakdown : [];
+      if (monthBox) {
+        if (months.length > 1) {
+          monthBox.style.display = 'block';
+          monthBox.innerHTML = months.map((m) => {
+            const label = escapeHtml(m.month_label || m.month || '');
+            const req = Number(m.requested_days || 0);
+            const rem = Number(m.remaining_days || 0);
+            const w = Number(m.within_quota_days || 0);
+            const e = Number(m.excess_days || 0);
+            return `<div><strong>${label}:</strong> ${req} requested · ${rem} remaining · ${w} within quota${e ? ` · ${e} over quota` : ''}</div>`;
+          }).join('');
+        } else {
+          monthBox.style.display = 'none';
+          monthBox.innerHTML = '';
+        }
       }
     }
 
+    function wireFileLeaveExcessControls() {
+      const excessSelect = document.getElementById('modalExcessTreatment');
+      const rejectReason = document.getElementById('modalExcessRejectReason');
+      if (excessSelect && excessSelect.dataset.excessBound !== '1') {
+        excessSelect.dataset.excessBound = '1';
+        excessSelect.addEventListener('change', () => onExcessTreatmentChange());
+      }
+      if (rejectReason && rejectReason.dataset.excessBound !== '1') {
+        rejectReason.dataset.excessBound = '1';
+        rejectReason.addEventListener('input', () => validateLeaveRequestForm());
+      }
+      if (excessSelect && typeof upgradeSelectToCameraStyle === 'function') {
+        upgradeSelectToCameraStyle(excessSelect);
+      } else if (excessSelect && typeof refreshAppCameraSelect === 'function') {
+        refreshAppCameraSelect(excessSelect);
+      }
+    }
+    window.wireFileLeaveExcessControls = wireFileLeaveExcessControls;
+
     function onExcessTreatmentChange() {
-      const treatment = document.getElementById('modalExcessTreatment')?.value || '';
+      const treatment = String(document.getElementById('modalExcessTreatment')?.value || '').trim();
       const wrap = document.getElementById('excessRejectReasonWrap');
       if (wrap) wrap.style.display = treatment === 'rejected' ? 'block' : 'none';
       if (treatment !== 'rejected') {
@@ -27633,19 +28216,40 @@ async function fetchMultiLiveDetections() {
     }
     window.onExcessTreatmentChange = onExcessTreatmentChange;
 
+    function isFileLeaveExcessVisible() {
+      const excessContainer = document.getElementById('excessLeaveContainer');
+      if (!excessContainer) return false;
+      if (excessContainer.style.display && excessContainer.style.display !== 'none') return true;
+      try {
+        return window.getComputedStyle(excessContainer).display !== 'none';
+      } catch (_) {
+        return false;
+      }
+    }
+
     function canSubmitLeaveWithQuota() {
       if (currentLeaveQuotaValid) return true;
-      const excessContainer = document.getElementById('excessLeaveContainer');
-      const excessVisible = excessContainer && excessContainer.style.display !== 'none';
-      const treatment = document.getElementById('modalExcessTreatment')?.value || '';
-      const reasonCode = currentLeaveQuotaData?.reason_code || '';
-      if (!(excessVisible && reasonCode === 'quota_exceeded')) return false;
+      const excessVisible = isFileLeaveExcessVisible();
+      const treatment = String(document.getElementById('modalExcessTreatment')?.value || '').trim();
+      const reasonCode = String(currentLeaveQuotaData?.reason_code || '');
+      const remaining = Number(currentLeaveQuotaData?.remaining_days);
+      const requested = Number(
+        currentLeaveQuotaData?.quota_days_requested ?? currentLeaveQuotaData?.requested_days ?? 0
+      );
+      const looksOverQuota = reasonCode === 'quota_exceeded'
+        || Number(currentLeaveQuotaData?.excess_days || 0) > 0
+        || (Number.isFinite(remaining) && Number.isFinite(requested) && requested > remaining);
+      // Soft-allow when the yellow excess card is shown and an option is chosen.
+      if (!(excessVisible && looksOverQuota)) {
+        if (reasonCode && reasonCode !== 'quota_exceeded') return false;
+        if (!excessVisible) return false;
+      }
       if (treatment === 'paid' || treatment === 'unpaid') return true;
       if (treatment === 'rejected') {
         const reason = String(document.getElementById('modalExcessRejectReason')?.value || '').trim();
         const err = document.getElementById('modalExcessRejectReasonError');
         if (!reason) {
-          if (err) err.textContent = 'Rejection reason is required.';
+          if (err) err.textContent = 'Rejection reason is required for OPTION C.';
           return false;
         }
         if (err) err.textContent = '';
@@ -27739,6 +28343,7 @@ async function fetchMultiLiveDetections() {
               if (excessContainer) {
                   excessContainer.style.display = 'block';
                   renderExcessLeaveDetails(data);
+                  wireFileLeaveExcessControls();
               }
           } else {
               const excessContainer = document.getElementById('excessLeaveContainer');
@@ -28185,7 +28790,12 @@ async function fetchMultiLiveDetections() {
         : Boolean(currentLeaveQuotaValid);
       const valid = Boolean(user && leaveType && datesValid && !containsUnsafeInput(reason) && reason.length <= 500 && quotaOk);
       const button = document.getElementById('submitLeaveRequestBtn');
-      if (button) button.disabled = !valid;
+      if (button) {
+        button.disabled = !valid;
+        button.style.opacity = valid ? '1' : '0.55';
+        button.style.pointerEvents = valid ? 'auto' : 'none';
+        button.setAttribute('aria-disabled', valid ? 'false' : 'true');
+      }
       return valid;
     }
 
@@ -29067,28 +29677,30 @@ async function fetchMultiLiveDetections() {
             reason: reason
           })
         });
-        const data = await res.json();
-        if (data.success && data.id) {
-          if (!isFutureDate && initialStatus === 'approved' && !data.limit_exceeded) {
+        const data = await res.json().catch(() => ({}));
+        // OT-28: over-limit requests are rejected for both Pending and Immediately Approved.
+        if (!res.ok || !data.success) {
+          if (msg) {
+            msg.innerHTML = `<div class="alert alert-danger py-2">${escapeOtHtml(data.error || 'Failed to save overtime.')}</div>`;
+          }
+          return;
+        }
+        if (data.id) {
+          if (!isFutureDate && initialStatus === 'approved') {
             const approvalRes = await fetch(`/api/overtime/${data.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ status: 'approved', approved_by: getActingAdminDisplayName() })
             });
-            const approvalData = await approvalRes.json();
-            if (!approvalRes.ok) {
+            const approvalData = await approvalRes.json().catch(() => ({}));
+            if (!approvalRes.ok || !approvalData.success) {
               if (msg) msg.innerHTML = `<div class="alert alert-warning py-2">${escapeOtHtml(approvalData.error || 'Approval failed. The overtime record remains pending.')}</div>`;
               await loadOvertimeRecords();
               return;
             }
           }
           closeAddOvertimeModal();
-          showAppToast(
-            data.limit_exceeded
-              ? (data.limit_message || 'This OT exceeds the configured maximum and was sent for admin review.')
-              : `Overtime logged successfully (${hours} hrs).`,
-            data.limit_exceeded ? 'warning' : 'success'
-          );
+          showAppToast(`Overtime logged successfully (${hours} hrs).`, 'success');
           loadOvertimeRecords();
         } else {
           if (msg) msg.innerHTML = `<div class="alert alert-danger py-2">${escapeOtHtml(data.error || 'Failed to save overtime.')}</div>`;

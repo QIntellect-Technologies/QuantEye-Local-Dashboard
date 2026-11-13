@@ -6096,6 +6096,7 @@ def api_add_leave():
 
     requested_days = int(quota.get('requested_days') or 0)
     quota_days_requested = int(quota.get('quota_days_requested', requested_days) or 0)
+    month_breakdown = list(quota.get('month_breakdown') or [])
     quota_days = 0
     paid_days = 0
     unpaid_days = 0
@@ -6122,10 +6123,19 @@ def api_add_leave():
         if excess_treatment == 'rejected' and not excess_rejection_reason:
             return jsonify({'success': False, 'message': 'A rejection reason is required for excess days.'}), 400
 
-        quota_days = min(quota_days_requested, max(0, int(float(quota.get('remaining_days', 0) or 0))))
-        quota_range, _ = db.split_leave_request_dates(int(user_id), start_date, end_date, quota_days)
-        if quota_range:
-            quota_through_date = quota_range[1]
+        # Prefer QA-117 within_quota_days when monthly split is available.
+        within_from_quota = quota.get('within_quota_days')
+        if within_from_quota is not None:
+            quota_days = max(0, int(within_from_quota))
+        else:
+            quota_days = min(quota_days_requested, max(0, int(float(quota.get('remaining_days', 0) or 0))))
+        within_dates = list(quota.get('within_dates') or [])
+        if within_dates:
+            quota_through_date = within_dates[-1]
+        else:
+            quota_range, _ = db.split_leave_request_dates(int(user_id), start_date, end_date, quota_days)
+            if quota_range:
+                quota_through_date = quota_range[1]
         if leave_duration == 'half':
             if excess_treatment == 'paid':
                 quota_days = quota_days_requested
@@ -6161,9 +6171,13 @@ def api_add_leave():
     else:
         paid_days = requested_days
         quota_days = requested_days
-        quota_range, _ = db.split_leave_request_dates(int(user_id), start_date, end_date, quota_days)
-        if quota_range:
-            quota_through_date = quota_range[1]
+        within_dates = list(quota.get('within_dates') or [])
+        if within_dates:
+            quota_through_date = within_dates[-1]
+        else:
+            quota_range, _ = db.split_leave_request_dates(int(user_id), start_date, end_date, quota_days)
+            if quota_range:
+                quota_through_date = quota_range[1]
 
     try:
         with sqlite3.connect(db.DB_PATH) as conn:
@@ -6192,15 +6206,106 @@ def api_add_leave():
             return jsonify({'success': False, 'message': err_msg, 'error': err_msg}), 400
 
     user = db.get_user_by_id(int(user_id))
+    user_name = user['name'] if user else data.get('user_name', '')
+    reason_text = data.get('reason', '')
+
+    # QA-117: when a monthly leave spans multiple months, file one request per month
+    # so each month's quota/payroll stays isolated.
+    if leave_duration != 'half' and len(month_breakdown) > 1:
+        created_ids = []
+        total_paid = 0
+        total_unpaid = 0
+        for month in month_breakdown:
+            month_dates = list(month.get('within_dates') or []) + list(month.get('excess_dates') or [])
+            if not month_dates:
+                continue
+            m_start, m_end = month_dates[0], month_dates[-1]
+            m_within = int(month.get('within_quota_days') or 0)
+            m_excess = int(month.get('excess_days') or 0)
+            m_requested = int(month.get('requested_days') or len(month_dates))
+            m_post_reject = None
+            if not quota.get('allowed', True):
+                if excess_treatment == 'paid':
+                    m_paid, m_unpaid, m_quota = m_requested, 0, m_requested
+                    m_paid_through = m_end
+                    m_quota_through = m_end
+                elif excess_treatment == 'unpaid':
+                    m_paid, m_unpaid, m_quota = m_within, m_excess, m_within
+                    m_paid_through = (month.get('within_dates') or [None])[-1]
+                    m_quota_through = m_paid_through
+                else:
+                    m_paid, m_unpaid, m_quota = m_within, m_excess, m_within
+                    m_paid_through = (month.get('within_dates') or [None])[-1]
+                    m_quota_through = m_paid_through
+                    if m_excess > 0:
+                        m_post_reject = 'rejected'
+            elif int(quota.get('is_paid', 1)) == 0:
+                m_paid, m_unpaid, m_quota = 0, m_requested, 0
+                m_paid_through = None
+                m_quota_through = None
+            else:
+                m_paid, m_unpaid, m_quota = m_requested, 0, m_requested
+                m_paid_through = m_end
+                m_quota_through = m_end
+            try:
+                month_lid = db.add_leave_request(
+                    user_id=int(user_id),
+                    user_name=user_name,
+                    leave_type=leave_type,
+                    leave_duration=leave_duration,
+                    start_date=m_start,
+                    end_date=m_end,
+                    reason=reason_text,
+                    paid_days=m_paid,
+                    unpaid_days=m_unpaid,
+                    quota_days=m_quota,
+                    paid_through_date=m_paid_through,
+                    quota_through_date=m_quota_through,
+                )
+            except ValueError as exc:
+                if str(exc) == db.PAYROLL_LOCK_MESSAGE:
+                    return jsonify({'error': str(exc), 'message': str(exc), 'reopen': '/api/payroll/reopen'}), 409
+                return jsonify({'success': False, 'error': str(exc), 'message': str(exc)}), 400
+            if not month_lid:
+                return jsonify({
+                    'success': False,
+                    'message': 'This leave request overlaps an existing active leave or could not be saved. Please review the employee\'s leave dates.'
+                }), 409
+            if m_post_reject == 'rejected' and m_unpaid > 0:
+                decide = db.decide_leave_excess(
+                    leave_id=month_lid,
+                    decision='rejected',
+                    approved_by=data.get('approved_by') or 'Admin',
+                    organization_id=get_current_tenant_id(),
+                    rejection_reason=excess_rejection_reason,
+                )
+                if decide.get('success'):
+                    m_paid = decide.get('paid_days', m_paid)
+                    m_unpaid = decide.get('unpaid_days', m_unpaid)
+            created_ids.append(month_lid)
+            total_paid += int(m_paid or 0)
+            total_unpaid += int(m_unpaid or 0)
+        return jsonify({
+            'success': True,
+            'id': created_ids[0] if created_ids else None,
+            'ids': created_ids,
+            'requested_days': requested_days,
+            'paid_days': total_paid,
+            'unpaid_days': total_unpaid,
+            'excess_treatment': excess_treatment,
+            'split_by_month': True,
+            'month_breakdown': month_breakdown,
+        }), 201
+
     try:
         lid = db.add_leave_request(
             user_id=int(user_id),
-            user_name=user['name'] if user else data.get('user_name', ''),
+            user_name=user_name,
             leave_type=leave_type,
             leave_duration=leave_duration,
             start_date=start_date,
             end_date=end_date,
-            reason=data.get('reason', ''),
+            reason=reason_text,
             paid_days=paid_days,
             unpaid_days=unpaid_days,
             quota_days=quota_days,
@@ -6612,10 +6717,27 @@ def api_add_overtime():
     except ValueError:
         return jsonify({'success': False, 'error': 'ot_date must use YYYY-MM-DD format'}), 400
 
+    # OT-28: daily/period OT limit applies to every new request (pending or immediately approved).
     limit_status = db.get_overtime_limit_status(user_id, ot_date, hours)
     if limit_status.get('exceeded'):
-        return jsonify({'success': False, 'error': f"Overtime limit exceeded: Maximum allowed is {limit_status['maximum_hours']:g} hours {limit_status['period_label']}."}), 400
-    
+        return jsonify({
+            'success': False,
+            'reason_code': 'ot_limit_exceeded',
+            'error': (
+                f"Overtime limit exceeded: this request would total "
+                f"{limit_status.get('requested_total_hours', hours):g} hours "
+                f"{limit_status.get('period_label', 'for the period')}, but the maximum allowed is "
+                f"{limit_status['maximum_hours']:g} hours. Reduce the hours or choose another date."
+            ),
+            'limit_status': {
+                'maximum_hours': limit_status.get('maximum_hours'),
+                'period': limit_status.get('period'),
+                'period_label': limit_status.get('period_label'),
+                'current_hours': limit_status.get('current_hours'),
+                'requested_total_hours': limit_status.get('requested_total_hours'),
+            },
+        }), 400
+
     reason = str(data.get('reason') or '')
     try:
         oid = db.add_overtime(
@@ -6636,12 +6758,8 @@ def api_add_overtime():
     return jsonify({
         'success': True,
         'id': oid,
-        'limit_exceeded': bool(limit_status.get('exceeded')),
-        'limit_message': (
-            f"This OT exceeds the configured maximum of {limit_status['maximum_hours']:g} hours {limit_status['period_label']}. "
-            "It was sent for admin review."
-            if limit_status.get('exceeded') else ''
-        ),
+        'limit_exceeded': False,
+        'limit_message': '',
     }), 201
 
 
@@ -6670,6 +6788,26 @@ def api_update_overtime(ot_id):
         if not (current_status == 'approved' and new_status.lower() == 'rejected'):
             return jsonify({'success': False, 'error': f'Overtime is already finalized as {current_status}.'}), 409
     if new_status == 'approved':
+        # OT-28: re-check period limit on approve. Pass 0 requested hours because this
+        # pending row is already included in current_hours.
+        limit_status = db.get_overtime_limit_status(
+            int(ot_record['user_id']),
+            str(ot_record['ot_date']),
+            0.0,
+        )
+        if limit_status.get('enabled'):
+            current_total = float(limit_status.get('current_hours') or 0)
+            maximum = float(limit_status.get('maximum_hours') or 0)
+            if maximum > 0 and current_total > maximum + 1e-9:
+                return jsonify({
+                    'success': False,
+                    'reason_code': 'ot_limit_exceeded',
+                    'error': (
+                        f"Overtime limit exceeded: this employee already has "
+                        f"{current_total:g} hours {limit_status.get('period_label', 'for the period')} "
+                        f"(maximum {maximum:g}). Approval is blocked."
+                    ),
+                }), 400
         day_type = db.get_overtime_day_type(int(ot_record['user_id']), str(ot_record['ot_date']))
         if day_type == 'regular' and db.get_user_attendance_status(
             int(ot_record['user_id']), str(ot_record['ot_date'])
