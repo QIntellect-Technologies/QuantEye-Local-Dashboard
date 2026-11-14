@@ -27046,118 +27046,52 @@ async function fetchMultiLiveDetections() {
 
         const reqPrefix = isMulti ? `Request #${req.id} · ` : '';
 
-        if (Array.isArray(req.child_requests) && req.child_requests.length) {
-          req.child_requests.forEach(child => {
-            const childType = String(child.leave_type || '').toLowerCase();
-            const childLabel = resolveLeaveTypeLabel(child);
-            const isHalfLeave = child.leave_duration === 'half';
-            const days = isHalfLeave ? 1 : Number(child.requested_days || 0);
-            const isUnpaid = childType === 'unpaid' || Number(child.unpaid_days || 0) > 0;
-            allSegments.push({
-              id: Number(child.id),
-              portion: isUnpaid ? 'unpaid' : 'paid',
-              label: isHalfLeave
-                ? `${reqPrefix}${childLabel} Half Leave`
-                : `${reqPrefix}${childType === 'excess_paid' ? 'Paid Leave (Quota Override)' : childType === 'unpaid' ? 'Unpaid Leave' : `${childLabel}`}`,
-              start: child.start_date,
-              end: child.end_date,
-              reason: child.reason || req.reason || '',
-              days,
-              unit: isHalfLeave ? 'half leave(s)' : 'day(s)',
-              treatment: isUnpaid ? 'Unpaid' : 'Paid',
-              pending: String(child.status || 'pending').toLowerCase() === 'pending',
-              status: String(child.status || 'pending').replace(/\b\w/g, char => char.toUpperCase())
-            });
-          });
-        } else {
-          let segAdded = false;
-          if (req.leave_duration === 'half') {
-            const isUnpaid = leaveTypeCode.toLowerCase() === 'unpaid';
-            const st = req.status === 'approved' ? 'approved' : ((isUnpaid ? req.unpaid_status : req.paid_status) || req.status || 'pending');
-            allSegments.push({
-              id: Number(req.id),
-              portion: isUnpaid ? 'unpaid' : 'paid',
-              label: `${reqPrefix}${requestTypeLabel} Half Leave`,
-              start: req.start_date,
-              end: req.end_date,
-              reason: req.reason || '',
-              days: 1,
-              unit: 'half leave(s)',
-              treatment: isUnpaid ? 'Unpaid' : 'Paid',
-              pending: String(st).toLowerCase() === 'pending',
-              status: String(st).replace(/\b\w/g, char => char.toUpperCase())
-            });
-            segAdded = true;
-          } else {
-            if (quotaDays > 0) {
-              const pSt = (req.status === 'approved' || req.paid_status === 'approved') ? 'approved' : (req.paid_status || req.status || 'pending');
-              allSegments.push({
-                id: Number(req.id),
-                portion: 'paid',
-                label: `${reqPrefix}${requestTypeLabel}`,
-                start: req.start_date,
-                end: quotaThroughDate || req.end_date,
-                reason: req.reason || '',
-                days: quotaDays,
-                unit: 'day(s)',
-                treatment: 'Paid',
-                pending: String(pSt).toLowerCase() === 'pending',
-                status: String(pSt).replace(/\b\w/g, char => char.toUpperCase())
-              });
-              segAdded = true;
-            }
-            const paidOverrideDays = Math.max(0, paidDays - quotaDays);
-            if (paidOverrideDays > 0) {
-              const pSt = (req.status === 'approved' || req.paid_status === 'approved') ? 'approved' : (req.paid_status || req.status || 'pending');
-              allSegments.push({
-                id: Number(req.id),
-                portion: 'paid',
-                label: `${reqPrefix}${requestTypeLabel} (Paid Override)`,
-                start: nextIsoDate(quotaThroughDate, req.start_date),
-                end: req.end_date,
-                reason: req.reason || '',
-                days: paidOverrideDays,
-                unit: 'day(s)',
-                treatment: 'Paid',
-                pending: String(pSt).toLowerCase() === 'pending',
-                status: String(pSt).replace(/\b\w/g, char => char.toUpperCase())
-              });
-              segAdded = true;
-            }
-            if (unpaidDays > 0) {
-              const upSt = req.unpaid_status || (req.status === 'partially_approved' ? 'pending' : req.status) || 'pending';
-              allSegments.push({
-                id: Number(req.id),
-                portion: 'unpaid',
-                label: `${reqPrefix}${requestTypeLabel} (Unpaid)`,
-                start: nextIsoDate(quotaThroughDate, req.start_date),
-                end: req.end_date,
-                reason: req.reason || '',
-                days: unpaidDays,
-                unit: 'day(s)',
-                treatment: 'Unpaid',
-                pending: String(upSt).toLowerCase() === 'pending',
-                status: String(upSt).replace(/\b\w/g, char => char.toUpperCase())
-              });
-              segAdded = true;
-            }
-          }
-          if (!segAdded) {
-            allSegments.push({
-              id: Number(req.id),
-              portion: 'all',
-              label: `${reqPrefix}${requestTypeLabel}`,
-              start: req.start_date,
-              end: req.end_date,
-              reason: req.reason || '',
-              days: requestedDays,
-              unit: 'day(s)',
-              treatment: 'Paid',
-              pending: String(req.status || 'pending').toLowerCase() === 'pending',
-              status: String(req.status || 'pending').replace(/\b\w/g, char => char.toUpperCase())
-            });
-          }
+        // QA-119: one employee application = one admin row (never split paid/excess into two requests).
+        // Within-quota and excess days are shown inside the same row; excess decision card decides them.
+        const overallSt = String(req.status || 'pending').toLowerCase();
+        const unpaidSt = String(req.unpaid_status || (overallSt === 'partially_approved' ? 'pending' : overallSt) || 'pending').toLowerCase();
+        const paidSt = String(
+          (overallSt === 'approved' || req.paid_status === 'approved')
+            ? 'approved'
+            : (req.paid_status || overallSt || 'pending')
+        ).toLowerCase();
+        const isHalfLeave = req.leave_duration === 'half';
+        const displayDays = isHalfLeave ? 1 : (requestedDays || Math.max(0, quotaDays + unpaidDays) || paidDays || 1);
+        let treatment = 'Paid';
+        if (leaveTypeCode.toLowerCase() === 'unpaid' || (paidDays <= 0 && unpaidDays > 0 && unpaidSt === 'approved')) {
+          treatment = 'Unpaid';
+        } else if (unpaidDays > 0 && unpaidSt === 'pending') {
+          treatment = `${Math.max(0, quotaDays)} within quota · ${unpaidDays} excess pending`;
+        } else if (quotaDays > 0 && unpaidDays > 0) {
+          treatment = `${Math.max(0, paidDays)} paid · ${unpaidDays} unpaid`;
+        } else if (unpaidDays > 0 && paidDays <= 0) {
+          treatment = 'Unpaid';
+        } else if (Math.max(0, paidDays - quotaDays) > 0) {
+          treatment = `${quotaDays} within quota · ${Math.max(0, paidDays - quotaDays)} paid override`;
         }
+        const rowPending = ['pending', 'partially_approved'].includes(overallSt)
+          || paidSt === 'pending'
+          || unpaidSt === 'pending'
+          || paidSt === 'rejected'
+          || unpaidSt === 'rejected';
+        let rowStatus = String(req.status || 'pending').replace(/\b\w/g, char => char.toUpperCase());
+        if (overallSt === 'partially_approved') rowStatus = 'Partial';
+        else if (unpaidDays > 0 && unpaidSt === 'pending' && (paidSt === 'approved' || quotaDays > 0)) {
+          rowStatus = paidSt === 'approved' ? 'Partial' : 'Pending';
+        }
+        allSegments.push({
+          id: Number(req.id),
+          portion: 'all',
+          label: `${reqPrefix}${requestTypeLabel}${isHalfLeave ? ' Half Leave' : ''}`,
+          start: req.start_date,
+          end: req.end_date,
+          reason: req.reason || '',
+          days: displayDays,
+          unit: isHalfLeave ? 'half leave(s)' : 'day(s)',
+          treatment,
+          pending: rowPending,
+          status: rowStatus
+        });
       }
 
       allDates.sort();
@@ -27271,7 +27205,15 @@ async function fetchMultiLiveDetections() {
       if (balanceView) balanceView.innerHTML = '<span class="text-muted">Loading balances...</span>';
       const allocationBody = document.getElementById('leaveCompleteAllocationBody');
       if (allocationBody) {
-        allocationBody.innerHTML = allSegments.map(segment => `<tr><td><input type="checkbox" class="leave-segment-select" data-id="${segment.id}" data-portion="${segment.portion || 'all'}" value="${segment.id}" aria-label="Select ${escapeHtml(segment.label)} segment" ${(segment.pending || segment.status.toLowerCase() === 'rejected') ? 'onchange="updateLeaveCompleteSelection()"' : 'disabled'} /></td><td>${escapeHtml(segment.label)}</td><td style="white-space:nowrap;">${escapeHtml(segment.start || '--')} &rarr; ${escapeHtml(segment.end || '--')}</td><td style="max-width:180px; white-space:normal; overflow-wrap:anywhere; user-select:text;">${escapeHtml(segment.reason || '--')}</td><td class="text-center">${segment.days} ${segment.unit || 'day(s)'}</td><td><span class="badge ${segment.treatment === 'Unpaid' ? 'bg-warning-subtle text-warning-emphasis' : 'bg-success-subtle text-success'}">${segment.treatment}</span></td><td>${escapeHtml(segment.status || 'Pending')}</td></tr>`).join('');
+        allocationBody.innerHTML = allSegments.map(segment => {
+          const treat = String(segment.treatment || '');
+          const treatClass = treat === 'Unpaid' || /excess pending/i.test(treat)
+            ? 'bg-warning-subtle text-warning-emphasis'
+            : (/unpaid/i.test(treat) && /paid/i.test(treat)
+              ? 'bg-info-subtle text-info'
+              : 'bg-success-subtle text-success');
+          return `<tr><td><input type="checkbox" class="leave-segment-select" data-id="${segment.id}" data-portion="${segment.portion || 'all'}" value="${segment.id}" aria-label="Select ${escapeHtml(segment.label)} segment" ${(segment.pending || segment.status.toLowerCase() === 'rejected') ? 'onchange="updateLeaveCompleteSelection()"' : 'disabled'} /></td><td>${escapeHtml(segment.label)}</td><td style="white-space:nowrap;">${escapeHtml(segment.start || '--')} &rarr; ${escapeHtml(segment.end || '--')}</td><td style="max-width:180px; white-space:normal; overflow-wrap:anywhere; user-select:text;">${escapeHtml(segment.reason || '--')}</td><td class="text-center">${segment.days} ${segment.unit || 'day(s)'}</td><td><span class="badge ${treatClass}">${escapeHtml(treat)}</span></td><td>${escapeHtml(segment.status || 'Pending')}</td></tr>`;
+        }).join('');
         updateLeaveCompleteSelection();
       }
       enableLeaveAllocationDragScroll();

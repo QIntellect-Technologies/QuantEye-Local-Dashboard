@@ -4191,22 +4191,11 @@ def _restore_worked_leave_if_applicable(
                 continue
 
             is_half = str(lr_duration or '').lower() == 'half'
-            # QA-118: returning after a timed half leave must not cancel that leave.
-            if is_half and lr_end_time and checkin_mins is not None:
-                try:
-                    leave_end_mins = parse_time_to_minutes(str(lr_end_time))
-                    leave_start_mins = (
-                        parse_time_to_minutes(str(lr_start_time))
-                        if lr_start_time else None
-                    )
-                    if leave_start_mins is not None:
-                        in_leave_window = leave_start_mins <= checkin_mins <= leave_end_mins
-                    else:
-                        in_leave_window = checkin_mins <= leave_end_mins
-                    if not in_leave_window:
-                        continue
-                except Exception:
-                    pass
+            # QA-118: timed half leave + attendance = return-to-work / Late evaluation.
+            # Never auto-cancel: check-in at/before leave end must stay Present under Option A/B,
+            # and half leave must remain so Late is not judged from shift start alone.
+            if is_half and lr_end_time:
+                continue
 
             restored.append(log_date)
             restored_str = ','.join(sorted(restored))
@@ -4968,6 +4957,27 @@ def get_light_attendance_report(
                     if day.get('shift_id') is None and row['shift_id'] is not None:
                         day['shift_id'] = row['shift_id']
 
+            # QA-120: check-in only must not show a fake check-out equal to check-in.
+            for _uid_marks in marks_by_user.values():
+                for _day_mark in _uid_marks.values():
+                    fs = _day_mark.get('first_seen')
+                    ls = _day_mark.get('last_seen')
+                    if not fs or not ls:
+                        _day_mark['last_seen'] = None
+                        continue
+                    if str(fs) == str(ls):
+                        _day_mark['last_seen'] = None
+                        continue
+                    try:
+                        fmt = "%Y-%m-%d %H:%M:%S"
+                        t1 = datetime.strptime(str(fs).split('.')[0].replace('T', ' ')[:19], fmt)
+                        t2 = datetime.strptime(str(ls).split('.')[0].replace('T', ' ')[:19], fmt)
+                        if (t2 - t1).total_seconds() < 60:
+                            _day_mark['last_seen'] = None
+                    except Exception:
+                        if str(fs) == str(ls):
+                            _day_mark['last_seen'] = None
+
             # QA-118: half-leave end times for Late-after-half-leave (same rule as detailed).
             try:
                 half_leave_late_grace_mode = _normalize_half_leave_late_grace_mode(
@@ -4989,7 +4999,11 @@ def get_light_attendance_report(
                         FROM leave_requests
                         WHERE user_id IN ({ph})
                           AND leave_duration = 'half'
-                          AND status IN ('approved', 'partially_approved')
+                          AND (
+                            status IN ('approved', 'partially_approved', 'cancelled_worked')
+                            OR paid_status IN ('approved', 'cancelled_worked')
+                            OR unpaid_status IN ('approved', 'cancelled_worked')
+                          )
                           AND end_date >= ? AND start_date <= ?
                           AND end_time IS NOT NULL AND TRIM(end_time) != ''
                         ''',
@@ -5710,6 +5724,8 @@ def get_detailed_attendance_report(
             ''', (*user_ids, start_date, end_date))
             leave_rows = cursor.fetchall()
             leave_map = {}
+            # QA-118: half-leave end times for Late even if LV-05 cleared leave_map that day.
+            half_leave_times_by_day: Dict[Tuple[Any, str], Dict[str, Optional[str]]] = {}
             # QA-118: company Late-after-half-leave setting (default = current shift-start rule).
             try:
                 half_leave_late_grace_mode = _normalize_half_leave_late_grace_mode(
@@ -5762,6 +5778,14 @@ def get_detailed_attendance_report(
                             leave_calendar_dates.add((l_uid, current_date))
                         if is_overall_approved or p_status == 'approved' or up_status == 'approved':
                             approved_leave_dates.add((l_uid, current_date))
+                        # QA-118: keep timed half-leave ends for Late even on restored dates.
+                        if is_half_leave and lr['end_time']:
+                            half_leave_times_by_day[(l_uid, current_date)] = {
+                                'start_time': lr['start_time'],
+                                'end_time': lr['end_time'],
+                                'is_paid': bool(lr['is_paid']),
+                                'leave_type': l_type,
+                            }
                         if current_date in restored_set:
                             cur_l += timedelta(days=1)
                             continue
@@ -6047,22 +6071,51 @@ def get_detailed_attendance_report(
                             checkin_mins = parse_time_to_minutes(time_part)
                             shift_end_mins = parse_time_to_minutes(shift_end)
 
-                            # QA-118: when returning after a timed half leave, Late uses leave end (± grace).
+                            # QA-118: Option A/B Late deadline = half leave end (± grace).
+                            # Use times map so Late still follows leave end if leave_info was cleared.
                             half_leave_end_mins = None
+                            hl_times = None
                             if leave_info and leave_info.get('is_half_leave') and leave_info.get('end_time'):
+                                hl_times = leave_info
+                            else:
+                                hl_times = half_leave_times_by_day.get((uid, cur_date))
+                            if hl_times and hl_times.get('end_time'):
                                 try:
-                                    half_leave_end_mins = parse_time_to_minutes(str(leave_info.get('end_time')))
+                                    half_leave_end_mins = parse_time_to_minutes(str(hl_times.get('end_time')))
                                     half_leave_start_mins = (
-                                        parse_time_to_minutes(str(leave_info.get('start_time')))
-                                        if leave_info.get('start_time') else None
+                                        parse_time_to_minutes(str(hl_times.get('start_time')))
+                                        if hl_times.get('start_time') else None
                                     )
-                                    # Only apply after/return-from half leave (check-in at/after leave end,
-                                    # or after leave start when mode is active). Morning work before an
-                                    # afternoon half leave still uses shift-start grace.
-                                    if half_leave_start_mins is not None and checkin_mins < half_leave_start_mins:
+                                    # Morning check-in before an afternoon half leave still uses shift start.
+                                    # Check-in at/during/after the half-leave window uses leave end.
+                                    if (
+                                        half_leave_late_grace_mode in ('apply_grace', 'no_grace')
+                                        and half_leave_start_mins is not None
+                                        and checkin_mins < half_leave_start_mins
+                                    ):
+                                        half_leave_end_mins = None
+                                    elif (
+                                        half_leave_late_grace_mode == 'shift_start'
+                                        and half_leave_start_mins is not None
+                                        and checkin_mins < half_leave_start_mins
+                                    ):
                                         half_leave_end_mins = None
                                 except Exception:
                                     half_leave_end_mins = None
+                            # Re-attach half leave display/counts when times map has the day
+                            # but LV-05 previously cleared leave_info.
+                            if (
+                                leave_info is None
+                                and hl_times
+                                and half_leave_late_grace_mode in ('apply_grace', 'no_grace')
+                            ):
+                                leave_info = {
+                                    'leave_type': hl_times.get('leave_type') or 'half',
+                                    'is_paid': bool(hl_times.get('is_paid', True)),
+                                    'is_half_leave': True,
+                                    'start_time': hl_times.get('start_time'),
+                                    'end_time': hl_times.get('end_time'),
+                                }
                             grace_deadline_mins = _resolve_checkin_late_deadline_minutes(
                                 start_mins,
                                 grace_mins,
