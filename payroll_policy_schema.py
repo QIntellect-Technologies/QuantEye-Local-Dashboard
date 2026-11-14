@@ -981,23 +981,41 @@ def classify_checkin_late_status(
     - Check-in before the half-leave window still uses shift start + grace.
     - Check-in at/during/after the half-leave window uses half-leave end (± grace).
     - At or before the deadline → Present; strictly after → Late.
+
+    checkin_mins / half_leave_*_mins of -1 mean "unparsed" and are ignored.
     """
     resolved = normalize_half_leave_late_grace_mode(mode)
-    use_hl_end = half_leave_end_mins
+    cin = int(checkin_mins) if checkin_mins is not None and int(checkin_mins) >= 0 else None
+    hl_end = (
+        int(half_leave_end_mins)
+        if half_leave_end_mins is not None and int(half_leave_end_mins) >= 0
+        else None
+    )
+    hl_start = (
+        int(half_leave_start_mins)
+        if half_leave_start_mins is not None and int(half_leave_start_mins) >= 0
+        else None
+    )
+    use_hl_end = hl_end
     if (
         use_hl_end is not None
-        and half_leave_start_mins is not None
-        and int(checkin_mins) < int(half_leave_start_mins)
-        and resolved in ("apply_grace", "no_grace", "shift_start")
+        and hl_start is not None
+        and cin is not None
+        and cin < hl_start
     ):
+        # Morning punch before an afternoon half-leave window → shift-start rule.
         use_hl_end = None
     deadline = resolve_checkin_late_deadline_minutes(
-        int(shift_start_mins),
+        int(shift_start_mins) if int(shift_start_mins) >= 0 else 0,
         int(grace_mins or 0),
         half_leave_end_mins=use_hl_end,
         mode=resolved,
     )
-    status = "late" if int(checkin_mins) > int(deadline) else "present"
+    if cin is None:
+        # Unparseable check-in must not silently become Present when a Late rule applies.
+        status = "late" if use_hl_end is not None and resolved in ("apply_grace", "no_grace") else "present"
+    else:
+        status = "late" if cin > int(deadline) else "present"
     return {
         "status": status,
         "deadline_mins": int(deadline),

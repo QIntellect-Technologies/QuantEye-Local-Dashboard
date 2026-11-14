@@ -6296,6 +6296,27 @@ def api_preview_leave_approve():
     return jsonify(result), status
 
 
+@app.route('/api/leaves/approve-batch', methods=['POST'])
+def api_approve_leave_batch():
+    """QA-122/123: Approve one or many pending leaves with shared Option A/B/C for excess."""
+    data = request.get_json(silent=True) or {}
+    leave_ids = data.get('leave_ids') or []
+    result = db.approve_leaves_batch_with_quota(
+        leave_ids=leave_ids,
+        approved_by=data.get('approved_by') or 'Admin',
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
+        excess_treatment=data.get('excess_treatment') or data.get('excess_decision'),
+        excess_rejection_reason=data.get('excess_rejection_reason') or data.get('rejection_reason'),
+    )
+    if result.get('needs_excess_decision'):
+        return jsonify(result), 409
+    if not result.get('success'):
+        code = 409 if result.get('reason_code') in ('overlapping_leave', 'already_decided') else 400
+        return jsonify(result), code
+    return jsonify(result)
+
+
 @app.route('/api/leaves/<int:leave_id>', methods=['PUT'])
 def api_update_leave(leave_id):
     current_tenant = get_current_tenant_id()

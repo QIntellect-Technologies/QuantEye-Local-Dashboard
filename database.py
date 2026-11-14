@@ -2788,24 +2788,55 @@ def get_embeddings_for_user(user_id: int, organization_id: Optional[str] = None)
 # ============================================
 
 def parse_time_to_minutes(time_str: str) -> int:
-    """Convert any time string (24h '20:11', 12h '08:11 PM', '8:11 pm', '08:11:11') to minutes from midnight."""
-    if not time_str:
-        return 0
+    """Convert any time string (24h '20:11', 12h '08:11 PM', ISO/datetime) to minutes from midnight.
+
+    Unparseable values return 0 for legacy callers. Prefer parse_clock_minutes() when
+    distinguishing midnight from a bad parse matters (QA-118 Late).
+    """
+    parsed = parse_clock_minutes(time_str)
+    return 0 if parsed is None else parsed
+
+
+def parse_clock_minutes(time_str: Any) -> Optional[int]:
+    """Parse a clock or datetime string to minutes from midnight; None if unparseable."""
+    if time_str is None:
+        return None
     try:
         t_str = str(time_str).strip().upper()
+        if not t_str:
+            return None
+        # Datetime / ISO → clock token containing ':'
+        if 'T' in t_str or (' ' in t_str and ':' in t_str):
+            normalized = t_str.replace('T', ' ')
+            for token in reversed(normalized.split()):
+                if ':' in token:
+                    t_str = token
+                    break
+        t_str = t_str.split('+', 1)[0].split('Z', 1)[0]
+        if '.' in t_str:
+            t_str = t_str.split('.', 1)[0]
         is_pm = 'PM' in t_str
         is_am = 'AM' in t_str
         clean_str = t_str.replace('PM', '').replace('AM', '').strip()
         parts = clean_str.split(':')
-        hours = int(parts[0])
-        minutes = int(parts[1]) if len(parts) > 1 else 0
+        hour_token = parts[0].strip() if parts else ''
+        if not hour_token.isdigit():
+            return None
+        hours = int(hour_token)
+        minute_token = parts[1].strip() if len(parts) > 1 else '0'
+        # Allow '04' or '04:00' style; reject non-numeric
+        if not minute_token.isdigit():
+            return None
+        minutes = int(minute_token)
         if is_pm and hours < 12:
             hours += 12
         elif is_am and hours == 12:
             hours = 0
-        return (hours % 24) * 60 + (minutes % 60)
+        if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
+            return None
+        return (hours % 24) * 60 + minutes
     except Exception:
-        return 0
+        return None
 
 
 def is_time_in_grace_window(start_time_str: str, grace_minutes: int, check_dt: Optional[datetime] = None, end_time_str: Optional[str] = None) -> bool:
@@ -5085,21 +5116,22 @@ def get_light_attendance_report(
                 try:
                     first_seen = str(mark.get('first_seen') or '')
                     time_part = first_seen.split(' ')[-1] if ' ' in first_seen else first_seen.split('T')[-1]
-                    checkin_mins = parse_time_to_minutes(time_part)
-                    start_mins = parse_time_to_minutes(shift_info.get('start_time') or '09:00')
+                    checkin_mins = parse_clock_minutes(time_part)
+                    if checkin_mins is None:
+                        # Bad punch clock must not silently become Present under Late-after-half-leave.
+                        return 'late' if half_leave_late_grace_mode in ('apply_grace', 'no_grace') else 'present'
+                    start_mins = parse_clock_minutes(shift_info.get('start_time') or '09:00')
+                    if start_mins is None:
+                        start_mins = 9 * 60
                     grace_mins = int(shift_info.get('grace_period_minutes') or 0)
                     half_leave_end_mins = None
                     half_leave_start_mins = None
                     if uid is not None and day_key:
                         hl = half_leave_end_by_user_date.get((int(uid), day_key))
                         if hl and hl.get('end_time'):
-                            try:
-                                half_leave_end_mins = parse_time_to_minutes(str(hl.get('end_time')))
-                                if hl.get('start_time'):
-                                    half_leave_start_mins = parse_time_to_minutes(str(hl.get('start_time')))
-                            except Exception:
-                                half_leave_end_mins = None
-                                half_leave_start_mins = None
+                            half_leave_end_mins = parse_clock_minutes(str(hl.get('end_time')))
+                            if hl.get('start_time'):
+                                half_leave_start_mins = parse_clock_minutes(str(hl.get('start_time')))
                     classified = _classify_checkin_late_status(
                         checkin_mins,
                         start_mins,
@@ -6069,8 +6101,10 @@ def get_detailed_attendance_report(
                         # Determine late vs present vs checked_out
                         try:
                             time_part = str(first_seen).split(' ')[-1] if ' ' in str(first_seen) else str(first_seen).split('T')[-1]
-                            checkin_mins = parse_time_to_minutes(time_part)
-                            shift_end_mins = parse_time_to_minutes(shift_end)
+                            checkin_mins = parse_clock_minutes(time_part)
+                            shift_end_mins = parse_clock_minutes(shift_end)
+                            if shift_end_mins is None:
+                                shift_end_mins = parse_time_to_minutes(shift_end)
 
                             # QA-118: Option A/B Late deadline = half leave end (± grace).
                             # Use times map so Late still follows leave end if leave_info was cleared.
@@ -6082,15 +6116,11 @@ def get_detailed_attendance_report(
                             else:
                                 hl_times = half_leave_times_by_day.get((uid, cur_date))
                             if hl_times and hl_times.get('end_time'):
-                                try:
-                                    half_leave_end_mins = parse_time_to_minutes(str(hl_times.get('end_time')))
-                                    half_leave_start_mins = (
-                                        parse_time_to_minutes(str(hl_times.get('start_time')))
-                                        if hl_times.get('start_time') else None
-                                    )
-                                except Exception:
-                                    half_leave_end_mins = None
-                                    half_leave_start_mins = None
+                                half_leave_end_mins = parse_clock_minutes(str(hl_times.get('end_time')))
+                                half_leave_start_mins = (
+                                    parse_clock_minutes(str(hl_times.get('start_time')))
+                                    if hl_times.get('start_time') else None
+                                )
                             # Re-attach half leave display/counts when times map has the day
                             # but LV-05 previously cleared leave_info.
                             if (
@@ -6106,7 +6136,7 @@ def get_detailed_attendance_report(
                                     'end_time': hl_times.get('end_time'),
                                 }
                             classified = _classify_checkin_late_status(
-                                checkin_mins,
+                                -1 if checkin_mins is None else checkin_mins,
                                 start_mins,
                                 grace_mins,
                                 half_leave_start_mins=half_leave_start_mins,
@@ -6119,14 +6149,18 @@ def get_detailed_attendance_report(
                             is_genuine_checkout = False
                             if last_seen:
                                 last_time_part = str(last_seen).split(' ')[-1] if ' ' in str(last_seen) else str(last_seen).split('T')[-1]
-                                last_seen_mins = parse_time_to_minutes(last_time_part)
+                                last_seen_mins = parse_clock_minutes(last_time_part)
+                                if last_seen_mins is None:
+                                    last_seen_mins = parse_time_to_minutes(last_time_part)
                                 if shift_end_mins >= start_mins:
                                     is_genuine_checkout = (last_seen_mins >= shift_end_mins - 1)
                                 else:
                                     is_genuine_checkout = (last_seen_mins >= shift_end_mins - 1)
 
                             # Late always wins over Present/Checked Out (QA-118).
-                            if classified.get('status') == 'late' or checkin_mins > grace_deadline_mins:
+                            if classified.get('status') == 'late' or (
+                                checkin_mins is not None and checkin_mins > grace_deadline_mins
+                            ):
                                 status = 'late'
                                 emp_late_days += 1
                             elif is_genuine_checkout:
@@ -6134,12 +6168,22 @@ def get_detailed_attendance_report(
                             else:
                                 status = 'present'
                         except Exception:
-                            # Last-resort: if we can still read check-in vs shift+grace, prefer Late over silent Present.
+                            # Last-resort: never silently Present when Option A/B half-leave Late applies.
                             try:
                                 time_part = str(first_seen).split(' ')[-1] if ' ' in str(first_seen) else str(first_seen).split('T')[-1]
-                                _cin = parse_time_to_minutes(time_part)
-                                _dead = start_mins + grace_mins
-                                status = 'late' if _cin > _dead else 'present'
+                                _cin = parse_clock_minutes(time_part)
+                                _hl = half_leave_times_by_day.get((uid, cur_date)) or {}
+                                _hl_end = parse_clock_minutes(_hl.get('end_time')) if _hl.get('end_time') else None
+                                _hl_start = parse_clock_minutes(_hl.get('start_time')) if _hl.get('start_time') else None
+                                _cls = _classify_checkin_late_status(
+                                    -1 if _cin is None else _cin,
+                                    start_mins,
+                                    grace_mins,
+                                    half_leave_start_mins=_hl_start,
+                                    half_leave_end_mins=_hl_end,
+                                    mode=half_leave_late_grace_mode,
+                                )
+                                status = _cls.get('status') or 'present'
                                 if status == 'late':
                                     emp_late_days += 1
                             except Exception:
@@ -9083,6 +9127,96 @@ def approve_leave_with_quota(
             f"Leave #{leave_id}: {within} day(s) within quota approved; "
             f"{excess} extra day(s) {labels.get(treatment, treatment)}."
         ),
+    }
+
+
+def approve_leaves_batch_with_quota(
+    leave_ids: List[int],
+    approved_by: str = 'Admin',
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    excess_treatment: Optional[str] = None,
+    excess_rejection_reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    """QA-122: Approve many leaves in preview order with one shared excess choice."""
+    preview = preview_leave_approve_batch(
+        leave_ids=leave_ids,
+        organization_id=organization_id,
+        branch_id=branch_id,
+    )
+    if not preview.get('success'):
+        return preview
+    items = list(preview.get('items') or [])
+    if not items:
+        return {
+            'success': False,
+            'reason_code': 'already_decided',
+            'message': 'No pending leave requests to approve. Already decided requests cannot be changed again.',
+        }
+    if preview.get('needs_excess_decision') and not excess_treatment:
+        preview['needs_excess_decision'] = True
+        return preview
+
+    results = []
+    failures = []
+    for row in items:
+        lid = int(row.get('leave_id') or 0)
+        if lid <= 0:
+            continue
+        # Only pass excess treatment when this row actually has excess (or preview said so).
+        treat = excess_treatment if int(row.get('excess_days') or 0) > 0 else None
+        reason = excess_rejection_reason if treat == 'rejected' else None
+        one = approve_leave_with_quota(
+            leave_id=lid,
+            approved_by=approved_by,
+            organization_id=organization_id,
+            branch_id=branch_id,
+            excess_treatment=treat,
+            excess_rejection_reason=reason,
+        )
+        if one.get('needs_excess_decision'):
+            # Race: remaining changed — require a choice for the rest.
+            return {
+                'success': False,
+                'needs_excess_decision': True,
+                'message': one.get('message') or preview.get('message'),
+                'items': preview.get('items') or [],
+                'total_within_days': preview.get('total_within_days'),
+                'total_excess_days': preview.get('total_excess_days'),
+                'partial_results': results,
+            }
+        if not one.get('success'):
+            failures.append(one.get('message') or f'Leave #{lid}')
+        else:
+            results.append(one)
+
+    if failures and not results:
+        return {'success': False, 'message': failures[0], 'results': results, 'failures': failures}
+
+    treatment_label = {
+        'paid': 'treated as paid',
+        'unpaid': 'treated as unpaid',
+        'rejected': 'rejected',
+    }.get(str(excess_treatment or '').lower())
+    within_n = int(preview.get('total_within_days') or 0)
+    excess_n = int(preview.get('total_excess_days') or 0)
+    if excess_n > 0 and treatment_label:
+        message = (
+            f"Approved {len(results)} request(s): {within_n} day(s) within quota; "
+            f"{excess_n} extra day(s) {treatment_label}."
+        )
+    else:
+        message = f"Approved {len(results)} leave request(s) within the remaining quota."
+    if failures:
+        message += f" Some could not be updated: {failures[0]}"
+    return {
+        'success': True,
+        'message': message,
+        'results': results,
+        'failures': failures,
+        'excess_treatment': excess_treatment,
+        'total_within_days': within_n,
+        'total_excess_days': excess_n,
     }
 
 

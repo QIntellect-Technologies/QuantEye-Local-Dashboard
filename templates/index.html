@@ -27898,25 +27898,60 @@ async function fetchMultiLiveDetections() {
       const keepUserId = window._leaveCompleteUserId;
       const modalWasOpen = document.getElementById('leaveCompleteModal')?.style.display === 'flex';
       try {
-        const failures = [];
-        const messages = [];
-        for (const item of approveOrder) {
-          const payload = { status, portion: item.portion, approved_by: getActingAdminDisplayName() };
-          if (rejectionReason) payload.rejection_reason = rejectionReason;
-          if (status === 'approved' && excessTreatment) {
+        let failures = [];
+        let messages = [];
+        if (status === 'approved') {
+          // QA-122: one batch call so quota is applied in order with one excess choice.
+          const payload = {
+            leave_ids: approveOrder.map((row) => row.id),
+            approved_by: getActingAdminDisplayName()
+          };
+          if (excessTreatment) {
             payload.excess_treatment = excessTreatment;
             if (excessRejectionReason) payload.excess_rejection_reason = excessRejectionReason;
           }
-          const response = await fetch(`/api/leaves/${item.id}`, {
-            method: 'PUT',
+          const response = await fetch('/api/leaves/approve-batch', {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
           const result = await response.json().catch(() => ({}));
-          if (!response.ok || result.success === false) {
-            failures.push(result.message || result.error || `Leave #${item.id}`);
+          if (result.needs_excess_decision) {
+            const choice = await openLeaveApproveExcessModal(result);
+            if (!choice) return;
+            payload.excess_treatment = choice.excess_treatment;
+            if (choice.excess_rejection_reason) payload.excess_rejection_reason = choice.excess_rejection_reason;
+            const retry = await fetch('/api/leaves/approve-batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const retryResult = await retry.json().catch(() => ({}));
+            if (!retry.ok || retryResult.success === false) {
+              failures.push(retryResult.message || retryResult.error || 'Batch approval failed');
+            } else if (retryResult.message) {
+              messages.push(retryResult.message);
+            }
+          } else if (!response.ok || result.success === false) {
+            failures.push(result.message || result.error || 'Batch approval failed');
           } else if (result.message) {
             messages.push(result.message);
+          }
+        } else {
+          for (const item of approveOrder) {
+            const payload = { status, portion: item.portion, approved_by: getActingAdminDisplayName() };
+            if (rejectionReason) payload.rejection_reason = rejectionReason;
+            const response = await fetch(`/api/leaves/${item.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result.success === false) {
+              failures.push(result.message || result.error || `Leave #${item.id}`);
+            } else if (result.message) {
+              messages.push(result.message);
+            }
           }
         }
         await loadLeaveRequests();
@@ -27926,12 +27961,6 @@ async function fetchMultiLiveDetections() {
         }
         if (failures.length) {
           showAppToast(`Some leave requests could not be updated: ${failures[0]}`, 'error');
-        } else if (status === 'approved' && excessTreatment) {
-          const labels = { paid: 'paid', unpaid: 'unpaid', rejected: 'rejected' };
-          showAppToast(
-            `Approval complete. Extra days were treated as ${labels[excessTreatment] || excessTreatment}. ${messages[0] || ''}`.trim(),
-            'success'
-          );
         } else {
           showAppToast(messages[0] || `Leave request(s) ${status}.`, 'success');
         }
