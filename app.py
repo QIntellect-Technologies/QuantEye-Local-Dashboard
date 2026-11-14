@@ -6268,16 +6268,32 @@ def api_check_leave_quota():
     start_date = (request.args.get('start_date') or '').strip() or None
     end_date = (request.args.get('end_date') or '').strip() or None
     leave_duration = request.args.get('leave_duration', 'full')
+    exclude_id = request.args.get('exclude_id', type=int)
     res = db.check_leave_quota(
         user_id=user_id,
         leave_type_code=leave_type,
         start_date=start_date,
         end_date=end_date,
         leave_duration=leave_duration,
+        exclude_id=exclude_id,
         organization_id=get_current_tenant_id(),
         branch_id=get_current_branch_id(),
     )
     return jsonify(res), 200
+
+
+@app.route('/api/leaves/preview-approve', methods=['POST'])
+def api_preview_leave_approve():
+    """QA-122: Preview selected leaves against remaining quota before Approve Selected."""
+    data = request.get_json(silent=True) or {}
+    leave_ids = data.get('leave_ids') or []
+    result = db.preview_leave_approve_batch(
+        leave_ids=leave_ids,
+        organization_id=get_current_tenant_id(),
+        branch_id=get_current_branch_id(),
+    )
+    status = 200 if result.get('success') else 400
+    return jsonify(result), status
 
 
 @app.route('/api/leaves/<int:leave_id>', methods=['PUT'])
@@ -6296,6 +6312,24 @@ def api_update_leave(leave_id):
             organization_id=current_tenant,
             rejection_reason=data.get('rejection_reason'),
         )
+        if not result.get('success'):
+            status = 409 if result.get('reason_code') == 'overlapping_leave' else 400
+            return jsonify(result), status
+        return jsonify(result)
+    # QA-122: approving must respect remaining quota (Options A/B/C for excess).
+    status_norm = str(data.get('status') or 'approved').strip().lower()
+    if status_norm == 'approved':
+        result = db.approve_leave_with_quota(
+            leave_id=leave_id,
+            approved_by=data.get('approved_by') or 'Admin',
+            organization_id=current_tenant,
+            branch_id=get_current_branch_id(),
+            excess_treatment=data.get('excess_treatment') or data.get('excess_decision'),
+            excess_rejection_reason=data.get('excess_rejection_reason') or data.get('rejection_reason'),
+            portion=data.get('portion'),
+        )
+        if result.get('needs_excess_decision'):
+            return jsonify(result), 409
         if not result.get('success'):
             status = 409 if result.get('reason_code') == 'overlapping_leave' else 400
             return jsonify(result), status

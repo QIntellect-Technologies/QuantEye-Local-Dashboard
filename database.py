@@ -8667,6 +8667,376 @@ def decide_leave_excess(
         return {'success': False, 'message': 'Could not save the excess leave decision.'}
 
 
+def _leave_quota_cycle_key(leave_type_code: str, start_date: str, month_key: Optional[str] = None) -> str:
+    return f"{leave_type_code}|{month_key or str(start_date or '')[:7]}"
+
+
+def preview_leave_approve_batch(
+    leave_ids: List[int],
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """QA-122: Preview selected pending leaves vs remaining quota (ordered, same-month aware)."""
+    ids = []
+    seen = set()
+    for raw in leave_ids or []:
+        try:
+            lid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if lid <= 0 or lid in seen:
+            continue
+        seen.add(lid)
+        ids.append(lid)
+    if not ids:
+        return {'success': False, 'message': 'Select at least one leave request to approve.', 'items': []}
+
+    leaves = []
+    for lid in ids:
+        leave = get_leave_by_id(lid, organization_id=organization_id)
+        if not leave:
+            return {'success': False, 'message': f'Leave request #{lid} was not found.', 'items': []}
+        st = str(leave.get('status') or '').lower()
+        if st in ('approved', 'rejected', 'cancelled_worked'):
+            continue
+        leaves.append(leave)
+    leaves.sort(key=lambda row: (str(row.get('start_date') or ''), int(row.get('id') or 0)))
+
+    virtual_used: Dict[str, float] = {}
+    items = []
+    total_excess = 0
+    total_within = 0
+
+    for leave in leaves:
+        lid = int(leave['id'])
+        user_id = int(leave['user_id'])
+        leave_type = str(leave.get('leave_type') or 'casual')
+        duration = str(leave.get('leave_duration') or 'full').lower()
+        start_date = str(leave.get('start_date') or '')[:10]
+        end_date = str(leave.get('end_date') or start_date)[:10]
+        quota = check_leave_quota(
+            user_id=user_id,
+            leave_type_code=leave_type,
+            start_date=start_date,
+            end_date=end_date,
+            exclude_id=lid,
+            leave_duration=duration,
+            organization_id=organization_id or leave.get('organization_id'),
+            branch_id=branch_id or leave.get('branch_id'),
+        )
+        if quota.get('reason_code') == 'overlapping_leave':
+            return {
+                'success': False,
+                'message': quota.get('message') or f'Leave #{lid} overlaps another active leave.',
+                'items': items,
+            }
+
+        is_paid_type = int(quota.get('is_paid', 1) or 1) != 0
+        requested = int(quota.get('requested_days') or (1 if duration == 'half' else 0) or 0)
+        month_breakdown = list(quota.get('month_breakdown') or [])
+        excess_days = 0
+        within_days = requested
+        excess_dates: List[str] = []
+        within_dates: List[str] = list(quota.get('within_dates') or [])
+        month_notes = []
+
+        if not is_paid_type:
+            within_days = requested
+            excess_days = 0
+        elif month_breakdown:
+            # Each calendar month has its own remaining pool (QA-117 / QA-122).
+            within_days = 0
+            excess_days = 0
+            within_dates = []
+            excess_dates = []
+            for month in month_breakdown:
+                m_key = str(month.get('month') or '')[:7]
+                m_req = int(month.get('requested_days') or 0)
+                m_dates = list(month.get('within_dates') or []) + list(month.get('excess_dates') or [])
+                cycle_key = f"{user_id}|{_leave_quota_cycle_key(leave_type, start_date, m_key)}"
+                already = float(virtual_used.get(cycle_key) or 0)
+                rem_cap = max(0.0, float(month.get('remaining_days') or 0) - already)
+                if duration == 'half':
+                    m_new_within = 1 if rem_cap >= 1 else 0
+                    m_new_excess = 0 if m_new_within else 1
+                else:
+                    m_new_within = int(min(float(m_req), rem_cap))
+                    m_new_excess = max(0, m_req - m_new_within)
+                virtual_used[cycle_key] = already + float(m_new_within)
+                within_days += m_new_within
+                excess_days += m_new_excess
+                if m_dates:
+                    within_dates.extend(m_dates[:m_new_within])
+                    excess_dates.extend(m_dates[m_new_within:m_new_within + m_new_excess])
+                if m_new_excess > 0:
+                    month_notes.append({
+                        'month': m_key,
+                        'month_label': month.get('month_label') or m_key,
+                        'within_days': m_new_within,
+                        'excess_days': m_new_excess,
+                        'excess_dates': m_dates[m_new_within:m_new_within + m_new_excess] if m_dates else [],
+                    })
+        else:
+            rem = float(quota.get('remaining_days') or 0)
+            cycle_key = f"{user_id}|{_leave_quota_cycle_key(leave_type, start_date)}"
+            already = float(virtual_used.get(cycle_key) or 0)
+            rem_cap = max(0.0, rem - already)
+            if duration == 'half':
+                within_days = 1 if rem_cap >= 1 else 0
+                excess_days = 0 if within_days else 1
+            else:
+                within_days = int(min(float(requested), rem_cap))
+                excess_days = max(0, requested - within_days)
+            virtual_used[cycle_key] = already + float(within_days)
+            all_dates = list(quota.get('within_dates') or []) + list(quota.get('excess_dates') or [])
+            if all_dates:
+                within_dates = all_dates[:within_days]
+                excess_dates = all_dates[within_days:within_days + excess_days]
+            elif excess_days > 0:
+                excess_dates = [end_date]
+
+        total_within += within_days
+        total_excess += excess_days
+        items.append({
+            'leave_id': lid,
+            'user_id': user_id,
+            'user_name': leave.get('user_name') or '',
+            'leave_type': leave_type,
+            'leave_type_name': quota.get('leave_type_name') or leave_type,
+            'start_date': start_date,
+            'end_date': end_date,
+            'leave_duration': duration,
+            'requested_days': requested if duration != 'half' else 1,
+            'within_days': within_days,
+            'excess_days': excess_days,
+            'within_dates': within_dates,
+            'excess_dates': excess_dates,
+            'month_notes': month_notes,
+            'quota_message': quota.get('message') or '',
+            'needs_excess_decision': excess_days > 0 and is_paid_type,
+        })
+
+    return {
+        'success': True,
+        'items': items,
+        'total_within_days': total_within,
+        'total_excess_days': total_excess,
+        'needs_excess_decision': total_excess > 0,
+    }
+
+
+def approve_leave_with_quota(
+    leave_id: int,
+    approved_by: str = 'Admin',
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    excess_treatment: Optional[str] = None,
+    excess_rejection_reason: Optional[str] = None,
+    portion: Optional[str] = None,
+) -> Dict[str, Any]:
+    """QA-122: Approve one leave against remaining quota; Option A/B/C for excess days."""
+    leave = get_leave_by_id(leave_id, organization_id=organization_id)
+    if not leave:
+        return {'success': False, 'message': 'Leave request not found or unauthorized.'}
+
+    treatment = str(excess_treatment or '').strip().lower() or None
+    if treatment and treatment not in ('paid', 'unpaid', 'rejected'):
+        return {'success': False, 'message': 'Choose Option A (paid), Option B (unpaid), or Option C (reject) for extra days.'}
+    reason = str(excess_rejection_reason or '').strip()
+    if treatment == 'rejected' and not reason:
+        return {'success': False, 'message': 'A rejection reason is required for Option C.'}
+
+    # Already-split pending excess (mobile / file leave): decide or ask.
+    try:
+        existing_unpaid = int(float(leave.get('unpaid_days') or 0))
+    except (TypeError, ValueError):
+        existing_unpaid = 0
+    try:
+        existing_paid = int(float(leave.get('paid_days') or 0))
+    except (TypeError, ValueError):
+        existing_paid = 0
+    unpaid_st = str(leave.get('unpaid_status') or leave.get('status') or 'pending').lower()
+    if existing_unpaid > 0 and unpaid_st == 'pending':
+        if not treatment:
+            return {
+                'success': False,
+                'needs_excess_decision': True,
+                'leave_id': leave_id,
+                'requested_days': existing_paid + existing_unpaid,
+                'within_days': existing_paid,
+                'excess_days': existing_unpaid,
+                'within_dates': [],
+                'excess_dates': [],
+                'leave_type_name': leave.get('leave_type') or '',
+                'start_date': str(leave.get('start_date') or '')[:10],
+                'end_date': str(leave.get('end_date') or '')[:10],
+                'user_name': leave.get('user_name') or '',
+                'message': (
+                    f"{existing_unpaid} day(s) on leave #{leave_id} are over the quota and waiting "
+                    f"for paid / unpaid / reject."
+                ),
+            }
+        decide = decide_leave_excess(
+            leave_id=leave_id,
+            decision=treatment,
+            approved_by=approved_by,
+            organization_id=organization_id,
+            rejection_reason=reason,
+        )
+        return decide
+
+    duration = str(leave.get('leave_duration') or 'full').lower()
+    start_date = str(leave.get('start_date') or '')[:10]
+    end_date = str(leave.get('end_date') or start_date)[:10]
+    leave_type = str(leave.get('leave_type') or 'casual')
+    quota = check_leave_quota(
+        user_id=int(leave['user_id']),
+        leave_type_code=leave_type,
+        start_date=start_date,
+        end_date=end_date,
+        exclude_id=int(leave_id),
+        leave_duration=duration,
+        organization_id=organization_id or leave.get('organization_id'),
+        branch_id=branch_id or leave.get('branch_id'),
+    )
+    if quota.get('reason_code') == 'overlapping_leave':
+        return {'success': False, 'reason_code': 'overlapping_leave', 'message': quota.get('message')}
+
+    is_paid_type = int(quota.get('is_paid', 1) or 1) != 0
+    requested = int(quota.get('requested_days') or (1 if duration == 'half' else 0) or 0)
+    within = int(quota.get('within_quota_days') if quota.get('within_quota_days') is not None else requested)
+    if quota.get('allowed', True) or not is_paid_type:
+        within = requested
+        excess = 0
+    else:
+        if quota.get('reason_code') != 'quota_exceeded':
+            return {'success': False, 'message': quota.get('message') or 'Leave cannot be approved.'}
+        excess = max(0, requested - within) if duration != 'half' else (0 if within else 1)
+        if duration == 'half':
+            within = 0 if excess else 1
+
+    if excess > 0 and not treatment:
+        within_dates = list(quota.get('within_dates') or [])
+        excess_dates = list(quota.get('excess_dates') or [])
+        return {
+            'success': False,
+            'needs_excess_decision': True,
+            'leave_id': leave_id,
+            'requested_days': requested if duration != 'half' else 1,
+            'within_days': within,
+            'excess_days': excess,
+            'within_dates': within_dates,
+            'excess_dates': excess_dates,
+            'month_breakdown': quota.get('month_breakdown') or [],
+            'leave_type_name': quota.get('leave_type_name') or leave_type,
+            'start_date': start_date,
+            'end_date': end_date,
+            'user_name': leave.get('user_name') or '',
+            'message': (
+                f"{excess} day(s) in this request are over the remaining quota for "
+                f"{quota.get('leave_type_name') or leave_type}."
+            ),
+        }
+
+    # Apply paid/unpaid split then approve / decide.
+    if excess <= 0 or not is_paid_type:
+        ok = update_leave_status(
+            leave_id=leave_id,
+            status='approved',
+            approved_by=approved_by,
+            organization_id=organization_id,
+            portion=portion or 'all',
+        )
+        if not ok:
+            return {
+                'success': False,
+                'reason_code': 'overlapping_leave',
+                'message': 'This leave request overlaps another active leave or could not be approved.',
+            }
+        return {
+            'success': True,
+            'leave_id': leave_id,
+            'within_days': requested if duration != 'half' else 1,
+            'excess_days': 0,
+            'excess_treatment': None,
+            'status': 'approved',
+            'message': f"Leave #{leave_id} approved within quota.",
+        }
+
+    within_dates = list(quota.get('within_dates') or [])
+    quota_through = within_dates[-1] if within_dates else None
+    if not quota_through and within > 0:
+        q_range, _ = split_leave_request_dates(int(leave['user_id']), start_date, end_date, within)
+        if q_range:
+            quota_through = q_range[1]
+
+    if treatment == 'paid':
+        paid_days = requested if duration != 'half' else 1
+        unpaid_days = 0
+        quota_days = paid_days
+        paid_through = end_date
+    elif treatment == 'unpaid':
+        paid_days = within if duration != 'half' else 0
+        unpaid_days = excess if duration != 'half' else 1
+        quota_days = within
+        paid_through = quota_through
+    else:
+        paid_days = within if duration != 'half' else 0
+        unpaid_days = excess if duration != 'half' else 1
+        quota_days = within
+        paid_through = quota_through
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('BEGIN IMMEDIATE')
+            raise_if_payroll_month_locked(
+                start_date,
+                leave.get('organization_id'),
+                leave.get('branch_id'),
+            )
+            cursor.execute(
+                """UPDATE leave_requests
+                   SET paid_days = ?, unpaid_days = ?, quota_days = ?,
+                       paid_through_date = ?, quota_through_date = ?,
+                       paid_status = 'pending', unpaid_status = 'pending', status = 'pending'
+                   WHERE id = ?""",
+                (paid_days, unpaid_days, quota_days, paid_through, quota_through, leave_id),
+            )
+            conn.commit()
+    except ValueError as exc:
+        return {'success': False, 'message': str(exc)}
+    except Exception as exc:
+        logger.error(f"approve_leave_with_quota split error: {exc}")
+        return {'success': False, 'message': 'Could not prepare excess days for approval.'}
+
+    decide = decide_leave_excess(
+        leave_id=leave_id,
+        decision=treatment,
+        approved_by=approved_by,
+        organization_id=organization_id,
+        rejection_reason=reason if treatment == 'rejected' else None,
+    )
+    if not decide.get('success'):
+        return decide
+    labels = {'paid': 'treated as paid', 'unpaid': 'treated as unpaid', 'rejected': 'rejected'}
+    return {
+        'success': True,
+        'leave_id': leave_id,
+        'within_days': within,
+        'excess_days': excess,
+        'excess_treatment': treatment,
+        'status': decide.get('status'),
+        'paid_days': decide.get('paid_days'),
+        'unpaid_days': decide.get('unpaid_days'),
+        'message': (
+            f"Leave #{leave_id}: {within} day(s) within quota approved; "
+            f"{excess} extra day(s) {labels.get(treatment, treatment)}."
+        ),
+    }
+
+
 def delete_leave_request(leave_id: int, organization_id: Optional[str] = None) -> bool:
     """Delete a leave request, ensuring tenant authorization."""
     try:

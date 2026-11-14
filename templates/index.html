@@ -13263,6 +13263,49 @@ async function fetchMultiLiveDetections() {
     </div>
   </div>
 
+  <!-- QA-122: Approve over-quota popup (same Options A/B/C as File Leave) -->
+  <div id="leaveApproveExcessModal" style="display:none; position:fixed; inset:0; z-index:10070; align-items:center; justify-content:center; padding:20px; background:rgba(15,23,42,0.55); backdrop-filter:blur(6px);" onclick="if(event.target===this) closeLeaveApproveExcessModal(null);">
+    <div style="background:#ffffff; width:100%; max-width:560px; max-height:calc(100vh - 40px); border-radius:18px; border:1px solid #e3e8f5; box-shadow:0 34px 64px -46px rgba(18,24,44,0.9); overflow:hidden; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
+      <div style="padding:18px 22px; border-bottom:1px solid #edf0f9; background:#fffbeb; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <div style="min-width:0;">
+          <h3 style="margin:0; font-size:1.08rem; font-weight:800; color:#92400e;">Days over the leave quota</h3>
+          <div id="leaveApproveExcessSubtitle" style="font-size:0.82rem; color:#b45309; font-weight:600; margin-top:4px;">Choose how to treat the extra days before approving.</div>
+        </div>
+        <button type="button" class="modal-x-btn" onclick="closeLeaveApproveExcessModal(null)" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div style="padding:18px 22px; overflow-y:auto; min-height:0; flex:1;">
+        <div id="leaveApproveExcessSummary" style="font-size:0.9rem; color:#78350f; line-height:1.5; margin-bottom:14px;"></div>
+        <div id="leaveApproveExcessDetails" style="margin-bottom:14px;"></div>
+        <div style="font-weight:700; color:#92400e; margin-bottom:8px;">How should the excess days be treated?</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <label style="display:flex; gap:8px; align-items:flex-start; margin:0; padding:8px 10px; border:1px solid #fde68a; border-radius:8px; background:#fff; cursor:pointer;">
+            <input type="radio" name="leaveApproveExcessTreatment" value="paid" style="margin-top:3px;" onchange="onLeaveApproveExcessTreatmentChange()">
+            <span style="font-size:0.84rem; color:#92400e; font-weight:600;">OPTION A — Treat excess as PAID (override quota)</span>
+          </label>
+          <label style="display:flex; gap:8px; align-items:flex-start; margin:0; padding:8px 10px; border:1px solid #fde68a; border-radius:8px; background:#fff; cursor:pointer;">
+            <input type="radio" name="leaveApproveExcessTreatment" value="unpaid" style="margin-top:3px;" onchange="onLeaveApproveExcessTreatmentChange()">
+            <span style="font-size:0.84rem; color:#92400e; font-weight:600;">OPTION B — Treat excess as UNPAID</span>
+          </label>
+          <label style="display:flex; gap:8px; align-items:flex-start; margin:0; padding:8px 10px; border:1px solid #fde68a; border-radius:8px; background:#fff; cursor:pointer;">
+            <input type="radio" name="leaveApproveExcessTreatment" value="rejected" style="margin-top:3px;" onchange="onLeaveApproveExcessTreatmentChange()">
+            <span style="font-size:0.84rem; color:#92400e; font-weight:600;">OPTION C — Reject excess days</span>
+          </label>
+        </div>
+        <div id="leaveApproveExcessReasonWrap" style="display:none; margin-top:12px;">
+          <label class="form-label" for="leaveApproveExcessReason" style="font-weight:700; color:#92400e;">Rejection reason <span style="color:#dc2626;">*</span></label>
+          <textarea id="leaveApproveExcessReason" class="form-control" rows="3" maxlength="500" placeholder="Required — shown to the employee in the mobile app" oninput="onLeaveApproveExcessTreatmentChange()"></textarea>
+          <small id="leaveApproveExcessReasonError" class="text-danger" role="alert"></small>
+        </div>
+      </div>
+      <div style="padding:14px 22px; border-top:1px solid #edf0f9; background:#f8fafc; display:flex; justify-content:flex-end; gap:10px;">
+        <button type="button" class="btn btn-outline-secondary" onclick="closeLeaveApproveExcessModal(null)" style="font-weight:600; border-radius:10px;">Cancel</button>
+        <button type="button" id="leaveApproveExcessConfirmBtn" class="btn btn-primary" disabled onclick="confirmLeaveApproveExcessModal()" style="font-weight:700; border-radius:10px; background:#0d9488; border:none; opacity:0.55;">
+          Continue approval
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- File Leave Request Modal -->
   <div id="fileLeaveModal" style="display: none; position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: rgba(15, 23, 42, 0.65); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(6px); padding: 20px;" onclick="if(event.target===this) closeFileLeaveModal();">
     <div style="background: #ffffff; width: 100%; max-width: 520px; max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); min-height: 0; margin: auto 0; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); overflow: hidden; display: flex; flex-direction: column;">
@@ -27652,12 +27695,124 @@ async function fetchMultiLiveDetections() {
     }
     window.decideLeaveExcessFromComplete = decideLeaveExcessFromComplete;
 
+    let _leaveApproveExcessResolver = null;
+
+    function onLeaveApproveExcessTreatmentChange() {
+      const treatment = document.querySelector('input[name="leaveApproveExcessTreatment"]:checked')?.value || '';
+      const wrap = document.getElementById('leaveApproveExcessReasonWrap');
+      const err = document.getElementById('leaveApproveExcessReasonError');
+      const btn = document.getElementById('leaveApproveExcessConfirmBtn');
+      if (wrap) wrap.style.display = treatment === 'rejected' ? 'block' : 'none';
+      let ok = treatment === 'paid' || treatment === 'unpaid';
+      if (treatment === 'rejected') {
+        const reason = String(document.getElementById('leaveApproveExcessReason')?.value || '').trim();
+        ok = Boolean(reason);
+        if (err) err.textContent = reason ? '' : 'Rejection reason is required for OPTION C.';
+      } else if (err) err.textContent = '';
+      if (btn) {
+        btn.disabled = !ok;
+        btn.style.opacity = ok ? '1' : '0.55';
+      }
+    }
+    window.onLeaveApproveExcessTreatmentChange = onLeaveApproveExcessTreatmentChange;
+
+    function closeLeaveApproveExcessModal(result) {
+      const modal = document.getElementById('leaveApproveExcessModal');
+      if (modal) modal.style.display = 'none';
+      const resolver = _leaveApproveExcessResolver;
+      _leaveApproveExcessResolver = null;
+      if (resolver) resolver(result);
+    }
+    window.closeLeaveApproveExcessModal = closeLeaveApproveExcessModal;
+
+    function confirmLeaveApproveExcessModal() {
+      const treatment = document.querySelector('input[name="leaveApproveExcessTreatment"]:checked')?.value || '';
+      if (!['paid', 'unpaid', 'rejected'].includes(treatment)) return;
+      let reason = '';
+      if (treatment === 'rejected') {
+        reason = String(document.getElementById('leaveApproveExcessReason')?.value || '').trim();
+        if (!reason) {
+          onLeaveApproveExcessTreatmentChange();
+          return;
+        }
+      }
+      closeLeaveApproveExcessModal({ excess_treatment: treatment, excess_rejection_reason: reason || null });
+    }
+    window.confirmLeaveApproveExcessModal = confirmLeaveApproveExcessModal;
+
+    function openLeaveApproveExcessModal(preview) {
+      return new Promise((resolve) => {
+        _leaveApproveExcessResolver = resolve;
+        const modal = document.getElementById('leaveApproveExcessModal');
+        const summary = document.getElementById('leaveApproveExcessSummary');
+        const details = document.getElementById('leaveApproveExcessDetails');
+        const subtitle = document.getElementById('leaveApproveExcessSubtitle');
+        const items = Array.isArray(preview?.items) ? preview.items.filter((row) => Number(row.excess_days || 0) > 0) : [];
+        const totalExcess = Number(preview?.total_excess_days || items.reduce((s, r) => s + Number(r.excess_days || 0), 0));
+        const totalWithin = Number(preview?.total_within_days || 0);
+        if (subtitle) {
+          subtitle.textContent = `${totalExcess} day(s) go over the remaining quota. Requests within quota stay approved as they are.`;
+        }
+        if (summary) {
+          summary.textContent = `${totalWithin} day(s) within quota will be approved. ${totalExcess} extra day(s) need Option A (paid), Option B (unpaid), or Option C (reject with reason).`;
+        }
+        if (details) {
+          details.innerHTML = items.length
+            ? `<div style="border:1px solid #fde68a; border-radius:10px; overflow:hidden;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                  <thead style="background:#fef3c7;"><tr>
+                    <th style="text-align:left; padding:8px;">Request</th>
+                    <th style="text-align:left; padding:8px;">Dates</th>
+                    <th style="text-align:center; padding:8px;">Within</th>
+                    <th style="text-align:center; padding:8px;">Excess</th>
+                  </tr></thead>
+                  <tbody>${items.map((row) => {
+                    const excessLabel = (Array.isArray(row.excess_dates) && row.excess_dates.length)
+                      ? row.excess_dates.join(', ')
+                      : `${row.start_date || ''} → ${row.end_date || ''}`;
+                    return `<tr style="border-top:1px solid #fde68a;">
+                      <td style="padding:8px; font-weight:700;">#${row.leave_id} · ${escapeHtml(row.leave_type_name || row.leave_type || '')}</td>
+                      <td style="padding:8px;">${escapeHtml(excessLabel)}</td>
+                      <td style="padding:8px; text-align:center;">${Number(row.within_days || 0)}</td>
+                      <td style="padding:8px; text-align:center; color:#b45309; font-weight:800;">${Number(row.excess_days || 0)}</td>
+                    </tr>`;
+                  }).join('')}</tbody>
+                </table>
+              </div>`
+            : '<div class="text-muted">No excess day details.</div>';
+        }
+        document.querySelectorAll('input[name="leaveApproveExcessTreatment"]').forEach((radio) => { radio.checked = false; });
+        const reason = document.getElementById('leaveApproveExcessReason');
+        if (reason) reason.value = '';
+        onLeaveApproveExcessTreatmentChange();
+        if (modal) modal.style.display = 'flex';
+      });
+    }
+    window.openLeaveApproveExcessModal = openLeaveApproveExcessModal;
+
+    function coalesceLeaveApproveItems(selectedSegments) {
+      const byId = new Map();
+      for (const item of (Array.isArray(selectedSegments) ? selectedSegments : [])) {
+        const leaveId = Number(item.id);
+        if (!Number.isFinite(leaveId) || leaveId <= 0) continue;
+        const portion = String(item.portion || 'all').toLowerCase();
+        if (!byId.has(leaveId)) byId.set(leaveId, new Set([portion]));
+        else byId.get(leaveId).add(portion);
+      }
+      return Array.from(byId.entries()).map(([id, portions]) => {
+        let portion = 'all';
+        if (portions.has('all') || (portions.has('paid') && portions.has('unpaid'))) portion = 'all';
+        else if (portions.has('unpaid')) portion = 'unpaid';
+        else if (portions.has('paid')) portion = 'paid';
+        return { id, portion };
+      });
+    }
+
     async function updateLeaveRequestGroupStatus(selectedSegments, status) {
       const items = Array.isArray(selectedSegments) ? selectedSegments : [];
       if (!items.length || !['approved', 'rejected'].includes(status)) return;
       let rejectionReason = null;
       if (status === 'rejected') {
-        // QA-113: rejection reason required so the employee can see it on mobile.
         const inputReason = await openLeaveRejectReasonModal({
           title: 'Reject Leave Request',
           required: true,
@@ -27670,39 +27825,65 @@ async function fetchMultiLiveDetections() {
           return;
         }
       }
-      // Coalesce duplicate leave IDs so paid+unpaid (or repeated paid rows) become one PUT.
-      // Parallel PUTs on the same leave_id race and leave portions stale in other list views.
-      const byId = new Map();
-      for (const item of items) {
-        const leaveId = Number(item.id);
-        if (!Number.isFinite(leaveId) || leaveId <= 0) continue;
-        const portion = String(item.portion || 'all').toLowerCase();
-        if (!byId.has(leaveId)) {
-          byId.set(leaveId, new Set([portion]));
-        } else {
-          byId.get(leaveId).add(portion);
-        }
-      }
-      const coalesced = Array.from(byId.entries()).map(([id, portions]) => {
-        let portion = 'all';
-        if (portions.has('all') || (portions.has('paid') && portions.has('unpaid'))) {
-          portion = 'all';
-        } else if (portions.has('unpaid')) {
-          portion = 'unpaid';
-        } else if (portions.has('paid')) {
-          portion = 'paid';
-        }
-        return { id, portion };
-      });
+      const coalesced = coalesceLeaveApproveItems(items);
       if (!coalesced.length) return;
-      if (!await appConfirm(`Are you sure you want to ${status} ${coalesced.length} leave request(s)?`)) return;
+
+      let excessTreatment = null;
+      let excessRejectionReason = null;
+      let approveOrder = coalesced.slice();
+      if (status === 'approved') {
+        try {
+          const previewRes = await fetch('/api/leaves/preview-approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ leave_ids: coalesced.map((row) => row.id) })
+          });
+          const preview = await previewRes.json().catch(() => ({}));
+          if (!previewRes.ok || preview.success === false) {
+            showAppToast(preview.message || preview.error || 'Could not check leave quota before approval.', 'error');
+            return;
+          }
+          // Approve in the same chronological order as the quota preview so earlier
+          // requests consume remaining days before later ones are checked.
+          const byId = new Map(coalesced.map((row) => [Number(row.id), row]));
+          const ordered = [];
+          for (const row of (Array.isArray(preview.items) ? preview.items : [])) {
+            const match = byId.get(Number(row.leave_id));
+            if (match) {
+              ordered.push(match);
+              byId.delete(Number(row.leave_id));
+            }
+          }
+          for (const leftover of byId.values()) ordered.push(leftover);
+          approveOrder = ordered.length ? ordered : coalesced;
+          if (preview.needs_excess_decision) {
+            const choice = await openLeaveApproveExcessModal(preview);
+            if (!choice) return;
+            excessTreatment = choice.excess_treatment;
+            excessRejectionReason = choice.excess_rejection_reason;
+          } else if (!await appConfirm(`Approve ${coalesced.length} leave request(s) within the remaining quota?`)) {
+            return;
+          }
+        } catch (e) {
+          showAppToast('Network error while checking leave quota.', 'error');
+          return;
+        }
+      } else if (!await appConfirm(`Are you sure you want to reject ${coalesced.length} leave request(s)?`)) {
+        return;
+      }
+
       const keepUserId = window._leaveCompleteUserId;
       const modalWasOpen = document.getElementById('leaveCompleteModal')?.style.display === 'flex';
       try {
         const failures = [];
-        for (const item of coalesced) {
+        const messages = [];
+        for (const item of approveOrder) {
           const payload = { status, portion: item.portion, approved_by: getActingAdminDisplayName() };
           if (rejectionReason) payload.rejection_reason = rejectionReason;
+          if (status === 'approved' && excessTreatment) {
+            payload.excess_treatment = excessTreatment;
+            if (excessRejectionReason) payload.excess_rejection_reason = excessRejectionReason;
+          }
           const response = await fetch(`/api/leaves/${item.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -27711,18 +27892,25 @@ async function fetchMultiLiveDetections() {
           const result = await response.json().catch(() => ({}));
           if (!response.ok || result.success === false) {
             failures.push(result.message || result.error || `Leave #${item.id}`);
+          } else if (result.message) {
+            messages.push(result.message);
           }
         }
         await loadLeaveRequests();
         await loadLeaveBalances();
-        // Refresh complete view in place — do not close then reopen (looks awkward).
         if (modalWasOpen && keepUserId != null && typeof openEmployeeCompleteView === 'function') {
           openEmployeeCompleteView(keepUserId);
         }
         if (failures.length) {
-          showAppToast(`Some leave request portions could not be updated: ${failures[0]}`, 'error');
+          showAppToast(`Some leave requests could not be updated: ${failures[0]}`, 'error');
+        } else if (status === 'approved' && excessTreatment) {
+          const labels = { paid: 'paid', unpaid: 'unpaid', rejected: 'rejected' };
+          showAppToast(
+            `Approval complete. Extra days were treated as ${labels[excessTreatment] || excessTreatment}. ${messages[0] || ''}`.trim(),
+            'success'
+          );
         } else {
-          showAppToast(`Leave request portions ${status}.`, 'success');
+          showAppToast(messages[0] || `Leave request(s) ${status}.`, 'success');
         }
       } catch (e) {
         await loadLeaveRequests();
@@ -27743,10 +27931,42 @@ async function fetchMultiLiveDetections() {
     window.promptRejectLeave = promptRejectLeave;
 
     async function updateLeaveStatus(leaveId, status, rejectionReason = '') {
-      if (!await appConfirm(`Are you sure you want to set leave #${leaveId} to ${status.toUpperCase()}?`)) return;
+      let excessTreatment = null;
+      let excessRejectionReason = null;
+      if (status === 'approved') {
+        try {
+          const previewRes = await fetch('/api/leaves/preview-approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ leave_ids: [leaveId] })
+          });
+          const preview = await previewRes.json().catch(() => ({}));
+          if (!previewRes.ok || preview.success === false) {
+            showAppToast(preview.message || preview.error || 'Could not check leave quota before approval.', 'error');
+            return;
+          }
+          if (preview.needs_excess_decision) {
+            const choice = await openLeaveApproveExcessModal(preview);
+            if (!choice) return;
+            excessTreatment = choice.excess_treatment;
+            excessRejectionReason = choice.excess_rejection_reason;
+          } else if (!await appConfirm(`Approve leave #${leaveId} within the remaining quota?`)) {
+            return;
+          }
+        } catch (e) {
+          showAppToast('Network error while checking leave quota.', 'error');
+          return;
+        }
+      } else if (!await appConfirm(`Are you sure you want to set leave #${leaveId} to ${status.toUpperCase()}?`)) {
+        return;
+      }
       try {
         const payload = { status: status, approved_by: getActingAdminDisplayName() };
         if (rejectionReason) payload.rejection_reason = rejectionReason;
+        if (excessTreatment) {
+          payload.excess_treatment = excessTreatment;
+          if (excessRejectionReason) payload.excess_rejection_reason = excessRejectionReason;
+        }
         const res = await fetch(`/api/leaves/${leaveId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -27756,7 +27976,7 @@ async function fetchMultiLiveDetections() {
         if (data.success) {
           await loadLeaveRequests();
           await loadLeaveBalances();
-          showAppToast(`Leave #${leaveId} marked as ${status}.`, 'success');
+          showAppToast(data.message || `Leave #${leaveId} marked as ${status}.`, 'success');
         } else {
           showAppToast(data.message || data.error || "Failed to update status.", 'error');
         }
