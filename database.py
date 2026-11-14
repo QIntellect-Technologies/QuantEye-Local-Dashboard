@@ -24,6 +24,7 @@ from payroll_policy_schema import (
     VALID_OT_ROUNDING,
     normalize_half_leave_late_grace_mode as _normalize_half_leave_late_grace_mode,
     normalize_ot_rounding as _normalize_ot_rounding,
+    classify_checkin_late_status as _classify_checkin_late_status,
     resolve_checkin_late_deadline_minutes as _resolve_checkin_late_deadline_minutes,
     VALID_OFF_DAY_ATTENDANCE_MODES,
     normalize_attendance_pay_mode as _normalize_attendance_pay_mode,
@@ -5088,26 +5089,26 @@ def get_light_attendance_report(
                     start_mins = parse_time_to_minutes(shift_info.get('start_time') or '09:00')
                     grace_mins = int(shift_info.get('grace_period_minutes') or 0)
                     half_leave_end_mins = None
+                    half_leave_start_mins = None
                     if uid is not None and day_key:
                         hl = half_leave_end_by_user_date.get((int(uid), day_key))
                         if hl and hl.get('end_time'):
                             try:
                                 half_leave_end_mins = parse_time_to_minutes(str(hl.get('end_time')))
                                 if hl.get('start_time'):
-                                    hl_start = parse_time_to_minutes(str(hl.get('start_time')))
-                                    if checkin_mins < hl_start:
-                                        half_leave_end_mins = None
+                                    half_leave_start_mins = parse_time_to_minutes(str(hl.get('start_time')))
                             except Exception:
                                 half_leave_end_mins = None
-                    deadline = _resolve_checkin_late_deadline_minutes(
+                                half_leave_start_mins = None
+                    classified = _classify_checkin_late_status(
+                        checkin_mins,
                         start_mins,
                         grace_mins,
+                        half_leave_start_mins=half_leave_start_mins,
                         half_leave_end_mins=half_leave_end_mins,
                         mode=half_leave_late_grace_mode,
                     )
-                    if checkin_mins > deadline:
-                        return 'late'
-                    return 'present'
+                    return classified.get('status') or 'present'
                 except Exception:
                     return 'present'
 
@@ -6074,6 +6075,7 @@ def get_detailed_attendance_report(
                             # QA-118: Option A/B Late deadline = half leave end (± grace).
                             # Use times map so Late still follows leave end if leave_info was cleared.
                             half_leave_end_mins = None
+                            half_leave_start_mins = None
                             hl_times = None
                             if leave_info and leave_info.get('is_half_leave') and leave_info.get('end_time'):
                                 hl_times = leave_info
@@ -6086,22 +6088,9 @@ def get_detailed_attendance_report(
                                         parse_time_to_minutes(str(hl_times.get('start_time')))
                                         if hl_times.get('start_time') else None
                                     )
-                                    # Morning check-in before an afternoon half leave still uses shift start.
-                                    # Check-in at/during/after the half-leave window uses leave end.
-                                    if (
-                                        half_leave_late_grace_mode in ('apply_grace', 'no_grace')
-                                        and half_leave_start_mins is not None
-                                        and checkin_mins < half_leave_start_mins
-                                    ):
-                                        half_leave_end_mins = None
-                                    elif (
-                                        half_leave_late_grace_mode == 'shift_start'
-                                        and half_leave_start_mins is not None
-                                        and checkin_mins < half_leave_start_mins
-                                    ):
-                                        half_leave_end_mins = None
                                 except Exception:
                                     half_leave_end_mins = None
+                                    half_leave_start_mins = None
                             # Re-attach half leave display/counts when times map has the day
                             # but LV-05 previously cleared leave_info.
                             if (
@@ -6116,12 +6105,15 @@ def get_detailed_attendance_report(
                                     'start_time': hl_times.get('start_time'),
                                     'end_time': hl_times.get('end_time'),
                                 }
-                            grace_deadline_mins = _resolve_checkin_late_deadline_minutes(
+                            classified = _classify_checkin_late_status(
+                                checkin_mins,
                                 start_mins,
                                 grace_mins,
+                                half_leave_start_mins=half_leave_start_mins,
                                 half_leave_end_mins=half_leave_end_mins,
                                 mode=half_leave_late_grace_mode,
                             )
+                            grace_deadline_mins = int(classified.get('deadline_mins') or (start_mins + grace_mins))
 
                             # Determine if last_seen is a genuine Check-Out at or near shift end time
                             is_genuine_checkout = False
@@ -6133,7 +6125,8 @@ def get_detailed_attendance_report(
                                 else:
                                     is_genuine_checkout = (last_seen_mins >= shift_end_mins - 1)
 
-                            if checkin_mins > grace_deadline_mins:
+                            # Late always wins over Present/Checked Out (QA-118).
+                            if classified.get('status') == 'late' or checkin_mins > grace_deadline_mins:
                                 status = 'late'
                                 emp_late_days += 1
                             elif is_genuine_checkout:
@@ -6141,7 +6134,16 @@ def get_detailed_attendance_report(
                             else:
                                 status = 'present'
                         except Exception:
-                            status = 'present'
+                            # Last-resort: if we can still read check-in vs shift+grace, prefer Late over silent Present.
+                            try:
+                                time_part = str(first_seen).split(' ')[-1] if ' ' in str(first_seen) else str(first_seen).split('T')[-1]
+                                _cin = parse_time_to_minutes(time_part)
+                                _dead = start_mins + grace_mins
+                                status = 'late' if _cin > _dead else 'present'
+                                if status == 'late':
+                                    emp_late_days += 1
+                            except Exception:
+                                status = 'present'
 
                         if leave_info and leave_info.get('is_half_leave'):
                             emp_present_days += 0.5
@@ -7678,7 +7680,9 @@ def employee_mobile_attendance(user_id: int, organization_id: str, branch_id: st
     raw_status = str(row.get('status') or 'absent').strip().lower()
     if raw_status == 'checked_out':
         status = 'Checked Out'
-    elif raw_status in {'present', 'late'}:
+    elif raw_status == 'late':
+        status = 'Late'
+    elif raw_status == 'present':
         status = 'Present'
     elif raw_status in {'on_leave', 'on_leave_unpaid'}:
         status = 'On Leave'
@@ -7741,7 +7745,9 @@ def employee_mobile_month_attendance(user_id: int, organization_id: str, branch_
         raw_st = str(day.get('status') or 'absent').strip().lower()
         if raw_st == 'checked_out':
             status = 'Checked Out'
-        elif raw_st in {'present', 'late'}:
+        elif raw_st == 'late':
+            status = 'Late'
+        elif raw_st == 'present':
             status = 'Present'
         elif raw_st in {'on_leave', 'on_leave_unpaid'}:
             status = 'On Leave'
@@ -8380,6 +8386,19 @@ def get_leave_by_id(leave_id: int, organization_id: Optional[str] = None) -> Opt
     return None
 
 
+def _leave_decision_is_final(status_value: Any, paid_status: Any = None, unpaid_status: Any = None) -> bool:
+    """QA-123: approved / rejected decisions cannot be changed again."""
+    overall = str(status_value or '').strip().lower()
+    if overall in ('approved', 'rejected', 'partially_rejected', 'cancelled_worked'):
+        return True
+    # Defensive: both portions decided even if overall string is odd/legacy.
+    paid = str(paid_status or '').strip().lower()
+    unpaid = str(unpaid_status or '').strip().lower()
+    if paid in ('approved', 'rejected') and unpaid in ('approved', 'rejected') and 'pending' not in (paid, unpaid):
+        return True
+    return False
+
+
 def update_leave_status(
     leave_id: int,
     status: str = 'approved',
@@ -8418,9 +8437,19 @@ def update_leave_status(
 
             norm_status = str(status or 'approved').strip().lower()
             norm_portion = str(portion or 'all').strip().lower() if portion else 'all'
-            
+
+            current_overall = str(leave['status'] or 'pending').strip().lower()
             current_paid_status = leave['paid_status'] or ('approved' if leave['status'] == 'approved' else 'pending')
             current_unpaid_status = leave['unpaid_status'] or ('approved' if leave['status'] == 'approved' else 'pending')
+            # QA-123: refuse changing a leave that already has a final decision.
+            if _leave_decision_is_final(current_overall, current_paid_status, current_unpaid_status):
+                if str(current_overall) == norm_status and norm_portion == 'all':
+                    conn.commit()
+                    return True
+                raise ValueError(
+                    f'This leave request has already been decided ({current_overall.replace("_", " ")}). '
+                    'Approved and rejected requests cannot be changed again.'
+                )
             try:
                 paid_days = int(float(leave['paid_days'])) if leave['paid_days'] is not None else (0 if leave['leave_type'] == 'unpaid' else 1)
             except (TypeError, ValueError):
@@ -8697,7 +8726,8 @@ def preview_leave_approve_batch(
         if not leave:
             return {'success': False, 'message': f'Leave request #{lid} was not found.', 'items': []}
         st = str(leave.get('status') or '').lower()
-        if st in ('approved', 'rejected', 'cancelled_worked'):
+        # QA-123: already-decided requests are skipped in approve preview.
+        if _leave_decision_is_final(st, leave.get('paid_status'), leave.get('unpaid_status')):
             continue
         leaves.append(leave)
     leaves.sort(key=lambda row: (str(row.get('start_date') or ''), int(row.get('id') or 0)))
@@ -8838,6 +8868,25 @@ def approve_leave_with_quota(
     leave = get_leave_by_id(leave_id, organization_id=organization_id)
     if not leave:
         return {'success': False, 'message': 'Leave request not found or unauthorized.'}
+
+    current_overall = str(leave.get('status') or 'pending').strip().lower()
+    # QA-123: final decisions cannot be flipped (including rejected → approved).
+    if _leave_decision_is_final(current_overall, leave.get('paid_status'), leave.get('unpaid_status')):
+        if current_overall == 'approved':
+            return {
+                'success': True,
+                'leave_id': leave_id,
+                'status': 'approved',
+                'message': f'Leave #{leave_id} is already approved.',
+            }
+        return {
+            'success': False,
+            'reason_code': 'already_decided',
+            'message': (
+                f'This leave request has already been decided ({current_overall.replace("_", " ")}). '
+                'Approved and rejected requests cannot be changed again.'
+            ),
+        }
 
     treatment = str(excess_treatment or '').strip().lower() or None
     if treatment and treatment not in ('paid', 'unpaid', 'rejected'):

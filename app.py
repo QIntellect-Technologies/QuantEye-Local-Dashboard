@@ -6317,7 +6317,20 @@ def api_update_leave(leave_id):
             return jsonify(result), status
         return jsonify(result)
     # QA-122: approving must respect remaining quota (Options A/B/C for excess).
+    # QA-123: refuse changing leaves that already have a final status.
     status_norm = str(data.get('status') or 'approved').strip().lower()
+    current_status = str(leave.get('status') or 'pending').strip().lower()
+    if db._leave_decision_is_final(current_status, leave.get('paid_status'), leave.get('unpaid_status')):
+        if status_norm == current_status:
+            return jsonify({'success': True, 'message': f'This leave request is already {current_status}.'})
+        return jsonify({
+            'success': False,
+            'reason_code': 'already_decided',
+            'message': (
+                f'This leave request has already been decided ({current_status.replace("_", " ")}). '
+                'Approved and rejected requests cannot be changed again.'
+            ),
+        }), 409
     if status_norm == 'approved':
         result = db.approve_leave_with_quota(
             leave_id=leave_id,
@@ -6331,7 +6344,7 @@ def api_update_leave(leave_id):
         if result.get('needs_excess_decision'):
             return jsonify(result), 409
         if not result.get('success'):
-            status = 409 if result.get('reason_code') == 'overlapping_leave' else 400
+            status = 409 if result.get('reason_code') in ('overlapping_leave', 'already_decided') else 400
             return jsonify(result), status
         return jsonify(result)
     try:
@@ -6346,7 +6359,10 @@ def api_update_leave(leave_id):
     except ValueError as exc:
         if str(exc) == db.PAYROLL_LOCK_MESSAGE:
             return jsonify({'error': str(exc), 'reopen': '/api/payroll/reopen'}), 409
-        return jsonify({'error': str(exc)}), 400
+        msg = str(exc)
+        if 'already been decided' in msg.lower():
+            return jsonify({'success': False, 'reason_code': 'already_decided', 'message': msg, 'error': msg}), 409
+        return jsonify({'error': msg, 'message': msg}), 400
     if not updated:
         return jsonify({'success': False, 'reason_code': 'overlapping_leave', 'message': 'This leave request overlaps another active leave or no longer exists. Please review the employee\'s leave dates.'}), 409
     return jsonify({'success': True})

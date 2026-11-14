@@ -966,6 +966,46 @@ def resolve_checkin_late_deadline_minutes(
     return int(shift_start_mins) + grace
 
 
+def classify_checkin_late_status(
+    checkin_mins: int,
+    shift_start_mins: int,
+    grace_mins: int,
+    *,
+    half_leave_start_mins: Optional[int] = None,
+    half_leave_end_mins: Optional[int] = None,
+    mode: Any = DEFAULT_HALF_LEAVE_LATE_GRACE_MODE,
+) -> Dict[str, Any]:
+    """QA-118: Present vs Late for a check-in, including Late-after-half-leave Option A/B.
+
+    Rules when Option A (apply_grace) or Option B (no_grace) and a half-leave end exists:
+    - Check-in before the half-leave window still uses shift start + grace.
+    - Check-in at/during/after the half-leave window uses half-leave end (± grace).
+    - At or before the deadline → Present; strictly after → Late.
+    """
+    resolved = normalize_half_leave_late_grace_mode(mode)
+    use_hl_end = half_leave_end_mins
+    if (
+        use_hl_end is not None
+        and half_leave_start_mins is not None
+        and int(checkin_mins) < int(half_leave_start_mins)
+        and resolved in ("apply_grace", "no_grace", "shift_start")
+    ):
+        use_hl_end = None
+    deadline = resolve_checkin_late_deadline_minutes(
+        int(shift_start_mins),
+        int(grace_mins or 0),
+        half_leave_end_mins=use_hl_end,
+        mode=resolved,
+    )
+    status = "late" if int(checkin_mins) > int(deadline) else "present"
+    return {
+        "status": status,
+        "deadline_mins": int(deadline),
+        "used_half_leave_end": use_hl_end is not None and resolved in ("apply_grace", "no_grace"),
+        "mode": resolved,
+    }
+
+
 def ensure_payroll_settings_row(cursor, organization_id: Optional[str], branch_id: Optional[str]) -> None:
     org, branch = tenant_ids(organization_id, branch_id)
     _migrate_payroll_settings(cursor)

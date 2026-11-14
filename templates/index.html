@@ -27315,11 +27315,15 @@ async function fetchMultiLiveDetections() {
         } else if (Math.max(0, paidDays - quotaDays) > 0) {
           treatment = `${quotaDays} within quota · ${Math.max(0, paidDays - quotaDays)} paid override`;
         }
-        const rowPending = ['pending', 'partially_approved'].includes(overallSt)
+        // QA-123: only pending / partial-with-pending-excess rows are actionable.
+        // Approved and rejected are final — checkboxes stay disabled.
+        const isFinalStatus = ['approved', 'rejected', 'partially_rejected', 'cancelled_worked'].includes(overallSt);
+        const rowPending = !isFinalStatus && (
+          overallSt === 'pending'
+          || overallSt === 'partially_approved'
           || paidSt === 'pending'
           || unpaidSt === 'pending'
-          || paidSt === 'rejected'
-          || unpaidSt === 'rejected';
+        );
         let rowStatus = String(req.status || 'pending').replace(/\b\w/g, char => char.toUpperCase());
         if (overallSt === 'partially_approved') rowStatus = 'Partial';
         else if (unpaidDays > 0 && unpaidSt === 'pending' && (paidSt === 'approved' || quotaDays > 0)) {
@@ -27349,7 +27353,7 @@ async function fetchMultiLiveDetections() {
         if (element) element.textContent = value;
       };
 
-      const pendingSegments = allSegments.filter(s => s.pending || s.status.toLowerCase() === 'rejected');
+      const pendingSegments = allSegments.filter(s => s.pending);
       const actions = document.getElementById('leaveCompleteActions');
       if (actions) {
         actions.innerHTML = pendingSegments.length ? `
@@ -27464,7 +27468,7 @@ async function fetchMultiLiveDetections() {
             : (/unpaid/i.test(treat) && /paid/i.test(treat)
               ? 'bg-info-subtle text-info'
               : 'bg-success-subtle text-success');
-          return `<tr><td><input type="checkbox" class="leave-segment-select" data-id="${segment.id}" data-portion="${segment.portion || 'all'}" value="${segment.id}" aria-label="Select ${escapeHtml(segment.label)} segment" ${(segment.pending || segment.status.toLowerCase() === 'rejected') ? 'onchange="updateLeaveCompleteSelection()"' : 'disabled'} /></td><td>${escapeHtml(segment.label)}</td><td style="white-space:nowrap;">${escapeHtml(segment.start || '--')} &rarr; ${escapeHtml(segment.end || '--')}</td><td style="max-width:180px; white-space:normal; overflow-wrap:anywhere; user-select:text;">${escapeHtml(segment.reason || '--')}</td><td class="text-center">${segment.days} ${segment.unit || 'day(s)'}</td><td><span class="badge ${treatClass}">${escapeHtml(treat)}</span></td><td>${escapeHtml(segment.status || 'Pending')}</td></tr>`;
+          return `<tr><td><input type="checkbox" class="leave-segment-select" data-id="${segment.id}" data-portion="${segment.portion || 'all'}" value="${segment.id}" aria-label="Select ${escapeHtml(segment.label)} segment" ${segment.pending ? 'onchange="updateLeaveCompleteSelection()"' : 'disabled title="Already decided — cannot change again"'} /></td><td>${escapeHtml(segment.label)}</td><td style="white-space:nowrap;">${escapeHtml(segment.start || '--')} &rarr; ${escapeHtml(segment.end || '--')}</td><td style="max-width:180px; white-space:normal; overflow-wrap:anywhere; user-select:text;">${escapeHtml(segment.reason || '--')}</td><td class="text-center">${segment.days} ${segment.unit || 'day(s)'}</td><td><span class="badge ${treatClass}">${escapeHtml(treat)}</span></td><td>${escapeHtml(segment.status || 'Pending')}</td></tr>`;
         }).join('');
         updateLeaveCompleteSelection();
       }
