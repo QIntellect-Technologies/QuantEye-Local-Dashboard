@@ -6702,11 +6702,20 @@
       #settings-view .card { background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85)) !important; border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 16px !important; box-shadow: 0 20px 40px -28px rgba(21,27,37,0.4); }
       #settings-view .btn-primary { background: #8b7bf7 !important; border-color: #8b7bf7 !important; border-radius: 10px; font-weight: 600; }
       #settings-view .btn-outline { border-color: rgba(139,123,247,0.4) !important; color: #5847c8 !important; background: rgba(139,123,247,0.09) !important; border-radius: 10px; }
-      #settings-view .log-table { width: 100%; border-collapse: collapse; }
-      #settings-view .log-table thead tr { background: linear-gradient(180deg, rgba(248,250,252,0.95), rgba(240,244,252,0.9)); }
-      #settings-view .log-table th { padding: 11px 12px !important; color: var(--mut, #6b7488) !important; font-size: 0.74rem !important; font-weight: 700 !important; letter-spacing: 0.06em !important; text-transform: uppercase !important; border-bottom: 1px solid var(--line-soft, #edf0f9) !important; white-space: nowrap; }
-      #settings-view .log-table td { padding: 11px 12px !important; color: var(--ink-2, #2b3547) !important; font-size: 0.86rem !important; border-bottom: 1px solid var(--line-soft, #edf0f9) !important; }
-      #settings-view .log-table tbody tr:hover td { background: linear-gradient(90deg, rgba(139,123,247,0.05), transparent); }
+      #settings-view .log-table-wrapper { overflow: auto; max-height: 640px; border: 1px solid rgba(226,231,246,0.9); border-radius: 14px; background: rgba(255,255,255,0.92); scrollbar-width: thin; scrollbar-color: rgba(139,123,247,0.36) transparent; }
+      #settings-view .log-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+      #settings-view .log-table thead th { position: sticky; top: 0; z-index: 2; height: auto !important; padding: 9px 12px !important; border: 0 !important; border-bottom: 1px solid var(--line, #e3e8f5) !important; background: rgba(248,249,254,0.99) !important; color: var(--mut, #6b7488) !important; font-size: 0.74rem !important; font-weight: 700 !important; letter-spacing: 0.06em !important; text-transform: uppercase !important; white-space: nowrap; vertical-align: middle; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+      #settings-view .log-table tbody tr { background: transparent; }
+      #settings-view .log-table tbody td { height: auto !important; min-height: 0 !important; padding: 9px 12px !important; border-bottom: 1px solid #e9edf7 !important; background: transparent !important; color: var(--ink-2, #2b3547) !important; font-size: 0.86rem !important; line-height: 1.35; vertical-align: middle; }
+      #settings-view .log-table tbody tr:hover td { background: rgba(139,123,247,0.055) !important; }
+      #settings-view .log-table tbody tr:last-child td { border-bottom: 0 !important; }
+      #settings-view .directory-table { width: 100%; border-collapse: separate !important; border-spacing: 0; }
+      #settings-view .directory-table thead th { position: sticky; top: 0; z-index: 2; height: auto !important; padding: 9px 12px !important; border: 0 !important; border-bottom: 1px solid var(--line, #e3e8f5) !important; background: rgba(248,249,254,0.99) !important; color: var(--mut, #6b7488) !important; font-size: 0.74rem !important; font-weight: 700 !important; letter-spacing: 0.06em !important; text-transform: uppercase !important; white-space: nowrap; vertical-align: middle; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+      #settings-view .directory-table tbody tr { background: transparent; }
+      #settings-view .directory-table tbody td { height: auto !important; min-height: 0 !important; padding: 9px 12px !important; border-bottom: 1px solid #e9edf7 !important; background: transparent !important; color: var(--ink-2, #2b3547) !important; font-size: 0.86rem !important; line-height: 1.35; vertical-align: middle; }
+      #settings-view .directory-table tbody tr:hover td { background: rgba(139,123,247,0.055) !important; }
+      #settings-view .directory-table tbody tr:last-child td { border-bottom: 0 !important; }
+      #settings-view .card { background: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(255,255,255,0.92)) !important; border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 16px !important; box-shadow: 0 20px 40px -28px rgba(21,27,37,0.4); }
       #settings-view input.form-control, #settings-view select.form-select { border-color: var(--line, #e3e8f5); border-radius: 10px; background: rgba(255,255,255,0.92); color: var(--ink-2, #2b3547); font-size: 12.5px; }
       #settings-view div[style*="background:#f8fafc"], #settings-view div[style*="background: #f8fafc"], #settings-view div[style*="background:#f2faff"], #settings-view div[style*="background: #f2faff"] {
         background: linear-gradient(180deg, rgba(248,250,252,0.9), rgba(240,244,252,0.7)) !important;
