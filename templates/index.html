@@ -7742,6 +7742,19 @@
       max-height: min(280px, 45vh);
       overflow-y: auto;
     }
+    #bulkCameraModal .custom-camera-dropdown-panel {
+      max-height: min(360px, 50vh);
+    }
+    @media (max-width: 640px) {
+      #bulkCameraModal > .card {
+        max-width: 100% !important;
+        max-height: 96vh !important;
+        border-radius: 14px !important;
+      }
+      #bulkTargetStaffList {
+        max-height: 160px !important;
+      }
+    }
     #enroll-view .custom-camera-item,
     #editUserModal .custom-camera-item,
     #bulkCameraModal .custom-camera-item {
@@ -8681,8 +8694,12 @@
                   <div id="enrollEmailError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label" for="enrollPhone">Phone Number</label>
-                  <input type="text" class="form-control" id="enrollPhone" maxlength="30" placeholder="03xx-xxxxxxx" autocomplete="tel" />
+                  <label class="form-label" for="enrollPhoneNational">Phone Number</label>
+                  <div style="display:flex; gap:8px; align-items:stretch;">
+                    <select class="form-select" id="enrollPhoneCountry" style="max-width:150px; flex:0 0 150px;" onchange="onStaffPhoneCountryChange('enroll')" aria-label="Country code"></select>
+                    <input type="text" class="form-control" id="enrollPhoneNational" maxlength="20" placeholder="3001234567" inputmode="tel" autocomplete="tel-national" />
+                  </div>
+                  <input type="hidden" id="enrollPhone" value="" />
                   <div id="enrollPhoneError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
                 </div>
                 <div class="col-md-6">
@@ -8725,6 +8742,19 @@
                 <div class="col-md-6">
                   <label class="form-label" for="enrollJoinDate">Joining Date</label>
                   <input type="date" class="form-control" id="enrollJoinDate" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="enrollEmploymentStatus">Employment status</label>
+                  <select class="form-select" id="enrollEmploymentStatus" onchange="onEmploymentStatusChange('enroll')">
+                    <option value="permanent" selected>Permanent</option>
+                    <option value="probation">Probation</option>
+                    <option value="internship">Internship</option>
+                  </select>
+                </div>
+                <div class="col-md-6" id="enrollPeriodEndWrap" style="display:none;">
+                  <label class="form-label" for="enrollPeriodEndDate" id="enrollPeriodEndLabel">Period end date</label>
+                  <input type="date" class="form-control" id="enrollPeriodEndDate" />
+                  <small class="text-muted" style="font-size:0.75em;">For internship this is the exit date. Leave quotas and salary stay the same during probation unless you change them later.</small>
                 </div>
               </div>
             </div>
@@ -9828,8 +9858,8 @@ async function fetchMultiLiveDetections() {
           <button id="finalizePayrollToolbarButton" type="button" onclick="finalizeMonthlyPayroll()" class="btn btn-primary" style="min-height:40px; background:#0f766e; border-color:#0f766e;" disabled>
             <i class="fa-solid fa-lock"></i> Finalize
           </button>
-          <button type="button" class="btn btn-outline" style="min-height:40px; border-color:#3d9fd4; color:#247eae;" onclick="downloadPayrollExcel()">
-            <i class="fa-solid fa-arrow-up-from-bracket export-btn-icon"></i> Export Excel
+          <button type="button" class="rpt-btn rpt-btn-light" style="min-height:40px;" onclick="downloadPayrollExcel()">
+            <i class="fa-solid fa-file-excel export-btn-icon text-success"></i><span>Export Excel</span>
           </button>
         </div>
       </div>
@@ -10147,9 +10177,9 @@ async function fetchMultiLiveDetections() {
             <button id="leaveExportTopBtn" type="button" class="rpt-btn rpt-btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" disabled>
               <i class="fa-solid fa-arrow-up-from-bracket export-btn-icon"></i><span>Export</span>
             </button>
-            <ul class="dropdown-menu dropdown-menu-end rpt-menu shadow" style="border-radius:10px; border:1px solid #cfe8f7; min-width:180px;">
-              <li><button type="button" class="dropdown-item" id="leavePdfExportBtn" onclick="exportLeaveHolidayPDF()"><i class="fa-solid fa-file-pdf me-2 text-danger"></i>Export PDF</button></li>
-              <li><button type="button" class="dropdown-item" onclick="exportLeaveRequests()"><i class="fa-solid fa-file-csv me-2 text-primary"></i>Export CSV</button></li>
+            <ul class="dropdown-menu dropdown-menu-end rpt-menu">
+              <li><button type="button" class="dropdown-item" id="leavePdfExportBtn" onclick="exportLeaveHolidayPDF()"><i class="fa-solid fa-file-pdf me-2 text-danger"></i>Export as PDF</button></li>
+              <li><button type="button" class="dropdown-item" onclick="exportLeaveRequests()"><i class="fa-solid fa-file-csv me-2 text-primary"></i>Export as CSV</button></li>
             </ul>
           </div>
         </div>
@@ -10267,6 +10297,12 @@ async function fetchMultiLiveDetections() {
           <div class="rpt-field">
             <span class="rpt-field-label">Year</span>
             <select id="leaveBalanceYearFilter" class="form-select" onchange="onLeaveBalanceYearChange(this.value)" style="min-width:120px;"></select>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Department</span>
+            <select id="leaveBalanceDeptFilter" class="form-select" onchange="onLeaveBalanceDeptChange()" style="min-width:160px;">
+              <option value="all">All Departments</option>
+            </select>
           </div>
           <div class="rpt-field" style="min-width:200px; max-width:260px; flex:1 1 220px;">
             <span class="rpt-field-label">Search</span>
@@ -10953,7 +10989,11 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Phone Number</label>
-              <input type="text" class="form-control" id="editPhone" maxlength="30" placeholder="e.g. 0300-1234567" style="border-color: #e3e8f5; font-size: 0.9em;" />
+              <div style="display:flex; gap:8px; align-items:stretch;">
+                <select class="form-select" id="editPhoneCountry" style="max-width:150px; flex:0 0 150px; border-color:#e3e8f5; font-size:0.9em;" onchange="onStaffPhoneCountryChange('edit')" aria-label="Country code"></select>
+                <input type="text" class="form-control" id="editPhoneNational" maxlength="20" placeholder="3001234567" inputmode="tel" style="border-color: #e3e8f5; font-size: 0.9em;" />
+              </div>
+              <input type="hidden" id="editPhone" value="" />
               <div id="editPhoneError" class="invalid-feedback d-block" style="display:none !important; font-size:0.78em;"></div>
             </div>
             <div class="col-md-6">
@@ -10986,6 +11026,21 @@ async function fetchMultiLiveDetections() {
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Exit Date</label>
               <input type="date" class="form-control" id="editExitDate" style="border-color: #e3e8f5; font-size: 0.9em;" />
+            </div>
+            <div class="col-md-6">
+              <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Employment status</label>
+              <select class="form-select" id="editEmploymentStatus" onchange="onEmploymentStatusChange('edit')" style="border-color: #e3e8f5; font-size: 0.9em;">
+                <option value="permanent">Permanent</option>
+                <option value="probation">Probation</option>
+                <option value="internship">Internship</option>
+              </select>
+            </div>
+            <div class="col-md-6" id="editPeriodEndWrap" style="display:none;">
+              <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;" id="editPeriodEndLabel">Period end date</label>
+              <input type="date" class="form-control" id="editPeriodEndDate" style="border-color: #e3e8f5; font-size: 0.9em;" />
+              <button type="button" class="btn btn-sm btn-outline-success mt-2" id="editConfirmPermanentBtn" onclick="confirmEditPermanent()" style="display:none; font-weight:700;">
+                Confirm as permanent
+              </button>
             </div>
             {% if not is_client_session or client_module_entitlements.shifts %}
             <div class="col-md-6 settings-shifts-only">
@@ -11042,8 +11097,8 @@ async function fetchMultiLiveDetections() {
           <div class="dropdown">
             <button type="button" id="staffDirectoryExportBtn" class="rpt-btn rpt-btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" disabled><i class="fa-solid fa-arrow-up-from-bracket export-btn-icon"></i><span>Export</span></button>
             <ul class="dropdown-menu dropdown-menu-end rpt-menu">
-              <li><button type="button" class="dropdown-item" onclick="exportStaffDirectory('csv')"><i class="fa-solid fa-file-csv me-2"></i>Export CSV</button></li>
-              <li><button type="button" class="dropdown-item" onclick="exportStaffDirectory('pdf')"><i class="fa-solid fa-file-pdf me-2"></i>Export PDF</button></li>
+              <li><button type="button" class="dropdown-item" onclick="exportStaffDirectory('pdf')"><i class="fa-solid fa-file-pdf me-2 text-danger"></i>Export as PDF</button></li>
+              <li><button type="button" class="dropdown-item" onclick="exportStaffDirectory('csv')"><i class="fa-solid fa-file-csv me-2 text-primary"></i>Export as CSV</button></li>
             </ul>
           </div>
           <button onclick="openBulkCameraModal()" class="rpt-btn rpt-btn-dark"><i class="fa-solid fa-camera-rotate"></i><span>Bulk Camera</span></button>
@@ -11168,35 +11223,39 @@ async function fetchMultiLiveDetections() {
       </section>
     </div>
 
-    <!-- Bulk Camera Assignment Modal -->
-    <div id="bulkCameraModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(6px); padding: 16px;">
-      <div class="card p-0" style="width: 100%; max-width: 600px; max-height: 90vh; background: #ffffff; border-radius: 16px; border: 1px solid #cfe8f7; overflow: hidden; box-shadow: 0 20px 40px rgba(15,23,42,0.25); display: flex; flex-direction: column;">
-        <div style="background: #f2faff; border-bottom: 1px solid #cfe8f7; padding: 16px 22px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+    <!-- Bulk Camera Assignment Modal (QA-130/131) -->
+    <div id="bulkCameraModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(6px); padding: 12px;">
+      <div class="card p-0" style="width: 100%; max-width: min(920px, 96vw); max-height: min(92vh, 860px); background: #ffffff; border-radius: 18px; border: 1px solid #e3e8f5; overflow: hidden; box-shadow: 0 20px 40px rgba(15,23,42,0.25); display: flex; flex-direction: column;">
+        <div style="background: #f8fafc; border-bottom: 1px solid #edf0f9; padding: 16px 22px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
           <h3 style="font-size: 1.15em; font-weight: 800; color: #173042; margin: 0; display: flex; align-items: center; gap: 8px;">
             <i class="fa-solid fa-camera-rotate" style="color: #3d9fd4;"></i> Bulk Camera Assignment
           </h3>
           <button type="button" class="modal-x-btn" onclick="closeBulkCameraModal()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
         </div>
         
-        <div style="padding: 22px; overflow-y: auto; flex: 1;">
+        <div style="padding: 18px 22px; overflow-y: auto; flex: 1; min-height: 0;">
           <div id="bulkCameraMsg"></div>
           
-          <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:12px 14px; margin-bottom:16px;">
-            <div style="font-weight:700; color:#0369a1; font-size:0.9em; display:flex; align-items:center; gap:8px;">
-              <i class="fa-solid fa-users"></i> Target Staff Members
+          <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:12px; padding:12px 14px; margin-bottom:16px;">
+            <div style="font-weight:700; color:#0369a1; font-size:0.9em; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+              <span><i class="fa-solid fa-users"></i> Target Staff Members</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearBulkCameraFormSelections()" style="font-size:0.78rem; font-weight:700;">
+                <i class="fa-solid fa-eraser"></i> Clear
+              </button>
             </div>
-            <div id="bulkTargetStaffSummary" style="font-size:0.85em; color:#0c4a6e; margin-top:4px;">
+            <div id="bulkTargetStaffSummary" style="font-size:0.85em; color:#0c4a6e; margin-top:6px;">
               Loading staff selection...
             </div>
+            <div id="bulkTargetStaffList" style="margin-top:10px; max-height: min(220px, 28vh); overflow:auto; border:1px solid #bae6fd; border-radius:10px; background:#fff; padding:8px 10px; font-size:0.84em; color:#0f172a;"></div>
           </div>
 
           <div class="row g-3">
-            <div class="col-12">
+            <div class="col-12 col-lg-6">
               <label style="font-weight: 700; color: #173042; font-size: 0.88em; margin-bottom:6px; display:block;">
                 <i class="fa-solid fa-camera" style="color: #059669; margin-right: 4px;"></i> Authorized Check-In Camera(s) *
               </label>
               <div id="bulkCheckinCamerasWrapper" class="custom-camera-select-wrapper" data-target="bulkCheckinCameras" data-type="checkin">
-                <select class="form-select enterprise-select" id="bulkCheckinCameras" multiple size="4" style="display:none;">
+                <select class="form-select enterprise-select" id="bulkCheckinCameras" multiple size="6" style="display:none;">
                   <option value="all" selected>All Active Cameras (Default)</option>
                 </select>
               </div>
@@ -11205,12 +11264,12 @@ async function fetchMultiLiveDetections() {
               </small>
             </div>
 
-            <div class="col-12">
+            <div class="col-12 col-lg-6">
               <label style="font-weight: 700; color: #173042; font-size: 0.88em; margin-bottom:6px; display:block;">
                 <i class="fa-solid fa-camera-rotate" style="color: #dc2626; margin-right: 4px;"></i> Authorized Check-Out Camera(s) *
               </label>
               <div id="bulkCheckoutCamerasWrapper" class="custom-camera-select-wrapper" data-target="bulkCheckoutCameras" data-type="checkout">
-                <select class="form-select enterprise-select" id="bulkCheckoutCameras" multiple size="4" style="display:none;">
+                <select class="form-select enterprise-select" id="bulkCheckoutCameras" multiple size="6" style="display:none;">
                   <option value="all" selected>All Active Cameras (Default)</option>
                 </select>
               </div>
@@ -11221,9 +11280,12 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
 
-        <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 22px; display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0;">
+        <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 22px; display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; flex-wrap:wrap;">
+          <button type="button" class="btn btn-outline-secondary" onclick="clearBulkCameraFormSelections()" style="font-weight: 600; padding: 8px 16px; font-size: 0.88em;">
+            <i class="fa-solid fa-eraser"></i> Clear
+          </button>
           <button type="button" class="btn btn-secondary" onclick="closeBulkCameraModal()" style="font-weight: 600; padding: 8px 18px; font-size: 0.88em;">Cancel</button>
-          <button type="button" class="btn btn-primary" onclick="submitBulkCameraAssignment()" style="background: #3d9fd4; border: none; font-weight: 700; padding: 8px 20px; font-size: 0.88em;">
+          <button type="button" class="btn btn-primary" onclick="submitBulkCameraAssignment()" style="background: #5847c8; border: none; font-weight: 700; padding: 8px 20px; font-size: 0.88em;">
             <i class="fa-solid fa-check-double"></i> Assign Cameras
           </button>
         </div>
@@ -15716,18 +15778,122 @@ async function fetchMultiLiveDetections() {
         }
         return '';
       }
+      const STAFF_PHONE_COUNTRIES = [
+        { dial: '92', label: 'Pakistan (+92)', min: 10, max: 10, strip0: true },
+        { dial: '91', label: 'India (+91)', min: 10, max: 10, strip0: true },
+        { dial: '971', label: 'UAE (+971)', min: 8, max: 9, strip0: true },
+        { dial: '966', label: 'Saudi Arabia (+966)', min: 8, max: 9, strip0: true },
+        { dial: '880', label: 'Bangladesh (+880)', min: 10, max: 10, strip0: true },
+        { dial: '1', label: 'USA/Canada (+1)', min: 10, max: 10, strip0: false },
+        { dial: '44', label: 'United Kingdom (+44)', min: 10, max: 10, strip0: true },
+        { dial: '86', label: 'China (+86)', min: 11, max: 11, strip0: true },
+      ];
+      const DEFAULT_STAFF_PHONE_DIAL = '92';
+
+      function getStaffPhoneCountry(dial) {
+        return STAFF_PHONE_COUNTRIES.find((c) => c.dial === String(dial)) || STAFF_PHONE_COUNTRIES[0];
+      }
+
+      function fillStaffPhoneCountrySelects() {
+        ['enrollPhoneCountry', 'editPhoneCountry'].forEach((id) => {
+          const sel = document.getElementById(id);
+          if (!sel || sel.options.length) return;
+          sel.innerHTML = STAFF_PHONE_COUNTRIES.map((c) => `<option value="${c.dial}">${c.label}</option>`).join('');
+          sel.value = DEFAULT_STAFF_PHONE_DIAL;
+        });
+      }
+
+      function parseStaffPhoneE164(value, fallbackDial = DEFAULT_STAFF_PHONE_DIAL) {
+        const raw = String(value || '').trim();
+        if (!raw) return { dial: fallbackDial, national: '', e164: '' };
+        const digits = raw.replace(/\D/g, '');
+        let dial = fallbackDial;
+        let national = digits;
+        if (raw.startsWith('+') || digits.length > 10) {
+          const match = [...STAFF_PHONE_COUNTRIES].sort((a, b) => b.dial.length - a.dial.length)
+            .find((c) => digits.startsWith(c.dial));
+          if (match) {
+            dial = match.dial;
+            national = digits.slice(match.dial.length);
+          }
+        }
+        const rule = getStaffPhoneCountry(dial);
+        if (rule.strip0 && national.startsWith('0')) national = national.replace(/^0+/, '');
+        return { dial, national, e164: national ? `+${dial}${national}` : '' };
+      }
+
+      function syncStaffPhoneHidden(prefix) {
+        fillStaffPhoneCountrySelects();
+        const dial = document.getElementById(`${prefix}PhoneCountry`)?.value || DEFAULT_STAFF_PHONE_DIAL;
+        let national = String(document.getElementById(`${prefix}PhoneNational`)?.value || '').replace(/\D/g, '');
+        const rule = getStaffPhoneCountry(dial);
+        if (rule.strip0 && national.startsWith('0')) national = national.replace(/^0+/, '');
+        const hidden = document.getElementById(`${prefix}Phone`);
+        const e164 = national ? `+${dial}${national}` : '';
+        if (hidden) hidden.value = e164;
+        return e164;
+      }
+
+      function setStaffPhoneFields(prefix, phoneValue) {
+        fillStaffPhoneCountrySelects();
+        const parsed = parseStaffPhoneE164(phoneValue);
+        const country = document.getElementById(`${prefix}PhoneCountry`);
+        const national = document.getElementById(`${prefix}PhoneNational`);
+        if (country) country.value = parsed.dial;
+        if (national) national.value = parsed.national;
+        syncStaffPhoneHidden(prefix);
+      }
+
+      function onStaffPhoneCountryChange(prefix) {
+        syncStaffPhoneHidden(prefix);
+        const errId = `${prefix}PhoneError`;
+        setStaffFieldFeedback(`${prefix}PhoneNational`, errId, validateStaffPhoneValue(syncStaffPhoneHidden(prefix)));
+        if (prefix === 'enroll') syncEnrollSubmitEnabled();
+        if (prefix === 'edit') syncEditSubmitEnabled();
+      }
+      window.onStaffPhoneCountryChange = onStaffPhoneCountryChange;
+
       function validateStaffPhoneValue(value) {
         const v = String(value || '').trim();
         if (!v) return '';
         if (!/^\+?[0-9 .()\-]+$/.test(v)) {
           return 'Phone may only include digits and + ( ) . - characters.';
         }
-        const digits = v.replace(/\D/g, '');
-        if (digits.length < 10 || digits.length > 15) {
-          return 'Enter a valid phone number (10–15 digits).';
+        const parsed = parseStaffPhoneE164(v);
+        const rule = getStaffPhoneCountry(parsed.dial);
+        const national = parsed.national;
+        if (!national) return 'Enter the phone number without the country code.';
+        if (national.length < rule.min || national.length > rule.max) {
+          const range = rule.min === rule.max ? String(rule.min) : `${rule.min}–${rule.max}`;
+          return `Phone number for ${rule.label} must be ${range} digits after the country code (got ${national.length}).`;
         }
         return '';
       }
+
+      function onEmploymentStatusChange(prefix) {
+        const status = String(document.getElementById(`${prefix}EmploymentStatus`)?.value || 'permanent');
+        const wrap = document.getElementById(`${prefix}PeriodEndWrap`);
+        const label = document.getElementById(`${prefix}PeriodEndLabel`);
+        const confirmBtn = document.getElementById('editConfirmPermanentBtn');
+        if (wrap) wrap.style.display = status === 'permanent' ? 'none' : 'block';
+        if (label) {
+          label.textContent = status === 'internship' ? 'Internship end date (exit date)' : 'Probation end date';
+        }
+        if (confirmBtn) confirmBtn.style.display = (prefix === 'edit' && status === 'probation') ? 'inline-flex' : 'none';
+        if (prefix === 'enroll') syncEnrollSubmitEnabled();
+      }
+      window.onEmploymentStatusChange = onEmploymentStatusChange;
+
+      function confirmEditPermanent() {
+        const status = document.getElementById('editEmploymentStatus');
+        if (status) status.value = 'permanent';
+        const end = document.getElementById('editPeriodEndDate');
+        if (end) end.value = '';
+        onEmploymentStatusChange('edit');
+        window._editConfirmPermanent = true;
+        showAppToast('Marked as permanent. Save the profile to apply.', 'success');
+      }
+      window.confirmEditPermanent = confirmEditPermanent;
       function formatPakistanCnic(raw) {
         const digits = String(raw || '').replace(/\D/g, '').slice(0, 13);
         if (digits.length <= 5) return digits;
@@ -15762,25 +15928,30 @@ async function fetchMultiLiveDetections() {
         if (!btn) return;
         const nameOk = !validateStaffNameValue(document.getElementById('enrollName')?.value || '', true);
         const emailOk = !validateStaffEmailValue(document.getElementById('enrollEmail')?.value || '');
-        const phoneOk = !validateStaffPhoneValue(document.getElementById('enrollPhone')?.value || '');
+        const phoneOk = !validateStaffPhoneValue(syncStaffPhoneHidden('enroll') || '');
         const cnicOk = !validateStaffCnicValue(document.getElementById('enrollCNIC')?.value || '');
         const deptOk = Boolean((document.getElementById('enrollDepartment')?.value || '').trim());
         const posOk = Boolean((document.getElementById('enrollPosition')?.value || '').trim());
         const joinOk = Boolean((document.getElementById('enrollJoinDate')?.value || '').trim());
-        btn.disabled = !(nameOk && emailOk && phoneOk && cnicOk && deptOk && posOk && joinOk);
+        const empStatus = String(document.getElementById('enrollEmploymentStatus')?.value || 'permanent');
+        const periodOk = empStatus === 'permanent' || Boolean((document.getElementById('enrollPeriodEndDate')?.value || '').trim());
+        btn.disabled = !(nameOk && emailOk && phoneOk && cnicOk && deptOk && posOk && joinOk && periodOk);
       }
       function syncEditSubmitEnabled() {
         const btn = document.getElementById('editSaveProfileBtn');
         if (!btn) return;
         const nameOk = !validateStaffNameValue(document.getElementById('editName')?.value || '', true);
         const emailOk = !validateStaffEmailValue(document.getElementById('editEmail')?.value || '');
-        const phoneOk = !validateStaffPhoneValue(document.getElementById('editPhone')?.value || '');
+        const phoneOk = !validateStaffPhoneValue(syncStaffPhoneHidden('edit') || '');
         const cnicOk = !validateStaffCnicValue(document.getElementById('editCNIC')?.value || '');
         const deptOk = Boolean((document.getElementById('editDepartment')?.value || '').trim());
         const posOk = Boolean((document.getElementById('editPosition')?.value || '').trim());
-        btn.disabled = !(nameOk && emailOk && phoneOk && cnicOk && deptOk && posOk);
+        const empStatus = String(document.getElementById('editEmploymentStatus')?.value || 'permanent');
+        const periodOk = empStatus === 'permanent' || Boolean((document.getElementById('editPeriodEndDate')?.value || '').trim());
+        btn.disabled = !(nameOk && emailOk && phoneOk && cnicOk && deptOk && posOk && periodOk);
       }
       function bindStaffLiveValidation() {
+        fillStaffPhoneCountrySelects();
         const wire = (inputId, errorId, validator, opts = {}) => {
           const input = document.getElementById(inputId);
           if (!input || input.dataset.liveValidationBound === '1') return;
@@ -15798,9 +15969,18 @@ async function fetchMultiLiveDetections() {
         };
         wire('enrollName', 'enrollNameError', (v) => validateStaffNameValue(v, true), { onSync: syncEnrollSubmitEnabled });
         wire('enrollEmail', 'enrollEmailError', validateStaffEmailValue, { onSync: syncEnrollSubmitEnabled });
-        wire('enrollPhone', 'enrollPhoneError', validateStaffPhoneValue, { onSync: syncEnrollSubmitEnabled });
+        const enrollNational = document.getElementById('enrollPhoneNational');
+        if (enrollNational && enrollNational.dataset.liveValidationBound !== '1') {
+          enrollNational.dataset.liveValidationBound = '1';
+          const runPhone = () => {
+            setStaffFieldFeedback('enrollPhoneNational', 'enrollPhoneError', validateStaffPhoneValue(syncStaffPhoneHidden('enroll')));
+            syncEnrollSubmitEnabled();
+          };
+          enrollNational.addEventListener('input', runPhone);
+          enrollNational.addEventListener('blur', runPhone);
+        }
         wire('enrollCNIC', 'enrollCNICError', validateStaffCnicValue, { formatCnic: true, onSync: syncEnrollSubmitEnabled });
-        ['enrollDepartment', 'enrollPosition', 'enrollJoinDate'].forEach(id => {
+        ['enrollDepartment', 'enrollPosition', 'enrollJoinDate', 'enrollEmploymentStatus', 'enrollPeriodEndDate'].forEach(id => {
           const el = document.getElementById(id);
           if (el && el.dataset.liveValidationBound !== '1') {
             el.dataset.liveValidationBound = '1';
@@ -15810,8 +15990,25 @@ async function fetchMultiLiveDetections() {
         });
         wire('editName', 'editNameError', (v) => validateStaffNameValue(v, true), { onSync: syncEditSubmitEnabled });
         wire('editEmail', 'editEmailError', validateStaffEmailValue, { onSync: syncEditSubmitEnabled });
-        wire('editPhone', 'editPhoneError', validateStaffPhoneValue, { onSync: syncEditSubmitEnabled });
+        const editNational = document.getElementById('editPhoneNational');
+        if (editNational && editNational.dataset.liveValidationBound !== '1') {
+          editNational.dataset.liveValidationBound = '1';
+          const runEditPhone = () => {
+            setStaffFieldFeedback('editPhoneNational', 'editPhoneError', validateStaffPhoneValue(syncStaffPhoneHidden('edit')));
+            syncEditSubmitEnabled();
+          };
+          editNational.addEventListener('input', runEditPhone);
+          editNational.addEventListener('blur', runEditPhone);
+        }
         wire('editCNIC', 'editCNICError', validateStaffCnicValue, { formatCnic: true, onSync: syncEditSubmitEnabled });
+        ['editEmploymentStatus', 'editPeriodEndDate'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el && el.dataset.liveValidationBound !== '1') {
+            el.dataset.liveValidationBound = '1';
+            el.addEventListener('change', syncEditSubmitEnabled);
+            el.addEventListener('input', syncEditSubmitEnabled);
+          }
+        });
         ['editDepartment', 'editPosition'].forEach(id => {
           const el = document.getElementById(id);
           if (el && el.dataset.liveValidationBound !== '1') {
@@ -15829,13 +16026,15 @@ async function fetchMultiLiveDetections() {
       async function createEnrollUser() {
         const name = document.getElementById("enrollName").value.trim();
         const email = document.getElementById("enrollEmail").value;
-        const phone = document.getElementById("enrollPhone") ? document.getElementById("enrollPhone").value : "";
+        const phone = syncStaffPhoneHidden('enroll');
         const department = document.getElementById("enrollDepartment") ? document.getElementById("enrollDepartment").value : "";
         const position = document.getElementById("enrollPosition") ? document.getElementById("enrollPosition").value : "";
         const cnic = document.getElementById("enrollCNIC") ? formatPakistanCnic(document.getElementById("enrollCNIC").value) : "";
         const salaryField = document.getElementById("enrollSalary");
         const salary = salaryField ? salaryField.value : '';
         const join_date = document.getElementById("enrollJoinDate") ? document.getElementById("enrollJoinDate").value : "";
+        const employment_status = document.getElementById("enrollEmploymentStatus")?.value || 'permanent';
+        const period_end_date = document.getElementById("enrollPeriodEndDate")?.value || '';
         const is_veiled = document.getElementById("enrollIsVeiled") ? (document.getElementById("enrollIsVeiled").value === 'true') : false;
         const shift_id = document.getElementById("enrollShiftId") ? parseInt(document.getElementById("enrollShiftId").value) : 1;
         const checkin_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("enrollCheckinCameras")) : 'all';
@@ -15847,7 +16046,7 @@ async function fetchMultiLiveDetections() {
         const cnicErr = validateStaffCnicValue(cnic);
         setStaffFieldFeedback('enrollName', 'enrollNameError', nameErr);
         setStaffFieldFeedback('enrollEmail', 'enrollEmailError', emailErr);
-        setStaffFieldFeedback('enrollPhone', 'enrollPhoneError', phoneErr);
+        setStaffFieldFeedback('enrollPhoneNational', 'enrollPhoneError', phoneErr);
         setStaffFieldFeedback('enrollCNIC', 'enrollCNICError', cnicErr);
         syncEnrollSubmitEnabled();
         if (nameErr || emailErr || phoneErr || cnicErr) {
@@ -15857,6 +16056,14 @@ async function fetchMultiLiveDetections() {
 
         if (!join_date) {
           showMessage("enrollmentMessage", "Joining date is required.", "error");
+          return;
+        }
+        if (employment_status !== 'permanent' && !period_end_date) {
+          showMessage("enrollmentMessage", "Enter the end date for probation or internship.", "error");
+          return;
+        }
+        if (period_end_date && join_date && period_end_date < join_date) {
+          showMessage("enrollmentMessage", "Employment period end date cannot be before the joining date.", "error");
           return;
         }
         // QA-73: Validate the join date is a real calendar date (reject e.g. 31 Nov)
@@ -15883,7 +16090,10 @@ async function fetchMultiLiveDetections() {
         const restoreBtn = setButtonLoading(btn, 'Registering...');
 
         try {
-          const enrollPayload = { name, email, phone, department, position, cnic, join_date, notes: '', is_veiled, shift_id, checkin_cameras, checkout_cameras };
+          const enrollPayload = {
+            name, email, phone, department, position, cnic, join_date, notes: '', is_veiled, shift_id, checkin_cameras, checkout_cameras,
+            employment_status, period_end_date: employment_status === 'permanent' ? null : period_end_date,
+          };
           if (salaryField) enrollPayload.salary = salary;
           const resp = await fetch(`${API_BASE}/enroll/create-user`, {
             method: "POST",
@@ -15897,13 +16107,17 @@ async function fetchMultiLiveDetections() {
             if (userIdField) userIdField.value = data.user_id;
             showMessage("enrollmentMessage", data.message || `Staff profile '${name}' registered.`, "success");
             showAppToast(data.message || `Staff profile '${name}' registered.`, 'success', 5000);
-            ["enrollName", "enrollEmail", "enrollPhone", "enrollCNIC", "enrollSalary", "enrollJoinDate"].forEach((id) => {
+            ["enrollName", "enrollEmail", "enrollPhoneNational", "enrollCNIC", "enrollSalary", "enrollJoinDate", "enrollPeriodEndDate"].forEach((id) => {
               const field = document.getElementById(id);
               if (field) {
                 field.value = "";
                 field.classList.remove('is-valid', 'is-invalid');
               }
             });
+            const empStatus = document.getElementById('enrollEmploymentStatus');
+            if (empStatus) empStatus.value = 'permanent';
+            onEmploymentStatusChange('enroll');
+            setStaffPhoneFields('enroll', '');
             ['enrollNameError', 'enrollEmailError', 'enrollPhoneError', 'enrollCNICError'].forEach(id => {
               const err = document.getElementById(id);
               if (err) {
@@ -17080,7 +17294,7 @@ async function fetchMultiLiveDetections() {
         document.getElementById("editName").value = user.name;
         document.getElementById("editEmail").value = user.email || "";
         document.getElementById("editDepartment").value = user.department || "";
-        document.getElementById("editPhone").value = user.phone || "";
+        setStaffPhoneFields('edit', user.phone || '');
         document.getElementById("editPosition").value = cleanVal(user.position);
         document.getElementById("editCNIC").value = formatPakistanCnic(cleanVal(user.cnic));
         if (document.getElementById("editSalary")) {
@@ -17091,10 +17305,16 @@ async function fetchMultiLiveDetections() {
         if (document.getElementById("editShiftId")) {
           document.getElementById("editShiftId").value = user.shift_id || 1;
         }
+        const empStatus = document.getElementById('editEmploymentStatus');
+        if (empStatus) empStatus.value = user.employment_status || 'permanent';
+        const empEnd = document.getElementById('editPeriodEndDate');
+        if (empEnd) empEnd.value = cleanVal(user.period_end_date) || '';
+        window._editConfirmPermanent = false;
+        onEmploymentStatusChange('edit');
 
         document.getElementById("editModalMessage").innerHTML = "";
         if (typeof bindStaffLiveValidation === 'function') bindStaffLiveValidation();
-        ['editName', 'editEmail', 'editPhone', 'editCNIC'].forEach(id => {
+        ['editName', 'editEmail', 'editPhoneNational', 'editCNIC'].forEach(id => {
           const el = document.getElementById(id);
           if (el) el.dispatchEvent(new Event('input', { bubbles: true }));
         });
@@ -17193,12 +17413,15 @@ async function fetchMultiLiveDetections() {
         const name = document.getElementById("editName").value.trim();
         const email = document.getElementById("editEmail").value.trim();
         const department = document.getElementById("editDepartment").value.trim();
-        const phone = document.getElementById("editPhone").value.trim();
+        const phone = syncStaffPhoneHidden('edit');
         const position = document.getElementById("editPosition").value.trim();
         const cnic = formatPakistanCnic(document.getElementById("editCNIC").value.trim());
         const salary = document.getElementById("editSalary") ? document.getElementById("editSalary").value : "";
         const join_date = document.getElementById("editJoinDate").value;
         const exit_date = document.getElementById("editExitDate") ? document.getElementById("editExitDate").value : "";
+        const employment_status = document.getElementById("editEmploymentStatus")?.value || 'permanent';
+        const period_end_date = document.getElementById("editPeriodEndDate")?.value || '';
+        const confirm_permanent = Boolean(window._editConfirmPermanent);
         const shift_id = document.getElementById("editShiftId") ? parseInt(document.getElementById("editShiftId").value) : 1;
         const checkin_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("editCheckinCameras")) : 'all';
         const checkout_cameras = typeof getMultiSelectValues === 'function' ? getMultiSelectValues(document.getElementById("editCheckoutCameras")) : 'all';
@@ -17209,7 +17432,7 @@ async function fetchMultiLiveDetections() {
         const cnicErr = validateStaffCnicValue(cnic);
         setStaffFieldFeedback('editName', 'editNameError', nameErr);
         setStaffFieldFeedback('editEmail', 'editEmailError', emailErr);
-        setStaffFieldFeedback('editPhone', 'editPhoneError', phoneErr);
+        setStaffFieldFeedback('editPhoneNational', 'editPhoneError', phoneErr);
         setStaffFieldFeedback('editCNIC', 'editCNICError', cnicErr);
         syncEditSubmitEnabled();
         if (nameErr || emailErr || phoneErr || cnicErr) {
@@ -17253,10 +17476,16 @@ async function fetchMultiLiveDetections() {
           const resp = await fetch(`${API_BASE}/users/${userId}/update`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, email, department, phone, position, cnic, salary, join_date, exit_date, shift_id, checkin_cameras, checkout_cameras }),
+            body: JSON.stringify({
+              name, email, department, phone, position, cnic, salary, join_date, exit_date, shift_id, checkin_cameras, checkout_cameras,
+              employment_status,
+              period_end_date: employment_status === 'permanent' ? null : period_end_date,
+              confirm_permanent: confirm_permanent || employment_status === 'permanent',
+            }),
           });
           const data = await resp.json();
           if (resp.ok) {
+            window._editConfirmPermanent = false;
             closeEditModal();
             addTerminalLine(`[CRUD] Updated details for User '${name}' (ID: ${userId})`, "success");
             if (typeof window.refreshSharedPeopleLists === 'function') {
@@ -19842,9 +20071,12 @@ async function fetchMultiLiveDetections() {
         const camCheckboxes = Array.from(wrapper.querySelectorAll('.custom-camera-item input[type="checkbox"]:not([value="all"])'));
 
         if (isAll) {
+          wrapper.dataset.allowEmpty = '0';
           if (allChk) allChk.checked = true;
           camCheckboxes.forEach(cb => cb.checked = false);
         } else {
+          // QA-131: Clear means no cameras selected — do not snap back to "All".
+          wrapper.dataset.allowEmpty = '1';
           if (allChk) allChk.checked = false;
           camCheckboxes.forEach(cb => cb.checked = false);
         }
@@ -19856,13 +20088,15 @@ async function fetchMultiLiveDetections() {
         if (!wrapper) return;
         const allChk = document.getElementById(`${wrapperId}_opt_all`);
         const camCheckboxes = Array.from(wrapper.querySelectorAll('.custom-camera-item input[type="checkbox"]:not([value="all"])'));
+        const allowEmpty = String(wrapper.dataset.allowEmpty || '0') === '1';
 
         let selected = [];
         if (allChk && allChk.checked) {
           selected = ['all'];
+          wrapper.dataset.allowEmpty = '0';
         } else {
           selected = camCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
-          if (selected.length === 0) {
+          if (selected.length === 0 && !allowEmpty) {
             selected = ['all'];
             if (allChk) allChk.checked = true;
           }
@@ -19892,16 +20126,23 @@ async function fetchMultiLiveDetections() {
         if (!chipsCont || !wrapper) return;
 
         const isCheckout = wrapper.dataset.type === 'checkout';
-        const str = (valueStr || 'all').trim();
+        const allowEmpty = String(wrapper.dataset.allowEmpty || '0') === '1';
+        const str = String(valueStr == null ? '' : valueStr).trim();
 
-        if (!str || str.toLowerCase() === 'all') {
+        if ((!str || str.toLowerCase() === 'all') && !(allowEmpty && !str)) {
+          if (!str && allowEmpty) {
+            chipsCont.innerHTML = `<span class="custom-camera-chip" style="color:#64748b;"><i class="fa-solid fa-ban" style="font-size:0.7em;"></i> None selected</span>`;
+            return;
+          }
           chipsCont.innerHTML = `<span class="custom-camera-chip all-badge"><i class="fa-solid fa-video" style="font-size:0.7em;"></i> All Active Cameras</span>`;
           return;
         }
 
         const tokens = str.split(',').map(t => t.trim()).filter(Boolean);
         if (tokens.length === 0) {
-          chipsCont.innerHTML = `<span class="custom-camera-chip all-badge"><i class="fa-solid fa-video" style="font-size:0.7em;"></i> All Active Cameras</span>`;
+          chipsCont.innerHTML = allowEmpty
+            ? `<span class="custom-camera-chip" style="color:#64748b;"><i class="fa-solid fa-ban" style="font-size:0.7em;"></i> None selected</span>`
+            : `<span class="custom-camera-chip all-badge"><i class="fa-solid fa-video" style="font-size:0.7em;"></i> All Active Cameras</span>`;
           return;
         }
 
@@ -19925,8 +20166,10 @@ async function fetchMultiLiveDetections() {
         if (!el) return 'all';
 
         const wrapper = el.classList.contains('custom-camera-select-wrapper') ? el : el.closest('.custom-camera-select-wrapper');
-        if (wrapper && wrapper.dataset.currentVal) {
-          return wrapper.dataset.currentVal;
+        if (wrapper && Object.prototype.hasOwnProperty.call(wrapper.dataset, 'currentVal')) {
+          const raw = String(wrapper.dataset.currentVal || '').trim();
+          if (!raw && String(wrapper.dataset.allowEmpty || '0') === '1') return '';
+          return raw || 'all';
         }
         if (el.tagName === 'SELECT') {
           const selected = Array.from(el.selectedOptions).map(o => o.value);
@@ -20017,11 +20260,26 @@ async function fetchMultiLiveDetections() {
 
       function updateBulkButtonBadge() {
         const summaryEl = document.getElementById('bulkTargetStaffSummary');
+        const listEl = document.getElementById('bulkTargetStaffList');
+        const selected = selectedStaffIds.size > 0
+          ? (tabAllStaff || []).filter((s) => selectedStaffIds.has(Number(s.id)))
+          : (tabAllStaff || []);
         if (summaryEl) {
           if (selectedStaffIds.size > 0) {
             summaryEl.innerHTML = `<strong>${selectedStaffIds.size}</strong> staff member(s) selected for camera assignment update.`;
           } else {
-            summaryEl.innerHTML = `<strong>All ${tabAllStaff.length}</strong> staff members will receive this camera assignment.`;
+            summaryEl.innerHTML = `<strong>All ${(tabAllStaff || []).length}</strong> staff members will receive this camera assignment.`;
+          }
+        }
+        if (listEl) {
+          if (!selected.length) {
+            listEl.innerHTML = '<div style="color:#64748b; padding:6px 2px;">No staff in this directory yet.</div>';
+          } else {
+            listEl.innerHTML = selected.map((s) => {
+              const name = escapeHtml(s.name || `User ${s.id}`);
+              const dept = escapeHtml(s.department || '—');
+              return `<div style="display:flex; justify-content:space-between; gap:10px; padding:6px 4px; border-bottom:1px solid #e0f2fe;"><span style="font-weight:700; overflow-wrap:anywhere;">${name}</span><span style="color:#64748b; white-space:nowrap;">${dept}</span></div>`;
+            }).join('');
           }
         }
         const bar = document.getElementById('staffBulkActionsBar');
@@ -20078,6 +20336,11 @@ async function fetchMultiLiveDetections() {
 
       function openBulkCameraModal() {
         populateCameraAssignmentDropdowns();
+        ['bulkCheckinCamerasWrapper', 'bulkCheckoutCamerasWrapper'].forEach((id) => {
+          const w = document.getElementById(id);
+          if (w) w.dataset.allowEmpty = '0';
+          setMultiSelectValues(id, 'all');
+        });
         updateBulkButtonBadge();
         document.getElementById('bulkCameraMsg').innerHTML = '';
         document.getElementById('bulkCameraModal').style.display = 'flex';
@@ -20087,9 +20350,29 @@ async function fetchMultiLiveDetections() {
         document.getElementById('bulkCameraModal').style.display = 'none';
       }
 
+      function clearBulkCameraFormSelections() {
+        // QA-131: clear in-form selections only — does not save and does not close.
+        selectedStaffIds.clear();
+        document.querySelectorAll('.staff-row-checkbox').forEach((cb) => { cb.checked = false; });
+        const selectAll = document.getElementById('selectAllStaffCheck');
+        if (selectAll) selectAll.checked = false;
+        setCustomCameraAll('bulkCheckinCamerasWrapper', false);
+        setCustomCameraAll('bulkCheckoutCamerasWrapper', false);
+        updateBulkButtonBadge();
+        const msg = document.getElementById('bulkCameraMsg');
+        if (msg) {
+          msg.innerHTML = '<div class="alert alert-secondary p-2 mb-2" style="font-size:0.85em;">Selections cleared. Saved camera assignments were not changed.</div>';
+        }
+      }
+      window.clearBulkCameraFormSelections = clearBulkCameraFormSelections;
+
       async function submitBulkCameraAssignment() {
         const checkinCameras = getMultiSelectValues('bulkCheckinCamerasWrapper');
         const checkoutCameras = getMultiSelectValues('bulkCheckoutCamerasWrapper');
+        if (!String(checkinCameras || '').trim() || !String(checkoutCameras || '').trim()) {
+          document.getElementById('bulkCameraMsg').innerHTML = '<div class="alert alert-warning p-2" style="font-size:0.85em;">Select at least one check-in camera and one check-out camera, or choose All Active.</div>';
+          return;
+        }
         const user_ids = selectedStaffIds.size > 0 ? Array.from(selectedStaffIds) : 'all';
 
         const btn = document.querySelector('#bulkCameraModal button.btn-primary');
@@ -20223,6 +20506,13 @@ async function fetchMultiLiveDetections() {
               <div style="font-size:0.78rem; line-height:1.35;">
                 <div style="color:#334155;"><i class="fa-regular fa-envelope" style="color:#0284c7; margin-right:4px; font-size:0.72rem;"></i>${s.email || '--'}</div>
                 <div style="color:#64748b;"><i class="fa-solid fa-phone" style="color:#94a3b8; margin-right:4px; font-size:0.72rem;"></i>${s.phone || '--'}</div>
+                ${(() => {
+                  const st = String(s.employment_status || 'permanent').toLowerCase();
+                  if (st === 'permanent') return '';
+                  const end = s.period_end_date || s.exit_date || '';
+                  const label = st === 'internship' ? 'Internship' : 'Probation';
+                  return `<div style="margin-top:3px;"><span style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; padding:1px 6px; border-radius:4px; font-size:0.68rem; font-weight:700;">${label}${end ? ` · ends ${escapeHtml(String(end).slice(0,10))}` : ''}</span></div>`;
+                })()}
               </div>
             </td>
             <td style="padding:9px 12px; vertical-align:middle;"><span style="color:#475569; font-size:0.78rem; font-weight:500;">${s.cnic || '--'}</span></td>
@@ -20293,7 +20583,7 @@ async function fetchMultiLiveDetections() {
         document.getElementById('editName').value = user.name || '';
         document.getElementById('editEmail').value = user.email || '';
         document.getElementById('editDepartment').value = user.department || '';
-        document.getElementById('editPhone').value = user.phone || '';
+        setStaffPhoneFields('edit', user.phone || '');
         if (typeof onEditDeptChange === 'function') {
           onEditDeptChange(user.department || '', user.position || '');
         } else if (document.getElementById('editPosition')) {
@@ -20304,9 +20594,15 @@ async function fetchMultiLiveDetections() {
         if (document.getElementById('editJoinDate')) document.getElementById('editJoinDate').value = user.join_date || '';
         if (document.getElementById('editExitDate')) document.getElementById('editExitDate').value = user.exit_date || '';
         if (document.getElementById('editShiftId')) document.getElementById('editShiftId').value = user.shift_id || 1;
+        const empStatus = document.getElementById('editEmploymentStatus');
+        if (empStatus) empStatus.value = user.employment_status || 'permanent';
+        const empEnd = document.getElementById('editPeriodEndDate');
+        if (empEnd) empEnd.value = user.period_end_date || '';
+        window._editConfirmPermanent = false;
+        onEmploymentStatusChange('edit');
         if (typeof bindStaffLiveValidation === 'function') bindStaffLiveValidation();
         if (typeof syncEditSubmitEnabled === 'function') {
-          ['editName', 'editEmail', 'editPhone', 'editCNIC'].forEach(id => {
+          ['editName', 'editEmail', 'editPhoneNational', 'editCNIC'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.dispatchEvent(new Event('input', { bubbles: true }));
           });
@@ -28061,14 +28357,31 @@ async function fetchMultiLiveDetections() {
     }
     window.onLeaveBalanceYearChange = onLeaveBalanceYearChange;
 
+    function onLeaveBalanceDeptChange() {
+      _leaveBalPage = 1;
+      filterLeaveBalancesTable();
+    }
+    window.onLeaveBalanceDeptChange = onLeaveBalanceDeptChange;
+
     function resetLeaveBalanceFilters() {
       const search = document.getElementById('leaveBalanceSearch');
       const pageSize = document.getElementById('leaveBalancePageSize');
+      const dept = document.getElementById('leaveBalanceDeptFilter');
+      const yearSelect = document.getElementById('leaveBalanceYearFilter');
       if (search) search.value = '';
       if (pageSize) pageSize.value = '25';
+      if (dept) dept.value = 'all';
       _leaveBalPageSize = 25;
       _leaveBalPage = 1;
       if (typeof refreshAppCameraSelect === 'function' && pageSize) refreshAppCameraSelect(pageSize);
+      if (typeof refreshAppCameraSelect === 'function' && dept) refreshAppCameraSelect(dept);
+      const currentYear = String(new Date().getFullYear());
+      if (yearSelect && [...yearSelect.options].some((o) => o.value === currentYear)) {
+        yearSelect.value = currentYear;
+        if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(yearSelect);
+        loadLeaveBalances();
+        return;
+      }
       filterLeaveBalancesTable();
     }
     window.resetLeaveBalanceFilters = resetLeaveBalanceFilters;
@@ -28087,34 +28400,72 @@ async function fetchMultiLiveDetections() {
     window.changeLeaveBalancePage = changeLeaveBalancePage;
 
     function configuredLeaveBalanceTypes() {
-      return (_allLeaveTypes || []).filter(lt => Number(lt.active ?? 1) !== 0);
+      // QA-137: show active types plus inactive ones that still appear in loaded balances.
+      const active = (_allLeaveTypes || []).filter(lt => Number(lt.active ?? 1) !== 0);
+      const byKey = new Map(active.map(lt => [String(lt.code || lt.name || lt.id), lt]));
+      (_allLeaveBalances || []).forEach((row) => {
+        const bals = row.balances || {};
+        Object.keys(bals).forEach((key) => {
+          if (byKey.has(key)) return;
+          const match = (_allLeaveTypes || []).find(lt => String(lt.code) === key || String(lt.name) === key || String(lt.id) === key);
+          if (match) byKey.set(key, match);
+          else byKey.set(key, { code: key, name: key, active: 0 });
+        });
+      });
+      return Array.from(byKey.values());
     }
 
     function renderLeaveBalanceHead() {
       const thead = document.getElementById('leaveBalancesTableHead');
       if (!thead) return configuredLeaveBalanceTypes();
       const types = configuredLeaveBalanceTypes();
-      thead.innerHTML = `<tr><th>Employee ID</th><th>Employee</th><th>Department</th>${types.map(lt => `<th>${escapeHtml(lt.name || lt.code)}</th>`).join('')}</tr>`;
+      thead.innerHTML = `<tr><th>Employee ID</th><th>Employee</th><th>Department</th>${types.map(lt => {
+        const inactive = Number(lt.active ?? 1) === 0;
+        const label = inactive ? `${lt.name || lt.code} (Inactive)` : (lt.name || lt.code);
+        return `<th>${escapeHtml(label)}</th>`;
+      }).join('')}</tr>`;
       return types;
+    }
+
+    function populateLeaveBalanceDeptFilter(balances) {
+      const select = document.getElementById('leaveBalanceDeptFilter');
+      if (!select) return;
+      const prev = select.value || 'all';
+      const depts = [...new Set((balances || []).map(b => String(b.department || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      select.innerHTML = `<option value="all">All Departments</option>${depts.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('')}`;
+      if ([...select.options].some(o => o.value === prev)) select.value = prev;
+      else select.value = 'all';
+      if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(select);
     }
 
     async function loadLeaveBalances() {
       const tbody = document.getElementById('leaveBalancesTableBody');
       if (!tbody) return;
       const yearSelect = document.getElementById('leaveBalanceYearFilter');
-      if (yearSelect && !yearSelect.options.length) {
-        const currentYear = new Date().getFullYear();
-        [currentYear - 2, currentYear - 1, currentYear, currentYear + 1].forEach(y => {
-          const opt = document.createElement('option');
-          opt.value = String(y);
-          opt.textContent = String(y);
-          yearSelect.appendChild(opt);
-        });
-        yearSelect.value = String(currentYear);
-        if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(yearSelect);
-        else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(yearSelect);
+      const currentYear = new Date().getFullYear();
+      try {
+        const yearsRes = await fetch('/api/leaves/balance-years');
+        const yearsData = await yearsRes.json().catch(() => ({}));
+        const years = Array.isArray(yearsData.years) && yearsData.years.length
+          ? yearsData.years.map(Number).filter((y) => Number.isFinite(y))
+          : [currentYear];
+        if (yearSelect) {
+          const prev = yearSelect.value;
+          yearSelect.innerHTML = years.map((y) => `<option value="${y}">${y}</option>`).join('');
+          if (prev && years.map(String).includes(String(prev))) yearSelect.value = String(prev);
+          else if (years.map(String).includes(String(currentYear))) yearSelect.value = String(currentYear);
+          else yearSelect.value = String(years[years.length - 1]);
+          if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(yearSelect);
+          else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(yearSelect);
+        }
+      } catch (_) {
+        if (yearSelect && !yearSelect.options.length) {
+          yearSelect.innerHTML = `<option value="${currentYear}">${currentYear}</option>`;
+          yearSelect.value = String(currentYear);
+        }
       }
-      const balanceYear = (yearSelect && yearSelect.value) ? yearSelect.value : String(new Date().getFullYear());
+      const balanceYear = (yearSelect && yearSelect.value) ? yearSelect.value : String(currentYear);
       const yearLabel = document.getElementById('leaveBalanceYearLabel');
       if (yearLabel) yearLabel.textContent = balanceYear;
       tbody.innerHTML = (window.leaveModuleLoader || ((c) => `<tr><td colspan="${c}" class="text-center text-muted p-4"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.35rem; color:#0d9488;"></i></td></tr>`))(6);
@@ -28127,6 +28478,7 @@ async function fetchMultiLiveDetections() {
         const res = await fetch(`/api/leaves/balances?year=${encodeURIComponent(balanceYear)}`);
         const data = await res.json();
         _allLeaveBalances = Array.isArray(data) ? data : [];
+        populateLeaveBalanceDeptFilter(_allLeaveBalances);
         filterLeaveBalancesTable();
       } catch (e) {
         console.error("Load balances error:", e);
@@ -28138,13 +28490,16 @@ async function fetchMultiLiveDetections() {
       const tbody = document.getElementById('leaveBalancesTableBody');
       if (!tbody) return;
       const search = (document.getElementById('leaveBalanceSearch')?.value || '').trim().toLowerCase();
+      const deptFilter = (document.getElementById('leaveBalanceDeptFilter')?.value || 'all').trim();
 
       const filtered = _allLeaveBalances.filter(b => {
         const nameStr = (b.user_name || '').toLowerCase();
         const idStr = String(b.user_id || '').toLowerCase();
         const empIdDisp = `emp-${String(b.user_id ?? '').padStart(3, '0')}`;
         const deptStr = (b.department || '').toLowerCase();
-        return !search || nameStr.includes(search) || idStr.includes(search) || empIdDisp.includes(search) || deptStr.includes(search);
+        const deptOk = deptFilter === 'all' || String(b.department || '').trim() === deptFilter;
+        const searchOk = !search || nameStr.includes(search) || idStr.includes(search) || empIdDisp.includes(search) || deptStr.includes(search);
+        return deptOk && searchOk;
       });
 
       const total = filtered.length;
@@ -28168,7 +28523,10 @@ async function fetchMultiLiveDetections() {
       const colCount = 3 + Math.max(types.length, 1);
 
       if (total === 0) {
-        tbody.innerHTML = `<tr><td colspan="${colCount}" class="text-center text-muted p-4">No employee balances found.</td></tr>`;
+        const emptyMsg = deptFilter !== 'all'
+          ? `No staff in department “${escapeHtml(deptFilter)}” for this year.`
+          : (search ? 'No employee balances match this search.' : 'No employee balances found.');
+        tbody.innerHTML = `<tr><td colspan="${colCount}" class="text-center text-muted p-4">${emptyMsg}</td></tr>`;
         return;
       }
 
@@ -28612,6 +28970,9 @@ async function fetchMultiLiveDetections() {
         return;
       }
       const requested = Math.max(0, Number(data.requested_days) || 0);
+      const calendarDays = Math.max(0, Number(data.calendar_days ?? data.day_breakdown?.calendar_days ?? requested) || 0);
+      const holidayDays = Math.max(0, Number(data.holiday_days ?? data.day_breakdown?.holiday_days ?? 0) || 0);
+      const offDays = Math.max(0, Number(data.off_days ?? data.day_breakdown?.off_days ?? 0) || 0);
       const quotaDaysRequested = Math.max(0, Number(data.quota_days_requested ?? requested) || 0);
       const remaining = Math.max(0, Number(data.remaining_days) || 0);
       const isPaid = Number(data.is_paid == null ? 1 : data.is_paid) !== 0;
@@ -28628,12 +28989,18 @@ async function fetchMultiLiveDetections() {
       const paidDays = !isPaid ? 0 : (overQuota && treatment !== 'paid' ? Math.min(requested, remaining) : requested);
       const unpaidDays = treatment === 'rejected' ? 0 : (requested - paidDays);
       const rejectedDays = treatment === 'rejected' ? Math.max(0, requested - paidDays) : 0;
+      const skipNoteParts = [];
+      if (holidayDays) skipNoteParts.push(`${holidayDays} holiday not counted`);
+      if (offDays) skipNoteParts.push(`${offDays} off day(s) not counted`);
+      const rangeNote = calendarDays
+        ? `<div class="mt-1" style="color:#475569;">${calendarDays} day(s) requested, <strong>${requested} counted</strong>${skipNoteParts.length ? `, ${skipNoteParts.join(', ')}` : ''}.</div>`
+        : '';
       const excessNote = overQuota && !treatment
         ? '<div class="text-warning mt-1">Choose how to treat the excess before submitting.</div>'
         : (treatment === 'rejected'
           ? `<div class="text-danger mt-1">${rejectedDays} excess day(s) will be rejected with your reason.</div>`
           : '');
-      summary.innerHTML = `<strong>Request total:</strong> ${requested} scheduled day(s) &nbsp; <strong style="color:#047857;">Paid:</strong> ${paidDays} &nbsp; <strong style="color:#b91c1c;">Unpaid:</strong> ${unpaidDays}${rejectedDays ? ` &nbsp; <strong style="color:#b91c1c;">Rejected:</strong> ${rejectedDays}` : ''}${excessNote}`;
+      summary.innerHTML = `${rangeNote}<strong>Quota charge:</strong> ${requested} day(s) &nbsp; <strong style="color:#047857;">Paid:</strong> ${paidDays} &nbsp; <strong style="color:#b91c1c;">Unpaid:</strong> ${unpaidDays}${rejectedDays ? ` &nbsp; <strong style="color:#b91c1c;">Rejected:</strong> ${rejectedDays}` : ''}${excessNote}`;
     }
 
     function formatLeaveExcessDateLabel(iso) {
@@ -28831,29 +29198,7 @@ async function fetchMultiLiveDetections() {
       }
 
       try {
-        if (startDate || endDate) {
-          const holidays = await loadCompanyHolidaysForLeave();
-          if (requestSequence !== leaveQuotaRequestSequence) return;
-          const holiday = findCompanyHolidayInLeaveRange(startDate || endDate, endDate || startDate, holidays);
-          if (holiday) {
-            const holidayName = holiday.name || 'A company holiday';
-            currentLeaveQuotaValid = false;
-            currentLeaveQuotaMsg = `${holidayName} is a public holiday on ${holiday.matched_date}. Leave cannot be requested on a holiday. Please choose another date.`;
-            currentLeaveQuotaData = { allowed: false, reason_code: 'public_holiday', message: currentLeaveQuotaMsg };
-            const excessContainer = document.getElementById('excessLeaveContainer');
-            if (excessContainer) excessContainer.style.display = 'none';
-            alertDiv.style.display = 'block';
-            alertDiv.style.background = '#fffbeb';
-            alertDiv.style.color = '#92400e';
-            alertDiv.style.border = '1px solid #fde68a';
-            alertDiv.innerHTML = `<i class="fa-solid fa-calendar-day" style="margin-right:6px; color:#b45309;"></i> A little heads-up: <strong>${escapeHtml(holidayName)}</strong> is a public holiday on <strong>${escapeHtml(holiday.matched_date)}</strong>, so leave can't be applied that day. Please choose another date.`;
-            if (badgeDiv) {
-              badgeDiv.innerHTML = `<span style="color:#92400e; font-weight:700;"><i class="fa-solid fa-calendar-day"></i> Public holiday: ${escapeHtml(holidayName)} (${escapeHtml(holiday.matched_date)})</span>`;
-            }
-            updateLeaveCalculationSummary(null);
-            return;
-          }
-        }
+        // QA-134: holidays/off-days inside a range are allowed; server counts only working days.
 
         let url = `/api/leaves/check-quota?leave_type=${encodeURIComponent(leaveType)}&leave_duration=${encodeURIComponent(leaveDuration)}`;
         if (userId) url += `&user_id=${encodeURIComponent(userId)}`;

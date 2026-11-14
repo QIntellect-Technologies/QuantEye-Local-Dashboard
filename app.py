@@ -1093,6 +1093,8 @@ def create_user():
             checkout_cameras=checkout_cameras,
             organization_id=current_tenant,
             branch_id=get_current_branch_id(),
+            employment_status=data.get('employment_status') or 'permanent',
+            period_end_date=data.get('period_end_date') or data.get('employment_end_date'),
         )
     except ValueError as ve:
         err_msg = str(ve)
@@ -5085,6 +5087,9 @@ def api_update_user(user_id):
         shift_effective_from=data.get('shift_effective_from'),
         exit_date=exit_date,
         confirm_shift_reclassify=bool(data.get('confirm_shift_reclassify')),
+        employment_status=data.get('employment_status'),
+        period_end_date=data.get('period_end_date') or data.get('employment_end_date'),
+        confirm_permanent=bool(data.get('confirm_permanent')),
         )
     except ValueError as exc:
         status = 409 if str(exc) == db.PAYROLL_LOCK_MESSAGE or 'reclassifies' in str(exc) else 400
@@ -6543,6 +6548,14 @@ def api_get_leave_balances():
         if not u_target:
             return jsonify({'error': 'Employee not found or access denied'}), 404
     return jsonify(db.get_leave_balances(year=year, user_id=user_id, organization_id=current_tenant))
+
+
+@app.route('/api/leaves/balance-years', methods=['GET'])
+def api_get_leave_balance_years():
+    """QA-136: years offered by Leave balances (first org record → current year)."""
+    current_tenant = get_current_tenant_id()
+    years = db.get_leave_balance_years(organization_id=current_tenant)
+    return jsonify({'success': True, 'years': years, 'current_year': datetime.now().year})
 
 
 @app.route('/api/holidays', methods=['GET'])

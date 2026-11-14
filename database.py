@@ -650,7 +650,10 @@ def init_db():
                 ("class_id", "INTEGER DEFAULT NULL"),
                 ("roll_number", "TEXT DEFAULT NULL"),
                 ("guardian_name", "TEXT DEFAULT NULL"),
-                ("guardian_phone", "TEXT DEFAULT NULL")
+                ("guardian_phone", "TEXT DEFAULT NULL"),
+                # QA-133: probation / internship at enrollment
+                ("employment_status", "TEXT DEFAULT 'permanent'"),
+                ("period_end_date", "TEXT"),
             ]:
                 try:
                     cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
@@ -1819,6 +1822,61 @@ def abandon_attendance_ingestion(event_id: str) -> None:
         )
 
 
+# QA-132: dial code → national number length rules (min, max) after stripping trunk 0.
+PHONE_DIAL_RULES: Dict[str, Dict[str, Any]] = {
+    '92': {'iso': 'PK', 'label': 'Pakistan (+92)', 'min': 10, 'max': 10, 'strip0': True},
+    '91': {'iso': 'IN', 'label': 'India (+91)', 'min': 10, 'max': 10, 'strip0': True},
+    '971': {'iso': 'AE', 'label': 'UAE (+971)', 'min': 8, 'max': 9, 'strip0': True},
+    '966': {'iso': 'SA', 'label': 'Saudi Arabia (+966)', 'min': 8, 'max': 9, 'strip0': True},
+    '880': {'iso': 'BD', 'label': 'Bangladesh (+880)', 'min': 10, 'max': 10, 'strip0': True},
+    '1': {'iso': 'US', 'label': 'USA/Canada (+1)', 'min': 10, 'max': 10, 'strip0': False},
+    '44': {'iso': 'GB', 'label': 'United Kingdom (+44)', 'min': 10, 'max': 10, 'strip0': True},
+    '86': {'iso': 'CN', 'label': 'China (+86)', 'min': 11, 'max': 11, 'strip0': True},
+}
+DEFAULT_PHONE_DIAL = '92'
+
+
+def normalize_staff_phone(phone: Optional[str], default_dial: str = DEFAULT_PHONE_DIAL) -> str:
+    """QA-132: store phone as E.164 (+dial + national). Raises ValueError with the rule named."""
+    raw = str(phone or '').strip()
+    if not raw:
+        return ''
+    if not re.match(r'^\+?[0-9\s().-]+$', raw):
+        raise ValueError('Phone may only include digits and + ( ) . - characters.')
+    digits = re.sub(r'\D', '', raw)
+    if not digits:
+        raise ValueError('Enter a valid phone number with country code.')
+    dial = str(default_dial or DEFAULT_PHONE_DIAL).strip() or DEFAULT_PHONE_DIAL
+    national = digits
+    if raw.startswith('+') or (len(digits) > 10 and digits.startswith(tuple(PHONE_DIAL_RULES.keys()))):
+        # Longest dial-code match first.
+        matched = None
+        for code in sorted(PHONE_DIAL_RULES.keys(), key=len, reverse=True):
+            if digits.startswith(code):
+                matched = code
+                national = digits[len(code):]
+                break
+        if matched:
+            dial = matched
+        elif raw.startswith('+'):
+            raise ValueError('Choose a supported country code for this phone number.')
+    rule = PHONE_DIAL_RULES.get(dial) or PHONE_DIAL_RULES[DEFAULT_PHONE_DIAL]
+    if rule.get('strip0') and national.startswith('0'):
+        national = national.lstrip('0')
+    min_len = int(rule['min'])
+    max_len = int(rule['max'])
+    if len(national) < min_len or len(national) > max_len:
+        raise ValueError(
+            f"Phone number for {rule['label']} must be {min_len}"
+            + (f"–{max_len}" if min_len != max_len else '')
+            + f" digits after the country code (got {len(national)})."
+        )
+    e164 = f'+{dial}{national}'
+    if len(re.sub(r'\D', '', e164)) > 15:
+        raise ValueError('Phone number is too long for international format (max 15 digits).')
+    return e164
+
+
 def _validate_staff_fields(name: str, email: Optional[str], phone: Optional[str], department: Optional[str], position: Optional[str], notes: Optional[str], cnic: Optional[str]) -> None:
     clean_name = str(name or '').strip()
     clean_email = str(email or '').strip()
@@ -1841,9 +1899,7 @@ def _validate_staff_fields(name: str, email: Optional[str], phone: Optional[str]
     if clean_email and (len(clean_email) > 120 or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', clean_email)):
         raise ValueError('Enter a valid email address')
     if clean_phone:
-        digits = re.sub(r'\D', '', clean_phone)
-        if len(clean_phone) > 30 or len(digits) < 7 or len(digits) > 15 or not re.match(r'^\+?[0-9\s().-]+$', clean_phone):
-            raise ValueError('Enter a valid phone number')
+        normalize_staff_phone(clean_phone)
     if clean_cnic and (len(clean_cnic) > 15 or not re.match(r'^\d{5}-?\d{7}-?\d$', clean_cnic)):
         raise ValueError('CNIC must use the format 12345-1234567-1')
     for label, value, limit in (
@@ -1853,6 +1909,103 @@ def _validate_staff_fields(name: str, email: Optional[str], phone: Optional[str]
     ):
         if len(value) > limit:
             raise ValueError(f'{label} cannot exceed {limit} characters')
+
+
+def normalize_employment_status(value: Any) -> str:
+    status = str(value or 'permanent').strip().lower()
+    aliases = {
+        'perm': 'permanent',
+        'full': 'permanent',
+        'full_time': 'permanent',
+        'probationary': 'probation',
+        'intern': 'internship',
+        'trainee': 'internship',
+    }
+    status = aliases.get(status, status)
+    return status if status in ('permanent', 'probation', 'internship') else 'permanent'
+
+
+def validate_employment_period(
+    employment_status: Any,
+    period_end_date: Any,
+    join_date: Any = None,
+    *,
+    require_end_for_special: bool = True,
+) -> Tuple[str, Optional[str]]:
+    """QA-133: probation/internship need an end date on/after joining date."""
+    status = normalize_employment_status(employment_status)
+    end_raw = str(period_end_date or '').strip()[:10]
+    join_raw = str(join_date or '').strip()[:10] or None
+    if status == 'permanent':
+        return status, None
+    if require_end_for_special and not end_raw:
+        label = 'probation' if status == 'probation' else 'internship'
+        raise ValueError(f'Enter the end date for this {label} period.')
+    if end_raw:
+        try:
+            datetime.strptime(end_raw, '%Y-%m-%d')
+        except ValueError:
+            raise ValueError('Employment period end date must be a valid calendar date (YYYY-MM-DD)')
+        if join_raw and end_raw < join_raw:
+            raise ValueError('Employment period end date cannot be before the joining date.')
+    return status, (end_raw or None)
+
+
+def apply_expired_employment_periods(organization_id: Optional[str] = None) -> int:
+    """QA-133: when probation/internship end date is reached, treat as leaver (exit_date + inactive)."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    updated = 0
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            params: List[Any] = [today]
+            org_sql = ''
+            if organization_id and organization_id not in ('all', ''):
+                if organization_id == 'DEFAULT_ORG':
+                    org_sql = " AND (organization_id = 'DEFAULT_ORG' OR organization_id IS NULL OR organization_id = '')"
+                else:
+                    org_sql = ' AND organization_id = ?'
+                    params.append(organization_id)
+            cursor.execute(
+                f"""
+                SELECT id, employment_status, period_end_date, exit_date
+                FROM users
+                WHERE active = 1
+                  AND LOWER(COALESCE(employment_status, 'permanent')) IN ('probation', 'internship')
+                  AND period_end_date IS NOT NULL AND TRIM(period_end_date) != ''
+                  AND period_end_date <= ?
+                  {org_sql}
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+            for row in rows:
+                uid = row[0]
+                end_date = str(row[2])[:10]
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET exit_date = COALESCE(NULLIF(TRIM(exit_date), ''), ?),
+                        active = 0,
+                        notes = CASE
+                          WHEN notes IS NULL OR TRIM(notes) = '' THEN ?
+                          ELSE notes || ' ' || ?
+                        END
+                    WHERE id = ?
+                    """,
+                    (
+                        end_date,
+                        f'[Employment period ended {end_date}]',
+                        f'[Employment period ended {end_date}]',
+                        uid,
+                    ),
+                )
+                updated += 1
+            if updated:
+                conn.commit()
+    except Exception as e:
+        logger.warning("apply_expired_employment_periods failed: %s", e)
+    return updated
 
 
 def add_user(
@@ -1876,7 +2029,9 @@ def add_user(
     class_id: Optional[int] = None,
     roll_number: Optional[str] = None,
     guardian_name: Optional[str] = None,
-    guardian_phone: Optional[str] = None
+    guardian_phone: Optional[str] = None,
+    employment_status: str = 'permanent',
+    period_end_date: Optional[str] = None,
 ) -> Optional[int]:
     """Add a new user with validation, HR/student profile attributes, shift assignment, and camera assignments."""
     if not name or len(name.strip()) == 0:
@@ -1884,6 +2039,11 @@ def add_user(
         return None
 
     clean_name = name.strip()
+    phone = normalize_staff_phone(phone) if str(phone or '').strip() else (phone or '')
+    emp_status, emp_end = validate_employment_period(
+        employment_status, period_end_date, join_date, require_end_for_special=True
+    )
+    exit_date_value = emp_end if emp_status == 'internship' else None
     _validate_staff_fields(clean_name, email, phone, department, position, notes, cnic)
     if clean_name and clean_name[0] in ('=', '+', '-', '@'):
         raise ValueError("Name cannot start with =, +, -, or @")
@@ -1928,9 +2088,10 @@ def add_user(
                     SET active = 1, email = ?, phone = ?, department = ?, password = NULL, password_hash = ?, role = ?,
                         notes = ?, cnic = ?, position = ?, salary = ?, join_date = ?, shift_id = ?,
                         checkin_cameras = ?, checkout_cameras = ?, organization_id = ?, branch_id = ?,
-                        person_type = ?, class_id = ?, roll_number = ?, guardian_name = ?, guardian_phone = ?
+                        person_type = ?, class_id = ?, roll_number = ?, guardian_name = ?, guardian_phone = ?,
+                        employment_status = ?, period_end_date = ?, exit_date = COALESCE(?, exit_date)
                     WHERE id = ?
-                """, (email, phone, department, password_hash, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target, person_type or 'staff', class_id, roll_number, guardian_name, guardian_phone, existing_id))
+                """, (email, phone, department, password_hash, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target, person_type or 'staff', class_id, roll_number, guardian_name, guardian_phone, emp_status, emp_end, exit_date_value, existing_id))
                 effective_from = join_date if join_date else None
                 if effective_from:
                     try: datetime.strptime(effective_from, "%Y-%m-%d")
@@ -1944,9 +2105,9 @@ def add_user(
             # 2. Insert new user safely scoped to this organization
             cursor.execute(
                 '''INSERT INTO users
-                   (name, email, phone, department, password, password_hash, role, notes, cnic, position, salary, join_date, shift_id, checkin_cameras, checkout_cameras, organization_id, branch_id, person_type, class_id, roll_number, guardian_name, guardian_phone)
-                   VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (clean_name, email, phone, department, password_hash, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target, person_type or 'staff', class_id, roll_number, guardian_name, guardian_phone)
+                   (name, email, phone, department, password, password_hash, role, notes, cnic, position, salary, join_date, shift_id, checkin_cameras, checkout_cameras, organization_id, branch_id, person_type, class_id, roll_number, guardian_name, guardian_phone, employment_status, period_end_date, exit_date)
+                   VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (clean_name, email, phone, department, password_hash, role, notes, cnic, position, salary, join_date, shift_id or 1, checkin_cameras or 'all', checkout_cameras or 'all', org_target, branch_target, person_type or 'staff', class_id, roll_number, guardian_name, guardian_phone, emp_status, emp_end, exit_date_value)
             )
             user_id = cursor.lastrowid
             if user_id is None:
@@ -2151,6 +2312,10 @@ def heal_deleted_camera_assignments(organization_id: Optional[str] = None, branc
 def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = None, branch_id: Optional[str] = None,
                   person_type: Optional[str] = None, class_id: Optional[int] = None) -> List[Dict]:
     """Get all active users with today's attendance status, shift details, camera assignments, and student/class info strictly scoped by tenant."""
+    try:
+        apply_expired_employment_periods(organization_id)
+    except Exception:
+        pass
     pg_ids = None
     if organization_id and organization_id not in ('all', 'DEFAULT_ORG'):
         if postgres_is_configured():
@@ -2195,7 +2360,9 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
                        u.guardian_name,
                        u.guardian_phone,
                        c.name as class_name,
-                       c.section as class_section
+                       c.section as class_section,
+                       COALESCE(u.employment_status, 'permanent') as employment_status,
+                       COALESCE(u.period_end_date, '') as period_end_date
                 FROM users u
                 LEFT JOIN shifts s ON COALESCE(u.shift_id, 1) = s.id
                 LEFT JOIN classes c ON u.class_id = c.id
@@ -2254,7 +2421,9 @@ def get_all_users(role: Optional[str] = None, organization_id: Optional[str] = N
             'guardian_name': r[29] if len(r) > 29 else None,
             'guardian_phone': r[30] if len(r) > 30 else None,
             'class_name': r[31] if len(r) > 31 else None,
-            'class_section': r[32] if len(r) > 32 else None
+            'class_section': r[32] if len(r) > 32 else None,
+            'employment_status': r[33] if len(r) > 33 else 'permanent',
+            'period_end_date': r[34] if len(r) > 34 else '',
         } for r in rows]
         if pg_ids is not None:
             user_list = [u for u in user_list if u['id'] in pg_ids]
@@ -2271,12 +2440,17 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                 confirm_shift_reclassify: bool = False,
                 person_type: str | None = None, class_id: int | None = None,
                 roll_number: str | None = None, guardian_name: str | None = None,
-                guardian_phone: str | None = None) -> bool:
+                guardian_phone: str | None = None,
+                employment_status: str | None = None,
+                period_end_date: str | None = None,
+                confirm_permanent: bool = False) -> bool:
     """Update user information in database. HR fields and camera assignments left as None are preserved."""
     if not name or len(name.strip()) == 0:
         logger.warning("Attempted to update user with empty name")
         return False
     clean_name = name.strip()
+    if phone is not None and str(phone).strip():
+        phone = normalize_staff_phone(phone)
     _validate_staff_fields(clean_name, email, phone, department, position, notes, cnic)
     if clean_name and clean_name[0] in ('=', '+', '-', '@'):
         raise ValueError("Name cannot start with =, +, -, or @")
@@ -2332,6 +2506,29 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                 if norm_exit < effective_join:
                     raise ValueError("Exit date cannot be before joining date")
 
+            # QA-133: employment status / period end (confirm permanent clears period).
+            emp_status_sql = None
+            emp_end_sql = None
+            if confirm_permanent:
+                emp_status_sql = 'permanent'
+                emp_end_sql = None
+            elif employment_status is not None or period_end_date is not None:
+                cursor.execute(
+                    "SELECT employment_status, period_end_date FROM users WHERE id = ?",
+                    (user_id,),
+                )
+                cur_emp = cursor.fetchone()
+                cur_status = (cur_emp[0] if cur_emp else None) or 'permanent'
+                cur_end = cur_emp[1] if cur_emp else None
+                status_in = employment_status if employment_status is not None else cur_status
+                end_in = period_end_date if period_end_date is not None else cur_end
+                emp_status_sql, emp_end_sql = validate_employment_period(
+                    status_in, end_in, effective_join, require_end_for_special=True
+                )
+                if emp_status_sql == 'internship' and (norm_exit == '__KEEP__' or not norm_exit):
+                    # Internship end date is the exit date.
+                    norm_exit = emp_end_sql or norm_exit
+
             effective_date = _normalize_shift_effective_date(shift_effective_from)
             persisted_shift_id = shift_id if effective_date <= datetime.now().date().isoformat() else None
             if shift_id is not None and (shift_id != previous_shift_id or shift_effective_from is not None):
@@ -2349,6 +2546,11 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                         "Changing this shift effective date reclassifies processed attendance. "
                         "Confirm to continue."
                     )
+            touch_employment = 1 if (
+                confirm_permanent
+                or employment_status is not None
+                or period_end_date is not None
+            ) else 0
             cursor.execute('''
                 UPDATE users 
                 SET name = ?, email = ?, phone = ?, department = ?, notes = ?,
@@ -2364,9 +2566,18 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                     class_id = COALESCE(?, class_id),
                     roll_number = COALESCE(?, roll_number),
                     guardian_name = COALESCE(?, guardian_name),
-                    guardian_phone = COALESCE(?, guardian_phone)
+                    guardian_phone = COALESCE(?, guardian_phone),
+                    employment_status = CASE WHEN ? = 1 THEN ? ELSE employment_status END,
+                    period_end_date = CASE WHEN ? = 1 THEN ? ELSE period_end_date END
                 WHERE id = ?
-            ''', (name.strip(), email, phone, department, notes, position, cnic, salary, join_date, norm_exit, norm_exit, persisted_shift_id, checkin_cameras, checkout_cameras, person_type, class_id, roll_number, guardian_name, guardian_phone, user_id))
+            ''', (
+                name.strip(), email, phone, department, notes, position, cnic, salary, join_date,
+                norm_exit, norm_exit, persisted_shift_id, checkin_cameras, checkout_cameras,
+                person_type, class_id, roll_number, guardian_name, guardian_phone,
+                touch_employment, emp_status_sql or 'permanent',
+                touch_employment, emp_end_sql,
+                user_id,
+            ))
             updated = cursor.rowcount > 0
             cursor.execute("UPDATE overtime SET user_name = ? WHERE user_id = ?", (name.strip(), user_id))
             if updated and shift_id is not None and (shift_id != previous_shift_id or shift_effective_from is not None):
@@ -9491,12 +9702,14 @@ def update_leave_type(
             updated = cursor.rowcount > 0
             # Keep existing balance rows in sync when present. Do not treat zero matching
             # balance rows as a failed leave-type update (LH-6).
+            # QA-137: only touch rows whose allocation differs — used days stay untouched.
             cursor.execute(
                 """UPDATE employee_leave_balances SET allocated_days = ?
                    WHERE leave_type_id = ? AND user_id IN (
                        SELECT id FROM users WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                   )""",
-                (allowance, type_id, org)
+                   )
+                   AND ABS(allocated_days - ?) > 0.0001""",
+                (allowance, type_id, org, allowance)
             )
             conn.commit()
             if updated:
@@ -9951,6 +10164,53 @@ def _evaluate_monthly_leave_quota_span(
     }
 
 
+def get_leave_balance_years(organization_id: Optional[str] = None) -> List[int]:
+    """QA-136: years that can have leave-balance data for this organisation."""
+    current_year = datetime.now().year
+    org = organization_id or 'DEFAULT_ORG'
+    first_year = current_year
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            years_found: List[int] = []
+
+            def _org_filter(alias: str = 'u') -> Tuple[str, List[Any]]:
+                if not org or org == 'all':
+                    return '', []
+                if org == 'DEFAULT_ORG':
+                    return (
+                        f" AND ({alias}.organization_id = 'DEFAULT_ORG' OR {alias}.organization_id IS NULL OR {alias}.organization_id = '')",
+                        [],
+                    )
+                return f" AND {alias}.organization_id = ?", [org]
+
+            org_sql, org_params = _org_filter('u')
+            for sql in (
+                f"SELECT CAST(strftime('%Y', enrollment_date) AS INTEGER) FROM users u WHERE enrollment_date IS NOT NULL AND TRIM(enrollment_date) != ''{org_sql}",
+                f"SELECT CAST(strftime('%Y', join_date) AS INTEGER) FROM users u WHERE join_date IS NOT NULL AND TRIM(join_date) != ''{org_sql}",
+                f"SELECT CAST(strftime('%Y', created_at) AS INTEGER) FROM users u WHERE created_at IS NOT NULL AND TRIM(created_at) != ''{org_sql}",
+                f"SELECT year FROM employee_leave_balances elb JOIN users u ON u.id = elb.user_id WHERE 1=1{org_sql}",
+                f"SELECT CAST(strftime('%Y', lr.start_date) AS INTEGER) FROM leave_requests lr JOIN users u ON u.id = lr.user_id WHERE lr.start_date IS NOT NULL{org_sql}",
+            ):
+                try:
+                    cursor.execute(sql, org_params)
+                    for row in cursor.fetchall():
+                        if row and row[0] is not None:
+                            y = int(row[0])
+                            if 2000 <= y <= current_year:
+                                years_found.append(y)
+                except Exception:
+                    continue
+            if years_found:
+                first_year = min(years_found)
+    except Exception as e:
+        logger.warning("get_leave_balance_years failed: %s", e)
+        first_year = current_year
+    if first_year > current_year:
+        first_year = current_year
+    return list(range(first_year, current_year + 1))
+
+
 def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organization_id: Optional[str] = None) -> List[Dict]:
     """Get employee leave balances for a year, auto-initializing rows if needed, scoped by tenant."""
     try:
@@ -9977,11 +10237,36 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
             org = organization_id or 'DEFAULT_ORG'
             seed_leave_types_if_empty(cursor, org)
             conn.commit()
+            # QA-137: keep inactive types visible when they still have history/balances.
+            # New filing is blocked separately; deactivating must not hide past usage.
             cursor.execute(
-                "SELECT * FROM leave_types WHERE active = 1 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?",
+                """SELECT * FROM leave_types
+                   WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                   ORDER BY CASE WHEN active = 1 THEN 0 ELSE 1 END, name COLLATE NOCASE""",
                 (org,),
             )
-            ltypes = [dict(lt) for lt in cursor.fetchall()]
+            all_types = [dict(lt) for lt in cursor.fetchall()]
+            ltypes = []
+            for lt in all_types:
+                if int(lt.get('active', 1) or 0) == 1:
+                    ltypes.append(lt)
+                    continue
+                cursor.execute(
+                    """SELECT 1 FROM employee_leave_balances
+                       WHERE leave_type_id = ? AND year = ? LIMIT 1""",
+                    (lt['id'], year),
+                )
+                has_balance_row = cursor.fetchone() is not None
+                cursor.execute(
+                    """SELECT 1 FROM leave_requests
+                       WHERE (leave_type = ? OR leave_type = ?)
+                         AND strftime('%Y', start_date) = ?
+                       LIMIT 1""",
+                    (lt.get('code'), lt.get('name'), str(year)),
+                )
+                has_requests = cursor.fetchone() is not None
+                if has_balance_row or has_requests:
+                    ltypes.append(lt)
 
             result = []
             for u in users:
@@ -10218,6 +10503,113 @@ def _list_scheduled_leave_dates(cursor, user_id: int, start_date: str, end_date:
 def _count_scheduled_leave_days(cursor, user_id: int, start_date: str, end_date: str) -> int:
     """Calculate the number of scheduled working days in a leave period."""
     return len(_list_scheduled_leave_dates(cursor, user_id, start_date, end_date))
+
+
+def _leave_range_day_breakdown(cursor, user_id: int, start_date: str, end_date: str) -> Dict[str, Any]:
+    """QA-134: calendar vs counted leave days (holidays and off-days not counted)."""
+    try:
+        d1 = datetime.strptime(str(start_date)[:10], '%Y-%m-%d')
+        d2 = datetime.strptime(str(end_date)[:10], '%Y-%m-%d')
+    except Exception:
+        return {
+            'calendar_days': 0,
+            'counted_days': 0,
+            'holiday_days': 0,
+            'off_days': 0,
+            'holiday_dates': [],
+            'off_dates': [],
+            'counted_dates': [],
+        }
+    if d2 < d1:
+        return {
+            'calendar_days': 0,
+            'counted_days': 0,
+            'holiday_days': 0,
+            'off_days': 0,
+            'holiday_dates': [],
+            'off_dates': [],
+            'counted_dates': [],
+        }
+
+    counted_dates = _list_scheduled_leave_dates(cursor, user_id, start_date, end_date)
+    counted_set = set(counted_dates)
+
+    if not user_id:
+        calendar_days = (d2 - d1).days + 1
+        return {
+            'calendar_days': calendar_days,
+            'counted_days': len(counted_dates),
+            'holiday_days': 0,
+            'off_days': max(0, calendar_days - len(counted_dates)),
+            'holiday_dates': [],
+            'off_dates': [],
+            'counted_dates': counted_dates,
+        }
+
+    org_id, branch_id = _user_tenant(cursor, user_id)
+    cursor.execute(
+        """SELECT holiday_date FROM company_holidays
+           WHERE holiday_date >= ? AND holiday_date <= ?
+             AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+             AND (
+               COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+               OR COALESCE(NULLIF(TRIM(branch_id), ''), 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+             )""",
+        (start_date, end_date, org_id, branch_id),
+    )
+    holidays = {r['holiday_date'] for r in cursor.fetchall()}
+
+    cursor.execute(
+        """SELECT calendar_date, override_type FROM special_date_overrides
+           WHERE calendar_date >= ? AND calendar_date <= ?
+             AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+             AND (
+               COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+               OR COALESCE(NULLIF(TRIM(branch_id), ''), 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+             )
+             AND (scope_type = 'all' OR (scope_type = 'employee' AND scope_id = ?))""",
+        (start_date, end_date, org_id, branch_id, user_id),
+    )
+    overrides = {r['calendar_date']: r['override_type'] for r in cursor.fetchall()}
+
+    cursor.execute(
+        '''SELECT working_days FROM shifts WHERE id = (
+            SELECT shift_id FROM users WHERE id = ?
+        )''',
+        (user_id,),
+    )
+    row = cursor.fetchone()
+    working_days = set(_normalize_shift_working_days(row['working_days'])) if row and row['working_days'] else {0, 1, 2, 3, 4, 5, 6}
+
+    holiday_dates: List[str] = []
+    off_dates: List[str] = []
+    calendar_days = 0
+    for i in range((d2 - d1).days + 1):
+        curr = d1 + timedelta(days=i)
+        curr_str = curr.strftime('%Y-%m-%d')
+        calendar_days += 1
+        if curr_str in counted_set:
+            continue
+        override = overrides.get(curr_str)
+        if override == 'holiday' or (override is None and curr_str in holidays):
+            holiday_dates.append(curr_str)
+        elif override == 'off_day' or (override is None and curr.weekday() not in working_days):
+            off_dates.append(curr_str)
+        elif override is None and curr_str in holidays:
+            holiday_dates.append(curr_str)
+        else:
+            # Non-counted day that is not a working day (fallback).
+            off_dates.append(curr_str)
+
+    return {
+        'calendar_days': calendar_days,
+        'counted_days': len(counted_dates),
+        'holiday_days': len(holiday_dates),
+        'off_days': len(off_dates),
+        'holiday_dates': holiday_dates,
+        'off_dates': off_dates,
+        'counted_dates': counted_dates,
+    }
 
 
 def resolve_half_leave_rule(
@@ -10602,11 +10994,63 @@ def check_leave_quota(
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # Calculate requested days based on scheduled workdays only
+            # Calculate requested days based on scheduled workdays only (QA-134: holidays/off-days excluded).
+            day_breakdown: Dict[str, Any] = {
+                'calendar_days': 0,
+                'counted_days': 0,
+                'holiday_days': 0,
+                'off_days': 0,
+                'holiday_dates': [],
+                'off_dates': [],
+                'counted_dates': [],
+            }
             if user_id and start_date and end_date:
-                requested_days = _count_scheduled_leave_days(cursor, user_id, start_date.strip(), end_date.strip())
+                day_breakdown = _leave_range_day_breakdown(
+                    cursor, int(user_id), start_date.strip(), end_date.strip()
+                )
+                requested_days = int(day_breakdown.get('counted_days') or 0)
             elif start_date and end_date:
                 requested_days = max(0, (d2 - d1).days + 1)
+                day_breakdown['calendar_days'] = requested_days
+                day_breakdown['counted_days'] = requested_days
+
+            if (
+                duration != 'half'
+                and user_id
+                and start_date
+                and end_date
+                and int(day_breakdown.get('calendar_days') or 0) > 0
+                and int(day_breakdown.get('counted_days') or 0) <= 0
+            ):
+                hol = int(day_breakdown.get('holiday_days') or 0)
+                off = int(day_breakdown.get('off_days') or 0)
+                parts = []
+                if hol:
+                    parts.append(f'{hol} holiday day(s)')
+                if off:
+                    parts.append(f'{off} off day(s)')
+                detail = ' and '.join(parts) if parts else 'non-working days'
+                return {
+                    'allowed': False,
+                    'reason_code': 'no_leave_days',
+                    'message': (
+                        f'There are no leave days to request in this range — it is only {detail}. '
+                        'Choose dates that include at least one scheduled working day.'
+                    ),
+                    'requested_days': 0,
+                    'quota_days_requested': 0,
+                    'remaining_days': 0.0,
+                    'allocated_days': 0.0,
+                    'used_days': 0.0,
+                    'leave_type_name': leave_type_code,
+                    'calendar_days': day_breakdown.get('calendar_days'),
+                    'counted_days': 0,
+                    'holiday_days': hol,
+                    'off_days': off,
+                    'holiday_dates': day_breakdown.get('holiday_dates') or [],
+                    'off_dates': day_breakdown.get('off_dates') or [],
+                    'day_breakdown': day_breakdown,
+                }
 
             if user_id and start_date and end_date:
                 conflict = _find_active_leave_overlap(
@@ -10669,12 +11113,35 @@ def check_leave_quota(
                     'allocated_days': 10.0,
                     'used_days': 0.0,
                     'leave_type_name': leave_type_code,
-                    'is_paid': 1
+                    'is_paid': 1,
+                    'calendar_days': day_breakdown.get('calendar_days'),
+                    'counted_days': day_breakdown.get('counted_days'),
+                    'holiday_days': day_breakdown.get('holiday_days'),
+                    'off_days': day_breakdown.get('off_days'),
+                    'day_breakdown': day_breakdown,
                 }
 
             lt_dict = dict(lt)
             leave_name = lt_dict['name']
             is_paid = int(lt_dict.get('is_paid', 1))
+            # QA-137: deactivated types stay on old requests, but block new applications.
+            if int(lt_dict.get('active', 1) or 0) == 0:
+                return {
+                    'allowed': False,
+                    'reason_code': 'leave_type_inactive',
+                    'message': (
+                        f'{leave_name} is deactivated. New leave cannot be applied under it. '
+                        'Existing requests are unchanged.'
+                    ),
+                    'requested_days': 1 if duration == 'half' else requested_days,
+                    'quota_days_requested': 0 if duration == 'half' else requested_days,
+                    'remaining_days': 0.0,
+                    'allocated_days': float(lt_dict.get('yearly_allowance') or 0),
+                    'used_days': 0.0,
+                    'leave_type_name': leave_name,
+                    'is_paid': is_paid,
+                    'day_breakdown': day_breakdown,
+                }
 
             if duration == 'half':
                 rule_res = resolve_half_leave_rule(cursor, user_id, lt_dict, reference_date)
@@ -10990,6 +11457,13 @@ def check_leave_quota(
                     'used_days': already_used,
                     'leave_type_name': leave_name,
                     'is_paid': 1,
+                    'calendar_days': day_breakdown.get('calendar_days'),
+                    'counted_days': day_breakdown.get('counted_days'),
+                    'holiday_days': day_breakdown.get('holiday_days'),
+                    'off_days': day_breakdown.get('off_days'),
+                    'holiday_dates': day_breakdown.get('holiday_dates') or [],
+                    'off_dates': day_breakdown.get('off_dates') or [],
+                    'day_breakdown': day_breakdown,
                     **excess_info,
                 }
 
@@ -11008,6 +11482,13 @@ def check_leave_quota(
                 'month_breakdown': month_breakdown,
                 'within_dates': within_dates,
                 'excess_dates': excess_dates,
+                'calendar_days': day_breakdown.get('calendar_days'),
+                'counted_days': day_breakdown.get('counted_days'),
+                'holiday_days': day_breakdown.get('holiday_days'),
+                'off_days': day_breakdown.get('off_days'),
+                'holiday_dates': day_breakdown.get('holiday_dates') or [],
+                'off_dates': day_breakdown.get('off_dates') or [],
+                'day_breakdown': day_breakdown,
             }
     except Exception as e:
         logger.error(f"check_leave_quota error: {e}")
