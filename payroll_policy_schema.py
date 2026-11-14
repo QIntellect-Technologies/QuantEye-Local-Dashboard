@@ -1002,6 +1002,9 @@ def classify_checkin_late_status(
         and hl_start is not None
         and cin is not None
         and cin < hl_start
+        # Never drop the half-leave deadline once the return window has started
+        # (cin already past leave end still counts Late under Option A/B).
+        and not (hl_end is not None and cin > int(hl_end))
     ):
         # Morning punch before an afternoon half-leave window → shift-start rule.
         use_hl_end = None
@@ -1015,7 +1018,17 @@ def classify_checkin_late_status(
         # Unparseable check-in must not silently become Present when a Late rule applies.
         status = "late" if use_hl_end is not None and resolved in ("apply_grace", "no_grace") else "present"
     else:
-        status = "late" if cin > int(deadline) else "present"
+        # Strict: after half-leave end (Option A/B) is always Late, even if grace
+        # or shift-start math would otherwise keep Present.
+        if (
+            resolved in ("apply_grace", "no_grace")
+            and hl_end is not None
+            and (hl_start is None or cin >= int(hl_start))
+        ):
+            strict_deadline = int(hl_end) + (int(grace_mins or 0) if resolved == "apply_grace" else 0)
+            status = "late" if cin > strict_deadline else "present"
+        else:
+            status = "late" if cin > int(deadline) else "present"
     return {
         "status": status,
         "deadline_mins": int(deadline),

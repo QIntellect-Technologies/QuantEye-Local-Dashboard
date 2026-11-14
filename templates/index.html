@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="quanteye-build" content="{{ app_build_id|default('qa118-122-123-20261114c') }}" />
     <title>QIntellect - AI Biometric Attendance Dashboard</title>
     <!-- Bootstrap 5 Dark -->
     <link
@@ -27315,15 +27316,10 @@ async function fetchMultiLiveDetections() {
         } else if (Math.max(0, paidDays - quotaDays) > 0) {
           treatment = `${quotaDays} within quota · ${Math.max(0, paidDays - quotaDays)} paid override`;
         }
-        // QA-123: only pending / partial-with-pending-excess rows are actionable.
-        // Approved and rejected are final — checkboxes stay disabled.
+        // QA-123: select/approve only pending (or partial still waiting on excess).
+        // Approved / rejected / cancelled are final — checkbox stays disabled.
         const isFinalStatus = ['approved', 'rejected', 'partially_rejected', 'cancelled_worked'].includes(overallSt);
-        const rowPending = !isFinalStatus && (
-          overallSt === 'pending'
-          || overallSt === 'partially_approved'
-          || paidSt === 'pending'
-          || unpaidSt === 'pending'
-        );
+        const rowPending = !isFinalStatus && ['pending', 'partially_approved'].includes(overallSt);
         let rowStatus = String(req.status || 'pending').replace(/\b\w/g, char => char.toUpperCase());
         if (overallSt === 'partially_approved') rowStatus = 'Partial';
         else if (unpaidDays > 0 && unpaidSt === 'pending' && (paidSt === 'approved' || quotaDays > 0)) {

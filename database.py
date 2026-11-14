@@ -4222,12 +4222,31 @@ def _restore_worked_leave_if_applicable(
             if log_date in restored:
                 continue
 
-            is_half = str(lr_duration or '').lower() == 'half'
-            # QA-118: timed half leave + attendance = return-to-work / Late evaluation.
-            # Never auto-cancel: check-in at/before leave end must stay Present under Option A/B,
-            # and half leave must remain so Late is not judged from shift start alone.
-            if is_half and lr_end_time:
-                continue
+            is_half = str(lr_duration or '').strip().lower() in (
+                'half', 'half_day', 'half-day', 'halfday'
+            )
+            # QA-118: half leave + attendance = return-to-work / Late evaluation.
+            # Keep the leave so Late can be judged from half-leave end (Option A/B),
+            # not by wiping leave and falling back to shift start alone.
+            if is_half:
+                keep_for_late = False
+                try:
+                    _mode = _normalize_half_leave_late_grace_mode(
+                        get_payroll_settings(
+                            organization_id=org_id,
+                            branch_id=branch_id,
+                        ).get('half_leave_late_grace_mode')
+                    )
+                    # Option A/B: never cancel half leave on punch — Late uses leave end.
+                    if _mode in ('apply_grace', 'no_grace'):
+                        keep_for_late = True
+                    elif lr_end_time:
+                        # Legacy shift_start still keeps timed half leave for Late maps.
+                        keep_for_late = True
+                except Exception:
+                    keep_for_late = bool(lr_end_time)
+                if keep_for_late:
+                    continue
 
             restored.append(log_date)
             restored_str = ','.join(sorted(restored))
@@ -4908,12 +4927,13 @@ def get_light_attendance_report(
 
             # Shift lookup for attendance.shift_id overrides (manual mark often stamps shift_id).
             cursor.execute(
-                "SELECT id, name, start_time, COALESCE(grace_period_minutes, 15) AS grace_period_minutes FROM shifts"
+                "SELECT id, name, start_time, end_time, COALESCE(grace_period_minutes, 15) AS grace_period_minutes FROM shifts"
             )
             shifts_lookup = {
                 int(r['id']): {
                     'name': r['name'],
                     'start_time': r['start_time'] or '09:00',
+                    'end_time': r['end_time'] or '17:00',
                     'grace_period_minutes': int(r['grace_period_minutes'] or 15),
                 }
                 for r in cursor.fetchall()
@@ -4924,7 +4944,7 @@ def get_light_attendance_report(
             try:
                 cursor.execute(
                     '''
-                    SELECT user_id, shift_id, start_time, grace_period_minutes, effective_from
+                    SELECT user_id, shift_id, start_time, end_time, grace_period_minutes, effective_from
                     FROM employee_shift_history
                     WHERE effective_from <= ?
                     ORDER BY user_id ASC, effective_from DESC, id DESC
@@ -4938,6 +4958,7 @@ def get_light_attendance_report(
                     hist_by_user.setdefault(uid, []).append({
                         'shift_id': row['shift_id'],
                         'start_time': row['start_time'] or '09:00',
+                        'end_time': row['end_time'] or '17:00',
                         'grace_period_minutes': int(row['grace_period_minutes'] if row['grace_period_minutes'] is not None else 15),
                         'effective_from': str(row['effective_from'] or '')[:10],
                     })
@@ -5030,14 +5051,13 @@ def get_light_attendance_report(
                         SELECT user_id, start_date, end_date, start_time, end_time
                         FROM leave_requests
                         WHERE user_id IN ({ph})
-                          AND leave_duration = 'half'
+                          AND LOWER(TRIM(COALESCE(leave_duration, ''))) IN ('half', 'half_day', 'half-day', 'halfday')
                           AND (
                             status IN ('approved', 'partially_approved', 'cancelled_worked')
                             OR paid_status IN ('approved', 'cancelled_worked')
                             OR unpaid_status IN ('approved', 'cancelled_worked')
                           )
                           AND end_date >= ? AND start_date <= ?
-                          AND end_time IS NOT NULL AND TRIM(end_time) != ''
                         ''',
                         (*light_uids, start_date, end_date),
                     )
@@ -5070,6 +5090,7 @@ def get_light_attendance_report(
                         'shift_id': rec_shift_id,
                         'shift_name': info['name'],
                         'start_time': info['start_time'],
+                        'end_time': info.get('end_time') or '17:00',
                         'grace_period_minutes': info['grace_period_minutes'],
                     }
                 for hist in hist_by_user.get(uid, []):
@@ -5081,6 +5102,7 @@ def get_light_attendance_report(
                                 'shift_id': int(sid),
                                 'shift_name': info['name'],
                                 'start_time': hist.get('start_time') or info['start_time'],
+                                'end_time': hist.get('end_time') or info.get('end_time') or '17:00',
                                 'grace_period_minutes': int(
                                     hist.get('grace_period_minutes')
                                     if hist.get('grace_period_minutes') is not None
@@ -5091,6 +5113,7 @@ def get_light_attendance_report(
                             'shift_id': sid,
                             'shift_name': user_row.get('shift_name') or '—',
                             'start_time': hist.get('start_time') or user_row.get('start_time') or '09:00',
+                            'end_time': hist.get('end_time') or user_row.get('end_time') or '17:00',
                             'grace_period_minutes': int(
                                 hist.get('grace_period_minutes')
                                 if hist.get('grace_period_minutes') is not None
@@ -5101,6 +5124,7 @@ def get_light_attendance_report(
                     'shift_id': user_row.get('shift_id'),
                     'shift_name': user_row.get('shift_name') or '—',
                     'start_time': user_row.get('start_time') or '09:00',
+                    'end_time': user_row.get('end_time') or '17:00',
                     'grace_period_minutes': int(user_row.get('grace_period_minutes') or 15),
                 }
 
@@ -5128,10 +5152,24 @@ def get_light_attendance_report(
                     half_leave_start_mins = None
                     if uid is not None and day_key:
                         hl = half_leave_end_by_user_date.get((int(uid), day_key))
-                        if hl and hl.get('end_time'):
-                            half_leave_end_mins = parse_clock_minutes(str(hl.get('end_time')))
+                        if hl:
+                            if hl.get('end_time'):
+                                half_leave_end_mins = parse_clock_minutes(str(hl.get('end_time')))
                             if hl.get('start_time'):
                                 half_leave_start_mins = parse_clock_minutes(str(hl.get('start_time')))
+                            # QA-118: Option A/B with no stored end_time → shift midpoint as leave end.
+                            if (
+                                half_leave_end_mins is None
+                                and half_leave_late_grace_mode in ('apply_grace', 'no_grace')
+                            ):
+                                shift_end_mins = parse_clock_minutes(shift_info.get('end_time') or '17:00')
+                                if shift_end_mins is None:
+                                    shift_end_mins = start_mins + 8 * 60
+                                if shift_end_mins <= start_mins:
+                                    shift_end_mins += 24 * 60
+                                half_leave_end_mins = start_mins + (shift_end_mins - start_mins) // 2
+                                if half_leave_start_mins is None:
+                                    half_leave_start_mins = start_mins
                     classified = _classify_checkin_late_status(
                         checkin_mins,
                         start_mins,
@@ -5775,7 +5813,9 @@ def get_detailed_attendance_report(
             leave_calendar_dates = set()
             for lr in leave_rows:
                 l_uid, l_start, l_end, l_type = lr['user_id'], lr['start_date'], lr['end_date'], lr['leave_type']
-                is_half_leave = lr['leave_duration'] == 'half'
+                is_half_leave = str(lr['leave_duration'] or '').strip().lower() in (
+                    'half', 'half_day', 'half-day', 'halfday'
+                )
                 explicit_allocation = not is_half_leave and lr['paid_days'] is not None and lr['unpaid_days'] is not None
                 paid_days = int(lr['paid_days'] or 0) if explicit_allocation else None
                 unpaid_days = int(lr['unpaid_days'] or 0) if explicit_allocation else None
@@ -5811,8 +5851,9 @@ def get_detailed_attendance_report(
                             leave_calendar_dates.add((l_uid, current_date))
                         if is_overall_approved or p_status == 'approved' or up_status == 'approved':
                             approved_leave_dates.add((l_uid, current_date))
-                        # QA-118: keep timed half-leave ends for Late even on restored dates.
-                        if is_half_leave and lr['end_time']:
+                        # QA-118: keep half-leave markers for Late even on restored dates
+                        # (end_time may be empty — Option A/B then uses shift midpoint).
+                        if is_half_leave:
                             half_leave_times_by_day[(l_uid, current_date)] = {
                                 'start_time': lr['start_time'],
                                 'end_time': lr['end_time'],
@@ -6111,16 +6152,28 @@ def get_detailed_attendance_report(
                             half_leave_end_mins = None
                             half_leave_start_mins = None
                             hl_times = None
-                            if leave_info and leave_info.get('is_half_leave') and leave_info.get('end_time'):
+                            if leave_info and leave_info.get('is_half_leave'):
                                 hl_times = leave_info
                             else:
                                 hl_times = half_leave_times_by_day.get((uid, cur_date))
-                            if hl_times and hl_times.get('end_time'):
-                                half_leave_end_mins = parse_clock_minutes(str(hl_times.get('end_time')))
-                                half_leave_start_mins = (
-                                    parse_clock_minutes(str(hl_times.get('start_time')))
-                                    if hl_times.get('start_time') else None
-                                )
+                            if hl_times:
+                                if hl_times.get('end_time'):
+                                    half_leave_end_mins = parse_clock_minutes(str(hl_times.get('end_time')))
+                                if hl_times.get('start_time'):
+                                    half_leave_start_mins = parse_clock_minutes(str(hl_times.get('start_time')))
+                                # QA-118: Option A/B without stored end_time → shift midpoint.
+                                if (
+                                    half_leave_end_mins is None
+                                    and half_leave_late_grace_mode in ('apply_grace', 'no_grace')
+                                ):
+                                    _se = shift_end_mins if isinstance(shift_end_mins, int) else parse_clock_minutes(shift_end)
+                                    if _se is None:
+                                        _se = start_mins + 8 * 60
+                                    if _se <= start_mins:
+                                        _se += 24 * 60
+                                    half_leave_end_mins = start_mins + (_se - start_mins) // 2
+                                    if half_leave_start_mins is None:
+                                        half_leave_start_mins = start_mins
                             # Re-attach half leave display/counts when times map has the day
                             # but LV-05 previously cleared leave_info.
                             if (

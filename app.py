@@ -936,6 +936,16 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+@app.route('/api/build-info', methods=['GET'])
+def api_build_info():
+    """QA deploy check: confirm which Local-Dashboard revision Railway is serving."""
+    return jsonify({
+        'success': True,
+        'build_id': 'qa118-122-123-20261114c',
+        'tickets': ['QA-118', 'QA-122', 'QA-123'],
+    }), 200
+
+
 @app.route('/')
 @app.route('/c/<portal_slug>')
 @app.route('/c/<portal_slug>/')
@@ -976,6 +986,7 @@ def index(portal_slug=None):
         active_branch_name=session.get('client_branch') if client_user else '',
         active_user_name=client_user or ('Administrator' if is_authenticated else ''),
         company_portal_slug=company_portal_slug,
+        app_build_id='qa118-122-123-20261114c',
     )
 
 
