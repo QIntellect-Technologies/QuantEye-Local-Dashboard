@@ -6209,94 +6209,8 @@ def api_add_leave():
     user_name = user['name'] if user else data.get('user_name', '')
     reason_text = data.get('reason', '')
 
-    # QA-117: when a monthly leave spans multiple months, file one request per month
-    # so each month's quota/payroll stays isolated.
-    if leave_duration != 'half' and len(month_breakdown) > 1:
-        created_ids = []
-        total_paid = 0
-        total_unpaid = 0
-        for month in month_breakdown:
-            month_dates = list(month.get('within_dates') or []) + list(month.get('excess_dates') or [])
-            if not month_dates:
-                continue
-            m_start, m_end = month_dates[0], month_dates[-1]
-            m_within = int(month.get('within_quota_days') or 0)
-            m_excess = int(month.get('excess_days') or 0)
-            m_requested = int(month.get('requested_days') or len(month_dates))
-            m_post_reject = None
-            if not quota.get('allowed', True):
-                if excess_treatment == 'paid':
-                    m_paid, m_unpaid, m_quota = m_requested, 0, m_requested
-                    m_paid_through = m_end
-                    m_quota_through = m_end
-                elif excess_treatment == 'unpaid':
-                    m_paid, m_unpaid, m_quota = m_within, m_excess, m_within
-                    m_paid_through = (month.get('within_dates') or [None])[-1]
-                    m_quota_through = m_paid_through
-                else:
-                    m_paid, m_unpaid, m_quota = m_within, m_excess, m_within
-                    m_paid_through = (month.get('within_dates') or [None])[-1]
-                    m_quota_through = m_paid_through
-                    if m_excess > 0:
-                        m_post_reject = 'rejected'
-            elif int(quota.get('is_paid', 1)) == 0:
-                m_paid, m_unpaid, m_quota = 0, m_requested, 0
-                m_paid_through = None
-                m_quota_through = None
-            else:
-                m_paid, m_unpaid, m_quota = m_requested, 0, m_requested
-                m_paid_through = m_end
-                m_quota_through = m_end
-            try:
-                month_lid = db.add_leave_request(
-                    user_id=int(user_id),
-                    user_name=user_name,
-                    leave_type=leave_type,
-                    leave_duration=leave_duration,
-                    start_date=m_start,
-                    end_date=m_end,
-                    reason=reason_text,
-                    paid_days=m_paid,
-                    unpaid_days=m_unpaid,
-                    quota_days=m_quota,
-                    paid_through_date=m_paid_through,
-                    quota_through_date=m_quota_through,
-                )
-            except ValueError as exc:
-                if str(exc) == db.PAYROLL_LOCK_MESSAGE:
-                    return jsonify({'error': str(exc), 'message': str(exc), 'reopen': '/api/payroll/reopen'}), 409
-                return jsonify({'success': False, 'error': str(exc), 'message': str(exc)}), 400
-            if not month_lid:
-                return jsonify({
-                    'success': False,
-                    'message': 'This leave request overlaps an existing active leave or could not be saved. Please review the employee\'s leave dates.'
-                }), 409
-            if m_post_reject == 'rejected' and m_unpaid > 0:
-                decide = db.decide_leave_excess(
-                    leave_id=month_lid,
-                    decision='rejected',
-                    approved_by=data.get('approved_by') or 'Admin',
-                    organization_id=get_current_tenant_id(),
-                    rejection_reason=excess_rejection_reason,
-                )
-                if decide.get('success'):
-                    m_paid = decide.get('paid_days', m_paid)
-                    m_unpaid = decide.get('unpaid_days', m_unpaid)
-            created_ids.append(month_lid)
-            total_paid += int(m_paid or 0)
-            total_unpaid += int(m_unpaid or 0)
-        return jsonify({
-            'success': True,
-            'id': created_ids[0] if created_ids else None,
-            'ids': created_ids,
-            'requested_days': requested_days,
-            'paid_days': total_paid,
-            'unpaid_days': total_unpaid,
-            'excess_treatment': excess_treatment,
-            'split_by_month': True,
-            'month_breakdown': month_breakdown,
-        }), 201
-
+    # QA-117 retest: cross-month leave stays ONE request (same dates/reason/status).
+    # Monthly quota still comes from month_breakdown / clipped cycle counts — do not INSERT per month.
     try:
         lid = db.add_leave_request(
             user_id=int(user_id),
@@ -6342,6 +6256,8 @@ def api_add_leave():
         'paid_days': final_paid,
         'unpaid_days': final_unpaid,
         'excess_treatment': excess_treatment,
+        'split_by_month': False,
+        'month_breakdown': month_breakdown,
     }), 201
 
 
