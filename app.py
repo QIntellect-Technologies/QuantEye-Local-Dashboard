@@ -7727,6 +7727,20 @@ def api_delete_employee_component(assignment_id):
     return jsonify({'success': True})
 
 
+@app.route('/api/payroll/employee-components/applied', methods=['GET'])
+def api_get_applied_employee_components():
+    scope = request.args.get('scope') or request.args.get('scope_type') or 'org'
+    scope_id = request.args.get('scope_id') or request.args.get('department') or request.args.get('designation') or request.args.get('shift_id')
+    user_id = request.args.get('user_id')
+    applied_type_ids = db.get_applied_component_type_ids(
+        scope_type=scope,
+        scope_id=scope_id,
+        user_id=user_id,
+        **payroll_tenant(),
+    )
+    return jsonify({'success': True, 'applied_type_ids': applied_type_ids})
+
+
 @app.route('/api/payroll/employee-components/bulk-remove', methods=['POST'])
 def api_bulk_remove_employee_components():
     data = request.get_json(silent=True) or {}

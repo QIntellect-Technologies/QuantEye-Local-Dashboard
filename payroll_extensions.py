@@ -830,12 +830,17 @@ def _payslip_invoice_items(payslip: Dict[str, Any]) -> List[Dict[str, Any]]:
         amount = float(item.get("amount") or 0)
         if not amount:
             continue
-        kind = str(item.get("kind") or item.get("category") or "")
+        kind = str(item.get("kind") or item.get("category") or "").lower()
         name = str(item.get("name") or item.get("type") or "Pay item")
-        if kind == "earning" and str(item.get("category") or "") != "bonus" and name.lower() not in ("basic", "basic pay"):
+        category = str(item.get("category") or "").lower()
+        if (kind in ("earning", "allowance") or category == "allowance") and category != "bonus" and name.lower() not in ("basic", "basic pay"):
             named_earn_total += amount
-        elif kind in ("allowance",) and name.lower() not in ("basic", "basic pay"):
-            named_earn_total += amount
+            add(f"Allowance: {name}", amount)
+        elif category == "bonus":
+            add(f"Bonus: {name}", amount)
+        elif kind in ("deduction", "tax", "loan", "advance", "provident", "insurance") or category in ("tax", "loan", "advance", "provident", "insurance"):
+            cat_label = f" [{item.get('category').upper()}]" if item.get("category") else ""
+            add(f"{name}{cat_label}", -amount if amount > 0 else amount)
 
     # QA-100: package lump allowances ADD to named earning lines and must appear
     # on the payslip. emp.allowances may already be lump+named, so prefer the

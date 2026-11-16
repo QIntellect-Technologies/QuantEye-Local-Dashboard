@@ -14548,29 +14548,200 @@ def bulk_remove_employee_components(
     scope = str(scope_type or 'org').strip().lower()
     if not component_type_ids:
         return 0
+    clean_ids = [int(tid) for tid in component_type_ids if int(tid) > 0]
+    if not clean_ids:
+        return 0
+    placeholders = ','.join('?' for _ in clean_ids)
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
-        placeholders = ','.join('?' for _ in component_type_ids)
-        params: List[Any] = [int(tid) for tid in component_type_ids]
-        query = f"""
-            DELETE FROM payroll_employee_components
-            WHERE component_type_id IN ({placeholders})
-              AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-              AND COALESCE(scope_type, 'employee') = ?
-        """
-        params.append(org)
-        params.append(scope)
-        if scope == 'employee' and user_id:
-            query += " AND user_id = ?"
-            params.append(int(user_id))
-        elif scope != 'org' and scope_id:
-            query += " AND (scope_id = ? OR CAST(scope_id AS TEXT) = ?)"
-            params.append(str(scope_id))
-            params.append(str(scope_id))
-        cursor.execute(query, params)
+        total_deleted = 0
+        if scope == 'org':
+            cursor.execute(
+                f"""DELETE FROM payroll_employee_components
+                    WHERE component_type_id IN ({placeholders})
+                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)""",
+                (*clean_ids, org),
+            )
+            total_deleted += cursor.rowcount
+        elif scope == 'employee':
+            uid = int(user_id or (scope_id if str(scope_id).isdigit() else 0))
+            cursor.execute(
+                f"""DELETE FROM payroll_employee_components
+                    WHERE component_type_id IN ({placeholders})
+                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                      AND (
+                          (COALESCE(scope_type, 'employee') = 'employee' AND user_id = ?)
+                          OR (scope_type = 'employee' AND (scope_id = ? OR CAST(scope_id AS TEXT) = ?))
+                      )""",
+                (*clean_ids, org, uid, str(uid), str(uid)),
+            )
+            total_deleted += cursor.rowcount
+        elif scope == 'department':
+            dept_name = str(scope_id or '').strip()
+            cursor.execute(
+                f"""DELETE FROM payroll_employee_components
+                    WHERE component_type_id IN ({placeholders})
+                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                      AND scope_type = 'department'
+                      AND (LOWER(scope_id) = LOWER(?) OR scope_id = ?)""",
+                (*clean_ids, org, dept_name, dept_name),
+            )
+            total_deleted += cursor.rowcount
+            cursor.execute(
+                f"""DELETE FROM payroll_employee_components
+                    WHERE component_type_id IN ({placeholders})
+                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                      AND COALESCE(scope_type, 'employee') = 'employee'
+                      AND user_id IN (
+                          SELECT id FROM users
+                          WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                            AND LOWER(department) = LOWER(?)
+                      )""",
+                (*clean_ids, org, org, dept_name),
+            )
+            total_deleted += cursor.rowcount
+        elif scope == 'designation':
+            desig_name = str(scope_id or '').strip()
+            cursor.execute(
+                f"""DELETE FROM payroll_employee_components
+                    WHERE component_type_id IN ({placeholders})
+                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                      AND scope_type = 'designation'
+                      AND (LOWER(scope_id) = LOWER(?) OR scope_id = ?)""",
+                (*clean_ids, org, desig_name, desig_name),
+            )
+            total_deleted += cursor.rowcount
+            cursor.execute(
+                f"""DELETE FROM payroll_employee_components
+                    WHERE component_type_id IN ({placeholders})
+                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                      AND COALESCE(scope_type, 'employee') = 'employee'
+                      AND user_id IN (
+                          SELECT id FROM users
+                          WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                            AND (LOWER(position) = LOWER(?) OR LOWER(notes) = LOWER(?))
+                      )""",
+                (*clean_ids, org, org, desig_name, desig_name),
+            )
+            total_deleted += cursor.rowcount
+        elif scope == 'shift':
+            sid = str(scope_id or '').strip()
+            cursor.execute(
+                f"""DELETE FROM payroll_employee_components
+                    WHERE component_type_id IN ({placeholders})
+                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                      AND scope_type = 'shift'
+                      AND (scope_id = ? OR CAST(scope_id AS TEXT) = ?)""",
+                (*clean_ids, org, sid, sid),
+            )
+            total_deleted += cursor.rowcount
+            cursor.execute(
+                f"""DELETE FROM payroll_employee_components
+                    WHERE component_type_id IN ({placeholders})
+                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                      AND COALESCE(scope_type, 'employee') = 'employee'
+                      AND user_id IN (
+                          SELECT id FROM users
+                          WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                            AND CAST(shift_id AS TEXT) = ?
+                      )""",
+                (*clean_ids, org, org, sid),
+            )
+            total_deleted += cursor.rowcount
         conn.commit()
-        return cursor.rowcount
+        return total_deleted
 
+
+def get_applied_component_type_ids(
+    scope_type: str = 'org',
+    scope_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> List[int]:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    scope = str(scope_type or 'org').strip().lower()
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        if scope == 'org':
+            rows = cursor.execute(
+                """SELECT DISTINCT component_type_id FROM payroll_employee_components
+                   WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                     AND active = 1 AND excluded = 0""",
+                (org,),
+            ).fetchall()
+        elif scope == 'employee':
+            uid = int(user_id or (scope_id if str(scope_id).isdigit() else 0))
+            rows = cursor.execute(
+                """SELECT DISTINCT component_type_id FROM payroll_employee_components
+                   WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                     AND active = 1 AND excluded = 0
+                     AND (
+                         (COALESCE(scope_type, 'employee') = 'employee' AND user_id = ?)
+                         OR (scope_type = 'employee' AND (scope_id = ? OR CAST(scope_id AS TEXT) = ?))
+                     )""",
+                (org, uid, str(uid), str(uid)),
+            ).fetchall()
+        elif scope == 'department':
+            dept_name = str(scope_id or '').strip()
+            rows = cursor.execute(
+                """SELECT DISTINCT component_type_id FROM payroll_employee_components
+                   WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                     AND active = 1 AND excluded = 0
+                     AND (
+                         (scope_type = 'department' AND (LOWER(scope_id) = LOWER(?) OR scope_id = ?))
+                         OR (
+                             COALESCE(scope_type, 'employee') = 'employee'
+                             AND user_id IN (
+                                 SELECT id FROM users
+                                 WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                                   AND LOWER(department) = LOWER(?)
+                             )
+                         )
+                     )""",
+                (org, dept_name, dept_name, org, dept_name),
+            ).fetchall()
+        elif scope == 'designation':
+            desig_name = str(scope_id or '').strip()
+            rows = cursor.execute(
+                """SELECT DISTINCT component_type_id FROM payroll_employee_components
+                   WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                     AND active = 1 AND excluded = 0
+                     AND (
+                         (scope_type = 'designation' AND (LOWER(scope_id) = LOWER(?) OR scope_id = ?))
+                         OR (
+                             COALESCE(scope_type, 'employee') = 'employee'
+                             AND user_id IN (
+                                 SELECT id FROM users
+                                 WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                                   AND (LOWER(position) = LOWER(?) OR LOWER(notes) = LOWER(?))
+                             )
+                         )
+                     )""",
+                (org, desig_name, desig_name, org, desig_name, desig_name),
+            ).fetchall()
+        elif scope == 'shift':
+            sid = str(scope_id or '').strip()
+            rows = cursor.execute(
+                """SELECT DISTINCT component_type_id FROM payroll_employee_components
+                   WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                     AND active = 1 AND excluded = 0
+                     AND (
+                         (scope_type = 'shift' AND (scope_id = ? OR CAST(scope_id AS TEXT) = ?))
+                         OR (
+                             COALESCE(scope_type, 'employee') = 'employee'
+                             AND user_id IN (
+                                 SELECT id FROM users
+                                 WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                                   AND CAST(shift_id AS TEXT) = ?
+                             )
+                         )
+                     )""",
+                (org, sid, sid, org, sid),
+            ).fetchall()
+        else:
+            rows = []
+        return [int(r[0]) for r in rows if r[0]]
 
 def get_overtime_premium_rules(
     organization_id: Optional[str] = None,

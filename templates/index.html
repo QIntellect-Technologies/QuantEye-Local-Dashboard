@@ -446,6 +446,57 @@
       transform: translateY(-1px);
     }
 
+
+      /* PAY-06: Never stick payslip table headers inside overlay or print */
+      #payslipOverlay thead,
+      #payslipOverlay thead th,
+      #payslipOverlay th,
+      .invoice-paper thead,
+      .invoice-paper thead th,
+      .invoice-paper th,
+      .payslip-table thead,
+      .payslip-table thead th,
+      .payslip-table th {
+        position: static !important;
+        top: auto !important;
+        z-index: 1 !important;
+      }
+
+      /* OT Log Tab: Filter Bar Reset Button matching Attendance Reports exactly */
+      #overtime-view .ot-filter-bar .rpt-btn,
+      #otResetFiltersBtn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 8px !important;
+        height: 36px !important;
+        min-height: 36px !important;
+        padding: 0 14px !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 10px !important;
+        background: #ffffff !important;
+        color: #151b25 !important;
+        font-family: inherit !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        line-height: 1 !important;
+        white-space: nowrap !important;
+        cursor: pointer !important;
+        box-sizing: border-box !important;
+        transition: all 0.16s ease !important;
+      }
+      #overtime-view .ot-filter-bar .rpt-btn:hover,
+      #otResetFiltersBtn:hover {
+        background: #f8fafc !important;
+        border-color: #94a3b8 !important;
+        color: #0f172a !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+      }
+      #overtime-view .ot-filter-bar .rpt-btn i,
+      #otResetFiltersBtn i {
+        font-size: 11px !important;
+        color: #475569 !important;
+      }
 </style>
     <script>
       window.clientSessionModules = {{ client_licensed_modules|tojson }};
@@ -12368,7 +12419,7 @@ async function fetchMultiLiveDetections() {
               </label>
               <label class="payroll-rule-field" id="payLineScopeValueWrap">
                 Choose
-                <select id="payLineScopeValue" class="form-select">
+                <select id="payLineScopeValue" class="form-select" onchange="if (document.getElementById('payLineAction')?.value === 'remove') syncAppliedPayLineCheckboxes();">
                   <option value="">Select…</option>
                 </select>
               </label>
@@ -14090,8 +14141,8 @@ async function fetchMultiLiveDetections() {
           <textarea id="modalOtReasonInput" class="form-control" rows="2" maxlength="250" oninput="updateCharacterCounter('modalOtReasonInput', 'modalOtReasonCounter'); validateOtFormLive();" placeholder="e.g. Server maintenance, critical project deployment, emergency support..."></textarea>
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <small id="modalOtReasonCounter" class="form-text text-muted character-counter">0/250 characters</small>
-            <div id="modalOtReasonError" class="text-danger small mt-1" style="display:none; font-weight:600;"></div>
           </div>
+          <div id="modalOtReasonError" class="text-danger small mt-1" style="display:none; font-weight:600;"></div>
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Initial Approval Status</label>
@@ -20292,6 +20343,10 @@ async function fetchMultiLiveDetections() {
         const pickIndex = (index) => {
           if (!Number.isInteger(index) || !selectEl.options[index] || selectEl.options[index].disabled) return;
           selectEl.selectedIndex = index;
+          if (selectEl.options[index]) {
+            selectEl.value = selectEl.options[index].value;
+            selectEl.options[index].selected = true;
+          }
           selectEl.dispatchEvent(new Event('input', { bubbles: true }));
           selectEl.dispatchEvent(new Event('change', { bubbles: true }));
           if (typeof selectEl.onchange === 'function') {
@@ -22448,6 +22503,9 @@ async function fetchMultiLiveDetections() {
         } else {
           catSelect.value = enabledCats[0].value;
         }
+        if (typeof refreshAppCameraSelect === 'function') {
+          refreshAppCameraSelect(catSelect);
+        }
       }
       window.updatePayrollComponentCategoryDropdown = updatePayrollComponentCategoryDropdown;
 
@@ -24317,6 +24375,29 @@ async function fetchMultiLiveDetections() {
       }
       window.updatePayLineItemsLabel = updatePayLineItemsLabel;
 
+      async function syncAppliedPayLineCheckboxes() {
+        const action = document.getElementById('payLineAction')?.value || 'apply';
+        if (action !== 'remove') return;
+        const scope = document.getElementById('payLineScopeType')?.value || 'org';
+        const scopeId = document.getElementById('payLineScopeValue')?.value || '';
+        try {
+          const resp = await fetch(`${API_BASE}/payroll/employee-components/applied?scope=${encodeURIComponent(scope)}&scope_id=${encodeURIComponent(scopeId)}`);
+          const data = await resp.json().catch(() => ({}));
+          const appliedIds = data.applied_type_ids || [];
+          document.querySelectorAll('.payline-item-chk').forEach(chk => {
+            chk.checked = appliedIds.includes(Number(chk.value));
+          });
+          const selectAllChk = document.getElementById('payLineSelectAllChk');
+          const selectAllLbl = document.getElementById('payLineSelectAllLabel');
+          const allBoxes = document.querySelectorAll('.payline-item-chk');
+          const allChecked = allBoxes.length > 0 && Array.from(allBoxes).every(c => c.checked);
+          if (selectAllChk) selectAllChk.checked = allChecked;
+          if (selectAllLbl) selectAllLbl.textContent = allChecked ? 'DESELECT ALL' : 'SELECT ALL';
+          updatePayLineItemsLabel();
+        } catch (_) {}
+      }
+      window.syncAppliedPayLineCheckboxes = syncAppliedPayLineCheckboxes;
+
       function updatePayLineActionUI() {
         const action = document.getElementById('payLineAction')?.value || 'apply';
         const applyFields = document.querySelectorAll('.payline-apply-field');
@@ -24328,6 +24409,7 @@ async function fetchMultiLiveDetections() {
             submitBtn.className = 'btn btn-danger btn-sm';
             submitBtn.style.background = '#dc2626';
           }
+          syncAppliedPayLineCheckboxes();
         } else {
           applyFields.forEach(el => {
             if (el.id === 'payLinePercentWrap') {
@@ -24344,7 +24426,6 @@ async function fetchMultiLiveDetections() {
         }
       }
       window.updatePayLineActionUI = updatePayLineActionUI;
-
       async function loadPayLineDuplicates() {
         const tbody = document.getElementById('payLineDuplicateBody');
         const typeSelect = document.getElementById('payLineAssignType');
@@ -24414,10 +24495,11 @@ async function fetchMultiLiveDetections() {
             const data = await resp.json().catch(() => ({}));
             if (resp.ok && data.success) {
               showAppToast(`Successfully removed ${checkedBoxes.length} item(s) from ${groupLabel}.`, 'success');
-              toggleAllPayLineItems(false);
+              await syncAppliedPayLineCheckboxes();
               await loadPayLineDuplicates();
-              if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
-                await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
+              const m = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+              if (m && typeof loadMonthlyPayroll === 'function') {
+                await loadMonthlyPayroll(m, true);
               }
             } else {
               showAppToast(data.error || 'Failed to remove items', 'error');
@@ -31453,8 +31535,11 @@ async function fetchMultiLiveDetections() {
         select.disabled = true;
         if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(select);
       }
-      onOtEmployeeChange();
-      validateOtFormLive();
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.5';
+        submitBtn.style.cursor = 'not-allowed';
+      }
     }
 
     function filterOtEmployees() {
@@ -31481,6 +31566,7 @@ async function fetchMultiLiveDetections() {
           select.innerHTML = '<option value="">No employees in this department</option>';
         } else {
           select.disabled = false;
+          select.removeAttribute('disabled');
           select.innerHTML = '<option value="">Select Employee...</option>' + employees.map(user => {
             const cfg = configByUser[user.id] || {};
             const rate = Number(cfg.ot_rate || 0);
@@ -31535,11 +31621,11 @@ async function fetchMultiLiveDetections() {
       }
 
       // Validate Employee (OT-31)
-      const userVal = (userSelect && !userSelect.disabled) ? (userSelect.value || '').trim() : '';
+      const userVal = (userSelect?.value || '').trim();
       if (!deptVal) {
         if (userErr) { userErr.textContent = 'Please select a department first.'; userErr.style.display = 'block'; }
         isValid = false;
-      } else if (!userVal) {
+      } else if (!userVal || userVal === 'Select Department First...' || userVal === 'Select Employee...') {
         if (userErr) { userErr.textContent = 'Please select an employee.'; userErr.style.display = 'block'; }
         isValid = false;
       } else {
@@ -31582,11 +31668,11 @@ async function fetchMultiLiveDetections() {
         }
       }
 
-      // OT-33: Robust Real-Time Reason validation (HTML tags, scripts, event handlers, multiline SQL patterns)
+      // OT-33: Real-Time Reason validation for HTML tags, scripts, and SQL syntax patterns
       const reasonVal = (reasonInput?.value || '').trim();
       if (reasonVal) {
-        const hasHtmlOrScript = /<[\s\S]*?>|<\s*script|<\/\s*script|javascript:|onerror\s*=|onload\s*=/i.test(reasonVal);
-        const hasSqlPattern = /(?:--|\b(SELECT\s+[\s\S]+?\s+FROM|INSERT\s+INTO|DELETE\s+FROM|DROP\s+TABLE|UPDATE\s+[\s\S]+?\s+SET|UNION(?:\s+ALL)?\s+SELECT|ALTER\s+TABLE|EXEC(?:UTE)?\s*\(|OR\s+['"]?1['"]?\s*=\s*['"]?1|AND\s+['"]?1['"]?\s*=\s*['"]?1)\b|;\s*$)/i.test(reasonVal);
+        const hasHtmlOrScript = /<[a-zA-Z\/!][^>]*>|<[a-zA-Z\/!]|(?:<script|<\/script|javascript:|onerror\s*=|onload\s*=|onclick\s*=|eval\s*\(|alert\s*\()/i.test(reasonVal);
+        const hasSqlPattern = /(?:--|\/\*|\*\/|;\s*$|'\s*OR\b|"\s*OR\b|\bOR\s+['"]?\d+['"]?\s*=\s*['"]?\d+|\bAND\s+['"]?\d+['"]?\s*=\s*['"]?\d+|\b(SELECT\b[\s\S]*?\bFROM|INSERT\s+INTO|DELETE\s+FROM|DROP\s+(?:TABLE|DATABASE|VIEW)|UPDATE\s+\w+\s+SET|UNION\s+(?:ALL\s+)?SELECT|CREATE\s+TABLE|ALTER\s+TABLE|TRUNCATE\s+TABLE|EXEC(?:UTE)?\s*\()\b)/i.test(reasonVal);
         if (hasHtmlOrScript || hasSqlPattern) {
           if (reasonErr) {
             reasonErr.textContent = 'Invalid format: HTML tags, scripts, and SQL syntax are not allowed.';
@@ -31609,27 +31695,6 @@ async function fetchMultiLiveDetections() {
 
       return isValid;
     }
-
-    function closeAddOvertimeModal() {
-      const modal = document.getElementById('addOvertimeModal');
-      if (modal) modal.style.display = 'none';
-    }
-
-    let otRatePreviewSequence = 0;
-
-    function onOtEmployeeChange() {
-      const select = document.getElementById('modalOtUserSelect');
-      const userErr = document.getElementById('modalOtUserError');
-      if (select && select.value && select.value.trim()) {
-        if (userErr) {
-          userErr.textContent = '';
-          userErr.style.display = 'none';
-        }
-      }
-      validateOtFormLive();
-      updateOtModalPreview();
-    }
-
     async function updateOtModalPreview() {
       const requestSequence = ++otRatePreviewSequence;
       const select = document.getElementById('modalOtUserSelect');
