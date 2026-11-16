@@ -7517,6 +7517,52 @@ def api_export_payroll_excel():
     )
 
 
+@app.route('/api/payroll/export.csv', methods=['GET'])
+def api_export_payroll_csv():
+    try:
+        payroll_month, _year, _month = _parse_payroll_month_arg()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    try:
+        payload = db.export_monthly_payroll_csv(payroll_month, **payroll_tenant())
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.exception('Failed to export payroll CSV')
+        return jsonify({'error': f'Failed to export payroll: {e}'}), 500
+    buffer = io.BytesIO(payload)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f'payroll-{payroll_month}.csv',
+        mimetype='text/csv; charset=utf-8',
+    )
+
+
+@app.route('/api/payroll/export.pdf', methods=['GET'])
+def api_export_payroll_pdf():
+    try:
+        payroll_month, _year, _month = _parse_payroll_month_arg()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    try:
+        payload = db.export_monthly_payroll_pdf(payroll_month, **payroll_tenant())
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.exception('Failed to export payroll PDF')
+        return jsonify({'error': f'Failed to export payroll: {e}'}), 500
+    buffer = io.BytesIO(payload)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f'payroll-{payroll_month}.pdf',
+        mimetype='application/pdf',
+    )
+
+
 @app.route('/api/payroll/payslip/<int:employee_id>/pdf', methods=['GET'])
 def api_download_payslip_pdf(employee_id):
     payroll_month = request.args.get('month', '').strip()

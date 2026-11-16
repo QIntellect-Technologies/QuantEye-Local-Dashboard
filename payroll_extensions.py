@@ -1585,3 +1585,170 @@ def attendance_report_pdf_bytes(report: Dict[str, Any], filter_info: Optional[Di
     parts.extend(xref)
     parts.append(f"trailer << /Size {total_objs + 1} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%%%EOF\n".encode("ascii"))
     return b"".join(parts)
+
+
+def payroll_csv_bytes(payroll: Dict[str, Any], currency: str = DEFAULT_CURRENCY) -> bytes:
+    import io, csv
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    month = payroll.get('payroll_month') or ''
+    status = payroll.get('status') or 'Draft'
+    writer.writerow(['# QuantEye Payroll Report', f'Month: {month}', f'Status: {status}', f'Currency: {currency}'])
+    headers = [
+        'Employee ID', 'Employee Name', 'Department', 'Basic Salary', 'Allowances',
+        'Overtime Pay', 'Bonus', 'Rest-Day Extra', 'Adjustments', 'Arrears',
+        'Gross Pay', 'Deductions', 'Net Pay', 'Status'
+    ]
+    writer.writerow(headers)
+    for row in payroll.get('records') or []:
+        writer.writerow([
+            row.get('employee_id') or row.get('user_id'),
+            row.get('employee_name') or row.get('name'),
+            row.get('department') or '',
+            f"{float(row.get('basic_salary') or 0):.2f}",
+            f"{float(row.get('allowances') or 0):.2f}",
+            f"{float(row.get('overtime_amount') or 0):.2f}",
+            f"{float(row.get('bonus_amount') or 0):.2f}",
+            f"{float(row.get('off_day_extra_pay') or 0):.2f}",
+            f"{float(row.get('adjustment_amount') or 0):.2f}",
+            f"{float(row.get('arrears_amount') or 0):.2f}",
+            f"{float(row.get('gross_pay') or 0):.2f}",
+            f"{float(row.get('total_deductions') or 0):.2f}",
+            f"{float(row.get('net_pay') or 0):.2f}",
+            row.get('status') or ''
+        ])
+    return b'\xef\xbb\xbf' + buf.getvalue().encode('utf-8')
+
+
+def payroll_report_pdf_bytes(payroll: Dict[str, Any], currency: str = DEFAULT_CURRENCY, org_name: str = 'QuantEye') -> bytes:
+    records = payroll.get('records') or []
+    payroll_month = payroll.get('payroll_month') or 'Current Month'
+    status = payroll.get('status') or 'Draft'
+
+    page_width, page_height = 842, 595
+    rows_per_page = 20
+    total_records = len(records)
+    total_pages = max(1, (total_records + rows_per_page - 1) // rows_per_page)
+
+    def rgb_fill(ops: List[str], r: float, g: float, b: float, x: float, y: float, w: float, h: float) -> None:
+        ops.append('{:.3f} {:.3f} {:.3f} rg {:.1f} {:.1f} {:.1f} {:.1f} re f'.format(r, g, b, x, y, w, h))
+
+    def rgb_stroke(ops: List[str], r: float, g: float, b: float, x: float, y: float, w: float, h: float) -> None:
+        ops.append('{:.3f} {:.3f} {:.3f} RG {:.1f} {:.1f} {:.1f} {:.1f} re S'.format(r, g, b, x, y, w, h))
+
+    def text_at(ops: List[str], x: float, y: float, text: str, size: int = 9, bold: bool = False, color: Tuple[float, float, float] = (0.09, 0.19, 0.26)) -> None:
+        font = 'F2' if bold else 'F1'
+        ops.append('{:.3f} {:.3f} {:.3f} rg'.format(*color))
+        ops.append('BT /{} {} Tf {:.1f} {:.1f} Td ({}) Tj ET'.format(font, size, x, y, _pdf_escape(text)))
+
+    pages_content = []
+
+    for page_idx in range(total_pages):
+        page_num = page_idx + 1
+        start_row = page_idx * rows_per_page
+        end_row = min(total_records, start_row + rows_per_page)
+        page_records = records[start_row:end_row]
+
+        ops = []
+        rgb_fill(ops, 0.98, 0.98, 0.99, 0, 0, page_width, page_height)
+
+        rgb_fill(ops, 0.09, 0.19, 0.26, 36, 525, 770, 48)
+        text_at(ops, 50, 552, f'{org_name} - Monthly Payroll Report', 14, True, (1, 1, 1))
+        text_at(ops, 50, 535, f'Period: {payroll_month}   |   Status: {status}   |   Currency: {currency}', 9, False, (0.8, 0.9, 0.95))
+
+        table_top = 505
+        row_height = 20
+        rgb_fill(ops, 0.13, 0.45, 0.55, 36, table_top - 20, 770, 20)
+
+        cols = [
+            ('#ID', 40, 40),
+            ('Employee Name', 85, 140),
+            ('Department', 230, 100),
+            ('Basic Pay', 335, 70),
+            ('Allowances', 410, 65),
+            ('Overtime', 480, 60),
+            ('Bonus', 545, 55),
+            ('Gross Pay', 605, 70),
+            ('Deductions', 680, 65),
+            ('Net Pay', 750, 56)
+        ]
+        for name, x, w in cols:
+            text_at(ops, x, table_top - 15, name, 8, True, (1, 1, 1))
+
+        current_y = table_top - 20
+        for i, row in enumerate(page_records):
+            current_y -= row_height
+            bg = (1, 1, 1) if (i % 2 == 0) else (0.95, 0.97, 0.99)
+            rgb_fill(ops, *bg, 36, current_y, 770, row_height)
+            rgb_stroke(ops, 0.88, 0.91, 0.95, 36, current_y, 770, row_height)
+
+            emp_id = str(row.get('employee_id') or row.get('user_id') or '')
+            name = str(row.get('employee_name') or row.get('name') or '')[:22]
+            dept = str(row.get('department') or '')[:15]
+            basic = f"{float(row.get('basic_salary') or 0):,.0f}"
+            allowances = f"{float(row.get('allowances') or 0):,.0f}"
+            ot = f"{float(row.get('overtime_amount') or 0):,.0f}"
+            bonus = f"{float(row.get('bonus_amount') or 0):,.0f}"
+            gross = f"{float(row.get('gross_pay') or 0):,.0f}"
+            ded = f"{float(row.get('total_deductions') or 0):,.0f}"
+            net = f"{float(row.get('net_pay') or 0):,.0f}"
+
+            text_at(ops, 40, current_y + 6, emp_id, 8, False)
+            text_at(ops, 85, current_y + 6, name, 8, True)
+            text_at(ops, 230, current_y + 6, dept, 8, False)
+            text_at(ops, 335, current_y + 6, basic, 8, False)
+            text_at(ops, 410, current_y + 6, allowances, 8, False)
+            text_at(ops, 480, current_y + 6, ot, 8, False)
+            text_at(ops, 545, current_y + 6, bonus, 8, False)
+            text_at(ops, 605, current_y + 6, gross, 8, False)
+            text_at(ops, 680, current_y + 6, ded, 8, False, (0.7, 0.15, 0.15))
+            text_at(ops, 750, current_y + 6, net, 8, True, (0.05, 0.5, 0.35))
+
+        if total_records == 0:
+            rgb_fill(ops, 1, 1, 1, 36, table_top - 60, 770, 40)
+            text_at(ops, 300, table_top - 40, 'No payroll records found for this month.', 9, False, (0.5, 0.5, 0.5))
+
+        rgb_fill(ops, 0.09, 0.19, 0.26, 36, 25, 770, 20)
+        text_at(ops, 48, 31, 'QuantEye Security & Attendance System', 8, False, (1, 1, 1))
+        text_at(ops, 720, 31, f'Page {page_num} of {total_pages}', 8, True, (1, 1, 1))
+
+        pages_content.append('\n'.join(ops))
+
+    font1_id = 3 + len(pages_content) * 2
+    font2_id = font1_id + 1
+    total_objs = font2_id
+
+    kids = []
+    page_objs = []
+    for i, p_content in enumerate(pages_content):
+        p_id = 3 + i * 2
+        c_id = p_id + 1
+        kids.append(f'{p_id} 0 R')
+        stream = p_content.encode('latin-1', 'replace')
+        p_obj = (
+            f'{p_id} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_width} {page_height}] '
+            f'/Contents {c_id} 0 R /Resources << /Font << /F1 {font1_id} 0 R /F2 {font2_id} 0 R >> >> >> endobj\n'
+        ).encode('latin-1')
+        c_obj = f'{c_id} 0 obj << /Length {len(stream)} >> stream\n'.encode('latin-1') + stream + b'\nendstream endobj\n'
+        page_objs.extend([p_obj, c_obj])
+
+    kids_str = ' '.join(kids)
+    objs = [
+        b'1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n',
+        f'2 0 obj << /Type /Pages /Kids [{kids_str}] /Count {len(pages_content)} >> endobj\n'.encode('latin-1'),
+        *page_objs,
+        b'%d 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n' % font1_id,
+        b'%d 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj\n' % font2_id,
+    ]
+    parts = [b'%PDF-1.4\n']
+    offsets = [0]
+    for obj in objs:
+        offsets.append(sum(len(p) for p in parts))
+        parts.append(obj)
+    xref_pos = sum(len(p) for p in parts)
+    xref = [f'xref\n0 {total_objs + 1}\n0000000000 65535 f \n'.encode('ascii')]
+    for off in offsets[1:]:
+        xref.append('{:010d} 00000 n \n'.format(off).encode('ascii'))
+    parts.extend(xref)
+    parts.append(f'trailer << /Size {total_objs + 1} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%%%EOF\n'.encode('ascii'))
+    return b''.join(parts)

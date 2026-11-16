@@ -51,6 +51,8 @@ from payroll_extensions import (
     flag_on as _payroll_flag_on,
     named_component_totals as _named_component_totals,
     payroll_excel_bytes,
+    payroll_csv_bytes,
+    payroll_report_pdf_bytes,
     payslip_pdf_bytes,
     prorate_packages as _prorate_packages,
     write_audit as _write_payroll_audit,
@@ -16336,6 +16338,38 @@ def export_monthly_payroll_excel(
         payroll = {'payroll_month': payroll_month, 'records': payroll, 'status': 'Draft'}
     settings = get_payroll_settings(organization_id=organization_id, branch_id=branch_id)
     return payroll_excel_bytes(payroll, settings.get('currency_code') or DEFAULT_CURRENCY)
+
+
+def export_monthly_payroll_csv(
+    payroll_month: str,
+    organization_id: str = 'DEFAULT_ORG',
+    branch_id: Optional[str] = None,
+) -> bytes:
+    payroll = get_monthly_payroll(
+        payroll_month, organization_id=organization_id, branch_id=branch_id
+    ) or calculate_monthly_payroll(
+        payroll_month, organization_id=organization_id, branch_id=branch_id
+    )
+    if isinstance(payroll, list):
+        payroll = {'payroll_month': payroll_month, 'records': payroll, 'status': 'Draft'}
+    settings = get_payroll_settings(organization_id=organization_id, branch_id=branch_id)
+    return payroll_csv_bytes(payroll, settings.get('currency_code') or DEFAULT_CURRENCY)
+
+
+def export_monthly_payroll_pdf(
+    payroll_month: str,
+    organization_id: str = 'DEFAULT_ORG',
+    branch_id: Optional[str] = None,
+) -> bytes:
+    payroll = get_monthly_payroll(
+        payroll_month, organization_id=organization_id, branch_id=branch_id
+    ) or calculate_monthly_payroll(
+        payroll_month, organization_id=organization_id, branch_id=branch_id
+    )
+    if isinstance(payroll, list):
+        payroll = {'payroll_month': payroll_month, 'records': payroll, 'status': 'Draft'}
+    settings = get_payroll_settings(organization_id=organization_id, branch_id=branch_id)
+    return payroll_report_pdf_bytes(payroll, settings.get('currency_code') or DEFAULT_CURRENCY)
 
 
 def export_employee_payslip_pdf(
