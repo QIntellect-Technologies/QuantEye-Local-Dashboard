@@ -50,706 +50,7 @@
       {% if not client_module_entitlements.overtime %}.sidebar-menu .menu-item[data-module="overtime"] { display: none !important; } #overtime-view { display: none !important; } .settings-overtime-only, .payroll-overtime-only { display: none !important; }{% endif %}
       {% if not client_module_entitlements.shifts %}.sidebar-menu .menu-item[data-module="shifts"] { display: none !important; } #shifts-view { display: none !important; } .settings-shifts-only { display: none !important; }{% endif %}
       {% if not client_module_entitlements.mobile %}.sidebar-menu .menu-item[data-module="mobile"] { display: none !important; } #mobile-app-view { display: none !important; }{% endif %}
-    
-    /* ==========================================================================
-       PAY-07..PAY-12, GUI-14, PR-05..23, LS-01: Shared Design System Overrides
-       ========================================================================== */
-    /* Hero Section shared styling for Payroll */
-    #payroll-view .rpt-hero {
-      position: relative;
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 22px;
-      flex-wrap: wrap;
-      padding: 22px 24px 20px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: var(--r, 18px);
-      overflow: hidden;
-      color: #ffffff;
-      background:
-        radial-gradient(48% 88% at 100% 0%, rgba(139, 123, 247, 0.45), transparent 62%),
-        radial-gradient(46% 76% at 0% 104%, rgba(60, 196, 170, 0.3), transparent 66%),
-        linear-gradient(135deg, #141922 0%, #1b2130 46%, #212b3d 100%) !important;
-      box-shadow: 0 1px 2px rgba(20, 24, 40, 0.22), 0 34px 64px -46px rgba(18, 24, 44, 0.9);
-      margin-bottom: 16px;
-    }
-    #payroll-view .rpt-hero::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
-      background-size: 34px 34px;
-      -webkit-mask-image: radial-gradient(78% 130% at 12% 0%, #000 28%, transparent 78%);
-      mask-image: radial-gradient(78% 130% at 12% 0%, #000 28%, transparent 78%);
-      pointer-events: none;
-    }
-    #payroll-view .rpt-hero::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 26px;
-      right: 26px;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
-      pointer-events: none;
-    }
-    #payroll-view .rpt-hero-copy {
-      position: relative;
-      z-index: 1;
-      min-width: 260px;
-    }
-    #payroll-view .rpt-hero-eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      height: 24px;
-      padding: 0 10px;
-      margin-bottom: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.05);
-      color: rgba(255, 255, 255, 0.72);
-      font-size: 9.5px;
-      font-weight: 600;
-      letter-spacing: 0.11em;
-      text-transform: uppercase;
-      width: fit-content;
-    }
-    #payroll-view .rpt-hero-eyebrow i {
-      font-size: 9px;
-      color: #b7aeff;
-    }
-    #payroll-view .rpt-hero-title {
-      margin: 0;
-      font-size: 26px;
-      line-height: 1.12;
-      font-weight: 600;
-      letter-spacing: -0.035em;
-      color: #ffffff;
-    }
-    #payroll-view .rpt-hero-sub {
-      margin: 8px 0 0;
-      max-width: 640px;
-      font-size: 12.5px;
-      line-height: 1.5;
-      color: rgba(255, 255, 255, 0.58);
-    }
-    #payroll-view .rpt-hero-actions {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    /* QA-141: High-contrast readable buttons on Payroll across all states (normal, hover, active, disabled) */
-    #payroll-view #calculatePayrollButton {
-      background: #0d9488 !important;
-      border: 1.5px solid #0d9488 !important;
-      color: #ffffff !important;
-      font-weight: 700 !important;
-      height: 36px;
-      border-radius: 10px;
-      padding: 0 16px;
-      box-shadow: 0 3px 10px rgba(13, 148, 136, 0.35) !important;
-      transition: all 0.16s ease;
-    }
-    #payroll-view #calculatePayrollButton:hover:not(:disabled) {
-      background: #0f766e !important;
-      border-color: #0f766e !important;
-      color: #ffffff !important;
-      box-shadow: 0 5px 14px rgba(13, 148, 136, 0.45) !important;
-      transform: translateY(-1px);
-    }
-    #payroll-view #calculatePayrollButton:active:not(:disabled) {
-      background: #115e59 !important;
-      border-color: #115e59 !important;
-      color: #ffffff !important;
-      transform: translateY(1px);
-      box-shadow: none !important;
-    }
-    #payroll-view #calculatePayrollButton:disabled {
-      background: rgba(148, 163, 184, 0.28) !important;
-      border-color: rgba(148, 163, 184, 0.35) !important;
-      color: rgba(255, 255, 255, 0.72) !important;
-      opacity: 0.75 !important;
-      cursor: not-allowed !important;
-      box-shadow: none !important;
-      transform: none !important;
-    }
-
-    #payroll-view #manageSalaryPackagesButton {
-      background: #ffffff !important;
-      border: 1.5px solid rgba(255, 255, 255, 0.95) !important;
-      color: #173042 !important;
-      font-weight: 700 !important;
-      height: 36px;
-      border-radius: 10px;
-      padding: 0 16px;
-      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14) !important;
-      transition: all 0.16s ease;
-    }
-    #payroll-view #manageSalaryPackagesButton:hover:not(:disabled) {
-      background: #f8fafc !important;
-      border-color: #ffffff !important;
-      color: #0f172a !important;
-      box-shadow: 0 5px 14px rgba(0, 0, 0, 0.2) !important;
-      transform: translateY(-1px);
-    }
-    #payroll-view #manageSalaryPackagesButton:active:not(:disabled) {
-      background: #e2e8f0 !important;
-      border-color: #cbd5e1 !important;
-      color: #0f172a !important;
-      transform: translateY(1px);
-      box-shadow: none !important;
-    }
-    #payroll-view #manageSalaryPackagesButton:disabled {
-      background: rgba(255, 255, 255, 0.22) !important;
-      border-color: rgba(255, 255, 255, 0.28) !important;
-      color: rgba(255, 255, 255, 0.6) !important;
-      opacity: 0.65 !important;
-      cursor: not-allowed !important;
-      box-shadow: none !important;
-      transform: none !important;
-    }
-
-    #payroll-view #reviewPayrollButton {
-      background: #173042 !important;
-      border: 1.5px solid #173042 !important;
-      color: #ffffff !important;
-      font-weight: 700 !important;
-      height: 36px;
-      border-radius: 10px;
-      padding: 0 16px;
-      box-shadow: 0 2px 6px rgba(23, 48, 66, 0.16) !important;
-      transition: all 0.16s ease;
-    }
-    #payroll-view #reviewPayrollButton:hover:not(:disabled) {
-      background: #23435c !important;
-      border-color: #23435c !important;
-      color: #ffffff !important;
-      box-shadow: 0 4px 10px rgba(23, 48, 66, 0.25) !important;
-      transform: translateY(-1px);
-    }
-    #payroll-view #reviewPayrollButton:active:not(:disabled) {
-      background: #0f212e !important;
-      border-color: #0f212e !important;
-      color: #ffffff !important;
-      transform: translateY(1px);
-      box-shadow: none !important;
-    }
-    #payroll-view #reviewPayrollButton:disabled {
-      background: #f1f5f9 !important;
-      border: 1.5px solid #cbd5e1 !important;
-      color: #64748b !important;
-      opacity: 1 !important;
-      cursor: not-allowed !important;
-      box-shadow: none !important;
-      transform: none !important;
-    }
-
-    #payroll-view #finalizePayrollToolbarButton {
-      background: #0f766e !important;
-      border: 1.5px solid #0f766e !important;
-      color: #ffffff !important;
-      font-weight: 700 !important;
-      transition: all 0.16s ease;
-    }
-    #payroll-view #finalizePayrollToolbarButton:hover:not(:disabled) {
-      background: #0d9488 !important;
-      border-color: #0d9488 !important;
-      color: #ffffff !important;
-      transform: translateY(-1px);
-    }
-    #payroll-view #finalizePayrollToolbarButton:active:not(:disabled) {
-      background: #115e59 !important;
-      border-color: #115e59 !important;
-      color: #ffffff !important;
-      transform: translateY(1px);
-    }
-    #payroll-view #finalizePayrollToolbarButton:disabled {
-      background: #f1f5f9 !important;
-      border: 1.5px solid #cbd5e1 !important;
-      color: #94a3b8 !important;
-      opacity: 1 !important;
-      cursor: not-allowed !important;
-    }
-
-    #payroll-view .rpt-btn-dark {
-      border: 1.5px solid rgba(255, 255, 255, 0.3) !important;
-      background: rgba(255, 255, 255, 0.14) !important;
-      color: #ffffff !important;
-      font-weight: 700 !important;
-      height: 36px;
-      border-radius: 10px;
-    }
-    #payroll-view .rpt-btn-dark:hover {
-      border-color: #ffffff !important;
-      background: rgba(255, 255, 255, 0.24) !important;
-      color: #ffffff !important;
-    }
-    #payroll-view .rpt-btn-light {
-      border: 1.5px solid #cfe8f7 !important;
-      background: #ffffff !important;
-      color: #151b25 !important;
-      font-weight: 700 !important;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05) !important;
-      height: 36px;
-      border-radius: 10px;
-    }
-    #payroll-view .rpt-btn-light:hover {
-      background: #f8fafc !important;
-      border-color: #3d9fd4 !important;
-      color: #151b25 !important;
-    }
-
-    /* QA-142: Responsive Payroll screen (100% zoom, laptops 1366x768 & desktops 1920x1080) */
-    #payroll-view {
-      overflow-x: hidden !important;
-      max-width: 100% !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
-    }
-    #payroll-view .rpt-hero {
-      max-width: 100% !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
-    }
-    #payroll-view .payroll-rpt-rail {
-      max-width: 100% !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
-    }
-    #payroll-view .payroll-rpt-filters {
-      max-width: 100% !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
-      overflow: hidden !important;
-    }
-    #payroll-view .payroll-rpt-filters .rpt-filters-body {
-      display: flex !important;
-      flex-wrap: wrap !important;
-      gap: 10px !important;
-      align-items: flex-end !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
-    }
-    #payroll-view .payroll-rpt-filters .rpt-field {
-      flex: 1 1 140px;
-      min-width: 130px;
-      max-width: 100%;
-    }
-    #payroll-view .payroll-rpt-filters #payrollMonthFilterWrap {
-      flex: 1 1 215px;
-      min-width: 215px;
-    }
-    #payroll-view .payroll-table-tabs {
-      flex-wrap: wrap !important;
-      width: 100% !important;
-      max-width: 100% !important;
-      box-sizing: border-box !important;
-    }
-    #payroll-view .payroll-rpt-sheet,
-    #payroll-view .rpt-sheet {
-      max-width: 100% !important;
-      width: 100% !important;
-      overflow: hidden !important;
-      box-sizing: border-box !important;
-    }
-    #payroll-view .payroll-rpt-sheet .rpt-table-scroll,
-    #payroll-view .rpt-table-scroll {
-      overflow-x: auto !important;
-      max-width: 100% !important;
-      width: 100% !important;
-      -webkit-overflow-scrolling: touch;
-      position: relative;
-    }
-    #payrollReviewPanel .log-table-wrapper {
-      overflow-x: auto !important;
-      max-width: 100% !important;
-      width: 100% !important;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    /* QA-142: Sticky header row and sticky employee name column */
-    #payrollMainTable {
-      border-collapse: separate !important;
-      border-spacing: 0;
-    }
-    #payrollMainTable thead th {
-      position: sticky;
-      top: 0;
-      z-index: 5;
-      background: #f2faff !important;
-      border-bottom: 1.5px solid #cfe8f7 !important;
-    }
-    #payrollMainTable thead th.sticky-col-employee,
-    #payrollMainTable thead th:first-child {
-      position: sticky;
-      left: 0;
-      z-index: 8;
-      background: #f2faff !important;
-      min-width: 230px !important;
-      max-width: 280px !important;
-      box-shadow: 2px 0 6px -2px rgba(15, 23, 42, 0.14);
-    }
-    #payrollMainTable tbody td.sticky-col-employee,
-    #payrollMainTable tbody td:first-child {
-      position: sticky;
-      left: 0;
-      z-index: 4;
-      background: #ffffff !important;
-      min-width: 230px !important;
-      max-width: 280px !important;
-      box-shadow: 2px 0 6px -2px rgba(15, 23, 42, 0.14);
-    }
-    #payrollMainTable tbody tr:hover td.sticky-col-employee,
-    #payrollMainTable tbody tr:hover td:first-child {
-      background: #f8fafc !important;
-    }
-
-    /* QA-142: Urdu & Long employee name styling */
-    .employee-name-text {
-      display: inline-block;
-      max-width: 175px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      vertical-align: middle;
-      font-size: 0.95em;
-    }
-
-    /* Metric Rail & Cards shared styling for Payroll & Salary Structure */
-    #payroll-view .rpt-rail,
-    #salary-config-tab .rpt-rail {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-      gap: 1px;
-      border: 1px solid var(--line, #cfe8f7);
-      border-radius: 18px;
-      background: var(--line, #cfe8f7);
-      box-shadow: 0 4px 14px -6px rgba(15, 23, 42, 0.06);
-      overflow: hidden;
-      margin-bottom: 16px;
-    }
-    #payroll-view .rpt-metric,
-    #salary-config-tab .rpt-metric {
-      position: relative;
-      padding: 15px 18px 16px;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.72));
-      -webkit-backdrop-filter: blur(16px);
-      backdrop-filter: blur(16px);
-      border: none;
-      text-align: left;
-    }
-    #payroll-view .rpt-metric.rpt-metric-clickable {
-      cursor: pointer;
-      transition: background 0.18s ease;
-    }
-    #payroll-view .rpt-metric.rpt-metric-clickable:hover {
-      background: #ffffff !important;
-    }
-    #payroll-view .rpt-metric-head,
-    #salary-config-tab .rpt-metric-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    #payroll-view .rpt-metric-label,
-    #salary-config-tab .rpt-metric-label {
-      font-size: 9.5px;
-      font-weight: 600;
-      letter-spacing: 0.11em;
-      text-transform: uppercase;
-      color: #64748b;
-    }
-    #payroll-view .rpt-metric-icon,
-    #salary-config-tab .rpt-metric-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 8px;
-      font-size: 11px;
-    }
-    #payroll-view .rpt-metric-icon.tone-lilac,
-    #salary-config-tab .rpt-metric-icon.tone-lilac {
-      background: rgba(139, 123, 247, 0.12);
-      color: #6a5cd6;
-    }
-    #payroll-view .rpt-metric-icon.tone-mint,
-    #salary-config-tab .rpt-metric-icon.tone-mint {
-      background: rgba(60, 196, 170, 0.14);
-      color: #1f8d77;
-    }
-    #payroll-view .rpt-metric-icon.tone-coral,
-    #salary-config-tab .rpt-metric-icon.tone-coral {
-      background: rgba(214, 96, 88, 0.12);
-      color: #b4382f;
-    }
-    #payroll-view .rpt-metric-icon.tone-amber,
-    #salary-config-tab .rpt-metric-icon.tone-amber {
-      background: rgba(196, 138, 44, 0.14);
-      color: #9a6710;
-    }
-    #payroll-view .rpt-metric-value,
-    #salary-config-tab .rpt-metric-value {
-      display: block;
-      margin-top: 8px;
-      font-size: 24px;
-      font-weight: 700;
-      line-height: 1.05;
-      letter-spacing: -0.03em;
-      color: #173042;
-      font-variant-numeric: tabular-nums;
-    }
-    #payroll-view .rpt-metric-foot,
-    #salary-config-tab .rpt-metric-foot {
-      display: block;
-      margin-top: 4px;
-      min-height: 15px;
-      font-size: 11px;
-      color: #64748b;
-    }
-
-    /* Filters shared styling for Payroll & Salary Structure */
-    #payroll-view .rpt-filters,
-    #salary-config-tab .rpt-filters {
-      padding: 14px 16px;
-      border: 1px solid #cfe8f7;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.92);
-      box-shadow: 0 4px 14px -6px rgba(15, 23, 42, 0.05);
-      margin-bottom: 16px;
-    }
-    #payroll-view .rpt-filters-body,
-    #salary-config-tab .rpt-filters-body {
-      display: flex;
-      align-items: flex-end;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    #payroll-view .rpt-field,
-    #salary-config-tab .rpt-field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      min-width: 140px;
-    }
-
-    /* Table Sheet shared styling for Payroll & Salary Structure */
-    #payroll-view .rpt-sheet,
-    #salary-config-tab .rpt-sheet {
-      border: 1px solid #cfe8f7;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.98);
-      box-shadow: 0 4px 16px -8px rgba(15, 23, 42, 0.07);
-      overflow: hidden;
-      margin-bottom: 20px;
-    }
-    #payroll-view .rpt-sheet-head,
-    #salary-config-tab .rpt-sheet-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
-      padding: 16px 20px 14px;
-      border-bottom: 1px solid #e2e8f0;
-      background: #ffffff;
-    }
-    #payroll-view .rpt-sheet-title,
-    #salary-config-tab .rpt-sheet-title {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: -0.015em;
-      color: #173042;
-    }
-    #payroll-view .rpt-sheet-sub,
-    #salary-config-tab .rpt-sheet-sub {
-      margin: 3px 0 0;
-      font-size: 12px;
-      color: #64748b;
-    }
-    #payroll-view .rpt-sheet-tools,
-    #salary-config-tab .rpt-sheet-tools {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    /* Horizontal scroll fix: Page must never scroll horizontally, only table container */
-    #payroll-view {
-      max-width: 100vw;
-      width: 100%;
-      overflow-x: hidden !important;
-      box-sizing: border-box;
-    }
-    .payroll-rpt-sheet,
-    #payroll-view .rpt-sheet {
-      max-width: 100% !important;
-      width: 100% !important;
-      overflow: hidden !important;
-    }
-    .payroll-rpt-sheet .rpt-table-scroll,
-    #payroll-view .rpt-table-scroll {
-      overflow-x: auto !important;
-      max-width: 100% !important;
-      width: 100% !important;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    /* GUI-14: Label Typography Standardization across whole app: Normal writing, non-bold, black */
-    .payroll-rule-field,
-    .ot-settings-field,
-    .rpt-field-label,
-    #settings-view label,
-    #payroll-rules-tab label,
-    #leave-settings-tab label,
-    #payroll-view label,
-    .payroll-rule-field label,
-    .ot-settings-field label {
-      font-weight: 500 !important;
-      text-transform: none !important;
-      color: #151b25 !important;
-      font-size: 13px !important;
-      letter-spacing: normal !important;
-    }
-
-    /* Standard 38px height on inputs, selects, triggers and inline buttons in form rows */
-    .payroll-rule-form .form-control,
-    .payroll-rule-form .form-select,
-    .payroll-rule-form .btn,
-    .ot-settings-row .form-control,
-    .ot-settings-row .form-select,
-    .ot-settings-row .btn,
-    .payroll-panel .form-control,
-    .payroll-panel .form-select,
-    .leave-settings-select,
-    #halfLeaveRuleValue,
-    #halfLeavesPerQuotaDay,
-    #saveLeaveSettingsBtn,
-    #payrollBonusSettingsMonth,
-    #payrollCalendarForm .form-control,
-    #payrollCalendarForm .form-select,
-    #payrollCalendarSaveButton,
-    .app-camera-select-trigger {
-      height: 38px !important;
-      min-height: 38px !important;
-      box-sizing: border-box !important;
-    }
-
-    /* Standard 36px height on filter toolbars */
-    .rpt-filters .form-control,
-    .rpt-filters .form-select,
-    .rpt-filters .rpt-btn,
-    #payrollResetFiltersBtn,
-    #salaryResetFiltersBtn,
-    #payrollPrevMonth,
-    #payrollNextMonth,
-    #payrollMonth {
-      height: 36px !important;
-      min-height: 36px !important;
-      box-sizing: border-box !important;
-    }
-
-    /* Full width Overtime Tab */
-    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] {
-      max-width: 100% !important;
-      width: 100% !important;
-    }
-
-    /* Payslip live preview height natural fitting */
-    .payslip-live-preview {
-      min-height: unset !important;
-      height: auto !important;
-      max-height: 760px !important;
-    }
-    .payslip-letterhead-grid {
-      align-items: start !important;
-    }
-
-    /* Button hover transition polish (PR-23) */
-    .payroll-quick-links .btn,
-    #payrollGuideHeaderBtn,
-    #otOpenPayrollBtn,
-    button[onclick="openAutoOtRateModal()"],
-    button[onclick="loadSalaryConfigs()"],
-    button[onclick*="switchTab('shifts-view'"],
-    #payrollResetFiltersBtn,
-    #salaryResetFiltersBtn {
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
-    }
-    .payroll-quick-links .btn:hover,
-    #payrollGuideHeaderBtn:hover,
-    #otOpenPayrollBtn:hover,
-    button[onclick="openAutoOtRateModal()"]:hover,
-    button[onclick="loadSalaryConfigs()"]:hover,
-    button[onclick*="switchTab('shifts-view'"]:hover,
-    #payrollResetFiltersBtn:hover,
-    #salaryResetFiltersBtn:hover {
-      box-shadow: 0 3px 8px rgba(15, 23, 42, 0.12) !important;
-      transform: translateY(-1px);
-    }
-
-
-      /* PAY-06: Never stick payslip table headers inside overlay or print */
-      #payslipOverlay thead,
-      #payslipOverlay thead th,
-      #payslipOverlay th,
-      .invoice-paper thead,
-      .invoice-paper thead th,
-      .invoice-paper th,
-      .payslip-table thead,
-      .payslip-table thead th,
-      .payslip-table th {
-        position: static !important;
-        top: auto !important;
-        z-index: 1 !important;
-      }
-
-      /* OT Log Tab: Filter Bar Reset Button matching Attendance Reports exactly */
-      #overtime-view .ot-filter-bar .rpt-btn,
-      #otResetFiltersBtn {
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: 8px !important;
-        height: 36px !important;
-        min-height: 36px !important;
-        padding: 0 14px !important;
-        border: 1px solid #cbd5e1 !important;
-        border-radius: 10px !important;
-        background: #ffffff !important;
-        color: #151b25 !important;
-        font-family: inherit !important;
-        font-size: 12px !important;
-        font-weight: 500 !important;
-        line-height: 1 !important;
-        white-space: nowrap !important;
-        cursor: pointer !important;
-        box-sizing: border-box !important;
-        transition: all 0.16s ease !important;
-      }
-      #overtime-view .ot-filter-bar .rpt-btn:hover,
-      #otResetFiltersBtn:hover {
-        background: #f8fafc !important;
-        border-color: #94a3b8 !important;
-        color: #0f172a !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
-      }
-      #overtime-view .ot-filter-bar .rpt-btn i,
-      #otResetFiltersBtn i {
-        font-size: 11px !important;
-        color: #475569 !important;
-      }
-</style>
+    </style>
     <script>
       window.clientSessionModules = {{ client_licensed_modules|tojson }};
       window.entitledModules = {
@@ -1780,24 +1081,6 @@
         color: #628095;
         font-size: 0.9rem;
         font-style: normal;
-      }
-
-      #payroll-view {
-        font-size: 16px;
-      }
-
-      #payroll-view .btn,
-      #payroll-view .form-control,
-      #payroll-view .form-select {
-        font-size: 1rem !important;
-      }
-
-      #payroll-view .log-table th {
-        font-size: 0.92rem !important;
-      }
-
-      #payroll-view .log-table td {
-        font-size: 1.02rem !important;
       }
 
       #editSalaryConfigModal > div {
@@ -9062,6 +8345,776 @@
   };
 })();
   </script>
+  <style id="shared-design-system-overrides">
+    /* ==========================================================================
+       PAY-07..PAY-12, GUI-14, PR-05..23, LS-01, QA-140..143: Shared Design System Overrides
+       ========================================================================== */
+    /* Hero Section shared styling for Payroll */
+    #payroll-view .rpt-hero {
+      position: relative;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 22px;
+      flex-wrap: wrap;
+      padding: 22px 24px 20px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--r, 18px);
+      overflow: hidden;
+      color: #ffffff;
+      background:
+        radial-gradient(48% 88% at 100% 0%, rgba(139, 123, 247, 0.45), transparent 62%),
+        radial-gradient(46% 76% at 0% 104%, rgba(60, 196, 170, 0.3), transparent 66%),
+        linear-gradient(135deg, #141922 0%, #1b2130 46%, #212b3d 100%) !important;
+      box-shadow: 0 1px 2px rgba(20, 24, 40, 0.22), 0 34px 64px -46px rgba(18, 24, 44, 0.9);
+      margin-bottom: 16px;
+    }
+    #payroll-view .rpt-hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+      background-size: 34px 34px;
+      -webkit-mask-image: radial-gradient(78% 130% at 12% 0%, #000 28%, transparent 78%);
+      mask-image: radial-gradient(78% 130% at 12% 0%, #000 28%, transparent 78%);
+      pointer-events: none;
+    }
+    #payroll-view .rpt-hero::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 26px;
+      right: 26px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+      pointer-events: none;
+    }
+    #payroll-view .rpt-hero-copy {
+      position: relative;
+      z-index: 1;
+      min-width: 260px;
+    }
+    #payroll-view .rpt-hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 24px;
+      padding: 0 10px;
+      margin-bottom: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+      width: fit-content;
+    }
+    #payroll-view .rpt-hero-eyebrow i {
+      font-size: 9px;
+      color: #b7aeff;
+    }
+    #payroll-view .rpt-hero-title {
+      margin: 0;
+      font-size: 26px;
+      line-height: 1.12;
+      font-weight: 600;
+      letter-spacing: -0.035em;
+      color: #ffffff;
+    }
+    #payroll-view .rpt-hero-sub {
+      margin: 8px 0 0;
+      max-width: 640px;
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.58);
+    }
+    #payroll-view .rpt-hero-actions {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    /* High-contrast readable buttons on Payroll across all states (normal, hover, active, disabled) */
+    #payroll-view #calculatePayrollButton {
+      background: #0d9488 !important;
+      border: 1.5px solid #0d9488 !important;
+      color: #ffffff !important;
+      font-weight: 700 !important;
+      height: 36px !important;
+      min-height: 36px !important;
+      border-radius: 10px !important;
+      padding: 0 14px !important;
+      box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25) !important;
+      transition: all 0.16s ease;
+    }
+    #payroll-view #calculatePayrollButton:hover:not(:disabled) {
+      background: #0f766e !important;
+      border-color: #0f766e !important;
+      color: #ffffff !important;
+      box-shadow: 0 4px 12px rgba(13, 148, 136, 0.35) !important;
+      transform: translateY(-1px);
+    }
+    #payroll-view #calculatePayrollButton:active:not(:disabled) {
+      background: #115e59 !important;
+      border-color: #115e59 !important;
+      color: #ffffff !important;
+      transform: translateY(1px);
+      box-shadow: none !important;
+    }
+    #payroll-view #calculatePayrollButton:disabled {
+      background: #f1f5f9 !important;
+      border: 1.5px solid #cbd5e1 !important;
+      color: #475569 !important;
+      opacity: 1 !important;
+      cursor: not-allowed !important;
+      box-shadow: none !important;
+      transform: none !important;
+    }
+
+    #payroll-view #manageSalaryPackagesButton {
+      background: #ffffff !important;
+      border: 1.5px solid #cfe8f7 !important;
+      color: #151b25 !important;
+      font-weight: 700 !important;
+      height: 36px !important;
+      min-height: 36px !important;
+      border-radius: 10px !important;
+      padding: 0 14px !important;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05) !important;
+      transition: all 0.16s ease;
+    }
+    #payroll-view #manageSalaryPackagesButton:hover:not(:disabled) {
+      background: #f8fafc !important;
+      border-color: #3d9fd4 !important;
+      color: #0f172a !important;
+      transform: translateY(-1px);
+    }
+    #payroll-view #manageSalaryPackagesButton:active:not(:disabled) {
+      background: #e2e8f0 !important;
+      border-color: #cbd5e1 !important;
+      color: #0f172a !important;
+      transform: translateY(1px);
+      box-shadow: none !important;
+    }
+    #payroll-view #manageSalaryPackagesButton:disabled {
+      background: #f1f5f9 !important;
+      border: 1.5px solid #cbd5e1 !important;
+      color: #64748b !important;
+      opacity: 1 !important;
+      cursor: not-allowed !important;
+    }
+
+    #payroll-view #reviewPayrollButton {
+      background: #173042 !important;
+      border: 1.5px solid #173042 !important;
+      color: #ffffff !important;
+      font-weight: 700 !important;
+      height: 36px !important;
+      min-height: 36px !important;
+      border-radius: 10px !important;
+      padding: 0 14px !important;
+      box-shadow: 0 2px 6px rgba(23, 48, 66, 0.16) !important;
+      transition: all 0.16s ease;
+    }
+    #payroll-view #reviewPayrollButton i,
+    #payroll-view #reviewPayrollButton span {
+      color: inherit !important;
+    }
+    #payroll-view #reviewPayrollButton:hover:not(:disabled) {
+      background: #23435c !important;
+      border-color: #23435c !important;
+      color: #ffffff !important;
+      box-shadow: 0 4px 10px rgba(23, 48, 66, 0.25) !important;
+      transform: translateY(-1px);
+    }
+    #payroll-view #reviewPayrollButton:active:not(:disabled) {
+      background: #0f212e !important;
+      border-color: #0f212e !important;
+      color: #ffffff !important;
+      transform: translateY(1px);
+      box-shadow: none !important;
+    }
+    #payroll-view #reviewPayrollButton:disabled {
+      background: #e2e8f0 !important;
+      border: 1.5px solid #cbd5e1 !important;
+      color: #1e293b !important;
+      opacity: 1 !important;
+      cursor: not-allowed !important;
+      box-shadow: none !important;
+      transform: none !important;
+    }
+
+    #payroll-view #finalizePayrollToolbarButton {
+      background: #0f766e !important;
+      border: 1.5px solid #0f766e !important;
+      color: #ffffff !important;
+      font-weight: 700 !important;
+      transition: all 0.16s ease;
+    }
+    #payroll-view #finalizePayrollToolbarButton:hover:not(:disabled) {
+      background: #0d9488 !important;
+      border-color: #0d9488 !important;
+      color: #ffffff !important;
+      transform: translateY(-1px);
+    }
+    #payroll-view #finalizePayrollToolbarButton:active:not(:disabled) {
+      background: #115e59 !important;
+      border-color: #115e59 !important;
+      color: #ffffff !important;
+      transform: translateY(1px);
+    }
+    #payroll-view #finalizePayrollToolbarButton:disabled {
+      background: #f1f5f9 !important;
+      border: 1.5px solid #cbd5e1 !important;
+      color: #64748b !important;
+      opacity: 1 !important;
+      cursor: not-allowed !important;
+    }
+
+    #payroll-view .rpt-btn-dark {
+      border: 1.5px solid rgba(255, 255, 255, 0.3) !important;
+      background: rgba(255, 255, 255, 0.14) !important;
+      color: #ffffff !important;
+      font-weight: 700 !important;
+      height: 36px;
+      border-radius: 10px;
+    }
+    #payroll-view .rpt-btn-dark:hover {
+      border-color: #ffffff !important;
+      background: rgba(255, 255, 255, 0.24) !important;
+      color: #ffffff !important;
+    }
+    #payroll-view .rpt-btn-light {
+      border: 1.5px solid #cfe8f7 !important;
+      background: #ffffff !important;
+      color: #151b25 !important;
+      font-weight: 700 !important;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05) !important;
+      height: 36px;
+      border-radius: 10px;
+    }
+    #payroll-view .rpt-btn-light:hover {
+      background: #f8fafc !important;
+      border-color: #3d9fd4 !important;
+      color: #151b25 !important;
+    }
+
+    /* Strict Horizontal Containment: All Columns tab & Review Payroll must ONLY scroll inside the table wrapper, NEVER expanding the page */
+    .main-panel {
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow-x: hidden !important;
+    }
+    #payroll-view,
+    #payroll-view.page-view.active {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) !important;
+      overflow-x: hidden !important;
+      max-width: 100% !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      box-sizing: border-box !important;
+    }
+    #payroll-view:not(.active) {
+      display: none !important;
+    }
+    #payroll-view > * {
+      min-width: 0 !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    #payroll-view .rpt-hero,
+    #payroll-view .payroll-rpt-rail,
+    #payroll-view .payroll-rpt-filters,
+    #payroll-view .payroll-table-tabs,
+    #payroll-view .payroll-rpt-sheet,
+    #payroll-view .rpt-sheet,
+    #payrollReviewPanel {
+      max-width: 100% !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      overflow: hidden !important;
+      box-sizing: border-box !important;
+    }
+    #payroll-view .payroll-rpt-filters {
+      overflow: visible !important;
+    }
+    #payroll-view .payroll-rpt-filters .rpt-filters-body {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 10px !important;
+      align-items: flex-end !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    #payroll-view .payroll-rpt-filters .rpt-field {
+      flex: 1 1 140px;
+      min-width: 130px;
+      max-width: 100%;
+    }
+    #payroll-view .payroll-rpt-filters #payrollMonthFilterWrap {
+      flex: 0 1 175px !important;
+      min-width: 155px !important;
+    }
+    #payroll-view .payroll-rpt-filters .rpt-field:has(#payrollResetFiltersBtn) {
+      flex: 0 0 auto !important;
+      min-width: auto !important;
+      width: auto !important;
+    }
+    #payroll-view .payroll-rpt-sheet .rpt-table-scroll,
+    #payroll-view .rpt-table-scroll,
+    #payrollReviewPanel .log-table-wrapper {
+      display: block !important;
+      overflow-x: auto !important;
+      max-width: 100% !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      -webkit-overflow-scrolling: touch;
+      position: relative;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(139, 123, 247, 0.36) transparent;
+    }
+
+    /* Payroll Table Header & Cell Font Size Matching Attendance Reports Exactly */
+    #payroll-view #payrollMainTable,
+    #payrollReviewPanel .log-table {
+      border-collapse: separate !important;
+      border-spacing: 0 !important;
+    }
+    #payroll-view #payrollMainTable thead th,
+    #payroll-view .rpt-table thead th,
+    #payroll-view .log-table thead th,
+    #payrollReviewPanel .log-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      height: auto !important;
+      padding: 9px 12px !important;
+      border: 0 !important;
+      border-bottom: 1px solid #e3e8f5 !important;
+      background: rgba(248, 249, 254, 0.99) !important;
+      color: #6b7488 !important;
+      font-size: 9px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.1em !important;
+      text-transform: uppercase !important;
+      white-space: nowrap !important;
+      vertical-align: middle !important;
+    }
+    #payroll-view #payrollMainTable tbody td,
+    #payroll-view .rpt-table tbody td,
+    #payroll-view .log-table tbody td,
+    #payrollReviewPanel .log-table tbody td {
+      height: auto !important;
+      min-height: 0 !important;
+      padding: 9px 12px !important;
+      border-bottom: 1px solid #e9edf7 !important;
+      color: #2b3547 !important;
+      font-size: 12px !important;
+      line-height: 1.35 !important;
+      vertical-align: middle !important;
+    }
+    #payrollMainTable thead th.sticky-col-employee,
+    #payrollMainTable thead th:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 8;
+      background: rgba(248, 249, 254, 0.99) !important;
+      min-width: 230px !important;
+      max-width: 280px !important;
+      box-shadow: 2px 0 6px -2px rgba(15, 23, 42, 0.14);
+    }
+    #payrollMainTable tbody td.sticky-col-employee,
+    #payrollMainTable tbody td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 4;
+      background: #ffffff !important;
+      min-width: 230px !important;
+      max-width: 280px !important;
+      box-shadow: 2px 0 6px -2px rgba(15, 23, 42, 0.14);
+    }
+    #payrollMainTable tbody tr:hover td.sticky-col-employee,
+    #payrollMainTable tbody tr:hover td:first-child {
+      background: #f8fafc !important;
+    }
+
+    /* Urdu & Long employee name styling */
+    .employee-name-text {
+      display: inline-block;
+      max-width: 175px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: middle;
+      font-size: 0.95em;
+    }
+
+    /* Payroll Sheet Header & Pagination Dropdown Matching Attendance Reports Exactly */
+    #payroll-view .rpt-sheet,
+    #salary-config-tab .rpt-sheet {
+      border: 1px solid rgba(220, 227, 244, 0.95) !important;
+      border-radius: 18px !important;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.7)) !important;
+      box-shadow: 0 1px 2px rgba(20, 24, 40, 0.04), 0 26px 54px -42px rgba(52, 62, 120, 0.6) !important;
+      overflow: hidden !important;
+      margin-bottom: 20px;
+    }
+    #payroll-view .rpt-sheet-head,
+    #salary-config-tab .rpt-sheet-head {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 12px !important;
+      flex-wrap: wrap !important;
+      padding: 15px 18px !important;
+      border-bottom: 1px solid #edf0f9 !important;
+      background: transparent !important;
+    }
+    #payroll-view .rpt-sheet-title,
+    #salary-config-tab .rpt-sheet-title {
+      margin: 0 !important;
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      letter-spacing: -0.01em !important;
+      color: #151b25 !important;
+    }
+    #payroll-view .rpt-sheet-sub,
+    #salary-config-tab .rpt-sheet-sub {
+      margin: 3px 0 0 !important;
+      font-size: 11px !important;
+      color: #98a0b4 !important;
+    }
+    #payroll-view .rpt-sheet-tools,
+    #salary-config-tab .rpt-sheet-tools {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+    }
+    #payroll-view .rpt-tool-label,
+    #salary-config-tab .rpt-tool-label {
+      font-size: 9px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.1em !important;
+      text-transform: uppercase !important;
+      color: #98a0b4 !important;
+    }
+    #payroll-view .rpt-sheet-tools .app-camera-select,
+    #salary-config-tab .rpt-sheet-tools .app-camera-select {
+      width: 118px !important;
+      min-width: 110px !important;
+      max-width: 130px !important;
+      flex: 0 0 118px !important;
+    }
+    #payroll-view .rpt-sheet-tools .app-camera-select-trigger,
+    #salary-config-tab .rpt-sheet-tools .app-camera-select-trigger {
+      height: 32px !important;
+      min-height: 32px !important;
+      padding: 0 10px !important;
+      border: 1px solid #e3e8f5 !important;
+      border-radius: 9px !important;
+      background: rgba(255, 255, 255, 0.92) !important;
+      box-shadow: none !important;
+    }
+    #payroll-view .rpt-sheet-tools .app-camera-select-trigger:hover,
+    #salary-config-tab .rpt-sheet-tools .app-camera-select-trigger:hover {
+      border-color: rgba(139, 123, 247, 0.35) !important;
+      background: #ffffff !important;
+    }
+    #payroll-view .rpt-sheet-tools .app-camera-select-label,
+    #payroll-view .rpt-sheet-tools .app-camera-select-chip,
+    #salary-config-tab .rpt-sheet-tools .app-camera-select-label,
+    #salary-config-tab .rpt-sheet-tools .app-camera-select-chip {
+      padding: 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      color: #2b3547 !important;
+      font-size: 11.5px !important;
+      font-weight: 500 !important;
+    }
+
+    /* Metric Rail & Cards shared styling for Payroll & Salary Structure */
+    #payroll-view .rpt-rail,
+    #salary-config-tab .rpt-rail {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1px;
+      border: 1px solid var(--line, #cfe8f7);
+      border-radius: 18px;
+      background: var(--line, #cfe8f7);
+      box-shadow: 0 4px 14px -6px rgba(15, 23, 42, 0.06);
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    #payroll-view .rpt-metric,
+    #salary-config-tab .rpt-metric {
+      position: relative;
+      padding: 15px 18px 16px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.72));
+      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px);
+      border: none;
+      text-align: left;
+    }
+    #payroll-view .rpt-metric.rpt-metric-clickable {
+      cursor: pointer;
+      transition: background 0.18s ease;
+    }
+    #payroll-view .rpt-metric.rpt-metric-clickable:hover {
+      background: #ffffff !important;
+    }
+
+    /* Overtime Settings Tab: Full Container Width + Equal 38px Input & Dropdown Heights */
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"],
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] > .payroll-panel,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .ot-settings-section,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .payroll-rule-form {
+      max-width: 100% !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    #payroll-rules-tab .ot-settings-field .form-control,
+    #payroll-rules-tab .ot-settings-field .form-select,
+    #payroll-rules-tab .ot-settings-field .app-camera-select,
+    #payroll-rules-tab .ot-settings-field .app-camera-select-trigger,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .form-control,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .form-select,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .app-camera-select-trigger,
+    #payroll-rules-tab .ot-settings-actions .btn,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .btn-primary.btn-sm,
+    .payroll-rule-form .form-control,
+    .payroll-rule-form .form-select,
+    .payroll-rule-form .btn,
+    .ot-settings-row .form-control,
+    .ot-settings-row .form-select,
+    .ot-settings-row .btn,
+    .payroll-panel .form-control,
+    .payroll-panel .form-select,
+    .leave-settings-select,
+    #halfLeaveRuleValue,
+    #halfLeavesPerQuotaDay,
+    #saveLeaveSettingsBtn,
+    #payrollBonusSettingsMonth,
+    #payrollCalendarForm .form-control,
+    #payrollCalendarForm .form-select,
+    #payrollCalendarSaveButton {
+      height: 38px !important;
+      min-height: 38px !important;
+      max-height: 38px !important;
+      box-sizing: border-box !important;
+    }
+    #payroll-rules-tab .ot-settings-field .form-control,
+    #payroll-rules-tab .ot-settings-field .app-camera-select-trigger,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .form-control,
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .app-camera-select-trigger {
+      padding: 0 12px !important;
+      border-radius: 10px !important;
+      border: 1.5px solid #cfe8f7 !important;
+      font-size: 13px !important;
+      line-height: 35px !important;
+    }
+
+    /* Label Typography: ONLY Filter Bars have uppercase grey labels; all other form labels are normal case, non-bold, and black */
+    .form-label,
+    .payroll-rule-field,
+    .payroll-rule-field > label,
+    .payroll-rule-field > span:not(.field-error),
+    .ot-settings-field,
+    .ot-settings-field > label,
+    .ot-settings-field > span:not(.field-error),
+    #settings-view .card .form-label,
+    #settings-view label:not(.btn):not(.form-check-label),
+    #payroll-rules-tab label:not(.btn):not(.form-check-label),
+    #leave-settings-tab label:not(.btn):not(.form-check-label),
+    #enroll-view .form-label,
+    #enroll-view label:not(.btn):not(.form-check-label),
+    .modal .form-label,
+    .modal label:not(.btn):not(.form-check-label),
+    [id$="Modal"] .form-label,
+    [id$="Modal"] label:not(.btn):not(.form-check-label),
+    #editUserModal .form-label,
+    #editUserModal label:not(.btn):not(.form-check-label),
+    #shiftModal .form-label,
+    #shiftModal label:not(.btn):not(.form-check-label) {
+      font-weight: 400 !important;
+      text-transform: none !important;
+      color: #000000 !important;
+      font-size: 13px !important;
+      letter-spacing: normal !important;
+    }
+
+    /* Filter Bars ONLY: Capital letters (uppercase) and grey color */
+    .rpt-filters .rpt-field-label,
+    #reports-view .rpt-filters .rpt-field-label,
+    #payroll-view .payroll-rpt-filters .rpt-field-label,
+    #staff-view .rpt-filters .rpt-field-label,
+    #overtime-view .ot-filter-bar .rpt-field-label,
+    #shifts-view .shift-filter-bar .rpt-field-label,
+    #salary-config-tab .rpt-filters .rpt-field-label,
+    .leave-filter-bar > label,
+    .rpt-tool-label,
+    .qe-tool-label {
+      text-transform: uppercase !important;
+      color: #64748b !important;
+      font-size: 9.5px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.08em !important;
+    }
+
+    /* Extra Pay -> Who it applies to -> Which items dropdown ("SELECT ALL" & "Clear") */
+    #payLineItemsMenu label:has(#payLineSelectAllChk),
+    #payLineItemsMenu #payLineSelectAllLabel {
+      font-size: 11px !important;
+      font-weight: 600 !important;
+      color: #151b25 !important;
+      line-height: 1.2 !important;
+      letter-spacing: 0.02em !important;
+      text-transform: uppercase !important;
+    }
+    #payLineItemsMenu #payLineClearBtn,
+    #payLineItemsMenu button[onclick="clearAllPayLineItems()"] {
+      font-size: 11px !important;
+      font-weight: 600 !important;
+      line-height: 1.2 !important;
+      color: #64748b !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      padding: 4px 8px !important;
+      border-radius: 6px !important;
+      text-decoration: none !important;
+      cursor: pointer !important;
+      height: auto !important;
+      min-height: 0 !important;
+      transition: background-color 0.15s ease, color 0.15s ease !important;
+    }
+    #payLineItemsMenu #payLineClearBtn:hover,
+    #payLineItemsMenu button[onclick="clearAllPayLineItems()"]:hover {
+      background: rgba(139, 123, 247, 0.14) !important;
+      color: #5847c8 !important;
+    }
+
+    /* Reset Filter Buttons: Uniform size across ALL pages */
+    #mainResetFiltersBtn,
+    #payrollResetFiltersBtn,
+    #otResetFiltersBtn,
+    #salaryResetFiltersBtn,
+    #salaryResetFilterBtn,
+    button[onclick="resetLeaveRequestFilters()"],
+    button[onclick="resetLeaveBalanceFilters()"],
+    button[onclick="resetStaffDirectoryFilters()"] {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 8px !important;
+      height: 36px !important;
+      min-height: 36px !important;
+      max-height: 36px !important;
+      width: auto !important;
+      min-width: 0 !important;
+      flex: 0 0 auto !important;
+      padding: 0 14px !important;
+      border: 1px solid #cbd5e1 !important;
+      border-radius: 10px !important;
+      background: #ffffff !important;
+      color: #151b25 !important;
+      font-family: inherit !important;
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      line-height: 1 !important;
+      white-space: nowrap !important;
+      cursor: pointer !important;
+      box-sizing: border-box !important;
+      transition: all 0.16s ease !important;
+    }
+    #mainResetFiltersBtn:hover,
+    #payrollResetFiltersBtn:hover,
+    #otResetFiltersBtn:hover,
+    #salaryResetFiltersBtn:hover,
+    #salaryResetFilterBtn:hover,
+    button[onclick="resetLeaveRequestFilters()"]:hover,
+    button[onclick="resetLeaveBalanceFilters()"]:hover,
+    button[onclick="resetStaffDirectoryFilters()"]:hover {
+      background: #f8fafc !important;
+      border-color: #94a3b8 !important;
+      color: #0f172a !important;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+      transform: translateY(-1px);
+    }
+    #mainResetFiltersBtn i,
+    #payrollResetFiltersBtn i,
+    #otResetFiltersBtn i,
+    #salaryResetFiltersBtn i,
+    #salaryResetFilterBtn i,
+    button[onclick="resetLeaveRequestFilters()"] i,
+    button[onclick="resetLeaveBalanceFilters()"] i,
+    button[onclick="resetStaffDirectoryFilters()"] i {
+      font-size: 11px !important;
+      color: #475569 !important;
+    }
+
+    /* Staff Enrollment Lock card in Settings page: preserve dark theme & visibility */
+    #settings-view #adminControlsPanel {
+      display: block !important;
+    }
+    #settings-view #adminControlsPanel > .card {
+      background: #0f172a !important;
+      border: 1px solid #1e3a5f !important;
+      border-radius: 16px !important;
+      max-width: 860px !important;
+    }
+    #settings-view #adminControlsPanel > .card h3 {
+      color: #e2e8f0 !important;
+      font-size: 1.1em !important;
+      font-weight: 800 !important;
+    }
+    #settings-view #adminControlsPanel label {
+      color: #e2e8f0 !important;
+      font-weight: 600 !important;
+    }
+
+    /* Standard 36px height on filter toolbars */
+    .rpt-filters .form-control,
+    .rpt-filters .form-select,
+    .rpt-filters .rpt-btn,
+    #payrollMonth {
+      height: 36px !important;
+      min-height: 36px !important;
+      box-sizing: border-box !important;
+    }
+
+    /* Payslip live preview height natural fitting */
+    .payslip-live-preview {
+      min-height: unset !important;
+      height: auto !important;
+      max-height: 760px !important;
+    }
+    .payslip-letterhead-grid {
+      align-items: start !important;
+    }
+
+    /* PAY-06: Never stick payslip table headers inside overlay or print */
+    #payslipOverlay thead,
+    #payslipOverlay thead th,
+    #payslipOverlay th,
+    .invoice-paper thead,
+    .invoice-paper thead th,
+    .invoice-paper th,
+    .payslip-table thead,
+    .payslip-table thead th,
+    .payslip-table th {
+      position: static !important;
+      top: auto !important;
+      z-index: 1 !important;
+    }
+  </style>
 </head>
   <body class="{% if not is_authenticated %}auth-required{% endif %}">
     <!-- QIntellect sign-in intro: plays once, only right after a successful sign-in -->
@@ -10725,12 +10778,6 @@ async function fetchMultiLiveDetections() {
           <p class="rpt-hero-sub" id="payrollHeroSubtitle"><span id="payrollSelectedPeriod">-- Payroll</span> · Monthly payroll review and finalization.</p>
         </div>
         <div class="rpt-hero-actions">
-          <button id="calculatePayrollButton" type="button" onclick="loadMonthlyPayroll(undefined, true)" class="rpt-btn rpt-btn-dark" title="Calculate Payroll">
-            <i class="fa-solid fa-calculator"></i><span>Calculate</span>
-          </button>
-          <button id="manageSalaryPackagesButton" type="button" onclick="openSalaryConfigFromPayroll()" class="rpt-btn rpt-btn-dark" title="Configure Employee Salary Packages">
-            <i class="fa-solid fa-file-invoice-dollar"></i><span>Salary Structure</span>
-          </button>
           <div class="dropdown">
             <button id="payrollExportDropdownBtn" class="rpt-btn rpt-btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="min-height:36px;">
               <i class="fa-solid fa-arrow-up-from-bracket export-btn-icon"></i><span>Export</span>
@@ -10744,16 +10791,27 @@ async function fetchMultiLiveDetections() {
         </div>
       </section>
 
+      <!-- PAY-08: Unresolved issues alert box shown when user opens Payroll page (not a badge) -->
+      <div id="payrollIssuesAlertBadge" class="alert alert-danger" role="alert" onclick="setPayrollIssueFilter('issues')" style="display:none; align-items:center; justify-content:space-between; gap:12px; padding:11px 16px; margin-bottom:14px; border-radius:12px; background:#fef2f2; border:1px solid #fecaca; color:#991b1b; font-weight:600; font-size:13px; cursor:pointer;" title="Click to filter employees with unresolved issues">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <i class="fa-solid fa-triangle-exclamation" style="color:#dc2626; font-size:15px;"></i>
+          <span id="payrollIssuesBadgeText">0 unresolved issues</span>
+        </div>
+        <span style="font-size:12px; font-weight:600; color:#b91c1c; text-decoration:underline;">Review issues</span>
+      </div>
+
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
         <div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px;">
-          <span id="payrollStateBadge" class="badge bg-secondary-subtle text-secondary" style="padding:6px 14px; border-radius:9999px; font-weight:700; font-size:12px; letter-spacing:0.02em;">Not loaded</span>
-          <!-- PAY-08: Professional alert badge when unresolved issues exist -->
-          <div id="payrollIssuesAlertBadge" role="button" onclick="setPayrollIssueFilter('issues')" class="badge bg-danger-subtle text-danger" style="display:none; align-items:center; gap:6px; padding:6px 14px; border-radius:9999px; font-weight:700; font-size:12px; cursor:pointer;" title="Click to filter employees with unresolved issues">
-            <i class="fa-solid fa-triangle-exclamation"></i> <span id="payrollIssuesBadgeText">0 Unresolved Issues</span>
-          </div>
+          <span id="payrollStateBadge" class="badge bg-secondary-subtle text-secondary" style="display:none; padding:6px 14px; border-radius:9999px; font-weight:700; font-size:12px; letter-spacing:0.02em;">Not loaded</span>
           <div id="payrollPeriodNote" role="status" style="font-size:0.82em; color:#64748b;">Choose a month to load payroll.</div>
         </div>
         <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+          <button id="calculatePayrollButton" type="button" onclick="loadMonthlyPayroll(undefined, true)" class="rpt-btn" style="height:36px;" title="Calculate Payroll">
+            <i class="fa-solid fa-calculator"></i><span>Recalculate Payroll</span>
+          </button>
+          <button id="manageSalaryPackagesButton" type="button" onclick="openSalaryConfigFromPayroll()" class="rpt-btn rpt-btn-light" style="height:36px;" title="Configure Employee Salary Packages">
+            <i class="fa-solid fa-file-invoice-dollar"></i><span>Salary Structure</span>
+          </button>
           <button id="downloadBonusTemplateButton" type="button" onclick="downloadPayrollBonusTemplate()" class="rpt-btn rpt-btn-light" style="height:36px;" title="Download Excel bonus template for this month">
             <i class="fa-solid fa-file-excel text-success me-1"></i> Bonus Template
           </button>
@@ -10761,7 +10819,7 @@ async function fetchMultiLiveDetections() {
             <i class="fa-solid fa-upload text-primary"></i> Upload Bonuses
             <input id="payrollBonusExcelInput" type="file" accept=".xlsx" hidden onchange="uploadPayrollBonusExcel(this)">
           </label>
-          <button id="reviewPayrollButton" type="button" onclick="openPayrollReview()" class="rpt-btn rpt-btn-dark" style="height:36px;" disabled>
+          <button id="reviewPayrollButton" type="button" onclick="openPayrollReview()" class="rpt-btn" style="height:36px;" disabled>
             <i class="fa-solid fa-clipboard-check"></i> Review Payroll
           </button>
           <button id="finalizePayrollToolbarButton" type="button" onclick="finalizeMonthlyPayroll()" class="btn btn-primary" style="height:36px; min-height:36px; background:#0f766e; border-color:#0f766e; font-weight:700; border-radius:8px; padding:0 16px;" disabled>
@@ -10912,26 +10970,18 @@ async function fetchMultiLiveDetections() {
           </div>
           <div class="rpt-field">
             <span class="rpt-field-label">Run status</span>
-            <select id="payrollRunStatusFilter" class="form-select" onchange="applyPayrollFilters()"><option value="all">Any payroll status</option><option value="Draft">Draft</option><option value="Ready for Finalization">Ready for Finalization</option><option value="Has unresolved issues">Has unresolved issues</option><option value="Finalized">Finalized</option></select>
+            <select id="payrollRunStatusFilter" class="form-select" onchange="applyPayrollFilters()"><option value="all">Any payroll status</option><option value="Draft">Draft</option><option value="Ready for Finalization">Ready for Finalization</option><option value="Finalized">Finalized</option></select>
           </div>
-          <!-- PAY-09: Calendar Month filter positioned directly after Run status -->
-          <div class="rpt-field" id="payrollMonthFilterWrap" style="min-width:215px;">
+          <!-- PAY-09: Calendar Month filter positioned directly after Run status (no forward/backward buttons) -->
+          <div class="rpt-field" id="payrollMonthFilterWrap" style="min-width:155px; flex:0 1 175px;">
             <span class="rpt-field-label">Payroll Period</span>
-            <div style="display:inline-flex; align-items:center; gap:4px;">
-              <button id="payrollPrevMonth" type="button" class="rpt-btn" onclick="movePayrollMonth(-1)" aria-label="Previous month" title="Previous month" style="height:36px; width:34px; min-width:34px; padding:0; display:inline-flex; align-items:center; justify-content:center; background:#ffffff !important; color:#151b25 !important; border:1px solid #cfe8f7 !important; border-radius:8px;">
-                <i class="fa-solid fa-chevron-left" style="color:#151b25 !important; font-size:12px;"></i>
-              </button>
-              <input id="payrollMonth" type="month" class="form-control" onchange="loadMonthlyPayroll(this.value)" style="height:36px; min-height:36px; font-weight:600; color:#151b25; font-size:12px; padding:0 8px; border:1px solid #cfe8f7; border-radius:8px;">
-              <button id="payrollNextMonth" type="button" class="rpt-btn" onclick="movePayrollMonth(1)" aria-label="Next month" title="Next month" style="height:36px; width:34px; min-width:34px; padding:0; display:inline-flex; align-items:center; justify-content:center; background:#ffffff !important; color:#151b25 !important; border:1px solid #cfe8f7 !important; border-radius:8px;">
-                <i class="fa-solid fa-chevron-right" style="color:#151b25 !important; font-size:12px;"></i>
-              </button>
-            </div>
+            <input id="payrollMonth" type="month" class="form-control" onchange="loadMonthlyPayroll(this.value)" style="height:36px; min-height:36px; font-weight:600; color:#151b25; font-size:12px; padding:0 10px; border:1px solid #cfe8f7; border-radius:10px;">
           </div>
           <!-- PAY-09: Reset button positioned directly after calendar filter -->
-          <div class="rpt-field" style="align-self:flex-end;">
-            <span class="rpt-field-label" style="visibility:hidden;">Reset</span>
-            <button id="payrollResetFiltersBtn" type="button" class="rpt-btn" onclick="resetPayrollFilters()" style="height:36px; min-height:36px; border:1px solid var(--line, #cfe8f7); border-radius:8px; background:#ffffff; color:#151b25; font-weight:600; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="Reset all payroll filters">
-              <i class="fa-solid fa-filter-circle-xmark" style="color:#151b25;"></i><span>Reset</span>
+          <div class="rpt-field" style="min-width:auto; flex:0 0 auto; align-self:flex-end;">
+            <span class="rpt-field-label">&nbsp;</span>
+            <button id="payrollResetFiltersBtn" type="button" class="rpt-btn" onclick="resetPayrollFilters()" style="height:36px;" title="Reset all payroll filters">
+              <i class="fa-solid fa-filter-circle-xmark"></i><span>Reset</span>
             </button>
           </div>
         </div>
@@ -10967,7 +11017,7 @@ async function fetchMultiLiveDetections() {
           </div>
           <div class="rpt-sheet-tools">
             <span class="rpt-tool-label">Rows</span>
-            <select id="payrollPageSize" class="form-select" onchange="changePayrollPageSize(this.value)" style="height:32px; font-size:12px; padding:2px 28px 2px 10px; width:auto; border-radius:8px;">
+            <select id="payrollPageSize" class="form-select" onchange="changePayrollPageSize(this.value)">
               <option value="10">10 / page</option>
               <option value="25" selected>25 / page</option>
               <option value="50">50 / page</option>
@@ -11004,14 +11054,17 @@ async function fetchMultiLiveDetections() {
         </div>
       </section>
 
-      <section id="payrollReviewPanel" hidden style="margin-top:18px; padding:18px; background:#ffffff; border:1px solid #cfe8f7; border-radius:8px;">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+      <section id="payrollReviewPanel" hidden style="margin-top:18px; padding:18px; background:#ffffff; border:1px solid #cfe8f7; border-radius:16px; max-width:100%; width:100%; box-sizing:border-box; overflow:hidden;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
           <div>
             <h2 style="font-size:1.18em; font-weight:800; color:#173042; margin:0;">Payroll Review</h2>
             <div id="payrollReviewPeriod" style="margin-top:4px; color:#64748b; font-size:0.88em;"></div>
           </div>
-          <div style="display:flex; gap:8px; align-items:center;">
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <span id="payrollReviewState" class="badge bg-secondary-subtle text-secondary">Draft</span>
+            <button type="button" class="rpt-btn rpt-btn-light" onclick="closePayrollReview()" style="height:34px; padding:0 12px; font-weight:600; color:#151b25 !important; border:1px solid #cbd5e1 !important; background:#ffffff !important;">
+              <i class="fa-solid fa-arrow-left me-1"></i> Back to Payroll
+            </button>
             <button type="button" class="modal-x-btn" onclick="closePayrollReview()" aria-label="Close payroll review" title="Close review"><i class="fa-solid fa-xmark"></i></button>
           </div>
         </div>
@@ -11023,9 +11076,14 @@ async function fetchMultiLiveDetections() {
             <tbody id="payrollReviewTableBody"></tbody>
           </table>
         </div>
-        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
-          <button id="finalizePayrollButton" type="button" onclick="finalizeMonthlyPayroll()" class="btn btn-primary" style="min-height:40px; background:#148f77; border-color:#148f77;" disabled><i class="fa-solid fa-lock"></i> Finalize Payroll</button>
-          <button id="finalizePayrollEarlyButton" type="button" onclick="finalizeMonthlyPayroll(true)" class="btn btn-outline-warning" style="min-height:38px; border-radius:8px; font-weight:600; font-size:13px;" hidden><i class="fa-solid fa-bolt me-1"></i> Finalize early</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:14px;">
+          <button type="button" class="rpt-btn rpt-btn-light" onclick="closePayrollReview()" style="height:38px; padding:0 14px; font-weight:600; color:#151b25 !important; border:1px solid #cbd5e1 !important; background:#ffffff !important;">
+            <i class="fa-solid fa-arrow-left me-1"></i> Back to Payroll
+          </button>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button id="finalizePayrollButton" type="button" onclick="finalizeMonthlyPayroll()" class="btn btn-primary" style="min-height:38px; background:#148f77; border-color:#148f77;" disabled><i class="fa-solid fa-lock"></i> Finalize Payroll</button>
+            <button id="finalizePayrollEarlyButton" type="button" onclick="finalizeMonthlyPayroll(true)" class="btn btn-outline-warning" style="min-height:38px; border-radius:8px; font-weight:600; font-size:13px;" hidden><i class="fa-solid fa-bolt me-1"></i> Finalize early</button>
+          </div>
         </div>
       </section>
       <div id="payrollShiftHistoryDialog" hidden style="position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:4000; display:none; align-items:center; justify-content:center; padding:24px;">
@@ -12735,11 +12793,11 @@ async function fetchMultiLiveDetections() {
                   </button>
                   <div class="dropdown-menu p-2 shadow-sm" id="payLineItemsMenu" aria-labelledby="payLineItemsDropdownBtn" style="min-width:260px; max-height:280px; overflow-y:auto; z-index:1050;">
                     <div class="d-flex justify-content-between align-items-center pb-2 mb-2 border-bottom" style="padding:2px 4px;">
-                      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; margin:0; font-size:11px; font-weight:600; color:#151b25;">
-                        <input type="checkbox" id="payLineSelectAllChk" class="form-check-input" style="width:16px; height:16px; margin:0; accent-color:#0d9488;" onchange="toggleAllPayLineItems(this.checked)">
-                        <span id="payLineSelectAllLabel" style="letter-spacing:0.02em;">SELECT ALL</span>
+                      <label class="form-check-label" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; margin:0; font-size:11px !important; font-weight:600 !important; color:#151b25 !important;">
+                        <input type="checkbox" id="payLineSelectAllChk" class="form-check-input" style="width:15px; height:15px; margin:0; accent-color:#0d9488;" onchange="toggleAllPayLineItems(this.checked)">
+                        <span id="payLineSelectAllLabel" style="font-size:11px !important; font-weight:600 !important; letter-spacing:0.02em;">SELECT ALL</span>
                       </label>
-                      <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none text-muted" onclick="clearAllPayLineItems()" style="font-size:12px; font-weight:500;">Clear</button>
+                      <button type="button" id="payLineClearBtn" onclick="clearAllPayLineItems()" style="font-size:11px !important; font-weight:600 !important; background:transparent; border:none; padding:4px 8px; border-radius:6px; color:#64748b; cursor:pointer;">Clear</button>
                     </div>
                     <div id="payLineItemsCheckboxes">
                       <div class="text-muted small p-2">Loading items…</div>
@@ -13513,7 +13571,7 @@ async function fetchMultiLiveDetections() {
     {% endif %}
 
     <!-- ======== STAFF ENROLLMENT LOCK (client uses handover key; platform admin uses toggle) ======== -->
-    <div id="adminControlsPanel" style="display:none; margin-top: 32px;">
+    <div id="adminControlsPanel" style="margin-top: 32px;">
       <div class="card p-4 shadow-sm" style="background: #0f172a; border: 1px solid #1e3a5f; border-radius: 16px; max-width: 860px;">
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px;">
           <i class="fa-solid fa-user-plus" style="color:#3d9fd4; font-size:1.5em;"></i>
@@ -15279,8 +15337,8 @@ async function fetchMultiLiveDetections() {
         const status = String(payroll.status || '').trim().toLowerCase();
         if (payroll.is_finalized || status === 'finalized') return 'Finalized';
         if (!(payroll.records || []).length) return 'Draft';
-        if ((payroll.records || []).some(row => payrollIssueDetails(row).length)) return 'Has unresolved issues';
         if (payroll.month_complete === false || payroll.can_finalize === false) return 'In progress';
+        if ((payroll.records || []).some(row => payrollIssueDetails(row).length)) return 'Draft';
         return 'Ready for Finalization';
       }
 
@@ -15291,11 +15349,11 @@ async function fetchMultiLiveDetections() {
           'Draft': 'bg-secondary-subtle text-secondary',
           'Ready for Finalization': 'bg-success-subtle text-success',
           'In progress': 'bg-warning-subtle text-warning-emphasis',
-          'Has unresolved issues': 'bg-danger-subtle text-danger',
           'Finalized': 'bg-success text-white'
         };
         badge.className = `badge ${styles[state] || 'bg-secondary-subtle text-secondary'}`;
         badge.textContent = state;
+        badge.style.display = 'inline-block';
       }
 
       function payrollStatusLabel(record, isFinalized) {
@@ -15346,8 +15404,14 @@ async function fetchMultiLiveDetections() {
         const issuesText = document.getElementById('payrollIssuesBadgeText');
         if (issuesBadge) {
           if (issues.length > 0) {
-            issuesBadge.style.display = 'inline-flex';
-            if (issuesText) issuesText.textContent = `${issues.length} Unresolved Issue${issues.length === 1 ? '' : 's'}`;
+            issuesBadge.style.display = 'flex';
+            if (issuesText) issuesText.textContent = `${issues.length} unresolved issue${issues.length === 1 ? '' : 's'} — Click to filter employees requiring resolution before finalization.`;
+            if (document.getElementById('payroll-view')?.classList.contains('active') && window._lastPayrollIssueAlertMonth !== payroll.payroll_month) {
+              window._lastPayrollIssueAlertMonth = payroll.payroll_month;
+              if (typeof showAppToast === 'function') {
+                showAppToast(`${issues.length} unresolved issue${issues.length === 1 ? '' : 's'} found in ${payrollMonthLabel(payroll.payroll_month)}.`, 'warning', 4500);
+              }
+            }
           } else {
             issuesBadge.style.display = 'none';
           }
@@ -15751,7 +15815,10 @@ async function fetchMultiLiveDetections() {
       }
 
       function closePayrollReview() {
-        document.getElementById('payrollReviewPanel').hidden = true;
+        const panel = document.getElementById('payrollReviewPanel');
+        if (panel) panel.hidden = true;
+        const view = document.getElementById('payroll-view');
+        if (view) view.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
       function renderPayrollReview() {
@@ -16599,6 +16666,7 @@ async function fetchMultiLiveDetections() {
         }
 
         if (viewId === "payroll-view") {
+          window._lastPayrollIssueAlertMonth = null;
           loadMonthlyPayroll();
           loadPayrollHistory();
           if (typeof upgradePayrollDropdowns === 'function') setTimeout(upgradePayrollDropdowns, 50);
@@ -16617,6 +16685,7 @@ async function fetchMultiLiveDetections() {
         // Initialize System Settings if switching to settings-view
         if (viewId === "settings-view") {
           reloadSystemConfiguration();
+          if (typeof syncAdminState === 'function') syncAdminState();
           if (typeof upgradePayrollDropdowns === 'function') setTimeout(upgradePayrollDropdowns, 50);
           if (typeof upgradeLeaveSettingsDropdowns === 'function') setTimeout(upgradeLeaveSettingsDropdowns, 50);
         }
@@ -21101,7 +21170,7 @@ async function fetchMultiLiveDetections() {
       function upgradePayrollDropdowns() {
         [
           'payrollDepartmentFilter', 'payrollEmployeeStatusFilter', 'payrollIssueFilter',
-          'payrollDeductionFilter', 'payrollRunStatusFilter',
+          'payrollDeductionFilter', 'payrollRunStatusFilter', 'payrollPageSize',
           'payrollExceptionUser', 'payrollExceptionType', 'payrollExceptionMode',
           'payrollProrationBasis', 'payrollAttendancePayMode', 'offDayAttendancePayMode',
           'payrollComponentKind', 'payrollComponentCategory', 'payrollComponentMode',
@@ -28366,13 +28435,13 @@ async function fetchMultiLiveDetections() {
       }
 
       if (adminPanel) {
-        adminPanel.style.display = (_adminUnlocked || _clientAuthenticated) ? 'block' : 'none';
+        adminPanel.style.display = 'block';
       }
       const enrollmentKeyBox = document.getElementById('enrollmentKeyUnlockBox');
       const enrollmentUnlockedControls = document.getElementById('enrollmentUnlockedControls');
       const enrollmentBadge = document.getElementById('adminUnlockedBadge');
       if (enrollmentKeyBox) {
-        enrollmentKeyBox.style.display = (_clientAuthenticated && !_enrollmentEnabled) ? 'block' : 'none';
+        enrollmentKeyBox.style.display = !_enrollmentEnabled ? 'block' : 'none';
       }
       if (enrollmentUnlockedControls) {
         enrollmentUnlockedControls.style.display = (_adminUnlocked || _enrollmentEnabled) ? 'block' : 'none';
@@ -33052,6 +33121,11 @@ async function fetchMultiLiveDetections() {
     window.resetOvertimeFilters = resetOvertimeFilters;
 
     // On page load: sync admin session state from server
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => syncAdminState());
+    } else {
+      syncAdminState();
+    }
     window.addEventListener('load', function() {
       syncAdminState();
       
