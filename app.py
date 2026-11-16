@@ -1098,7 +1098,7 @@ def create_user():
         )
     except ValueError as ve:
         err_msg = str(ve)
-        field = 'join_date' if 'finalized' in err_msg.lower() else ('name' if 'name' in err_msg.lower() else None)
+        field = 'join_date' if 'finalized' in err_msg.lower() else ('cnic' if 'cnic' in err_msg.lower() else ('name' if 'name' in err_msg.lower() else None))
         return jsonify({'error': err_msg, 'field': field}), 400
     if user_id:
         # QA-72: keep salary package Effective from aligned to the typed joining date
@@ -4562,17 +4562,26 @@ def api_mobile_add_leave_request():
 
     branch_id = session.get('mobile_branch_id') or 'DEFAULT_BRANCH'
 
-    holiday = db.get_company_holiday_in_range(
-        start_date,
-        end_date,
+    # QA-137: Deactivated leave types cannot be used for new leave requests
+    leave_types = db.get_leave_types(
         organization_id=str(organization_id),
         branch_id=str(branch_id),
     )
-    if holiday:
-        h_name = holiday.get('name') or 'Company holiday'
-        h_date = holiday.get('matched_date') or start_date
-        return jsonify({'success': False, 'message': f'{h_name} is a holiday on {h_date}. Leave cannot be requested on a holiday.'}), 400
+    matched_leave_type = next(
+        (
+            item for item in leave_types
+            if str(item.get('code')) == str(leave_type)
+            or str(item.get('id')) == str(leave_type)
+            or str(item.get('name') or '').strip().lower() == str(leave_type or '').strip().lower()
+        ),
+        None,
+    )
+    if matched_leave_type and int(matched_leave_type.get('active', 1) or 0) != 1:
+        return jsonify({'success': False, 'message': 'This leave type is inactive and cannot be used for new requests.'}), 400
+    if matched_leave_type and matched_leave_type.get('code'):
+        leave_type = str(matched_leave_type.get('code')).strip()
 
+    # QA-134: range may include holidays; non-holiday days are deducted, holidays remain in quota.
     # QA-112: split within-quota vs excess; excess waits for admin paid/unpaid/reject.
     quota = db.check_leave_quota(
         int(user_id), leave_type, start_date, end_date, leave_duration=leave_duration
@@ -4996,7 +5005,9 @@ def api_add_staff():
             checkin_cameras=data.get('checkin_cameras', 'all') or 'all',
             checkout_cameras=data.get('checkout_cameras', 'all') or 'all',
             organization_id=current_tenant,
-            branch_id=current_branch
+            branch_id=current_branch,
+            employment_status=data.get('employment_status') or 'permanent',
+            period_end_date=data.get('period_end_date') or data.get('employment_end_date'),
         )
     except ValueError as ve:
         return jsonify({'success': False, 'message': str(ve), 'error': str(ve)}), 400
@@ -5093,7 +5104,8 @@ def api_update_user(user_id):
         )
     except ValueError as exc:
         status = 409 if str(exc) == db.PAYROLL_LOCK_MESSAGE or 'reclassifies' in str(exc) else 400
-        return jsonify({'error': str(exc), 'field': 'shift_effective_from' if 'shift' in str(exc).lower() else 'exit_date'}), status
+        field = 'cnic' if 'cnic' in str(exc).lower() else ('shift_effective_from' if 'shift' in str(exc).lower() else 'exit_date')
+        return jsonify({'error': str(exc), 'field': field}), status
     if success:
         refresh_embedding_cache()
         return jsonify({'success': True, 'message': f'Staff profile for {name.strip()} updated successfully'}), 200
@@ -6086,23 +6098,7 @@ def api_add_leave():
     except ValueError as e:
         return jsonify({'success': False, 'message': str(e), 'error': str(e)}), 400
 
-    holiday = db.get_company_holiday_in_range(
-        start_date,
-        end_date,
-        organization_id=get_current_tenant_id(),
-        branch_id=get_current_branch_id(),
-    )
-    if holiday:
-        holiday_name = holiday.get('name') or 'A company holiday'
-        holiday_date = holiday.get('matched_date') or start_date
-        message = f"{holiday_name} is a public holiday on {holiday_date}. Leave cannot be requested on a holiday. Please choose another date."
-        return jsonify({
-            'success': False,
-            'reason_code': 'public_holiday',
-            'error': message,
-            'message': message,
-        }), 400
-
+    # QA-134: Range may span holidays; holidays stay in quota and are not deducted.
     excess_treatment = data.get('excess_treatment')
     excess_rejection_reason = str(data.get('excess_rejection_reason') or data.get('rejection_reason') or '').strip()
     quota = db.check_leave_quota(
@@ -6489,6 +6485,12 @@ def api_add_leave_type():
 @app.route('/api/leave-types/<int:type_id>', methods=['PUT'])
 def api_update_leave_type(type_id):
     data = request.get_json() or {}
+    # QA-137: fast status toggle must not validate half-days or other fields
+    if data.get('is_toggle') or ('active' in data and 'name' not in data):
+        active = int(data.get('active', 1))
+        ok = db.set_leave_type_active(type_id, active, organization_id=get_current_tenant_id())
+        return jsonify({'success': ok})
+
     allowance_period = data.get('allowance_period', 'yearly')
     default_months = {'monthly': 1, 'half_yearly': 6, 'yearly': 12}.get(allowance_period, 12)
     try:

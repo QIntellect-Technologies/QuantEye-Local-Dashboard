@@ -1949,7 +1949,7 @@ def validate_employment_period(
         except ValueError:
             raise ValueError('Employment period end date must be a valid calendar date (YYYY-MM-DD)')
         if join_raw and end_raw < join_raw:
-            raise ValueError('Employment period end date cannot be before the joining date.')
+            raise ValueError('Employment period end date cannot be before joining date.')
     return status, (end_raw or None)
 
 
@@ -1975,7 +1975,7 @@ def apply_expired_employment_periods(organization_id: Optional[str] = None) -> i
                 WHERE active = 1
                   AND LOWER(COALESCE(employment_status, 'permanent')) IN ('probation', 'internship')
                   AND period_end_date IS NOT NULL AND TRIM(period_end_date) != ''
-                  AND period_end_date <= ?
+                  AND period_end_date < ?
                   {org_sql}
                 """,
                 params,
@@ -2045,7 +2045,7 @@ def add_user(
     emp_status, emp_end = validate_employment_period(
         employment_status, period_end_date, join_date, require_end_for_special=True
     )
-    exit_date_value = emp_end if emp_status == 'internship' else None
+    exit_date_value = None
     _validate_staff_fields(clean_name, email, phone, department, position, notes, cnic)
     if clean_name and clean_name[0] in ('=', '+', '-', '@'):
         raise ValueError("Name cannot start with =, +, -, or @")
@@ -2076,6 +2076,29 @@ def add_user(
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             
+            # QA-139: CNIC uniqueness check across organization (dashes normalized)
+            clean_cnic = str(cnic or '').strip()
+            if clean_cnic:
+                digits_cnic = re.sub(r'\D', '', clean_cnic)
+                if digits_cnic:
+                    cursor.execute(
+                        """SELECT id FROM users
+                           WHERE REPLACE(REPLACE(COALESCE(cnic, ''), '-', ''), ' ', '') = ?
+                             AND (organization_id = ? OR organization_id IS NULL OR organization_id = '')
+                             AND active = 1""",
+                        (digits_cnic, org_target)
+                    )
+                    existing_cnic = cursor.fetchone()
+                    if existing_cnic:
+                        # Check if this is the exact same user re-enrolling
+                        cursor.execute(
+                            "SELECT id FROM users WHERE LOWER(TRIM(name)) = LOWER(?) AND (organization_id = ? OR organization_id IS NULL OR organization_id = '')",
+                            (clean_name, org_target)
+                        )
+                        same_user = cursor.fetchone()
+                        if not same_user or same_user[0] != existing_cnic[0]:
+                            raise ValueError("This CNIC is already registered to another employee in this organization.")
+
             # 1. Multi-Tenant Check: Check if user with same name already exists in THIS organization
             cursor.execute(
                 "SELECT id, active FROM users WHERE LOWER(TRIM(name)) = LOWER(?) AND (organization_id = ? OR organization_id IS NULL OR organization_id = '')",
@@ -2124,6 +2147,8 @@ def add_user(
         logger.info(f"✓ User '{clean_name}' created for Org '{org_target}' (ID: {user_id}, Shift ID: {shift_id})")
         _cloud_mirror("mirror_user_id", user_id)
         return user_id
+    except ValueError:
+        raise
     except sqlite3.IntegrityError as ie:
         logger.warning(f"Integrity check for user '{clean_name}' under Org '{org_target}': {ie}")
         # As fail-safe, query existing ID if duplicate constraint triggered
@@ -2508,6 +2533,21 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                 if norm_exit < effective_join:
                     raise ValueError("Exit date cannot be before joining date")
 
+            # QA-139: CNIC uniqueness check across organization for staff updates
+            if cnic is not None and str(cnic).strip():
+                digits_cnic = re.sub(r'\D', '', str(cnic).strip())
+                if digits_cnic:
+                    cursor.execute(
+                        """SELECT id FROM users
+                           WHERE REPLACE(REPLACE(COALESCE(cnic, ''), '-', ''), ' ', '') = ?
+                             AND (organization_id = ? OR organization_id IS NULL OR organization_id = '')
+                             AND id != ?
+                             AND active = 1""",
+                        (digits_cnic, user_org, user_id)
+                    )
+                    if cursor.fetchone():
+                        raise ValueError("This CNIC is already registered to another employee in this organization.")
+
             # QA-133: employment status / period end (confirm permanent clears period).
             emp_status_sql = None
             emp_end_sql = None
@@ -2527,9 +2567,6 @@ def update_user(user_id: int, name: str, email: str | None = None, phone: str | 
                 emp_status_sql, emp_end_sql = validate_employment_period(
                     status_in, end_in, effective_join, require_end_for_special=True
                 )
-                if emp_status_sql == 'internship' and (norm_exit == '__KEEP__' or not norm_exit):
-                    # Internship end date is the exit date.
-                    norm_exit = emp_end_sql or norm_exit
 
             effective_date = _normalize_shift_effective_date(shift_effective_from)
             persisted_shift_id = shift_id if effective_date <= datetime.now().date().isoformat() else None
@@ -9638,6 +9675,20 @@ def add_leave_type(
         return None
 
 
+def set_leave_type_active(type_id: int, active: int, organization_id: Optional[str] = None) -> bool:
+    """QA-137: Toggle active status of a leave type without validating or altering any other fields."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        org = _tenant_ids(organization_id)[0]
+        cursor.execute(
+            """UPDATE leave_types SET active = ?
+               WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
+            (1 if bool(active) else 0, type_id, org)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
 def update_leave_type(
     type_id: int, name: str, yearly_allowance: float, is_paid: int,
     description: str, active: int = 1, allowance_period: str = 'yearly',
@@ -12103,6 +12154,8 @@ def get_all_salary_configs(active_only: bool = True, department: Optional[str] =
                     u.email,
                     COALESCE(u.department, '') as department, 
                     COALESCE(u.position, 'Staff Member') as designation,
+                    COALESCE(u.employment_status, 'permanent') as employment_status,
+                    COALESCE(u.period_end_date, '') as period_end_date,
                     u.active,
                     COALESCE(s.basic_salary, u.salary, 0.0) as basic_salary,
                     COALESCE(s.allowances, 0.0) as allowances,
@@ -12171,6 +12224,8 @@ def get_salary_config(user_id: int) -> Optional[Dict]:
                     u.email,
                     COALESCE(u.department, '') as department, 
                     COALESCE(u.position, 'Staff Member') as designation,
+                    COALESCE(u.employment_status, 'permanent') as employment_status,
+                    COALESCE(u.period_end_date, '') as period_end_date,
                     u.active,
                     COALESCE(s.basic_salary, u.salary, 0.0) as basic_salary,
                     COALESCE(s.allowances, 0.0) as allowances,
@@ -15300,7 +15355,9 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                    date(u.created_at) AS created_at,
                    u.exit_date,
                    u.active,
-                   COALESCE(u.shift_id, 0) AS shift_id
+                   COALESCE(u.shift_id, 0) AS shift_id,
+                   COALESCE(u.employment_status, 'permanent') AS employment_status,
+                   COALESCE(u.period_end_date, '') AS period_end_date
             FROM users u
             LEFT JOIN salary_configs sc ON sc.user_id = u.id
             WHERE (u.active = 1 OR (u.exit_date IS NOT NULL AND u.exit_date >= ?))
@@ -15984,6 +16041,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
             'employee_name': employee['employee_name'],
             'department': employee['department'],
             'designation': employee['designation'] or 'Staff Member',
+            'employment_status': employee.get('employment_status') or 'permanent',
+            'period_end_date': employee.get('period_end_date') or '',
             'exit_date': employee.get('exit_date'),
             'join_date': raw_join or None,
             'join_marker': join_marker,
