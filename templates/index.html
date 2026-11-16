@@ -1463,7 +1463,16 @@
         color: #78350f;
         font-size: 1.05rem;
       }
-      .payslip-modal-card {
+      
+    /* PAY-06: Payslip table header must not stick when scrolling inside modal */
+    .payslip-table thead th,
+    .payslip-table th {
+      position: static !important;
+      top: auto !important;
+      z-index: 1 !important;
+    }
+
+    .payslip-modal-card {
         width: min(920px, 100%);
         max-height: calc(100vh - 48px);
         background: #fff;
@@ -10638,8 +10647,8 @@ async function fetchMultiLiveDetections() {
           </div>
           <div class="rpt-field" style="min-width:auto;">
             <span class="rpt-field-label">&nbsp;</span>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetOvertimeFilters()" style="height:36px;">
-              <i class="fa-solid fa-filter-circle-xmark"></i> Reset Filters
+            <button type="button" id="otResetFiltersBtn" class="rpt-btn" onclick="resetOvertimeFilters()" style="height:36px;">
+              <i class="fa-solid fa-filter-circle-xmark"></i> Reset
             </button>
           </div>
         </section>
@@ -13635,7 +13644,7 @@ async function fetchMultiLiveDetections() {
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Select Employee *</label>
-          <select id="modalOtUserSelect" class="form-select" onchange="onOtEmployeeChange()" disabled>
+          <select id="modalOtUserSelect" class="form-select" onchange="onOtEmployeeChange(); validateOtFormLive();" oninput="onOtEmployeeChange(); validateOtFormLive();" disabled>
             <option value="">Select Department First...</option>
           </select>
           <div id="modalOtUserError" class="text-danger small mt-1" style="display:none; font-weight:600;"></div>
@@ -13670,8 +13679,11 @@ async function fetchMultiLiveDetections() {
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Reason / Overtime Activity Description</label>
-          <textarea id="modalOtReasonInput" class="form-control" rows="2" maxlength="250" oninput="updateCharacterCounter('modalOtReasonInput', 'modalOtReasonCounter')" placeholder="e.g. Server maintenance, critical project deployment, emergency support..."></textarea>
-          <small id="modalOtReasonCounter" class="form-text text-muted character-counter">0/250 characters</small>
+          <textarea id="modalOtReasonInput" class="form-control" rows="2" maxlength="250" oninput="updateCharacterCounter('modalOtReasonInput', 'modalOtReasonCounter'); validateOtFormLive();" placeholder="e.g. Server maintenance, critical project deployment, emergency support..."></textarea>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <small id="modalOtReasonCounter" class="form-text text-muted character-counter">0/250 characters</small>
+            <div id="modalOtReasonError" class="text-danger small mt-1" style="display:none; font-weight:600;"></div>
+          </div>
         </div>
         <div class="mb-3">
           <label class="form-label" style="font-weight: 600; color: #173042;">Initial Approval Status</label>
@@ -22007,6 +22019,9 @@ async function fetchMultiLiveDetections() {
           }
         });
         updatePayrollComponentCategoryDropdown();
+        if (typeof renderPayLineItemsCheckboxes === 'function') {
+          renderPayLineItemsCheckboxes();
+        }
       }
       window.updatePayrollFeatureSectionsVisibility = updatePayrollFeatureSectionsVisibility;
 
@@ -23391,32 +23406,17 @@ async function fetchMultiLiveDetections() {
             </div>
           </div>
 
-          <!-- SECTION 4: SALARY CALCULATION -->
-          <div class="payslip-section">
-            <h3 class="section-title calc-title">4. Salary Calculation</h3>
-            <div class="calc-cards-row">
-              <div class="calc-card">
-                <div class="calc-label">Basic Salary</div>
-                <div class="calc-amount mono">${money(emp.basic_salary)}</div>
-              </div>
-              <div class="calc-op">+</div>
-              <div class="calc-card">
-                <div class="calc-label">Total Earnings</div>
-                <div class="calc-amount mono text-success">+ ${money(totalEarnings)}</div>
-              </div>
-              <div class="calc-op">-</div>
-              <div class="calc-card">
-                <div class="calc-label">Total Deductions</div>
-                <div class="calc-amount mono text-danger">- ${money(totalDeductions)}</div>
-              </div>
-              <div class="calc-op">=</div>
-              <div class="calc-card net-pay-card">
-                <div class="calc-label">Net Pay</div>
-                <div class="calc-amount mono net-pay-amount">${money(netSalary)}</div>
-              </div>
+          <!-- PAY-06: Professional Net Pay Summary Banner (no redundant equation cards) -->
+          <div style="display:flex; justify-content:space-between; align-items:center; background:#f0fdf4; border:1.5px solid #86efac; border-radius:10px; padding:16px 20px; margin-top:16px;">
+            <div>
+              <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#166534;">Net Pay Amount</div>
+              <div style="font-size:12px; color:#15803d; margin-top:2px;">Take-home pay for ${payrollEscape(monthLabel)}</div>
             </div>
-            ${shortfallVal > 0 ? `<div class="shortfall-alert">Shortfall / Unrecovered Deductions: ${money(shortfallVal)}</div>` : ''}
+            <div class="mono" style="font-size:1.65rem; font-weight:800; color:#166534;">
+              ${money(netSalary)}
+            </div>
           </div>
+          ${shortfallVal > 0 ? `<div class="shortfall-alert" style="margin-top:10px; padding:10px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b; font-size:12px; font-weight:600;">Shortfall / Unrecovered Deductions: ${money(shortfallVal)}</div>` : ''}
 
           <div class="bank-details">
             <small>Payment details</small>
@@ -23767,12 +23767,48 @@ async function fetchMultiLiveDetections() {
         if (pctWrap) pctWrap.style.display = isPercent ? '' : 'none';
       };
 
+            function isPayrollCategoryEnabled(category) {
+        const cat = String(category || '').toLowerCase();
+        if (cat === 'allowance' || cat === 'other' || cat === 'earning') {
+          const el = document.getElementById('flag_enable_named_components');
+          return el ? el.checked : true;
+        }
+        if (cat === 'bonus') {
+          const el = document.getElementById('flag_enable_bonuses');
+          return el ? el.checked : true;
+        }
+        if (cat === 'tax') {
+          const el = document.getElementById('flag_enable_tax');
+          return el ? el.checked : false;
+        }
+        if (cat === 'loan') {
+          const el = document.getElementById('flag_enable_loans');
+          return el ? el.checked : false;
+        }
+        if (cat === 'advance') {
+          const el = document.getElementById('flag_enable_advances');
+          return el ? el.checked : false;
+        }
+        if (cat === 'provident') {
+          const el = document.getElementById('flag_enable_provident');
+          return el ? el.checked : false;
+        }
+        if (cat === 'insurance') {
+          const el = document.getElementById('flag_enable_insurance');
+          return el ? el.checked : false;
+        }
+        return true;
+      }
+      window.isPayrollCategoryEnabled = isPayrollCategoryEnabled;
+
       function renderPayLineItemsCheckboxes() {
         const container = document.getElementById('payLineItemsCheckboxes');
         if (!container) return;
-        const types = window._payrollComponentTypes || [];
+        const allTypes = window._payrollComponentTypes || [];
+        // PR-02: Display only items whose category feature is enabled from top checkboxes
+        const types = allTypes.filter(t => isPayrollCategoryEnabled(t.category || t.kind));
         if (!types.length) {
-          container.innerHTML = '<div class="text-muted small p-2">No items available.</div>';
+          container.innerHTML = '<div class="text-muted small p-2">No items available for enabled categories.</div>';
           updatePayLineItemsLabel();
           return;
         }
@@ -23921,7 +23957,13 @@ async function fetchMultiLiveDetections() {
         }
 
         // Apply action
-        const effectiveFrom = document.getElementById('payLineEffectiveFrom')?.value;
+        let effectiveFrom = document.getElementById('payLineEffectiveFrom')?.value;
+        if (!effectiveFrom) {
+          const currentMonth = document.getElementById('payrollMonth')?.value || new Date().toISOString().slice(0, 7);
+          effectiveFrom = `${currentMonth}-01`;
+          const fromInput = document.getElementById('payLineEffectiveFrom');
+          if (fromInput) fromInput.value = effectiveFrom;
+        }
         const effectiveTo = document.getElementById('payLineEffectiveTo')?.value || null;
         if (!effectiveFrom) {
           showAppToast('Please select a Start date for applying items.', 'error');
@@ -31000,12 +31042,14 @@ async function fetchMultiLiveDetections() {
       const userSelect = document.getElementById('modalOtUserSelect');
       const dateInput = document.getElementById('modalOtDateInput');
       const hoursInput = document.getElementById('modalOtHoursInput');
+      const reasonInput = document.getElementById('modalOtReasonInput');
       const submitBtn = document.getElementById('modalOtSubmitBtn');
 
       const deptErr = document.getElementById('modalOtDeptError');
       const userErr = document.getElementById('modalOtUserError');
       const dateErr = document.getElementById('modalOtDateError');
       const hoursErr = document.getElementById('modalOtHoursError');
+      const reasonErr = document.getElementById('modalOtReasonError');
 
       let isValid = true;
 
@@ -31066,6 +31110,24 @@ async function fetchMultiLiveDetections() {
         }
       }
 
+      // OT-33: Real-time Reason validation (HTML tags, scripts, SQL syntax patterns)
+      const reasonVal = reasonInput?.value || '';
+      if (reasonVal) {
+        const hasHtmlOrScript = /<[^>]*>/i.test(reasonVal) || /<\s*script/i.test(reasonVal);
+        const hasSqlPattern = /\b(SELECT\s+.+\s+FROM|INSERT\s+INTO|DELETE\s+FROM|DROP\s+TABLE|UPDATE\s+.+\s+SET|UNION\s+SELECT|ALTER\s+TABLE|EXEC\s*\(|--|;)\b/i.test(reasonVal);
+        if (hasHtmlOrScript || hasSqlPattern) {
+          if (reasonErr) {
+            reasonErr.textContent = 'Invalid format: HTML tags, scripts, and SQL syntax are not allowed.';
+            reasonErr.style.display = 'block';
+          }
+          isValid = false;
+        } else {
+          if (reasonErr) { reasonErr.textContent = ''; reasonErr.style.display = 'none'; }
+        }
+      } else {
+        if (reasonErr) { reasonErr.textContent = ''; reasonErr.style.display = 'none'; }
+      }
+
       // OT-33: Disable Save button whenever any required field is empty or contains an invalid value
       if (submitBtn) {
         submitBtn.disabled = !isValid;
@@ -31086,6 +31148,7 @@ async function fetchMultiLiveDetections() {
     function onOtEmployeeChange() {
       const select = document.getElementById('modalOtUserSelect');
       if (!select) return;
+      validateOtFormLive();
       updateOtModalPreview();
     }
 

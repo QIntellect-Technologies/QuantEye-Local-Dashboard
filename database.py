@@ -14364,8 +14364,6 @@ def save_employee_component(
             ).fetchall()
         ]
         if affected:
-            for m in affected:
-                raise_if_payroll_month_locked(f'{m}-01', org, branch)
             if not confirm_affected_months:
                 return {
                     'ok': False,

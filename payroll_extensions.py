@@ -225,7 +225,7 @@ def _refresh_duplicate_component_report(cursor) -> None:
         return
     cursor.execute("DELETE FROM payroll_duplicate_component_report")
     fetched = cursor.execute(
-        "SELECT * FROM payroll_employee_components WHERE active = 1"
+        "SELECT * FROM payroll_employee_components WHERE active = 1 AND excluded = 0"
     ).fetchall()
     columns = [item[0] for item in (cursor.description or [])]
     rows = []
@@ -234,53 +234,49 @@ def _refresh_duplicate_component_report(cursor) -> None:
             rows.append(dict(record))
         else:
             rows.append(dict(zip(columns, record)))
+
+    # Group by (component_type_id, org, branch, scope_type) to avoid O(N^2) over all records
+    groups = {}
+    for r in rows:
+        cid = int(r.get("component_type_id") or 0)
+        org = str(r.get("organization_id") or "DEFAULT_ORG")
+        br = str(r.get("branch_id") or "DEFAULT_BRANCH")
+        scope = str(r.get("scope_type") or "employee").strip().lower()
+        key = (cid, org, br, scope)
+        groups.setdefault(key, []).append(r)
+
     seen = set()
-    for i, left in enumerate(rows):
-        for right in rows[i + 1 :]:
-            if int(left.get("component_type_id") or 0) != int(right.get("component_type_id") or 0):
-                continue
-            org_l = str(left.get("organization_id") or "DEFAULT_ORG")
-            org_r = str(right.get("organization_id") or "DEFAULT_ORG")
-            if org_l != org_r:
-                continue
-            br_l = str(left.get("branch_id") or "DEFAULT_BRANCH")
-            br_r = str(right.get("branch_id") or "DEFAULT_BRANCH")
-            if br_l != br_r:
-                continue
-            scope_l = str(left.get("scope_type") or "employee").strip().lower()
-            scope_r = str(right.get("scope_type") or "employee").strip().lower()
-            if scope_l != scope_r:
-                continue
-            if scope_l == "employee":
-                uid_l = int(left.get("user_id") or 0) or (int(left.get("scope_id")) if str(left.get("scope_id") or "").isdigit() else 0)
-                uid_r = int(right.get("user_id") or 0) or (int(right.get("scope_id")) if str(right.get("scope_id") or "").isdigit() else 0)
-                if uid_l <= 0 or uid_r <= 0 or uid_l != uid_r:
+    for (cid, org, br, scope), g_rows in groups.items():
+        if len(g_rows) < 2:
+            continue
+        for i, left in enumerate(g_rows):
+            for right in g_rows[i + 1 :]:
+                if scope == "employee":
+                    uid_l = int(left.get("user_id") or 0) or (int(left.get("scope_id")) if str(left.get("scope_id") or "").isdigit() else 0)
+                    uid_r = int(right.get("user_id") or 0) or (int(right.get("scope_id")) if str(right.get("scope_id") or "").isdigit() else 0)
+                    if uid_l <= 0 or uid_r <= 0 or uid_l != uid_r:
+                        continue
+                elif scope != "org":
+                    if str(left.get("scope_id") or "").strip().lower() != str(right.get("scope_id") or "").strip().lower():
+                        continue
+                if not _dates_overlap(left.get("effective_from"), left.get("effective_to"), right.get("effective_from"), right.get("effective_to")):
                     continue
-            elif scope_l != "org":
-                if str(left.get("scope_id") or "").strip().lower() != str(right.get("scope_id") or "").strip().lower():
+                pair_key = tuple(sorted((left["id"], right["id"])))
+                if pair_key in seen:
                     continue
-            if int(left.get("excluded") or 0) or int(right.get("excluded") or 0):
-                continue
-            if not _dates_overlap(left.get("effective_from"), left.get("effective_to"), right.get("effective_from"), right.get("effective_to")):
-                continue
-            key = tuple(sorted((left["id"], right["id"])))
-            if key in seen:
-                continue
-            seen.add(key)
-            cursor.execute(
-                """INSERT INTO payroll_duplicate_component_report (
-                       organization_id, branch_id, user_id, component_type_id, assignment_ids, overlap_from, overlap_to
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    left.get("organization_id"),
-                    left.get("branch_id"),
-                    left.get("user_id"),
-                    left.get("component_type_id"),
-                    f"{left['id']},{right['id']}",
-                    max(left.get("effective_from") or "", right.get("effective_from") or ""),
-                    min(left.get("effective_to") or "9999-12-31", right.get("effective_to") or "9999-12-31"),
-                ),
-            )
+                seen.add(pair_key)
+                cursor.execute(
+                    """INSERT INTO payroll_duplicate_component_report (
+                           organization_id, branch_id, user_id, component_type_id,
+                           assignment_ids, overlap_from, overlap_to
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        org, br, int(left.get("user_id") or 0), cid,
+                        f"{left['id']},{right['id']}",
+                        max(str(left.get("effective_from") or "0000-01-01"), str(right.get("effective_from") or "0000-01-01")),
+                        min(str(left.get("effective_to") or "9999-12-31"), str(right.get("effective_to") or "9999-12-31")) if (left.get("effective_to") and right.get("effective_to")) else (left.get("effective_to") or right.get("effective_to")),
+                    ),
+                )
 
 
 def assignment_matches_employee(row: Dict[str, Any], employee: Dict[str, Any], org: str, branch: str) -> bool:
