@@ -7681,6 +7681,33 @@ def api_delete_employee_component(assignment_id):
     return jsonify({'success': True})
 
 
+@app.route('/api/payroll/employee-components/bulk-remove', methods=['POST'])
+def api_bulk_remove_employee_components():
+    data = request.get_json(silent=True) or {}
+    type_ids = data.get('component_type_ids') or []
+    if isinstance(type_ids, (int, str)):
+        type_ids = [int(type_ids)]
+    scope = data.get('scope') or data.get('scope_type') or 'org'
+    scope_id = data.get('scope_id') or data.get('department') or data.get('designation') or data.get('shift_id')
+    user_id = data.get('user_id')
+    clean_ids = []
+    for tid in type_ids:
+        try:
+            clean_ids.append(int(tid))
+        except (ValueError, TypeError):
+            pass
+    if not clean_ids:
+        return jsonify({'error': 'No valid component items provided for removal', 'success': False}), 400
+    removed_count = db.bulk_remove_employee_components(
+        component_type_ids=clean_ids,
+        scope_type=scope,
+        scope_id=scope_id,
+        user_id=user_id,
+        **payroll_tenant(),
+    )
+    return jsonify({'success': True, 'removed_count': removed_count})
+
+
 @app.route('/api/payroll/adjustments', methods=['GET'])
 def api_list_payroll_adjustments():
     try:

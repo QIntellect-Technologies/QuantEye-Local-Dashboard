@@ -459,7 +459,11 @@ def named_component_totals(
         elif mode == "per_hour":
             amount = float(row.get("amount") or spec.get("default_amount") or 0) * float(overtime_hours or 0)
         else:
-            amount = float(row.get("amount") if row.get("amount") not in (None, "") else spec.get("default_amount") or 0)
+            row_amt = row.get("amount")
+            if row_amt is None or row_amt == "" or float(row_amt or 0) == 0.0:
+                amount = float(spec.get("default_amount") or 0)
+            else:
+                amount = float(row_amt)
         lo = row.get("min_amount") if row.get("min_amount") not in (None, "") else spec.get("min_amount")
         hi = row.get("max_amount") if row.get("max_amount") not in (None, "") else spec.get("max_amount")
         if lo not in (None, ""):
@@ -950,109 +954,314 @@ def payslip_invoice_html(payslip: Dict[str, Any]) -> str:
     def money_text(value: Any) -> str:
         return esc(_pdf_money(value, currency, places))
 
-    def qty_text(value: Any) -> str:
-        number = float(value or 0)
-        if abs(number - round(number)) < 0.001:
-            return str(int(round(number)))
-        return "{:.2f}".format(number)
+    pay_lines = emp.get("pay_lines") or []
+    if isinstance(pay_lines, str):
+        try:
+            pay_lines = json.loads(pay_lines)
+        except Exception:
+            pay_lines = []
 
-    rows = []
-    for item in _payslip_invoice_items(payslip):
-        rows.append(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-                esc(item["description"]),
-                esc(qty_text(item["qty"])),
-                money_text(item["unit"]),
-                money_text(item["amount"]),
-            )
-        )
+    # --- 1. EARNINGS BREAKDOWN ---
+    earnings_items = []
+    is_prorated = bool(emp.get("is_prorated"))
+    proration_explanation = emp.get("proration_explanation") or ""
+    basic_label = f"Basic Salary ({proration_explanation})" if (is_prorated and proration_explanation) else "Basic Salary"
+    earnings_items.append({"label": basic_label, "amount": float(emp.get("basic_salary") or 0)})
+
+    named_allowances_total = 0.0
+    for item in pay_lines:
+        kind = str(item.get("kind") or item.get("category") or "").lower()
+        name = str(item.get("name") or item.get("type") or "")
+        amt = float(item.get("amount") or 0)
+        if (kind == "allowance" or (kind == "earning" and str(item.get("category") or "").lower() != "bonus")) and name.lower() not in ("basic", "basic pay"):
+            if amt > 0:
+                named_allowances_total += amt
+                earnings_items.append({"label": f"Allowance: {name}", "amount": amt})
+
+    pkg_allowances = float(emp.get("package_allowances") or 0) if emp.get("package_allowances") is not None else max(0.0, float(emp.get("allowances") or 0) - named_allowances_total)
+    if pkg_allowances > 0.005:
+        earnings_items.append({"label": "General / Monthly Allowance", "amount": pkg_allowances})
+    elif not any(str(i.get("kind") or "").lower() == "allowance" for i in pay_lines) and float(emp.get("allowances") or 0) > 0:
+        earnings_items.append({"label": "Allowances", "amount": float(emp.get("allowances") or 0)})
+
+    named_bonuses = [item for item in pay_lines if str(item.get("category") or "").lower() == "bonus"]
+    if named_bonuses:
+        for item in named_bonuses:
+            amt = float(item.get("amount") or 0)
+            if amt > 0:
+                earnings_items.append({"label": f"Bonus: {item.get('name') or 'Bonus'}", "amount": amt})
+    elif float(emp.get("bonus_amount") or 0) > 0:
+        earnings_items.append({"label": "Bonus Payment", "amount": float(emp.get("bonus_amount") or 0)})
+
+    ot_hours = float(emp.get("overtime_hours") or 0)
+    ot_amount = float(emp.get("overtime_amount") or 0)
+    if ot_amount > 0:
+        earnings_items.append({"label": f"Overtime Payment ({ot_hours:.1f} hrs)", "amount": ot_amount})
+
+    off_day_pay = float(emp.get("off_day_extra_pay") or 0)
+    if off_day_pay > 0:
+        rest_days_worked = int(emp.get("off_days_worked") or 1)
+        earnings_items.append({"label": f"Rest-Day Extra Payment ({rest_days_worked} rest day{'s' if rest_days_worked != 1 else ''})", "amount": off_day_pay})
+
+    adj_lines = [
+        item for item in (pay_lines or [])
+        if (item.get("note") is not None or item.get("source_month") is not None or (item.get("type") and not item.get("kind") and not item.get("category")))
+    ]
+    if adj_lines:
+        for adj in adj_lines:
+            amt = float(adj.get("amount") or 0)
+            if not amt:
+                continue
+            adj_type = str(adj.get("type") or "adjustment").replace("_", " ").title()
+            note = str(adj.get("note") or "").strip()
+            date_str = str(adj.get("date") or "").strip()
+            desc = f"Adjustment: {adj_type}" + (f" ({note})" if note else (f" ({date_str})" if date_str else ""))
+            earnings_items.append({"label": desc, "amount": abs(amt)})
+    elif float(emp.get("adjustment_amount") or 0) > 0:
+        earnings_items.append({"label": "Adjustments", "amount": float(emp.get("adjustment_amount") or 0)})
+
+    if float(emp.get("arrears_amount") or 0) > 0:
+        earnings_items.append({"label": "Arrears", "amount": float(emp.get("arrears_amount") or 0)})
+
+    total_earnings = float(payslip.get("gross_salary") or 0)
+
+    # --- 2. ATTENDANCE SUMMARY ---
+    work_days = (
+        emp.get("month_scheduled_workdays")
+        or emp.get("scheduled_workdays")
+        or (emp.get("proration_method_days") if emp.get("is_prorated") else 0)
+        or 0
+    )
+    present_days = int(emp.get("present_days") or 0)
+    late_days = int(emp.get("late_days") or 0)
+    absent_days = float(emp.get("absent_days") or 0)
+    absent_days_str = str(int(absent_days)) if absent_days.is_integer() else f"{absent_days:.1f}"
+
     paid_leave = emp.get("paid_leave_days")
     if paid_leave is None:
         paid_leave = emp.get("approved_leave_days") or 0
-    note = "This payslip is for the month shown above. Locked months do not change after Finalize."
-    return (
-        '<div class="invoice-paper" id="printPayslip"><header>'
-        '<div class="invoice-brand">'
-        '<img src="/static/Logo.png" alt="Company logo" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">'
-        '<div class="payslip-mark" style="display:none">Q</div>'
-        "<div><strong style=\"font-size:1.25rem\">{name}</strong>"
-        '<div style="color:#247eae;font-size:.72rem;font-weight:800;letter-spacing:.5px">{tagline}</div>'
-        "<div>{phone} · {email}</div>"
-        '<div class="mono">NTN: {ntn}</div>'
-        "<div>{address}</div><div>{website}</div></div></div>"
-        '<div style="text-align:right"><h1 style="font-size:1.8rem;margin:0">PAYSLIP</h1>'
-        '<div class="mono">{month}</div><span class="badge">{status}</span></div></header>'
-        '<div class="invoice-meta"><div><small>Pay to</small><strong>{staff}</strong>'
-        "<div>#{emp_id} · {dept} · {role}</div></div>"
-        "<div><small>Pay period</small><strong>{period}</strong>"
-        "<div>Scheduled work days: {work} · Days paid: {paid} ({paid_basis})</div></div></div>"
-        "<table><thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead>"
-        "<tbody>{rows}</tbody></table>"
-        '<div class="total"><div>Gross pay: {gross}</div><div>Total cuts: {cuts}</div><hr>'
-        "<strong>Take-home pay: {net}</strong>{shortfall_html}</div>"
-        '<div class="bank-details"><small>Payment details</small>'
-        "<strong>Account Title:</strong> {bank_title}<br>"
-        "<strong>Bank Name:</strong> {bank_name}<br>"
-        "<strong>IBAN:</strong> {iban}</div>"
-        '<p style="margin-top:22px;color:#628095">{note} Present {present} · Absent {absent} · Late {late} · '
-        "Half-day leaves {half_leave} · Paid leave {leave} · Unpaid leave {unpaid}</p>"
-        '<div class="app-preview-footer">{footer}<br><strong>{powered}</strong></div></div>'
-    ).format(
-        name=esc(lh["payslip_company_name"]),
-        tagline=esc(lh["payslip_tagline"]),
-        phone=esc(lh["payslip_phone"]),
-        email=esc(lh["payslip_email"]),
-        ntn=esc(lh["payslip_ntn"]),
-        address=esc(lh["payslip_address"]),
-        website=esc(lh["payslip_website"]),
-        month=esc(payslip.get("payroll_month") or ""),
-        status=esc(status),
-        staff=esc(emp.get("employee_name") or "Staff"),
-        emp_id=esc(emp.get("employee_id") or ""),
-        dept=esc(emp.get("department") or "General"),
-        role=esc(emp.get("designation") or "Staff"),
-        period=esc("{} to {}".format(payslip.get("period_start") or "", payslip.get("period_end") or "")),
-        work=esc(
-            emp.get("month_scheduled_workdays")
-            or emp.get("scheduled_workdays")
-            or (emp.get("proration_method_days") if emp.get("is_prorated") else 0)
-            or 0
-        ),
-        paid=esc(
-            emp.get("days_paid")
-            if emp.get("days_paid") is not None
-            else (
-                emp.get("proration_days_paid")
-                if emp.get("is_prorated") and emp.get("proration_days_paid") is not None
-                else (emp.get("payable_days") or 0)
-            )
-        ),
-        paid_basis=esc(
-            "Payable days mode" if emp.get("attendance_pay_mode") == "payable_days"
-            else ("Calendar proration" if emp.get("is_prorated") else "Full salary basis")
-        ),
-        rows="".join(rows),
-        gross=money_text(payslip.get("gross_salary")),
-        cuts=money_text(deductions.get("total")),
-        net=money_text(payslip.get("net_salary")),
-        shortfall_html=(
-            f'<div style="color:#d9534f;font-weight:700;margin-top:6px">Shortfall / Unrecovered: {money_text(emp.get("shortfall") or payslip.get("shortfall") or round(max(0.0, float(deductions.get("total") or 0) - float(payslip.get("gross_salary") or 0)), 2))}</div>'
-            if (float(emp.get("shortfall") or payslip.get("shortfall") or 0) > 0 or float(deductions.get("total") or 0) > float(payslip.get("gross_salary") or 0))
-            else ""
-        ),
-        bank_title=esc(lh["payslip_bank_title"]),
-        bank_name=esc(lh["payslip_bank_name"]),
-        iban=esc(lh["payslip_bank_iban"]),
-        note=esc(note),
-        present=esc(emp.get("present_days") or 0),
-        absent=esc(emp.get("absent_days") or 0),
-        late=esc(emp.get("late_days") or 0),
-        half_leave=esc(emp.get("half_leave_count") or 0),
-        leave=esc(paid_leave or 0),
-        unpaid=esc(emp.get("unpaid_leave_days") or 0),
-        footer=esc(lh["payslip_footer"]),
-        powered=esc(lh["payslip_powered"]),
+    paid_leave = float(paid_leave)
+
+    unpaid_leave = float(emp.get("unpaid_leave_days") or 0)
+    half_leaves = float(emp.get("half_leave_count") or 0)
+    total_leaves = paid_leave + unpaid_leave + (half_leaves * 0.5)
+    total_leaves_str = str(int(total_leaves)) if total_leaves.is_integer() else f"{total_leaves:.1f}"
+
+    rest_days = emp.get("off_days") if emp.get("off_days") is not None else (emp.get("rest_days") if emp.get("rest_days") is not None else max(0, 30 - int(work_days)))
+    public_holidays = emp.get("holidays") if emp.get("holidays") is not None else (emp.get("public_holidays") or 0)
+
+    days_paid = (
+        emp.get("days_paid")
+        if emp.get("days_paid") is not None
+        else (
+            emp.get("proration_days_paid")
+            if emp.get("is_prorated") and emp.get("proration_days_paid") is not None
+            else (emp.get("payable_days") or 0)
+        )
     )
+    paid_basis = "Payable days mode" if emp.get("attendance_pay_mode") == "payable_days" else ("Calendar proration" if emp.get("is_prorated") else "Full salary basis")
+
+    # --- 3. DEDUCTIONS BREAKDOWN ---
+    deduction_items = []
+    absence_cut = float(deductions.get("absence") or emp.get("attendance_deduction") or 0)
+    m_details = emp.get("missed_day_details")
+    if isinstance(m_details, str) and m_details:
+        try:
+            m_details = json.loads(m_details)
+        except Exception:
+            m_details = None
+
+    if absence_cut > 0:
+        if isinstance(m_details, dict) and m_details.get("explanation"):
+            deduction_items.append({"label": f"Absent Days Deduction ({m_details['explanation']})", "amount": absence_cut})
+        elif emp.get("deduction_type") == "percentage" and emp.get("deduction_percent"):
+            pct_val = float(emp.get("deduction_percent"))
+            pct_str = f"{int(pct_val)}%" if pct_val.is_integer() else f"{pct_val}%"
+            matched = emp.get("matched_rule") or ""
+            desc = f"Absent Days Deduction ({matched} - {pct_str} of basic)" if matched else f"Absent Days Deduction ({pct_str} of basic)"
+            deduction_items.append({"label": desc, "amount": absence_cut})
+        elif absent_days > 0:
+            daily_rate = absence_cut / absent_days
+            rate_str = _pdf_money(daily_rate, currency, places)
+            hl_note = f" incl. {emp.get('half_leave_absent_note')}" if emp.get("half_leave_absent_note") else ""
+            deduction_items.append({"label": f"Absent Days Deduction ({absent_days_str} day{'s' if absent_days_str != '1' else ''}{hl_note} @ {rate_str}/day)", "amount": absence_cut})
+        else:
+            deduction_items.append({"label": "Absent Days Deduction", "amount": absence_cut})
+
+    unpaid_cut = float(deductions.get("unpaid_leave") or 0)
+    if unpaid_cut > 0:
+        u_days_str = str(int(unpaid_leave)) if unpaid_leave.is_integer() else f"{unpaid_leave:.1f}"
+        deduction_items.append({"label": f"Unpaid Leave Deduction ({u_days_str} day{'s' if u_days_str != '1' else ''})", "amount": unpaid_cut})
+
+    hl_cut = float(deductions.get("half_leave") or 0)
+    if hl_cut > 0:
+        rule_desc = emp.get("matched_half_leave_rule") or ""
+        cnt_str = str(int(half_leaves)) if half_leaves.is_integer() else f"{half_leaves:.1f}"
+        rule_str = f" ({rule_desc})" if (rule_desc and rule_desc != "No half-leave deduction") else ""
+        deduction_items.append({"label": f"Half-Day Leave Deduction ({cnt_str} occurrence{'s' if cnt_str != '1' else ''}{rule_str})", "amount": hl_cut})
+
+    late_cut = float(deductions.get("late") or 0)
+    if late_cut > 0:
+        deduction_items.append({"label": f"Late Deduction ({late_days} late day{'s' if late_days != 1 else ''})", "amount": late_cut})
+
+    for item in pay_lines:
+        amt = float(item.get("amount") or 0)
+        if not amt:
+            continue
+        kind = str(item.get("kind") or item.get("category") or "").lower()
+        name = str(item.get("name") or item.get("type") or "Deduction")
+        if kind in ("deduction", "tax", "loan", "advance", "provident", "insurance"):
+            cat_label = f" [{item.get('category').upper()}]" if item.get("category") else ""
+            deduction_items.append({"label": f"{name}{cat_label}", "amount": amt})
+
+    shortfall_cut = float(deductions.get("attendance_shortfall") or 0)
+    if shortfall_cut > 0:
+        deduction_items.append({"label": "Days Not Present Shortfall", "amount": shortfall_cut})
+
+    total_deductions = float(deductions.get("total") or 0)
+
+    # --- 4. SALARY CALCULATION ---
+    net_salary = float(payslip.get("net_salary") or 0)
+    shortfall_val = float(emp.get("shortfall") or payslip.get("shortfall") or (total_deductions - total_earnings if total_deductions > total_earnings else 0))
+
+    earnings_rows_html = "".join(
+        f"<tr><td>{esc(i['label'])}</td><td style='text-align:right;' class='mono text-success'>+ {money_text(i['amount'])}</td></tr>"
+        for i in earnings_items
+    )
+
+    deductions_rows_html = "".join(
+        f"<tr><td>{esc(i['label'])}</td><td style='text-align:right;' class='mono text-danger'>- {money_text(i['amount'])}</td></tr>"
+        for i in deduction_items
+    ) if deduction_items else "<tr><td colspan='2' class='text-muted' style='text-align:center; padding:12px;'>No deductions applied</td></tr>"
+
+    shortfall_alert_html = (
+        f"<div class='shortfall-alert'>Shortfall / Unrecovered Deductions: {money_text(shortfall_val)}</div>"
+        if shortfall_val > 0 else ""
+    )
+
+    return f"""<div class="invoice-paper" id="printPayslip">
+  <header>
+    <div class="invoice-brand">
+      <img src="/static/Logo.png" alt="Company logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+      <div class="payslip-mark" style="display:none">Q</div>
+      <div>
+        <strong style="font-size:1.25rem">{esc(lh["payslip_company_name"])}</strong>
+        <div style="color:#0d9488;font-size:.75rem;font-weight:800;letter-spacing:.5px">{esc(lh["payslip_tagline"])}</div>
+        <div style="font-size:0.85em; color:#475569;">{esc(lh["payslip_phone"])} · {esc(lh["payslip_email"])}</div>
+        <div class="mono" style="font-size:0.85em; color:#475569;">NTN: {esc(lh["payslip_ntn"])}</div>
+        <div style="font-size:0.85em; color:#475569;">{esc(lh["payslip_address"])}</div>
+        <div style="font-size:0.85em; color:#475569;">{esc(lh["payslip_website"])}</div>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <h1 style="font-size:1.8rem;margin:0;color:#0f4c6d;letter-spacing:1px;">PAYSLIP</h1>
+      <div class="mono" style="font-weight:700;color:#64748b;margin:2px 0;">{esc(payslip.get("payroll_month") or "")}</div>
+      <span class="badge">{esc(status)}</span>
+    </div>
+  </header>
+
+  <div class="invoice-meta">
+    <div>
+      <small>Employee details</small>
+      <strong style="font-size:1.05rem; color:#173042;">{esc(emp.get("employee_name") or "Staff")}</strong>
+      <div style="color:#475569; font-size:0.9em; margin-top:2px;">ID: #{esc(emp.get("employee_id") or "")} · Department: {esc(emp.get("department") or "General")}</div>
+      <div style="color:#475569; font-size:0.9em;">Designation: {esc(emp.get("designation") or "Staff")}</div>
+    </div>
+    <div>
+      <small>Pay period & schedule</small>
+      <strong style="font-size:1.05rem; color:#173042;">{esc(payslip.get("period_start") or "")} to {esc(payslip.get("period_end") or "")}</strong>
+      <div style="color:#475569; font-size:0.9em; margin-top:2px;">Scheduled: {esc(work_days)} work days · Days paid: {esc(days_paid)} ({esc(paid_basis)})</div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: ATTENDANCE SUMMARY -->
+  <div class="payslip-section">
+    <div class="attendance-header">
+      <h3 class="section-title" style="margin:0; border:none; padding:0;">2. Attendance Summary</h3>
+      <span class="attendance-badge"><strong>{present_days} / {esc(work_days)}</strong> Working Days</span>
+    </div>
+    <div class="attendance-grid">
+      <div class="att-card"><div class="att-val">{esc(work_days)}</div><div class="att-lbl">Total Working</div></div>
+      <div class="att-card highlight"><div class="att-val text-success">{present_days}</div><div class="att-lbl">Worked / Present</div></div>
+      <div class="att-card"><div class="att-val">{late_days}</div><div class="att-lbl">Late Days</div></div>
+      <div class="att-card warning"><div class="att-val text-danger">{absent_days_str}</div><div class="att-lbl">Absent Days</div></div>
+      <div class="att-card"><div class="att-val">{total_leaves_str}</div><div class="att-lbl">Leaves (P:{int(paid_leave)}/U:{int(unpaid_leave)}/H:{int(half_leaves)})</div></div>
+      <div class="att-card"><div class="att-val">{esc(rest_days)}</div><div class="att-lbl">Rest Days</div></div>
+      <div class="att-card"><div class="att-val">{esc(public_holidays)}</div><div class="att-lbl">Public Holidays</div></div>
+    </div>
+  </div>
+
+  <!-- TWO COLUMNS: EARNINGS BREAKDOWN & DEDUCTIONS BREAKDOWN -->
+  <div class="breakdown-columns">
+    <!-- SECTION 1: EARNINGS BREAKDOWN -->
+    <div class="payslip-section" style="margin-top:0;">
+      <h3 class="section-title earnings-title">1. Earnings Breakdown</h3>
+      <table class="payslip-table">
+        <thead><tr><th>Earnings Item</th><th style="text-align:right;">Amount</th></tr></thead>
+        <tbody>{earnings_rows_html}</tbody>
+        <tfoot>
+          <tr>
+            <th>Total Earnings</th>
+            <th style="text-align:right;" class="mono text-success">{money_text(total_earnings)}</th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <!-- SECTION 3: DEDUCTIONS BREAKDOWN -->
+    <div class="payslip-section" style="margin-top:0;">
+      <h3 class="section-title deductions-title">3. Deductions Breakdown</h3>
+      <table class="payslip-table">
+        <thead><tr><th>Deductions Item</th><th style="text-align:right;">Amount</th></tr></thead>
+        <tbody>{deductions_rows_html}</tbody>
+        <tfoot>
+          <tr>
+            <th>Total Deductions</th>
+            <th style="text-align:right;" class="mono text-danger">-{money_text(total_deductions)}</th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- SECTION 4: SALARY CALCULATION -->
+  <div class="payslip-section">
+    <h3 class="section-title calc-title">4. Salary Calculation</h3>
+    <div class="calc-cards-row">
+      <div class="calc-card">
+        <div class="calc-label">Basic Salary</div>
+        <div class="calc-amount mono">{money_text(emp.get("basic_salary"))}</div>
+      </div>
+      <div class="calc-op">+</div>
+      <div class="calc-card">
+        <div class="calc-label">Total Earnings</div>
+        <div class="calc-amount mono text-success">+ {money_text(total_earnings)}</div>
+      </div>
+      <div class="calc-op">-</div>
+      <div class="calc-card">
+        <div class="calc-label">Total Deductions</div>
+        <div class="calc-amount mono text-danger">- {money_text(total_deductions)}</div>
+      </div>
+      <div class="calc-op">=</div>
+      <div class="calc-card net-pay-card">
+        <div class="calc-label">Net Pay</div>
+        <div class="calc-amount mono net-pay-amount">{money_text(net_salary)}</div>
+      </div>
+    </div>
+    {shortfall_alert_html}
+  </div>
+
+  <div class="bank-details">
+    <small>Payment details</small>
+    <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:4px;">
+      <div><strong>Account Title:</strong> {esc(lh["payslip_bank_title"])}</div>
+      <div><strong>Bank:</strong> {esc(lh["payslip_bank_name"])}</div>
+      <div><strong>IBAN:</strong> <span class="mono">{esc(lh["payslip_bank_iban"])}</span></div>
+    </div>
+  </div>
+  <p style="margin-top:14px; margin-bottom:0; color:#64748b; font-size:10px;">This payslip is system-generated for {esc(payslip.get("payroll_month") or "")}. Locked months do not change after Finalize. Present: {present_days} · Absent: {absent_days_str} · Late: {late_days} · Half-day leaves: {int(half_leaves)} · Paid leave: {int(paid_leave)} · Unpaid leave: {int(unpaid_leave)}</p>
+  <div class="app-preview-footer">{esc(lh["payslip_footer"])}<br><strong>{esc(lh["payslip_powered"])}</strong></div>
+</div>"""
 
 
 def payslip_pdf_bytes(payslip: Dict[str, Any]) -> bytes:

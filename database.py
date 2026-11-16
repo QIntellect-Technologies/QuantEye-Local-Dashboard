@@ -14292,6 +14292,8 @@ def save_employee_component(
             t_row = conn_type.execute("SELECT default_amount, calc_mode FROM payroll_component_types WHERE id = ?", (type_id,)).fetchone()
             if t_row and t_row[0] is not None and (not calc_mode or calc_mode == 'fixed'):
                 check_amt = float(t_row[0])
+                if not amount:
+                    amount = check_amt
 
     if calc_mode in ('percent_basic', 'percent_gross'):
         pct = float(percent or 0)
@@ -14504,13 +14506,15 @@ def _load_payroll_extension_maps(cursor, organization_id: str, branch_id: Option
     org, branch = _tenant_ids(organization_id, branch_id)
     types = {int(row['id']): dict(row) for row in cursor.execute(
         """SELECT * FROM payroll_component_types
-           WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
-        (org, branch),
+           WHERE COALESCE(organization_id,'DEFAULT_ORG')=?
+              OR organization_id IS NULL OR organization_id = ''""",
+        (org,),
     ).fetchall()}
     assignments: List[Dict[str, Any]] = [
         dict(row) for row in cursor.execute(
             """SELECT * FROM payroll_employee_components
-               WHERE COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+               WHERE (COALESCE(organization_id,'DEFAULT_ORG')=? OR organization_id IS NULL OR organization_id = '')
+                 AND (scope_type = 'org' OR COALESCE(branch_id,'DEFAULT_BRANCH')=? OR branch_id IS NULL OR branch_id = '')""",
             (org, branch),
         ).fetchall()
     ]
@@ -14530,6 +14534,42 @@ def _load_payroll_extension_maps(cursor, organization_id: str, branch_id: Option
     ).fetchall():
         adjustments.setdefault(int(row['user_id']), []).append(dict(row))
     return {'types': types, 'assignments': assignments, 'revisions': revisions, 'adjustments': adjustments}
+
+
+def bulk_remove_employee_components(
+    component_type_ids: List[int],
+    scope_type: str = 'org',
+    scope_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> int:
+    org, branch = _tenant_ids(organization_id, branch_id)
+    scope = str(scope_type or 'org').strip().lower()
+    if not component_type_ids:
+        return 0
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        placeholders = ','.join('?' for _ in component_type_ids)
+        params: List[Any] = [int(tid) for tid in component_type_ids]
+        query = f"""
+            DELETE FROM payroll_employee_components
+            WHERE component_type_id IN ({placeholders})
+              AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+              AND COALESCE(scope_type, 'employee') = ?
+        """
+        params.append(org)
+        params.append(scope)
+        if scope == 'employee' and user_id:
+            query += " AND user_id = ?"
+            params.append(int(user_id))
+        elif scope != 'org' and scope_id:
+            query += " AND (scope_id = ? OR CAST(scope_id AS TEXT) = ?)"
+            params.append(str(scope_id))
+            params.append(str(scope_id))
+        cursor.execute(query, params)
+        conn.commit()
+        return cursor.rowcount
 
 
 def get_overtime_premium_rules(
