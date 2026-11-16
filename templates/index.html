@@ -8642,6 +8642,122 @@
       background: #ffffff !important;
       font-weight: 600 !important;
     }
+    /* QA-143 / QA-138: Standardize dropdowns in Staff enrollment and Edit profile modal */
+    #enroll-view .app-camera-select-trigger,
+    #editUserModal .app-camera-select-trigger {
+      height: 40px !important;
+      min-height: 40px !important;
+      box-sizing: border-box !important;
+      border: 1px solid #e2e8f0 !important;
+      border-radius: 10px !important;
+      background: #ffffff !important;
+      padding: 0 12px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      font-size: 13px !important;
+      cursor: pointer !important;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
+    }
+    #enroll-view .app-camera-select-trigger:hover,
+    #editUserModal .app-camera-select-trigger:hover {
+      border-color: #8b7bf7 !important;
+      background: #ffffff !important;
+    }
+    #enroll-view .app-camera-select-trigger.active,
+    #editUserModal .app-camera-select-trigger.active {
+      border-color: #8b7bf7 !important;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.16) !important;
+      background: #ffffff !important;
+    }
+    #enroll-view .app-camera-select-label,
+    #editUserModal .app-camera-select-label,
+    #enroll-view .app-camera-select-chip,
+    #editUserModal .app-camera-select-chip {
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      color: #2b3547 !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+    #enroll-view .app-camera-select-trigger > i,
+    #editUserModal .app-camera-select-trigger > i {
+      color: #94a3b8 !important;
+      font-size: 11px !important;
+      transition: transform 0.2s ease !important;
+    }
+
+    /* QA-143: Country code dropdown and national phone input group layout */
+    .staff-phone-input-group {
+      display: flex !important;
+      gap: 8px !important;
+      align-items: stretch !important;
+      width: 100% !important;
+    }
+    .staff-phone-input-group > .app-camera-select,
+    .app-camera-select[data-target-select="enrollPhoneCountry"],
+    .app-camera-select[data-target-select="editPhoneCountry"] {
+      width: 165px !important;
+      min-width: 145px !important;
+      max-width: 175px !important;
+      flex: 0 0 165px !important;
+    }
+    .staff-phone-input-group > input.form-control,
+    #enrollPhoneNational,
+    #editPhoneNational {
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+    }
+    .staff-phone-input-group .app-camera-select-trigger,
+    .app-camera-select[data-target-select="enrollPhoneCountry"] .app-camera-select-trigger,
+    .app-camera-select[data-target-select="editPhoneCountry"] .app-camera-select-trigger {
+      height: 40px !important;
+      min-height: 40px !important;
+      box-sizing: border-box !important;
+      border: 1px solid #e2e8f0 !important;
+      border-radius: 10px !important;
+      background: #ffffff !important;
+      padding: 0 12px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      cursor: pointer !important;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
+    }
+    .staff-phone-input-group .app-camera-select-trigger:hover,
+    .app-camera-select[data-target-select="enrollPhoneCountry"] .app-camera-select-trigger:hover,
+    .app-camera-select[data-target-select="editPhoneCountry"] .app-camera-select-trigger:hover {
+      border-color: #8b7bf7 !important;
+      background: #ffffff !important;
+    }
+    .staff-phone-input-group .app-camera-select-trigger.active,
+    .app-camera-select[data-target-select="enrollPhoneCountry"] .app-camera-select-trigger.active,
+    .app-camera-select[data-target-select="editPhoneCountry"] .app-camera-select-trigger.active {
+      border-color: #8b7bf7 !important;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.16) !important;
+      background: #ffffff !important;
+    }
+    .staff-phone-input-group .app-camera-select-label,
+    .app-camera-select[data-target-select="enrollPhoneCountry"] .app-camera-select-label,
+    .app-camera-select[data-target-select="editPhoneCountry"] .app-camera-select-label,
+    .staff-phone-input-group .app-camera-select-chip,
+    .app-camera-select[data-target-select="enrollPhoneCountry"] .app-camera-select-chip,
+    .app-camera-select[data-target-select="editPhoneCountry"] .app-camera-select-chip {
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      color: #2b3547 !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+    .staff-phone-input-group .app-camera-select-trigger > i,
+    .app-camera-select[data-target-select="enrollPhoneCountry"] .app-camera-select-trigger > i,
+    .app-camera-select[data-target-select="editPhoneCountry"] .app-camera-select-trigger > i {
+      color: #94a3b8 !important;
+      font-size: 11px !important;
+      transition: transform 0.2s ease !important;
+    }
     .rpt-field-label {
       display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
       text-transform: uppercase; color: var(--ui-muted); margin-bottom: 6px;
@@ -9480,8 +9596,8 @@
                 </div>
                 <div class="col-md-6">
                   <label class="form-label" for="enrollPhoneNational">Phone Number</label>
-                  <div style="display:flex; gap:8px; align-items:stretch;">
-                    <select class="form-select" id="enrollPhoneCountry" style="max-width:150px; flex:0 0 150px;" onchange="onStaffPhoneCountryChange('enroll')" aria-label="Country code"></select>
+                  <div class="staff-phone-input-group">
+                    <select class="form-select" id="enrollPhoneCountry" onchange="onStaffPhoneCountryChange('enroll')" aria-label="Country code"></select>
                     <input type="text" class="form-control" id="enrollPhoneNational" maxlength="20" placeholder="3001234567" inputmode="tel" autocomplete="tel-national" />
                   </div>
                   <input type="hidden" id="enrollPhone" value="" />
@@ -11820,8 +11936,8 @@ async function fetchMultiLiveDetections() {
             </div>
             <div class="col-md-6">
               <label style="font-weight: 600; color: #475569; font-size: 0.85em; margin-bottom: 6px; display: block;">Phone Number</label>
-              <div style="display:flex; gap:8px; align-items:stretch;">
-                <select class="form-select" id="editPhoneCountry" style="max-width:150px; flex:0 0 150px; border-color:#e3e8f5; font-size:0.9em;" onchange="onStaffPhoneCountryChange('edit')" aria-label="Country code"></select>
+              <div class="staff-phone-input-group">
+                <select class="form-select" id="editPhoneCountry" onchange="onStaffPhoneCountryChange('edit')" aria-label="Country code"></select>
                 <input type="text" class="form-control" id="editPhoneNational" maxlength="20" placeholder="3001234567" inputmode="tel" style="border-color: #e3e8f5; font-size: 0.9em;" />
               </div>
               <input type="hidden" id="editPhone" value="" />
@@ -16631,9 +16747,16 @@ async function fetchMultiLiveDetections() {
       function fillStaffPhoneCountrySelects() {
         ['enrollPhoneCountry', 'editPhoneCountry'].forEach((id) => {
           const sel = document.getElementById(id);
-          if (!sel || sel.options.length) return;
-          sel.innerHTML = STAFF_PHONE_COUNTRIES.map((c) => `<option value="${c.dial}">${c.label}</option>`).join('');
-          sel.value = DEFAULT_STAFF_PHONE_DIAL;
+          if (!sel) return;
+          if (!sel.options.length) {
+            sel.innerHTML = STAFF_PHONE_COUNTRIES.map((c) => `<option value="${c.dial}">${c.label}</option>`).join('');
+            sel.value = DEFAULT_STAFF_PHONE_DIAL;
+          }
+          if (typeof upgradeSelectToCameraStyle === 'function') {
+            upgradeSelectToCameraStyle(sel, { compact: false, searchable: true });
+          } else if (typeof refreshAppCameraSelect === 'function') {
+            refreshAppCameraSelect(sel);
+          }
         });
       }
 
@@ -16673,7 +16796,12 @@ async function fetchMultiLiveDetections() {
         const parsed = parseStaffPhoneE164(phoneValue);
         const country = document.getElementById(`${prefix}PhoneCountry`);
         const national = document.getElementById(`${prefix}PhoneNational`);
-        if (country) country.value = parsed.dial;
+        if (country) {
+          country.value = parsed.dial;
+          if (typeof refreshAppCameraSelect === 'function') {
+            refreshAppCameraSelect(country);
+          }
+        }
         if (national) national.value = parsed.national;
         syncStaffPhoneHidden(prefix);
       }
@@ -20586,12 +20714,15 @@ async function fetchMultiLiveDetections() {
       function positionAppCameraPanel(trigger, panel) {
         if (!trigger || !panel) return;
         const rect = trigger.getBoundingClientRect();
-        const width = Math.max(rect.width, 160);
+        const isPhoneCountry = Boolean(panel._appCameraSelect?.id && /phonecountry/i.test(panel._appCameraSelect.id));
+        const minW = isPhoneCountry ? Math.max(rect.width, 220) : Math.max(rect.width, 160);
+        const maxW = isPhoneCountry ? Math.min(Math.max(minW, 260), window.innerWidth - 16) : Math.min(Math.max(rect.width, 220), window.innerWidth - 16);
+        const width = minW;
         let top = rect.bottom + 5;
         let left = rect.left;
         panel.style.width = `${width}px`;
-        panel.style.minWidth = `${width}px`;
-        panel.style.maxWidth = `${Math.min(Math.max(width, 220), window.innerWidth - 16)}px`;
+        panel.style.minWidth = `${minW}px`;
+        panel.style.maxWidth = `${maxW}px`;
         panel.style.left = `${Math.max(8, Math.min(left, window.innerWidth - width - 8))}px`;
         panel.style.top = `${Math.max(8, top)}px`;
         // AR-04: sit above Bootstrap/custom modals (Mark Present is z-index 100050).
@@ -20903,11 +21034,14 @@ async function fetchMultiLiveDetections() {
       }
 
       function initListedAppCameraSelects() {
+        if (typeof fillStaffPhoneCountrySelects === 'function') {
+          fillStaffPhoneCountrySelects();
+        }
         const ids = [
           'mainDeptFilter', 'mainStatusFilter', 'mainReportPageSize',
           'manualAttShiftSelect',
           'tabStaffDeptFilter', 'tabStaffPageSize',
-          'editDepartment', 'editPosition', 'editShiftId',
+          'editDepartment', 'editPosition', 'editShiftId', 'editPhoneCountry',
           'leaveStatusFilter', 'leavePageSize', 'leaveBalancePageSize', 'leaveBalanceYearFilter',
           'leaveTypesPageSize', 'leaveHolidaysPageSize',
           'otStatusFilter', 'otDepartmentFilter', 'otLogPageSize', 'otApprovalPageSize',
@@ -20917,6 +21051,7 @@ async function fetchMultiLiveDetections() {
           'deptPageSize', 'desigPageSize',
           'enrollShiftId', 'enrollDepartment', 'enrollPosition',
           'enrollEmploymentStatus', 'editEmploymentStatus',
+          'enrollPhoneCountry',
           'leaveBalanceDeptFilter', 'payrollPageSize',
           'modalSalaryComponentType', 'modalWebcamSelect',
           'modalLeaveDeptSelect', 'modalLeaveUserSelect', 'modalLeaveTypeSelect',
