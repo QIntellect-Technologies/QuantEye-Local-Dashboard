@@ -8364,6 +8364,7 @@
     /* Hero Section shared styling for Payroll */
     #payroll-view .rpt-hero {
       position: relative;
+      z-index: 30;
       display: flex;
       align-items: flex-end;
       justify-content: space-between;
@@ -8372,7 +8373,7 @@
       padding: 22px 24px 20px;
       border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: var(--r, 18px);
-      overflow: hidden;
+      overflow: visible !important;
       color: #ffffff;
       background:
         radial-gradient(48% 88% at 100% 0%, rgba(139, 123, 247, 0.45), transparent 62%),
@@ -8385,6 +8386,8 @@
       content: "";
       position: absolute;
       inset: 0;
+      border-radius: inherit;
+      overflow: hidden;
       background-image:
         linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
@@ -8642,7 +8645,22 @@
       max-width: 100% !important;
       box-sizing: border-box !important;
     }
-    #payroll-view .rpt-hero,
+    #payroll-view .rpt-hero {
+      max-width: 100% !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      overflow: visible !important;
+      z-index: 30 !important;
+      box-sizing: border-box !important;
+    }
+    #payroll-view .rpt-hero .rpt-hero-actions,
+    #payroll-view .rpt-hero .dropdown {
+      overflow: visible !important;
+      z-index: 35 !important;
+    }
+    #payroll-view .rpt-hero .dropdown-menu {
+      z-index: 3050 !important;
+    }
     #payroll-view .payroll-rpt-rail,
     #payroll-view .payroll-rpt-filters,
     #payroll-view .payroll-table-tabs,
@@ -8712,9 +8730,9 @@
       border: 0 !important;
       border-bottom: 1px solid #e3e8f5 !important;
       background: rgba(248, 249, 254, 0.99) !important;
-      color: #6b7488 !important;
+      color: #475569 !important;
       font-size: 9px !important;
-      font-weight: 600 !important;
+      font-weight: 700 !important;
       letter-spacing: 0.1em !important;
       text-transform: uppercase !important;
       white-space: nowrap !important;
@@ -8901,14 +8919,31 @@
     #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .app-camera-select-trigger,
     #payroll-rules-tab .ot-settings-actions .btn,
     #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .btn-primary.btn-sm,
+    #payroll-rules-tab .payroll-rule-form .form-control,
+    #payroll-rules-tab .payroll-rule-form .form-select,
+    #payroll-rules-tab .payroll-rule-form .app-camera-select,
+    #payroll-rules-tab .payroll-rule-form .app-camera-select-trigger,
+    #payroll-rules-tab .payroll-rule-form .btn,
+    #payroll-rules-tab .payroll-panel .form-control,
+    #payroll-rules-tab .payroll-panel .form-select,
+    #payroll-rules-tab .payroll-panel .app-camera-select,
+    #payroll-rules-tab .payroll-panel .app-camera-select-trigger,
+    #payroll-rules-tab .payroll-panel > .btn,
+    #payroll-rules-tab #payLineItemsDropdownBtn,
+    #payroll-rules-tab #payLineSubmitBtn,
     .payroll-rule-form .form-control,
     .payroll-rule-form .form-select,
+    .payroll-rule-form .app-camera-select,
+    .payroll-rule-form .app-camera-select-trigger,
     .payroll-rule-form .btn,
     .ot-settings-row .form-control,
     .ot-settings-row .form-select,
+    .ot-settings-row .app-camera-select,
+    .ot-settings-row .app-camera-select-trigger,
     .ot-settings-row .btn,
     .payroll-panel .form-control,
     .payroll-panel .form-select,
+    .payroll-panel .app-camera-select-trigger,
     .leave-settings-select,
     #halfLeaveRuleValue,
     #halfLeavesPerQuotaDay,
@@ -8916,21 +8951,58 @@
     #payrollBonusSettingsMonth,
     #payrollCalendarForm .form-control,
     #payrollCalendarForm .form-select,
-    #payrollCalendarSaveButton {
+    #payrollCalendarForm .app-camera-select,
+    #payrollCalendarForm .app-camera-select-trigger,
+    #payrollCalendarSaveButton,
+    #payrollCalendarCancelButton {
       height: 38px !important;
       min-height: 38px !important;
       max-height: 38px !important;
       box-sizing: border-box !important;
     }
+    #payroll-rules-tab .payroll-rule-form,
+    #payrollCalendarForm.payroll-rule-form {
+      align-items: end !important;
+    }
+    #payroll-rules-tab .payroll-rule-form .payroll-rule-field,
+    #payroll-rules-tab .payroll-rule-form .payroll-rule-actions,
+    #payrollCalendarForm .payroll-rule-field,
+    #payrollCalendarForm .payroll-rule-actions {
+      margin: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+    }
+    #payroll-rules-tab .payroll-rule-field > label {
+      margin-bottom: 0 !important;
+    }
+    #payroll-rules-tab .payroll-panel .form-control,
+    #payroll-rules-tab .payroll-panel .app-camera-select-trigger,
     #payroll-rules-tab .ot-settings-field .form-control,
     #payroll-rules-tab .ot-settings-field .app-camera-select-trigger,
     #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .form-control,
-    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .app-camera-select-trigger {
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .app-camera-select-trigger,
+    #payrollCalendarForm .form-control,
+    #payrollCalendarForm .app-camera-select-trigger {
       padding: 0 12px !important;
       border-radius: 10px !important;
       border: 1.5px solid #cfe8f7 !important;
       font-size: 13px !important;
       line-height: 35px !important;
+      background: #ffffff !important;
+      color: #173042 !important;
+    }
+    #payroll-rules-tab .payroll-panel .btn-primary,
+    #payroll-rules-tab .payroll-rule-form .btn-primary,
+    #payrollCalendarForm .btn-primary {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 0 18px !important;
+      border-radius: 10px !important;
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      line-height: 1 !important;
+      white-space: nowrap !important;
     }
 
     /* Label Typography: ONLY Filter Bars have uppercase grey labels; all other form labels are normal case, non-bold, and black */
@@ -8980,7 +9052,52 @@
       letter-spacing: 0.08em !important;
     }
 
-    /* Extra Pay -> Who it applies to -> Which items dropdown ("SELECT ALL" & "Clear") */
+    /* Extra Pay -> Who it applies to -> Which items dropdown matches app-camera-select design */
+    #payLineItemsDropdownBtn {
+      height: 38px !important;
+      min-height: 38px !important;
+      max-height: 38px !important;
+      padding: 0 12px !important;
+      background: #ffffff !important;
+      border: 1.5px solid #cfe8f7 !important;
+      border-radius: 10px !important;
+      color: #173042 !important;
+      font-family: inherit !important;
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      box-shadow: none !important;
+      transition: all 0.2s ease !important;
+    }
+    #payLineItemsDropdownBtn:hover {
+      border-color: #3d9fd4 !important;
+      background: #fcfdfe !important;
+      color: #173042 !important;
+    }
+    #payLineItemsDropdownBtn:focus,
+    #payLineItemsDropdownBtn.show,
+    #payLineItemsDropdownBtn[aria-expanded="true"] {
+      border-color: #8b7bf7 !important;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.16) !important;
+      background: #ffffff !important;
+      color: #173042 !important;
+      outline: none !important;
+    }
+    #payLineItemsDropdownBtn #payLineItemsDropdownLabel {
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      color: #173042 !important;
+    }
+    #payLineItemsMenu {
+      background: #ffffff !important;
+      border: 1.5px solid #cfe8f7 !important;
+      border-radius: 12px !important;
+      box-shadow: 0 14px 32px rgba(15, 23, 42, 0.15) !important;
+      padding: 8px !important;
+      min-width: 240px !important;
+      max-height: 280px !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+    }
     #payLineItemsMenu label:has(#payLineSelectAllChk),
     #payLineItemsMenu #payLineSelectAllLabel {
       font-size: 11px !important;
@@ -9012,8 +9129,53 @@
       background: rgba(139, 123, 247, 0.14) !important;
       color: #5847c8 !important;
     }
+    #payLineItemsMenu .payline-dropdown-item {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+      padding: 8px 10px !important;
+      margin: 0 0 2px 0 !important;
+      border-radius: 8px !important;
+      cursor: pointer !important;
+      font-family: inherit !important;
+      font-size: 0.86rem !important;
+      font-weight: 600 !important;
+      color: #1e293b !important;
+      line-height: 1.3 !important;
+      transition: background-color 0.15s ease, color 0.15s ease !important;
+      user-select: none !important;
+    }
+    #payLineItemsMenu .payline-dropdown-item:hover,
+    #payLineItemsMenu .payline-dropdown-item:focus-within {
+      background: #f0f9ff !important;
+      color: #0369a1 !important;
+    }
+    #payLineItemsMenu .payline-dropdown-item.selected {
+      background: #f3f0ff !important;
+      color: #5847c8 !important;
+      font-weight: 700 !important;
+    }
+    #payLineItemsMenu .payline-dropdown-item input.payline-item-chk {
+      width: 15px !important;
+      height: 15px !important;
+      min-width: 15px !important;
+      min-height: 15px !important;
+      margin: 0 !important;
+      flex-shrink: 0 !important;
+      cursor: pointer !important;
+      accent-color: #5847c8 !important;
+      position: static !important;
+    }
+    #payLineItemsMenu .payline-dropdown-item .payline-dropdown-item-text {
+      font-size: 0.86rem !important;
+      font-weight: inherit !important;
+      color: inherit !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
 
-    /* Reset Filter Buttons: Uniform size across ALL pages */
+    /* Reset Filter Buttons: Uniform size and hover effect across ALL pages */
     #mainResetFiltersBtn,
     #payrollResetFiltersBtn,
     #otResetFiltersBtn,
@@ -9021,6 +9183,7 @@
     #salaryResetFilterBtn,
     button[onclick="resetLeaveRequestFilters()"],
     button[onclick="resetLeaveBalanceFilters()"],
+    button[onclick="resetShiftStaffFilters()"],
     button[onclick="resetStaffDirectoryFilters()"] {
       display: inline-flex !important;
       align-items: center !important;
@@ -9044,6 +9207,7 @@
       white-space: nowrap !important;
       cursor: pointer !important;
       box-sizing: border-box !important;
+      box-shadow: none !important;
       transition: all 0.16s ease !important;
     }
     #mainResetFiltersBtn:hover,
@@ -9053,12 +9217,13 @@
     #salaryResetFilterBtn:hover,
     button[onclick="resetLeaveRequestFilters()"]:hover,
     button[onclick="resetLeaveBalanceFilters()"]:hover,
+    button[onclick="resetShiftStaffFilters()"]:hover,
     button[onclick="resetStaffDirectoryFilters()"]:hover {
       background: #f8fafc !important;
       border-color: #94a3b8 !important;
       color: #0f172a !important;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
-      transform: translateY(-1px);
+      transform: translateY(-1px) !important;
     }
     #mainResetFiltersBtn i,
     #payrollResetFiltersBtn i,
@@ -9067,9 +9232,103 @@
     #salaryResetFilterBtn i,
     button[onclick="resetLeaveRequestFilters()"] i,
     button[onclick="resetLeaveBalanceFilters()"] i,
+    button[onclick="resetShiftStaffFilters()"] i,
     button[onclick="resetStaffDirectoryFilters()"] i {
       font-size: 11px !important;
       color: #475569 !important;
+    }
+
+    /* Unified 36px height & alignment across ALL filter bars in the application */
+    .rpt-filters .rpt-filters-body,
+    #payroll-view .payroll-rpt-filters .rpt-filters-body,
+    .leave-filter-bar,
+    #overtime-view .ot-filter-bar,
+    #shifts-view .shift-filter-bar {
+      display: flex !important;
+      align-items: flex-end !important;
+      gap: 10px !important;
+      flex-wrap: wrap !important;
+    }
+    .rpt-filters .rpt-field,
+    #payroll-view .payroll-rpt-filters .rpt-field,
+    .leave-filter-bar .rpt-field,
+    #overtime-view .ot-filter-bar .rpt-field,
+    #shifts-view .shift-filter-bar .rpt-field {
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: flex-end !important;
+      gap: 4px !important;
+      margin: 0 !important;
+    }
+    .rpt-filters .rpt-field-label,
+    #payroll-view .payroll-rpt-filters .rpt-field-label,
+    .leave-filter-bar .rpt-field-label,
+    #overtime-view .ot-filter-bar .rpt-field-label,
+    #shifts-view .shift-filter-bar .rpt-field-label {
+      display: block !important;
+      height: 12px !important;
+      line-height: 12px !important;
+      margin: 0 !important;
+      padding-left: 2px !important;
+      font-size: 9.5px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.08em !important;
+      text-transform: uppercase !important;
+      color: #64748b !important;
+    }
+    .rpt-filters .form-control,
+    .rpt-filters .form-select,
+    .rpt-filters input[type="search"],
+    .rpt-filters input[type="text"],
+    .rpt-filters input[type="date"],
+    .rpt-filters input[type="month"],
+    .rpt-filters .app-camera-select,
+    .rpt-filters .app-camera-select-trigger,
+    .rpt-filters .rpt-filters-body .rpt-btn,
+    #payroll-view .payroll-rpt-filters .form-control,
+    #payroll-view .payroll-rpt-filters .form-select,
+    #payroll-view .payroll-rpt-filters .app-camera-select,
+    #payroll-view .payroll-rpt-filters .app-camera-select-trigger,
+    #payroll-view .payroll-rpt-filters .rpt-btn,
+    .leave-filter-bar .form-control,
+    .leave-filter-bar .form-select,
+    .leave-filter-bar input[type="search"],
+    .leave-filter-bar input[type="date"],
+    .leave-filter-bar input[type="month"],
+    .leave-filter-bar .app-camera-select,
+    .leave-filter-bar .app-camera-select-trigger,
+    .leave-filter-bar .btn,
+    .leave-month-nav .btn,
+    #overtime-view .ot-filter-bar .form-control,
+    #overtime-view .ot-filter-bar .form-select,
+    #overtime-view .ot-filter-bar input[type="search"],
+    #overtime-view .ot-filter-bar input[type="month"],
+    #overtime-view .ot-filter-bar .app-camera-select,
+    #overtime-view .ot-filter-bar .app-camera-select-trigger,
+    #overtime-view .ot-filter-bar .rpt-btn,
+    #shifts-view .shift-filter-bar .form-control,
+    #shifts-view .shift-filter-bar .form-select,
+    #shifts-view .shift-filter-bar input[type="text"],
+    #shifts-view .shift-filter-bar .app-camera-select,
+    #shifts-view .shift-filter-bar .app-camera-select-trigger,
+    #shifts-view .shift-filter-bar .btn,
+    #payrollMonth {
+      height: 36px !important;
+      min-height: 36px !important;
+      max-height: 36px !important;
+      box-sizing: border-box !important;
+    }
+    .rpt-filters .app-camera-select-trigger,
+    #payroll-view .payroll-rpt-filters .app-camera-select-trigger,
+    .leave-filter-bar .app-camera-select-trigger,
+    #overtime-view .ot-filter-bar .app-camera-select-trigger,
+    #shifts-view .shift-filter-bar .app-camera-select-trigger {
+      padding: 0 12px !important;
+      border-radius: 10px !important;
+      border: 1px solid #e3e8f5 !important;
+      background: #ffffff !important;
+      font-size: 12.5px !important;
+      color: #151b25 !important;
     }
 
     /* Staff Enrollment Lock card in Settings page: preserve dark theme & visibility */
@@ -10583,6 +10842,13 @@ async function fetchMultiLiveDetections() {
             </div>
           </div>
           <div class="rpt-filters-body">
+            <div class="rpt-field rpt-field--grow">
+              <span class="rpt-field-label">Search</span>
+              <div class="rpt-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="mainReportSearch" class="form-control" maxlength="100" value="" autocomplete="off" placeholder="Search name, ID, department, CNIC..." oninput="onMainReportSearchInput()">
+              </div>
+            </div>
             <div class="rpt-field">
               <span class="rpt-field-label">Department</span>
               <select id="mainDeptFilter" class="form-select" onchange="fetchMainReport()">
@@ -10597,13 +10863,6 @@ async function fetchMultiLiveDetections() {
                 <option value="absent">Absent Only</option>
                 <option value="late">Late Only</option>
               </select>
-            </div>
-            <div class="rpt-field rpt-field--grow">
-              <span class="rpt-field-label">Search</span>
-              <div class="rpt-search">
-                <i class="fa-solid fa-magnifying-glass"></i>
-                <input type="search" id="mainReportSearch" class="form-control" maxlength="100" value="" autocomplete="off" placeholder="Search name, ID, department, CNIC..." oninput="onMainReportSearchInput()">
-              </div>
             </div>
             <div class="rpt-field" style="min-width:auto;">
               <span class="rpt-field-label">&nbsp;</span>
@@ -10955,8 +11214,8 @@ async function fetchMultiLiveDetections() {
       <!-- PAY-09: Filter bar with Calendar Month selector after Run Status, followed by Reset button -->
       <section class="rpt-filters app-camera-select-host payroll-rpt-filters" aria-label="Payroll filters">
         <div class="rpt-filters-body">
-          <div class="rpt-field" style="flex:1 1 200px; min-width:180px;">
-            <span class="rpt-field-label">Search Employee</span>
+          <div class="rpt-field rpt-field--grow" style="flex:1 1 200px; min-width:180px;">
+            <span class="rpt-field-label">Search</span>
             <div class="rpt-search" style="position:relative; width:100%;">
               <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--faint); pointer-events:none;"></i>
               <input id="payrollEmployeeSearch" type="search" class="form-control" placeholder="Search name or ID..." oninput="applyPayrollFilters()" style="padding-left:32px; height:36px; min-height:36px;">
@@ -10967,7 +11226,7 @@ async function fetchMultiLiveDetections() {
             <select id="payrollDepartmentFilter" class="form-select" onchange="applyPayrollFilters()"><option value="all">All departments</option></select>
           </div>
           <div class="rpt-field">
-            <span class="rpt-field-label">Employee status</span>
+            <span class="rpt-field-label">Status</span>
             <select id="payrollEmployeeStatusFilter" class="form-select" onchange="applyPayrollFilters()">
               <option value="all">All employee statuses</option><option value="Draft">Draft</option><option value="Missing salary">Missing salary</option><option value="Missing payroll rule">Missing payroll rule</option><option value="Missing shift history">Missing shift history</option><option value="Finalized">Finalized</option>
             </select>
@@ -10977,16 +11236,16 @@ async function fetchMultiLiveDetections() {
             <select id="payrollIssueFilter" class="form-select" onchange="applyPayrollFilters()"><option value="all">All employees</option><option value="issues">Issues only</option><option value="clear">No issues</option></select>
           </div>
           <div class="rpt-field">
-            <span class="rpt-field-label">Deduction type</span>
+            <span class="rpt-field-label">Deduction Type</span>
             <select id="payrollDeductionFilter" class="form-select" onchange="applyPayrollFilters()"><option value="all">All deduction types</option><option value="percentage">Percentage</option><option value="fixed">Fixed PKR</option></select>
           </div>
           <div class="rpt-field">
-            <span class="rpt-field-label">Run status</span>
+            <span class="rpt-field-label">Run Status</span>
             <select id="payrollRunStatusFilter" class="form-select" onchange="applyPayrollFilters()"><option value="all">Any payroll status</option><option value="Draft">Draft</option><option value="Ready for Finalization">Ready for Finalization</option><option value="Finalized">Finalized</option></select>
           </div>
           <!-- PAY-09: Calendar Month filter positioned directly after Run status (no forward/backward buttons) -->
           <div class="rpt-field" id="payrollMonthFilterWrap" style="min-width:155px; flex:0 1 175px;">
-            <span class="rpt-field-label">Payroll Period</span>
+            <span class="rpt-field-label">Period</span>
             <input id="payrollMonth" type="month" class="form-control" onchange="loadMonthlyPayroll(this.value)" style="height:36px; min-height:36px; font-weight:600; color:#151b25; font-size:12px; padding:0 10px; border:1px solid #cfe8f7; border-radius:10px;">
           </div>
           <!-- PAY-09: Reset button positioned directly after calendar filter -->
@@ -11213,21 +11472,12 @@ async function fetchMultiLiveDetections() {
       <!-- Subtab 1: Leave Requests -->
       <div id="subtab-leave-requests">
         <div class="leave-filter-bar app-camera-select-host">
-          <div class="leave-month-nav">
-            <button id="leavePrevMonth" type="button" class="btn btn-outline-secondary" onclick="moveLeaveMonth(-1)" aria-label="Previous month" title="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
-            <div class="rpt-field">
-              <span class="rpt-field-label">Leave Month</span>
-              <input id="leaveMonthFilter" type="month" class="form-control" onchange="onLeaveFilterChange()" style="width:160px;">
-            </div>
-            <button id="leaveNextMonth" type="button" class="btn btn-outline-secondary" onclick="moveLeaveMonth(1)" aria-label="Next month" title="Next month"><i class="fa-solid fa-chevron-right"></i></button>
-          </div>
-          <div class="rpt-field">
-            <span class="rpt-field-label">Specific Date</span>
-            <input id="leaveDateFilter" type="date" class="form-control" onchange="onLeaveFilterChange()" style="width:160px;">
-          </div>
-          <div class="rpt-field" style="min-width:200px; max-width:260px; flex:1 1 220px;">
+          <div class="rpt-field rpt-field--grow" style="min-width:200px; flex:1 1 220px;">
             <span class="rpt-field-label">Search</span>
-            <input type="search" id="leaveSearch" class="form-control" maxlength="100" placeholder="Search employee name or ID..." oninput="onLeaveSearchInput()" style="width:100%;" />
+            <div class="rpt-search" style="position:relative; width:100%;">
+              <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:11px; color:#94a3b8; pointer-events:none;"></i>
+              <input type="search" id="leaveSearch" class="form-control" maxlength="100" placeholder="Search employee name or ID..." oninput="onLeaveSearchInput()" style="width:100%; padding-left:32px;" />
+            </div>
           </div>
           <div class="rpt-field">
             <span class="rpt-field-label">Status</span>
@@ -11239,6 +11489,18 @@ async function fetchMultiLiveDetections() {
               <option value="partially_approved">Partially Approved</option>
               <option value="rejected">Rejected</option>
             </select>
+          </div>
+          <div class="leave-month-nav">
+            <button id="leavePrevMonth" type="button" class="btn btn-outline-secondary" onclick="moveLeaveMonth(-1)" aria-label="Previous month" title="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
+            <div class="rpt-field">
+              <span class="rpt-field-label">Period</span>
+              <input id="leaveMonthFilter" type="month" class="form-control" onchange="onLeaveFilterChange()" style="width:160px;">
+            </div>
+            <button id="leaveNextMonth" type="button" class="btn btn-outline-secondary" onclick="moveLeaveMonth(1)" aria-label="Next month" title="Next month"><i class="fa-solid fa-chevron-right"></i></button>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Specific Date</span>
+            <input id="leaveDateFilter" type="date" class="form-control" onchange="onLeaveFilterChange()" style="width:160px;">
           </div>
           <div class="rpt-field" style="min-width:auto;">
             <span class="rpt-field-label">&nbsp;</span>
@@ -11311,9 +11573,12 @@ async function fetchMultiLiveDetections() {
           <h3 style="font-size:1.05em;font-weight:700;margin:0;color:#173042;">Employee Yearly Quotas (<span id="leaveBalanceYearLabel">2026</span>)</h3>
         </div>
         <div class="leave-filter-bar app-camera-select-host">
-          <div class="rpt-field">
-            <span class="rpt-field-label">Year</span>
-            <select id="leaveBalanceYearFilter" class="form-select" onchange="onLeaveBalanceYearChange(this.value)" style="min-width:120px;"></select>
+          <div class="rpt-field rpt-field--grow" style="min-width:200px; flex:1 1 220px;">
+            <span class="rpt-field-label">Search</span>
+            <div class="rpt-search" style="position:relative; width:100%;">
+              <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:11px; color:#94a3b8; pointer-events:none;"></i>
+              <input type="search" id="leaveBalanceSearch" class="form-control" maxlength="100" placeholder="Search by name or ID..." oninput="onLeaveBalanceSearchInput()" style="width:100%; padding-left:32px;" />
+            </div>
           </div>
           <div class="rpt-field">
             <span class="rpt-field-label">Department</span>
@@ -11321,9 +11586,9 @@ async function fetchMultiLiveDetections() {
               <option value="all">All Departments</option>
             </select>
           </div>
-          <div class="rpt-field" style="min-width:200px; max-width:260px; flex:1 1 220px;">
-            <span class="rpt-field-label">Search</span>
-            <input type="search" id="leaveBalanceSearch" class="form-control" maxlength="100" placeholder="Search by name or ID..." oninput="onLeaveBalanceSearchInput()" style="width:100%;" />
+          <div class="rpt-field">
+            <span class="rpt-field-label">Period</span>
+            <select id="leaveBalanceYearFilter" class="form-select" onchange="onLeaveBalanceYearChange(this.value)" style="min-width:120px;"></select>
           </div>
           <div class="rpt-field" style="min-width:auto;">
             <span class="rpt-field-label">&nbsp;</span>
@@ -11549,6 +11814,12 @@ async function fetchMultiLiveDetections() {
             </div>
           </div>
           <div class="rpt-field">
+            <span class="rpt-field-label">Department</span>
+            <select id="otDepartmentFilter" class="form-select" onchange="filterOvertimeTable()">
+              <option value="all">All Departments</option>
+            </select>
+          </div>
+          <div class="rpt-field">
             <span class="rpt-field-label">Status</span>
             <select id="otStatusFilter" class="form-select" onchange="filterOvertimeTable()">
               <option value="all">All Statuses</option>
@@ -11558,13 +11829,7 @@ async function fetchMultiLiveDetections() {
             </select>
           </div>
           <div class="rpt-field">
-            <span class="rpt-field-label">Department</span>
-            <select id="otDepartmentFilter" class="form-select" onchange="filterOvertimeTable()">
-              <option value="all">All Departments</option>
-            </select>
-          </div>
-          <div class="rpt-field">
-            <span class="rpt-field-label">Month</span>
+            <span class="rpt-field-label">Period</span>
             <input type="month" id="otMonthFilter" class="form-control" onchange="filterOvertimeTable()" />
           </div>
           <div class="rpt-field" style="min-width:auto;">
@@ -12169,16 +12434,17 @@ async function fetchMultiLiveDetections() {
       </div>
 
       <section class="rpt-filters app-camera-select-host" aria-label="Staff filters">
-        <div class="rpt-filters-body">          <div class="rpt-field rpt-field--grow" style="flex-direction: column; align-items: stretch; gap: 4px; min-width: 0;">
+        <div class="rpt-filters-body">
+          <div class="rpt-field rpt-field--grow" style="flex-direction: column; align-items: stretch; gap: 4px; min-width: 0;">
             <span class="rpt-field-label">Search</span>
             <div class="rpt-search" style="flex: 1; min-width: 0;">
               <i class="fa-solid fa-magnifying-glass"></i>
-              <input type="search" id="tabStaffSearchInput" maxlength="100" placeholder="Search by name, ID, position, CNIC, phone, department..." oninput="filterTabStaffTable()" />
+              <input type="search" id="tabStaffSearchInput" class="form-control" maxlength="100" placeholder="Search by name, ID, position, CNIC, phone, department..." oninput="filterTabStaffTable()" />
             </div>
           </div>
           <div class="rpt-field">
             <span class="rpt-field-label">Department</span>
-            <select id="tabStaffDeptFilter" onchange="filterTabStaffTable()">
+            <select id="tabStaffDeptFilter" class="form-select" onchange="filterTabStaffTable()">
               <option value="all">All Departments</option>
             </select>
           </div>
@@ -24949,13 +25215,10 @@ async function fetchMultiLiveDetections() {
           return;
         }
         container.innerHTML = types.map(t => `
-          <div class="form-check py-1 px-2 m-0" style="border-radius:4px;">
-            <input class="form-check-input payline-item-chk" type="checkbox" value="${t.id}" id="payLineChk_${t.id}" onchange="updatePayLineItemsLabel()" data-name="${payrollEscape(t.name)}" data-kind="${payrollEscape(t.kind || t.category || '')}">
-            <label class="form-check-label w-100" for="payLineChk_${t.id}" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
-              <span class="text-truncate me-1" style="font-size:12px;">${payrollEscape(toPascalCaseText(t.name))}</span>
-              <span class="badge ${t.kind === 'earning' ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'}" style="font-size:10px; font-weight:600;">${payrollEscape(toPascalCaseText(t.category || t.kind))}</span>
-            </label>
-          </div>
+          <label class="payline-dropdown-item" for="payLineChk_${t.id}">
+            <input class="payline-item-chk" type="checkbox" value="${t.id}" id="payLineChk_${t.id}" onchange="updatePayLineItemsLabel()" data-name="${payrollEscape(t.name)}" data-kind="${payrollEscape(t.kind || t.category || '')}">
+            <span class="payline-dropdown-item-text">${payrollEscape(toPascalCaseText(t.name))}</span>
+          </label>
         `).join('');
         updatePayLineItemsLabel();
       }
@@ -24984,6 +25247,10 @@ async function fetchMultiLiveDetections() {
       function updatePayLineItemsLabel() {
         const allChks = Array.from(document.querySelectorAll('.payline-item-chk'));
         const checked = Array.from(document.querySelectorAll('.payline-item-chk:checked'));
+        document.querySelectorAll('#payLineItemsMenu .payline-dropdown-item').forEach(row => {
+          const chk = row.querySelector('.payline-item-chk');
+          row.classList.toggle('selected', Boolean(chk && chk.checked));
+        });
         const lbl = document.getElementById('payLineItemsDropdownLabel');
         const selectAllChk = document.getElementById('payLineSelectAllChk');
         const selectAllLbl = document.getElementById('payLineSelectAllLabel');
