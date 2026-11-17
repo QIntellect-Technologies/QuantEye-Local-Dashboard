@@ -6411,7 +6411,9 @@
       }
       #overtime-view .page-header h1 { color: #fff; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
       #overtime-view .page-header .page-subtitle { color: rgba(255,255,255,0.72); font-size: 13px; margin-top: 4px; }
-      #overtime-view .page-header i { color: #b7aeff !important; }
+      #overtime-view .page-header .page-header-text i { color: #b7aeff !important; }
+      #overtime-view .page-header .rpt-btn-light,
+      #overtime-view .page-header .rpt-btn-light i { color: #151b25 !important; }
       #overtime-view .rpt-rail {
         display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px;
         border: 1px solid var(--line); border-radius: 18px; background: var(--line);
@@ -7012,9 +7014,9 @@
       max-width: none;
     }
     #shifts-view .shift-filter-bar .rpt-field.shift-search-field {
-      flex: 1 1 220px;
-      min-width: 180px;
-      max-width: 280px;
+      flex: 1 1 260px !important;
+      min-width: 200px !important;
+      max-width: none !important;
     }
     #shifts-view .shift-filter-bar .form-select,
     #shifts-view .shift-filter-bar input[type="text"],
@@ -7484,8 +7486,8 @@
     #leave-settings-tab .app-camera-select[data-target-select="halfLeaveQuotaMode"],
     [data-payroll-hub-pane="leave"] .app-camera-select[data-target-select="halfLeaveQuotaMode"] {
       width: 100%;
-      max-width: 280px;
-      flex: 0 1 280px;
+      max-width: 100%;
+      flex: 1 1 auto;
     }
     #leave-settings-tab .payroll-rule-field .app-camera-select,
     [data-payroll-hub-pane="leave"] .payroll-rule-field .app-camera-select {
@@ -7494,7 +7496,9 @@
     }
     #leave-settings-tab .app-camera-select-trigger,
     [data-payroll-hub-pane="leave"] .app-camera-select-trigger {
-      min-height: 40px;
+      height: 38px !important;
+      min-height: 38px !important;
+      max-height: 38px !important;
       background: #ffffff;
       border: 1.5px solid #cfe8f7;
       border-radius: 10px;
@@ -8979,6 +8983,35 @@
     }
     #payroll-rules-tab .payroll-rule-field > label {
       margin-bottom: 0 !important;
+      line-height: 1.25 !important;
+    }
+    #payroll-rules-tab .payroll-rule-form > .payroll-rule-field {
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: flex-end !important;
+      gap: 6px !important;
+    }
+    #payroll-rules-tab .payroll-rule-form > .payroll-rule-actions {
+      display: flex !important;
+      align-items: flex-end !important;
+      gap: 8px !important;
+    }
+    #payroll-rules-tab [data-payroll-hub-pane="leave"] .payroll-rule-form {
+      display: grid !important;
+      gap: 14px !important;
+      align-items: end !important;
+    }
+    #payroll-rules-tab #companyHalfLeavePolicyForm {
+      grid-template-columns: minmax(240px, 1.4fr) minmax(180px, 1fr) auto !important;
+    }
+    #payroll-rules-tab #halfLeaveSpecificRuleForm {
+      grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.4fr) minmax(150px, 1fr) auto !important;
+    }
+    @media (max-width: 820px) {
+      #payroll-rules-tab #companyHalfLeavePolicyForm,
+      #payroll-rules-tab #halfLeaveSpecificRuleForm {
+        grid-template-columns: 1fr !important;
+      }
     }
     #payroll-rules-tab .payroll-panel .form-control,
     #payroll-rules-tab .payroll-panel .app-camera-select-trigger,
@@ -9071,7 +9104,18 @@
       font-size: 13px !important;
       font-weight: 600 !important;
       box-shadow: none !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 8px !important;
       transition: all 0.2s ease !important;
+    }
+    #payLineItemsDropdownBtn::after {
+      display: none !important;
+      content: none !important;
+    }
+    #payLineItemsDropdownBtn[aria-expanded="true"] > i.fa-chevron-down {
+      transform: rotate(180deg);
     }
     #payLineItemsDropdownBtn:hover {
       border-color: #3d9fd4 !important;
@@ -9225,9 +9269,9 @@
     button[onclick="resetShiftStaffFilters()"]:hover,
     button[onclick="resetStaffDirectoryFilters()"]:hover {
       background: #f8fafc !important;
-      border-color: #94a3b8 !important;
+      border-color: #8b7bf7 !important;
       color: #0f172a !important;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08) !important;
       transform: translateY(-1px) !important;
     }
     #mainResetFiltersBtn i,
@@ -11495,13 +11539,9 @@ async function fetchMultiLiveDetections() {
               <option value="rejected">Rejected</option>
             </select>
           </div>
-          <div class="leave-month-nav">
-            <button id="leavePrevMonth" type="button" class="btn btn-outline-secondary" onclick="moveLeaveMonth(-1)" aria-label="Previous month" title="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
-            <div class="rpt-field">
-              <span class="rpt-field-label">Period</span>
-              <input id="leaveMonthFilter" type="month" class="form-control" onchange="onLeaveFilterChange()" style="width:160px;">
-            </div>
-            <button id="leaveNextMonth" type="button" class="btn btn-outline-secondary" onclick="moveLeaveMonth(1)" aria-label="Next month" title="Next month"><i class="fa-solid fa-chevron-right"></i></button>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Period</span>
+            <input id="leaveMonthFilter" type="month" class="form-control" onchange="onLeaveFilterChange()" style="width:160px;">
           </div>
           <div class="rpt-field">
             <span class="rpt-field-label">Specific Date</span>
@@ -13069,15 +13109,16 @@ async function fetchMultiLiveDetections() {
 
               <!-- Which items dropdown with multi-select checkboxes -->
               <div class="payroll-rule-field" style="position:relative; min-width:220px;">
-                <label style="display:block; margin-bottom:4px; font-weight:700; color:#475569;">Which items</label>
+                <label style="display:block; margin-bottom:0; color:#000000;">Which items</label>
                 <div class="dropdown">
-                  <button class="btn btn-outline-secondary dropdown-toggle text-start d-flex justify-content-between align-items-center w-100" type="button" id="payLineItemsDropdownBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="background:#fff; border:1px solid #cfe8f7; color:#173042; font-size:0.9em; height:38px;">
+                  <button class="btn btn-outline-secondary text-start d-flex justify-content-between align-items-center w-100" type="button" id="payLineItemsDropdownBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="background:#ffffff; border:1.5px solid #cfe8f7; color:#173042; font-size:13px; height:38px;">
                     <span id="payLineItemsDropdownLabel" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;">Select items…</span>
+                    <i class="fa-solid fa-chevron-down" style="color:#94a3b8; font-size:0.75em; transition:transform 0.2s;"></i>
                   </button>
                   <div class="dropdown-menu p-2 shadow-sm" id="payLineItemsMenu" aria-labelledby="payLineItemsDropdownBtn" style="min-width:260px; max-height:280px; overflow-y:auto; z-index:1050;">
                     <div class="d-flex justify-content-between align-items-center pb-2 mb-2 border-bottom" style="padding:2px 4px;">
                       <label class="form-check-label" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; margin:0; font-size:11px !important; font-weight:600 !important; color:#151b25 !important;">
-                        <input type="checkbox" id="payLineSelectAllChk" class="form-check-input" style="width:15px; height:15px; margin:0; accent-color:#0d9488;" onchange="toggleAllPayLineItems(this.checked)">
+                        <input type="checkbox" id="payLineSelectAllChk" class="form-check-input" style="width:15px; height:15px; margin:0; accent-color:#5847c8;" onchange="toggleAllPayLineItems(this.checked)">
                         <span id="payLineSelectAllLabel" style="font-size:11px !important; font-weight:600 !important; letter-spacing:0.02em;">SELECT ALL</span>
                       </label>
                       <button type="button" id="payLineClearBtn" onclick="clearAllPayLineItems()" style="font-size:11px !important; font-weight:600 !important; background:transparent; border:none; padding:4px 8px; border-radius:6px; color:#64748b; cursor:pointer;">Clear</button>
@@ -13103,7 +13144,9 @@ async function fetchMultiLiveDetections() {
                 <input id="payLinePercent" class="form-control" type="number" min="0" max="100" step="0.01" placeholder="Catalog default">
               </label>
 
-              <button type="submit" id="payLineSubmitBtn" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">Apply to selected group</button>
+              <div class="payroll-rule-actions">
+                <button type="submit" id="payLineSubmitBtn" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:600; height:38px; min-height:38px;">Apply to selected group</button>
+              </div>
             </form>
             <div id="payLineAssignMessage" class="small mt-2"></div>
             <div class="log-table-wrapper" style="margin-top:8px;">
@@ -13139,7 +13182,7 @@ async function fetchMultiLiveDetections() {
         <div class="app-camera-select-host" style="margin-bottom: 20px;">
           <div style="font-weight:700; color:#173042; margin-bottom:4px; font-size:1.05em;">Company Half-Day Leave Policy</div>
           <p class="payroll-panel-help" id="halfLeaveQuotaDescription" style="margin-bottom:10px;">How should half-day leave be counted? Only one rule applies. Winner order: one person → department → company setting. If the company setting is “use each leave type’s own rules”, the leave type is used after that.</p>
-          <div class="payroll-rule-form" style="display:grid; grid-template-columns: minmax(260px, 1fr) minmax(160px, 200px) auto; gap: 14px; align-items: end; background: #ffffff; border: 1px solid #dbe5ec; border-radius: 10px; padding: 16px;">
+          <div id="companyHalfLeavePolicyForm" class="payroll-rule-form" style="display:grid; grid-template-columns: minmax(240px, 1.4fr) minmax(180px, 1fr) auto; gap: 14px; align-items: end; background: #ffffff; border: 1px solid #dbe5ec; border-radius: 10px; padding: 16px;">
             <label class="payroll-rule-field">
               Counting Mode
               <select id="halfLeaveQuotaMode" class="form-select leave-settings-select" style="height:38px;" onchange="updateHalfLeaveQuotaModeUI()">
@@ -13152,8 +13195,8 @@ async function fetchMultiLiveDetections() {
               Occurrences per month
               <input id="halfLeavesPerQuotaDay" class="form-control" type="number" min="1" step="1" value="2" style="height:38px;" oninput="updateHalfLeaveQuotaModeUI()">
             </label>
-            <div class="payroll-rule-actions" style="margin-bottom: 2px;">
-              <button type="button" id="saveLeaveSettingsBtn" class="btn btn-primary btn-sm rpt-btn rpt-btn-primary" onclick="saveLeaveSettings()" style="min-height:38px; height:38px; padding: 0 20px; font-weight:700;">
+            <div class="payroll-rule-actions">
+              <button type="button" id="saveLeaveSettingsBtn" class="btn btn-primary btn-sm rpt-btn rpt-btn-primary" onclick="saveLeaveSettings()" style="min-height:38px; height:38px; padding: 0 20px; font-weight:600;">
                 <i class="fa-solid fa-floppy-disk me-1"></i> Save Leave Settings
               </button>
             </div>
@@ -13165,7 +13208,7 @@ async function fetchMultiLiveDetections() {
         <div class="app-camera-select-host" style="margin-bottom: 20px;">
           <div style="font-weight:700; color:#173042; margin-bottom:4px; font-size:1.05em;">Half-Day Leave for One Group or Person</div>
           <p class="payroll-panel-help" style="margin-bottom:10px;">A person rule beats a department rule. A department rule beats the company setting above. The winning rule is used instead of the others, not added on top.</p>
-          <form id="halfLeaveSpecificRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); saveHalfLeaveSpecificRule();" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) auto; gap: 14px; align-items: end; background: #ffffff; border: 1px solid #dbe5ec; border-radius: 10px; padding: 16px;">
+          <form id="halfLeaveSpecificRuleForm" class="payroll-rule-form" onsubmit="event.preventDefault(); saveHalfLeaveSpecificRule();" style="display:grid; grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.4fr) minmax(150px, 1fr) auto; gap: 14px; align-items: end; background: #ffffff; border: 1px solid #dbe5ec; border-radius: 10px; padding: 16px;">
             <label class="payroll-rule-field">
               Applies to
               <select class="form-select leave-settings-select" id="halfLeaveRuleScope" style="height:38px;" onchange="updateHalfLeaveRuleScopeOptions()">
@@ -13183,8 +13226,8 @@ async function fetchMultiLiveDetections() {
               Times per month
               <input class="form-control" type="number" min="1" step="1" id="halfLeaveRuleValue" style="height:38px;">
             </label>
-            <div class="payroll-rule-actions" style="margin-bottom: 2px;">
-              <button type="submit" class="btn btn-primary btn-sm rpt-btn rpt-btn-primary" style="min-height:38px; height:38px; padding: 0 18px; font-weight:700;">
+            <div class="payroll-rule-actions">
+              <button type="submit" class="btn btn-primary btn-sm rpt-btn rpt-btn-primary" style="min-height:38px; height:38px; padding: 0 18px; font-weight:600;">
                 <i class="fa-solid fa-plus me-1"></i> Add Rule
               </button>
             </div>
