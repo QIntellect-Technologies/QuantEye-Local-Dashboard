@@ -6458,6 +6458,11 @@ def api_add_leave_type():
     except (TypeError, ValueError):
         quota_id = None
     try:
+        raw_half_count = data.get('half_leave_allowance_count')
+        half_allowance_count = int(raw_half_count) if raw_half_count not in (None, '') else 0
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Half-days allowed must be from 0 to 365.'}), 400
+    try:
         tid = db.add_leave_type(
             name=name,
             code=code,
@@ -6468,7 +6473,7 @@ def api_add_leave_type():
             allowance_months=allowance_months,
             half_leave_enabled=bool(data.get('half_leave_enabled')),
             half_leave_mode=str(data.get('half_leave_mode') or 'separate'),
-            half_leave_allowance_count=int(data.get('half_leave_allowance_count') or 0),
+            half_leave_allowance_count=half_allowance_count,
             half_leave_allowance_months=int(data.get('half_leave_allowance_months') or 12),
             half_leaves_per_quota_day=int(data.get('half_leaves_per_quota_day') or 2),
             half_leave_quota_type_id=quota_id,
@@ -6485,7 +6490,7 @@ def api_add_leave_type():
 @app.route('/api/leave-types/<int:type_id>', methods=['PUT'])
 def api_update_leave_type(type_id):
     data = request.get_json() or {}
-    # QA-137: fast status toggle must not validate half-days or other fields
+    # QA-137 / QA-144: fast status toggle must not validate half-days or other fields
     if data.get('is_toggle') or ('active' in data and 'name' not in data):
         active = int(data.get('active', 1))
         ok = db.set_leave_type_active(type_id, active, organization_id=get_current_tenant_id())
@@ -6505,6 +6510,11 @@ def api_update_leave_type(type_id):
     except (TypeError, ValueError):
         quota_id = None
     try:
+        raw_half_count = data.get('half_leave_allowance_count')
+        half_allowance_count = int(raw_half_count) if raw_half_count not in (None, '') else 0
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Half-days allowed must be from 0 to 365.'}), 400
+    try:
         ok = db.update_leave_type(
             type_id=type_id,
             name=data.get('name', ''),
@@ -6516,7 +6526,7 @@ def api_update_leave_type(type_id):
             allowance_months=allowance_months,
             half_leave_enabled=bool(data.get('half_leave_enabled')),
             half_leave_mode=str(data.get('half_leave_mode') or 'separate'),
-            half_leave_allowance_count=int(data.get('half_leave_allowance_count') or 0),
+            half_leave_allowance_count=half_allowance_count,
             half_leave_allowance_months=int(data.get('half_leave_allowance_months') or 12),
             half_leaves_per_quota_day=int(data.get('half_leaves_per_quota_day') or 2),
             half_leave_quota_type_id=quota_id,

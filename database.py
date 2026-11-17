@@ -750,9 +750,23 @@ def init_db():
                 ('half_leave_allowance_months', 'INTEGER NOT NULL DEFAULT 12'),
                 ('half_leaves_per_quota_day', 'INTEGER NOT NULL DEFAULT 2'),
                 ('half_leave_quota_type_id', 'INTEGER'),
+                ('half_leave_allowance_explicit', 'INTEGER NOT NULL DEFAULT 0'),
             ]:
                 if column not in leave_type_columns:
                     cursor.execute(f"ALTER TABLE leave_types ADD COLUMN {column} {column_type}")
+            # QA-144: repair seeded/legacy leave types where half_leave_enabled = 1
+            # but half_leave_allowance_count was left at 0 instead of the configured occurrence count.
+            cursor.execute('''
+                UPDATE leave_types
+                   SET half_leave_allowance_count = CASE
+                         WHEN COALESCE(half_leaves_per_quota_day, 0) > 0 THEN half_leaves_per_quota_day
+                         ELSE 2
+                       END,
+                       half_leave_allowance_explicit = 1
+                 WHERE COALESCE(half_leave_allowance_explicit, 0) = 0
+                   AND COALESCE(half_leave_enabled, 0) = 1
+                   AND COALESCE(half_leave_allowance_count, 0) = 0
+            ''')
             conn.commit()
 
             # Face embeddings are required by enrollment and indexed below.
@@ -9553,6 +9567,42 @@ def delete_leave_request(leave_id: int, organization_id: Optional[str] = None) -
 # LEAVE TYPES & HOLIDAYS MANAGEMENT HELPERS
 # ============================================
 
+def _ensure_half_leave_allowance_repaired(cursor: sqlite3.Cursor, org: str) -> None:
+    """QA-144: Ensure leave types with half_leave_enabled=1 that were seeded with 0 allowance count
+    reflect the configured occurrence count without overwriting user-saved values."""
+    try:
+        cols = {row[1] for row in cursor.execute("PRAGMA table_info(leave_types)").fetchall()}
+        if 'half_leave_allowance_explicit' not in cols:
+            cursor.execute("ALTER TABLE leave_types ADD COLUMN half_leave_allowance_explicit INTEGER NOT NULL DEFAULT 0")
+        default_count = 2
+        try:
+            s_row = cursor.execute(
+                """SELECT half_leaves_per_quota_day FROM payroll_settings
+                    WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                    ORDER BY id ASC LIMIT 1""",
+                (org,),
+            ).fetchone()
+            if s_row and s_row[0] and int(s_row[0]) > 0:
+                default_count = int(s_row[0])
+        except Exception:
+            pass
+        cursor.execute(
+            """UPDATE leave_types
+                  SET half_leave_allowance_count = CASE
+                        WHEN COALESCE(half_leaves_per_quota_day, 0) > 0 THEN half_leaves_per_quota_day
+                        ELSE ?
+                      END,
+                      half_leave_allowance_explicit = 1
+                WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                  AND COALESCE(half_leave_allowance_explicit, 0) = 0
+                  AND COALESCE(half_leave_enabled, 0) = 1
+                  AND COALESCE(half_leave_allowance_count, 0) = 0""",
+            (default_count, org),
+        )
+    except Exception as exc:
+        logger.debug("Half-leave allowance repair skipped: %s", exc)
+
+
 def get_leave_types(
     organization_id: Optional[str] = None,
     branch_id: Optional[str] = None,
@@ -9564,6 +9614,7 @@ def get_leave_types(
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             seed_leave_types_if_empty(cursor, org, branch)
+            _ensure_half_leave_allowance_repaired(cursor, org)
             conn.commit()
             cursor.execute(
                 """SELECT * FROM leave_types
@@ -9647,24 +9698,26 @@ def add_leave_type(
             raise ValueError('Choose a valid half-leave rule.')
         if not 1 <= half_months <= 12:
             raise ValueError('Half-leave reset period must be from 1 to 12 months.')
-        if half_leave_enabled and half_mode == 'separate' and not 1 <= half_count <= 365:
-            raise ValueError('Half-days allowed must be from 1 to 365.')
+        if half_leave_enabled and half_mode == 'separate' and not 0 <= half_count <= 365:
+            raise ValueError('Half-days allowed must be from 0 to 365.')
         if half_leave_enabled and half_mode == 'convert' and not 1 <= half_conversion <= 24:
             raise ValueError('Half-days per full day must be from 1 to 24.')
         if half_count < 0 or half_count > 365 or half_conversion < 1 or half_conversion > 24:
             raise ValueError('Half-day policy values are outside the allowed limits.')
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            org, branch = _tenant_ids(organization_id, branch_id)
+            _ensure_half_leave_allowance_repaired(cursor, org)
             cursor.execute(
                 """INSERT INTO leave_types (
                        name, code, yearly_allowance, is_paid, description, allowance_period, allowance_months,
                        half_leave_enabled, half_leave_mode, half_leave_allowance_count,
                        half_leave_allowance_months, half_leaves_per_quota_day, half_leave_quota_type_id,
-                       organization_id, branch_id
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       half_leave_allowance_explicit, organization_id, branch_id
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
                 (clean_name, clean_code, allowance, is_paid, clean_desc, allowance_period, duration_months,
                  int(bool(half_leave_enabled)), half_mode, half_count, half_months, half_conversion,
-                 half_leave_quota_type_id, *_tenant_ids(organization_id, branch_id))
+                 half_leave_quota_type_id, org, branch)
             )
             conn.commit()
             return cursor.lastrowid
@@ -9729,24 +9782,33 @@ def update_leave_type(
         half_conversion = int(half_leaves_per_quota_day or 2)
         if not 1 <= duration_months <= 12:
             raise ValueError('Renewal period must be from 1 to 12 months.')
-        if half_mode not in ('separate', 'convert'):
-            raise ValueError('Choose a valid half-leave rule.')
-        if not 1 <= half_months <= 12:
-            raise ValueError('Half-leave reset period must be from 1 to 12 months.')
-        if half_leave_enabled and half_mode == 'separate' and not 1 <= half_count <= 365:
-            raise ValueError('Half-days allowed must be from 1 to 365.')
-        if half_leave_enabled and half_mode == 'convert' and not 1 <= half_conversion <= 24:
-            raise ValueError('Half-days per full day must be from 1 to 24.')
-        if half_count < 0 or half_count > 365 or half_conversion < 1 or half_conversion > 24:
-            raise ValueError('Half-day policy values are outside the allowed limits.')
+        if int(active) != 0:
+            if half_mode not in ('separate', 'convert'):
+                raise ValueError('Choose a valid half-leave rule.')
+            if not 1 <= half_months <= 12:
+                raise ValueError('Half-leave reset period must be from 1 to 12 months.')
+            if half_leave_enabled and half_mode == 'separate' and not 0 <= half_count <= 365:
+                raise ValueError('Half-days allowed must be from 0 to 365.')
+            if half_leave_enabled and half_mode == 'convert' and not 1 <= half_conversion <= 24:
+                raise ValueError('Half-days per full day must be from 1 to 24.')
+            if half_count < 0 or half_count > 365 or half_conversion < 1 or half_conversion > 24:
+                raise ValueError('Half-day policy values are outside the allowed limits.')
+        else:
+            if half_mode not in ('separate', 'convert'):
+                half_mode = 'separate'
+            half_months = max(1, min(12, half_months))
+            half_count = max(0, min(365, half_count))
+            half_conversion = max(1, min(24, half_conversion))
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             org = _tenant_ids(organization_id)[0]
+            _ensure_half_leave_allowance_repaired(cursor, org)
             cursor.execute(
                 """UPDATE leave_types SET name = ?, yearly_allowance = ?, is_paid = ?, description = ?, active = ?,
                    allowance_period = ?, allowance_months = ?, half_leave_enabled = ?, half_leave_mode = ?,
                    half_leave_allowance_count = ?, half_leave_allowance_months = ?,
-                   half_leaves_per_quota_day = ?, half_leave_quota_type_id = ?
+                   half_leaves_per_quota_day = ?, half_leave_quota_type_id = ?,
+                   half_leave_allowance_explicit = 1
                    WHERE id = ? AND COALESCE(organization_id, 'DEFAULT_ORG') = ?""",
                 (clean_name, allowance, is_paid, clean_desc, active, allowance_period, duration_months,
                  int(bool(half_leave_enabled)), half_mode, half_count, half_months, half_conversion,
@@ -10872,7 +10934,10 @@ def resolve_half_leave_rule(
     # 4. LEAVE TYPE DEFAULT (if no person, department, or company rule)
     if not winning_rule:
         half_enabled = bool(lt_dict.get('half_leave_enabled'))
+        explicit = int(lt_dict.get('half_leave_allowance_explicit') or 0)
         half_allowance = int(lt_dict.get('half_leave_allowance_count') or 0)
+        if half_enabled and half_allowance == 0 and not explicit:
+            half_allowance = max(1, int(lt_dict.get('half_leaves_per_quota_day') or 2))
         half_mode = str(lt_dict.get('half_leave_mode') or 'separate').lower()
         half_months = max(1, min(12, int(lt_dict.get('half_leave_allowance_months') or 12)))
         if half_enabled and (half_allowance > 0 or half_mode == 'convert'):
@@ -13002,6 +13067,7 @@ def save_scoped_half_leave_rule(
                     SET half_leave_quota_mode = ?, half_leaves_per_quota_day = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ? AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
                 ''', (save_mode, count, org, branch))
+                _ensure_half_leave_allowance_repaired(conn.cursor(), org)
                 conn.commit()
                 return ScopedRuleSaveResult({
                     'success': True,
@@ -13693,6 +13759,8 @@ def update_payroll_settings(
                     f"INSERT INTO payroll_settings ({', '.join(insert_columns)}) VALUES ({placeholders})",
                     (org, branch, *params),
                 )
+            if mode in ('category', 'company') and conversion_count > 0:
+                _ensure_half_leave_allowance_repaired(cur, org)
             conn.commit()
             month_key = date.today().isoformat()[:7]
             previous_mode = _normalize_attendance_pay_mode(current.get('attendance_pay_mode'))

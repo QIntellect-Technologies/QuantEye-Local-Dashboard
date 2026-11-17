@@ -253,13 +253,22 @@ def _execute_seed_for_org(db_path, target):
             row_lt = c.fetchone()
             if row_lt:
                 c.execute('''
-                    UPDATE leave_types SET name = ?, code = ?, yearly_allowance = ?, is_paid = ?, half_leave_enabled = 1, description = ?
-                    WHERE id = ?
+                    UPDATE leave_types
+                       SET name = ?, code = ?, yearly_allowance = ?, is_paid = ?,
+                           half_leave_enabled = 1,
+                           half_leave_allowance_count = CASE WHEN COALESCE(half_leave_allowance_count, 0) > 0 THEN half_leave_allowance_count ELSE 2 END,
+                           half_leaves_per_quota_day = 2,
+                           description = ?
+                     WHERE id = ?
                 ''', (lt_name, lt_code, lt_allowance, lt_paid, lt_desc, row_lt[0]))
             else:
                 c.execute('''
-                    INSERT INTO leave_types (name, code, yearly_allowance, is_paid, description, active, allowance_period, half_leave_enabled, half_leaves_per_quota_day, organization_id, branch_id)
-                    VALUES (?, ?, ?, ?, ?, 1, 'yearly', 1, 2, ?, ?)
+                    INSERT INTO leave_types (
+                        name, code, yearly_allowance, is_paid, description, active,
+                        allowance_period, half_leave_enabled, half_leave_allowance_count,
+                        half_leaves_per_quota_day, organization_id, branch_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, 1, 'yearly', 1, 2, 2, ?, ?)
                 ''', (lt_name, lt_code, lt_allowance, lt_paid, lt_desc, org_id, branch_id))
 
         # Holidays

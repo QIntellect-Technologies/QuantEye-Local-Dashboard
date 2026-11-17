@@ -7805,22 +7805,34 @@
       max-height: min(94vh, 920px) !important;
     }
     #bulkCameraModal .custom-camera-dropdown-panel {
-      max-height: min(240px, 35vh) !important;
+      position: relative !important;
+      top: 0 !important;
+      bottom: auto !important;
+      left: 0 !important;
+      right: 0 !important;
+      margin-top: 6px !important;
+      max-height: min(210px, 28vh) !important;
+      overflow-y: auto !important;
       z-index: 12050 !important;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.10) !important;
     }
     #bulkTargetStaffList {
-      max-height: min(120px, 15vh) !important;
+      max-height: min(95px, 14vh) !important;
       overflow-y: auto !important;
       overflow-x: hidden !important;
+      word-break: break-word !important;
     }
-    @media (max-width: 640px) {
+    @media (max-width: 767.98px) {
       #bulkCameraModal > .card {
         max-width: 100% !important;
         max-height: 96vh !important;
         border-radius: 14px !important;
       }
+      #bulkCameraModal .custom-camera-dropdown-panel {
+        max-height: min(180px, 24vh) !important;
+      }
       #bulkTargetStaffList {
-        max-height: 110px !important;
+        max-height: min(85px, 12vh) !important;
       }
     }
     #enroll-view .custom-camera-item,
@@ -12256,11 +12268,11 @@ async function fetchMultiLiveDetections() {
             <div id="bulkTargetStaffSummary" style="font-size:0.85em; color:#0c4a6e; margin-top:6px;">
               Loading staff selection...
             </div>
-            <div id="bulkTargetStaffList" style="margin-top:10px; max-height: min(120px, 15vh); overflow-y:auto; overflow-x:hidden; border:1px solid #bae6fd; border-radius:10px; background:#fff; padding:8px 10px; font-size:0.84em; color:#0f172a;"></div>
+            <div id="bulkTargetStaffList" style="margin-top:10px; max-height: min(95px, 14vh); overflow-y:auto; overflow-x:hidden; word-break:break-word; border:1px solid #bae6fd; border-radius:10px; background:#fff; padding:8px 10px; font-size:0.84em; color:#0f172a;"></div>
           </div>
 
           <div class="row g-3">
-            <div class="col-12 col-lg-6">
+            <div class="col-12 col-md-6">
               <label style="font-weight: 700; color: #173042; font-size: 0.88em; margin-bottom:6px; display:block;">
                 <i class="fa-solid fa-camera" style="color: #059669; margin-right: 4px;"></i> Authorized Check-In Camera(s) *
               </label>
@@ -12274,7 +12286,7 @@ async function fetchMultiLiveDetections() {
               </small>
             </div>
 
-            <div class="col-12 col-lg-6">
+            <div class="col-12 col-md-6">
               <label style="font-weight: 700; color: #173042; font-size: 0.88em; margin-bottom:6px; display:block;">
                 <i class="fa-solid fa-camera-rotate" style="color: #dc2626; margin-right: 4px;"></i> Authorized Check-Out Camera(s) *
               </label>
@@ -14664,7 +14676,7 @@ async function fetchMultiLiveDetections() {
             </div>
             <div id="halfLeaveSeparateFields" class="mb-3">
               <label class="form-label" for="modalHalfLeaveAllowance" style="font-weight:600; color:#173042;">Half-Days Allowed Per Period</label>
-              <input type="number" id="modalHalfLeaveAllowance" class="form-control" min="1" max="365" step="1" value="1" oninput="validateLeaveTypeForm()" />
+              <input type="number" id="modalHalfLeaveAllowance" class="form-control" min="0" max="365" step="1" value="2" oninput="validateLeaveTypeForm()" />
               <small id="modalHalfLeaveAllowanceError" class="text-danger" role="alert"></small>
             </div>
             <div id="halfLeaveConvertFields" style="display:none;">
@@ -20735,10 +20747,14 @@ async function fetchMultiLiveDetections() {
           if (trigger) trigger.classList.remove('active');
           if (arrow) arrow.style.transform = 'rotate(0deg)';
         } else {
-          // QA-130: Calculate space below vs above; open upward when space below is tight
-          if (trigger) {
+          // QA-130: Keep #bulkCameraModal camera list in normal flow above the bottom bar;
+          // for other modals/views, open upward when space below is tight.
+          if (panel.closest('#bulkCameraModal')) {
+            panel.style.top = '0';
+            panel.style.bottom = 'auto';
+          } else if (trigger) {
             const rect = trigger.getBoundingClientRect();
-            const modalBody = panel.closest('#bulkCameraModal .card > div:nth-child(2), #bulkCameraModal .card, .modal-body') || document.body;
+            const modalBody = panel.closest('.modal-body') || document.body;
             const containerBottom = modalBody === document.body ? window.innerHeight : modalBody.getBoundingClientRect().bottom;
             const spaceBelow = containerBottom - rect.bottom;
             const spaceAbove = rect.top - (modalBody === document.body ? 0 : modalBody.getBoundingClientRect().top);
@@ -20753,6 +20769,11 @@ async function fetchMultiLiveDetections() {
           panel.classList.add('show');
           if (trigger) trigger.classList.add('active');
           if (arrow) arrow.style.transform = 'rotate(180deg)';
+          if (panel.closest('#bulkCameraModal')) {
+            requestAnimationFrame(() => {
+              panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            });
+          }
         }
       }
 
@@ -21095,6 +21116,14 @@ async function fetchMultiLiveDetections() {
       }
 
       function refreshAppCameraSelect(selectEl) {
+        if (!selectEl) return;
+        if (!selectEl._appCameraWrap || !selectEl._appCameraWrap.isConnected) {
+          upgradeSelectToCameraStyle(selectEl, {
+            compact: /PageSize$/i.test(selectEl.id || ''),
+            searchable: !/PageSize$/i.test(selectEl.id || '')
+          });
+          return;
+        }
         renderAppCameraOptions(selectEl);
         if (selectEl?._appCameraPanel?.classList.contains('show') && selectEl._appCameraWrap) {
           const trigger = selectEl._appCameraWrap.querySelector('.app-camera-select-trigger');
@@ -21161,8 +21190,12 @@ async function fetchMultiLiveDetections() {
             searchable: !/PageSize$/i.test(id)
           });
         });
-        document.querySelectorAll('#shiftStaffTableBody select.enterprise-select, #shiftStaffTableBody select.form-select').forEach(el => {
-          upgradeSelectToCameraStyle(el);
+        document.querySelectorAll('select.form-select:not([multiple]):not([data-native-select="1"]), #shiftStaffTableBody select.enterprise-select').forEach(el => {
+          const id = el.id || '';
+          upgradeSelectToCameraStyle(el, {
+            compact: /PageSize$/i.test(id),
+            searchable: !/PageSize$/i.test(id)
+          });
         });
         if (typeof upgradePayrollDropdowns === 'function') upgradePayrollDropdowns();
         if (typeof upgradeLeaveSettingsDropdowns === 'function') upgradeLeaveSettingsDropdowns();
@@ -21215,14 +21248,20 @@ async function fetchMultiLiveDetections() {
       window.upgradeSelectToCameraStyle = upgradeSelectToCameraStyle;
       window.refreshAppCameraSelect = refreshAppCameraSelect;
       window.renderAppCameraOptions = renderAppCameraOptions;
-      document.addEventListener('DOMContentLoaded', () => {
+      const _runAppCameraSelectBoot = () => {
         setTimeout(() => {
           initListedAppCameraSelects();
           if (typeof applyPayrollGuideEntitlements === 'function') applyPayrollGuideEntitlements();
           if (typeof applyOtSettingsChrome === 'function') applyOtSettingsChrome();
           if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
         }, 50);
-      });
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _runAppCameraSelectBoot);
+      } else {
+        _runAppCameraSelectBoot();
+      }
+      window.addEventListener('load', _runAppCameraSelectBoot);
       window.addEventListener('resize', () => closeAllAppCameraPanels());
       // GUI-08: do not close the panel when the user scrolls inside it.
       window.addEventListener('scroll', (e) => {
@@ -25537,6 +25576,7 @@ async function fetchMultiLiveDetections() {
           if (typeof updateHalfLeaveQuotaModeUI === 'function') updateHalfLeaveQuotaModeUI();
           if (typeof upgradeLeaveSettingsDropdowns === 'function') upgradeLeaveSettingsDropdowns();
           else if (quotaMode && typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(quotaMode);
+          if (typeof loadLeaveTypes === 'function') loadLeaveTypes();
           if (message) {
             message.style.color = '#15803d';
             message.textContent = 'Leave settings saved.';
@@ -28914,6 +28954,7 @@ async function fetchMultiLiveDetections() {
       document.getElementById('leaveTabHolidays').className = subtab === 'holidays' ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-outline-secondary';
 
       window._activeLeaveSubtab = subtab;
+      if (typeof initListedAppCameraSelects === 'function') initListedAppCameraSelects();
       if (subtab === 'requests') loadLeaveRequests();
       else if (subtab === 'balances') loadLeaveBalances();
       else if (subtab === 'types') loadLeaveTypes();
@@ -30135,7 +30176,12 @@ async function fetchMultiLiveDetections() {
       select.innerHTML = `<option value="all">All Departments</option>${depts.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('')}`;
       if ([...select.options].some(o => o.value === prev)) select.value = prev;
       else select.value = 'all';
-      if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(select);
+      if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(select);
+      else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(select);
+      const pageSizeSelect = document.getElementById('leaveBalancePageSize');
+      if (pageSizeSelect && typeof upgradeSelectToCameraStyle === 'function') {
+        upgradeSelectToCameraStyle(pageSizeSelect, { compact: true, searchable: false });
+      }
     }
 
     async function loadLeaveBalances() {
@@ -31189,7 +31235,7 @@ async function fetchMultiLiveDetections() {
       if (paidSelect) paidSelect.value = '1';
       if (halfEnabled) halfEnabled.checked = false;
       if (halfMode) halfMode.value = 'separate';
-      if (halfCount) halfCount.value = '0';
+      if (halfCount) halfCount.value = '2';
       if (halfMonths) halfMonths.value = '12';
       if (halfPerDay) halfPerDay.value = '2';
       if (title) title.innerHTML = '<i class="fa-solid fa-layer-group" style="color:#0d9488;"></i> Add Leave Category';
@@ -31251,7 +31297,12 @@ async function fetchMultiLiveDetections() {
       const halfMode = document.getElementById('modalHalfLeaveMode');
       if (halfMode) halfMode.value = lt.half_leave_mode || 'separate';
       const halfCount = document.getElementById('modalHalfLeaveAllowance');
-      if (halfCount) halfCount.value = lt.half_leave_allowance_count || 0;
+      if (halfCount) {
+        const rawHalfCount = lt.half_leave_allowance_count;
+        halfCount.value = (rawHalfCount !== undefined && rawHalfCount !== null)
+          ? rawHalfCount
+          : (lt.half_leave_enabled ? (lt.half_leaves_per_quota_day || 2) : 0);
+      }
       const halfMonths = document.getElementById('modalHalfLeaveMonths');
       if (halfMonths) halfMonths.value = lt.half_leave_allowance_months || 12;
       const halfPerDay = document.getElementById('modalHalfLeavesPerQuotaDay');
@@ -31285,7 +31336,10 @@ async function fetchMultiLiveDetections() {
         description: desc,
         half_leave_enabled: Boolean(document.getElementById('modalLeaveTypeHalfEnabled')?.checked),
         half_leave_mode: document.getElementById('modalHalfLeaveMode')?.value || 'separate',
-        half_leave_allowance_count: parseInt(document.getElementById('modalHalfLeaveAllowance')?.value || '0', 10) || 0,
+        half_leave_allowance_count: (() => {
+          const v = parseInt(document.getElementById('modalHalfLeaveAllowance')?.value ?? '0', 10);
+          return Number.isFinite(v) && v >= 0 ? v : 0;
+        })(),
         half_leave_allowance_months: parseInt(document.getElementById('modalHalfLeaveMonths')?.value || '12', 10) || 12,
         half_leaves_per_quota_day: parseInt(document.getElementById('modalHalfLeavesPerQuotaDay')?.value || '2', 10) || 2,
         half_leave_quota_type_id: quotaRaw ? parseInt(quotaRaw, 10) : null,
@@ -31324,14 +31378,14 @@ async function fetchMultiLiveDetections() {
       const monthsValid = Number.isInteger(months) && months >= 1 && months <= 12;
       const descriptionValid = description.length <= 250 && !containsUnsafeInput(description);
       const halfMonthsValid = !halfEnabled || (Number.isInteger(halfMonths) && halfMonths >= 1 && halfMonths <= 12);
-      const halfCountValid = !halfEnabled || halfMode !== 'separate' || (Number.isInteger(halfCount) && halfCount >= 1 && halfCount <= 365);
+      const halfCountValid = !halfEnabled || halfMode !== 'separate' || (Number.isInteger(halfCount) && halfCount >= 0 && halfCount <= 365);
       const halfConversionValid = !halfEnabled || halfMode !== 'convert' || (Number.isInteger(halfConversion) && halfConversion >= 1 && halfConversion <= 24);
       setFieldError('modalLeaveTypeNameError', !name ? 'Leave type name is required.' : !nameValid ? 'Use letters, numbers, spaces, and normal punctuation only.' : '');
       setFieldError('modalLeaveTypeDaysError', !Number.isFinite(days) ? 'Allowed days are required.' : days < 0 || days > 365 ? 'Allowed days must be between 0 and 365.' : isPaid === 1 && days <= 0 ? 'Paid leave must have an allowance greater than 0.' : '');
       setFieldError('modalLeaveTypeMonthsError', monthsValid ? '' : 'Renewal months must be a whole number from 1 to 12.');
       setFieldError('modalLeaveTypeDescError', descriptionValid ? '' : 'Notes contain unsupported content or exceed 250 characters.');
       setFieldError('modalHalfLeaveMonthsError', halfMonthsValid ? '' : 'Half-day reset months must be from 1 to 12.');
-      setFieldError('modalHalfLeaveAllowanceError', halfCountValid ? '' : 'Half-days allowed must be from 1 to 365.');
+      setFieldError('modalHalfLeaveAllowanceError', halfCountValid ? '' : 'Half-days allowed must be from 0 to 365.');
       setFieldError('modalHalfLeavesPerQuotaDayError', halfConversionValid ? '' : 'Half-days per full day must be from 1 to 24.');
       const valid = Boolean(name && nameValid && daysValid && monthsValid && descriptionValid && halfMonthsValid && halfCountValid && halfConversionValid);
       const button = document.getElementById('saveLeaveTypeBtn');
@@ -33250,6 +33304,8 @@ async function fetchMultiLiveDetections() {
                 targetSelect.appendChild(opt);
             });
         }
+        if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(targetSelect);
+        else if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(targetSelect);
     };
 
     window.updateOvertimeRuleScopeOptions = async function() {
