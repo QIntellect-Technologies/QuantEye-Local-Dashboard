@@ -8456,35 +8456,35 @@
       flex-wrap: wrap;
     }
 
-    /* High-contrast readable buttons on Payroll across all states (normal, hover, active, disabled) */
+    /* High-contrast readable buttons on Payroll matching the system theme (#8b7bf7) across all states */
     #payroll-view #calculatePayrollButton {
-      background: #0d9488 !important;
-      border: 1.5px solid #0d9488 !important;
+      background: #8b7bf7 !important;
+      border: 1.5px solid #8b7bf7 !important;
       color: #ffffff !important;
       font-weight: 700 !important;
       height: 36px !important;
       min-height: 36px !important;
       border-radius: 10px !important;
       padding: 0 14px !important;
-      box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25) !important;
+      box-shadow: 0 2px 8px rgba(139, 123, 247, 0.28) !important;
       transition: all 0.16s ease;
     }
     #payroll-view #calculatePayrollButton:hover:not(:disabled) {
-      background: #0f766e !important;
-      border-color: #0f766e !important;
+      background: #7563f0 !important;
+      border-color: #7563f0 !important;
       color: #ffffff !important;
-      box-shadow: 0 4px 12px rgba(13, 148, 136, 0.35) !important;
+      box-shadow: 0 4px 12px rgba(139, 123, 247, 0.38) !important;
       transform: translateY(-1px);
     }
     #payroll-view #calculatePayrollButton:active:not(:disabled) {
-      background: #115e59 !important;
-      border-color: #115e59 !important;
+      background: #5847c8 !important;
+      border-color: #5847c8 !important;
       color: #ffffff !important;
       transform: translateY(1px);
       box-shadow: none !important;
     }
     #payroll-view #calculatePayrollButton:disabled {
-      background: #f1f5f9 !important;
+      background: #e2e8f0 !important;
       border: 1.5px solid #cbd5e1 !important;
       color: #475569 !important;
       opacity: 1 !important;
@@ -8507,14 +8507,14 @@
     }
     #payroll-view #manageSalaryPackagesButton:hover:not(:disabled) {
       background: #f8fafc !important;
-      border-color: #3d9fd4 !important;
-      color: #0f172a !important;
+      border-color: #8b7bf7 !important;
+      color: #5847c8 !important;
       transform: translateY(-1px);
     }
     #payroll-view #manageSalaryPackagesButton:active:not(:disabled) {
-      background: #e2e8f0 !important;
-      border-color: #cbd5e1 !important;
-      color: #0f172a !important;
+      background: #f3f0ff !important;
+      border-color: #8b7bf7 !important;
+      color: #5847c8 !important;
       transform: translateY(1px);
       box-shadow: none !important;
     }
@@ -8559,7 +8559,7 @@
     #payroll-view #reviewPayrollButton:disabled {
       background: #e2e8f0 !important;
       border: 1.5px solid #cbd5e1 !important;
-      color: #1e293b !important;
+      color: #475569 !important;
       opacity: 1 !important;
       cursor: not-allowed !important;
       box-shadow: none !important;
@@ -8567,30 +8567,35 @@
     }
 
     #payroll-view #finalizePayrollToolbarButton {
-      background: #0f766e !important;
-      border: 1.5px solid #0f766e !important;
+      background: #5847c8 !important;
+      border: 1.5px solid #5847c8 !important;
       color: #ffffff !important;
       font-weight: 700 !important;
+      border-radius: 10px !important;
       transition: all 0.16s ease;
     }
     #payroll-view #finalizePayrollToolbarButton:hover:not(:disabled) {
-      background: #0d9488 !important;
-      border-color: #0d9488 !important;
+      background: #4838b5 !important;
+      border-color: #4838b5 !important;
       color: #ffffff !important;
+      box-shadow: 0 4px 12px rgba(88, 71, 200, 0.3) !important;
       transform: translateY(-1px);
     }
     #payroll-view #finalizePayrollToolbarButton:active:not(:disabled) {
-      background: #115e59 !important;
-      border-color: #115e59 !important;
+      background: #3b2d9c !important;
+      border-color: #3b2d9c !important;
       color: #ffffff !important;
       transform: translateY(1px);
+      box-shadow: none !important;
     }
     #payroll-view #finalizePayrollToolbarButton:disabled {
-      background: #f1f5f9 !important;
+      background: #e2e8f0 !important;
       border: 1.5px solid #cbd5e1 !important;
-      color: #64748b !important;
+      color: #475569 !important;
       opacity: 1 !important;
       cursor: not-allowed !important;
+      box-shadow: none !important;
+      transform: none !important;
     }
 
     #payroll-view .rpt-btn-dark {
@@ -30902,6 +30907,13 @@ async function fetchMultiLiveDetections() {
       }
 
       try {
+        if (!window._payrollSettings) {
+          const settingsRes = await fetch(`${API_BASE}/settings/payroll`, { cache: 'no-store' }).catch(() => null);
+          if (settingsRes && settingsRes.ok) {
+            const settingsJson = await settingsRes.json().catch(() => null);
+            if (settingsJson) window._payrollSettings = settingsJson;
+          }
+        }
         const tRes = await fetch('/api/leave-types');
         const types = await tRes.json();
         _allLeaveTypes = Array.isArray(types) ? types : [];
@@ -30947,7 +30959,7 @@ async function fetchMultiLiveDetections() {
       const optHalf = selectedOption ? selectedOption.dataset.half : null;
       const selectedType = (_allLeaveTypes || []).find(type => String(type.code) === String(typeSelect.value) || String(type.id) === String(typeSelect.value));
       const quotaMode = window._payrollSettings?.half_leave_quota_mode || document.getElementById('halfLeaveQuotaMode')?.value || document.getElementById('payrollHalfLeaveQuotaMode')?.value || 'category';
-      const companyHalfLeaveEnabled = quotaMode === 'monthly_cap' || quotaMode === 'monthly_convert';
+      const companyHalfLeaveEnabled = quotaMode === 'monthly_cap' || quotaMode === 'monthly_convert' || quotaMode === 'company';
       const typeHalfAllowed = selectedType ? Boolean(Number(selectedType.half_leave_enabled)) : (optHalf === '1');
       const halfLeaveAllowed = typeHalfAllowed || companyHalfLeaveEnabled;
       durationSelect.disabled = false;

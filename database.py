@@ -9568,7 +9568,7 @@ def delete_leave_request(leave_id: int, organization_id: Optional[str] = None) -
 # ============================================
 
 def _ensure_half_leave_allowance_repaired(cursor: sqlite3.Cursor, org: str) -> None:
-    """QA-144: Ensure leave types with half_leave_enabled=1 that were seeded with 0 allowance count
+    """QA-144 / QA-145: Ensure leave types with uninitialized half-leave settings
     reflect the configured occurrence count without overwriting user-saved values."""
     try:
         cols = {row[1] for row in cursor.execute("PRAGMA table_info(leave_types)").fetchall()}
@@ -9588,15 +9588,19 @@ def _ensure_half_leave_allowance_repaired(cursor: sqlite3.Cursor, org: str) -> N
             pass
         cursor.execute(
             """UPDATE leave_types
-                  SET half_leave_allowance_count = CASE
+                  SET half_leave_enabled = 1,
+                      half_leave_allowance_count = CASE
+                        WHEN COALESCE(half_leave_allowance_count, 0) > 0 THEN half_leave_allowance_count
                         WHEN COALESCE(half_leaves_per_quota_day, 0) > 0 THEN half_leaves_per_quota_day
                         ELSE ?
                       END,
                       half_leave_allowance_explicit = 1
                 WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
                   AND COALESCE(half_leave_allowance_explicit, 0) = 0
-                  AND COALESCE(half_leave_enabled, 0) = 1
-                  AND COALESCE(half_leave_allowance_count, 0) = 0""",
+                  AND (
+                    (COALESCE(half_leave_enabled, 0) = 1 AND COALESCE(half_leave_allowance_count, 0) = 0)
+                    OR (COALESCE(half_leave_enabled, 0) = 0 AND COALESCE(half_leave_allowance_count, 0) > 0)
+                  )""",
             (default_count, org),
         )
     except Exception as exc:
@@ -10351,6 +10355,7 @@ def get_leave_balances(year: int = 2026, user_id: Optional[int] = None, organiza
             # Leave types for this organization only
             org = organization_id or 'DEFAULT_ORG'
             seed_leave_types_if_empty(cursor, org)
+            _ensure_half_leave_allowance_repaired(cursor, org)
             conn.commit()
             # QA-137: keep inactive types visible when they still have history/balances.
             # New filing is blocked separately; deactivating must not hide past usage.
@@ -10955,7 +10960,7 @@ def resolve_half_leave_rule(
 
     # If NO winning rule exists or half leave is disabled
     if not winning_rule:
-        msg = "Half leave is not set up for this department yet." if (department_id or department_name) else f"Half leave is not allowed for {leave_name}."
+        msg = f"Half leave is not allowed for {leave_name}."
         return {
             'allowed': False,
             'reason_code': 'half_leave_not_allowed',
@@ -11214,6 +11219,7 @@ def check_leave_quota(
                 org_id, _branch_id = _user_tenant(cursor, user_id)
             else:
                 org_id, _branch_id = _tenant_ids(organization_id, branch_id)
+            _ensure_half_leave_allowance_repaired(cursor, org_id)
             cursor.execute(
                 """SELECT * FROM leave_types
                    WHERE (code = ? OR name = ?)

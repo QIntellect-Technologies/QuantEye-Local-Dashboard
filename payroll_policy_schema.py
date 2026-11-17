@@ -922,10 +922,10 @@ def seed_leave_types_if_empty(cursor, organization_id: str, branch_id: str = DEF
         """
         INSERT INTO leave_types (
             name, code, yearly_allowance, is_paid, description,
-            half_leave_allowance_count, half_leaves_per_quota_day,
+            half_leave_enabled, half_leave_allowance_count, half_leaves_per_quota_day,
             organization_id, branch_id
         )
-        VALUES (?, ?, ?, ?, ?, 2, 2, ?, ?)
+        VALUES (?, ?, ?, ?, ?, 1, 2, 2, ?, ?)
         """,
         [(*item, org, branch) for item in DEFAULT_LEAVE_TYPES],
     )

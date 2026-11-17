@@ -4386,6 +4386,9 @@ def api_mobile_leave_types():
         name = lt.get('name', '')
         bal_info = user_bal_map.get(code, {})
         remaining = bal_info.get('remaining', float(lt.get('yearly_allowance', 0.0)))
+        half_enabled = bal_info.get('half_leave_enabled')
+        if half_enabled is None:
+            half_enabled = bool(lt.get('half_leave_enabled', False))
         leave_types.append({
             'id': lt.get('id'),
             'code': code,
@@ -4393,7 +4396,11 @@ def api_mobile_leave_types():
             'is_paid': bool(lt.get('is_paid', 1)),
             'yearly_allowance': float(lt.get('yearly_allowance', 0.0)),
             'remaining': round(float(remaining), 1),
-            'half_leave_enabled': bool(lt.get('half_leave_enabled', False)),
+            'half_leave_enabled': bool(half_enabled),
+            'half_leave_allowance_count': bal_info.get('half_leave_allowance_count', lt.get('half_leave_allowance_count', 0)),
+            'half_leave_count': bal_info.get('half_leave_count', 0),
+            'half_leave_remaining': bal_info.get('half_leave_remaining', lt.get('half_leave_allowance_count', 0)),
+            'half_leave_quota_text': bal_info.get('half_leave_quota_text', ''),
         })
     return jsonify({'success': True, 'leave_types': leave_types})
 
@@ -6203,7 +6210,7 @@ def api_add_leave():
         leave_types = db.get_leave_types(organization_id=get_current_tenant_id())
         matched_type = next((lt for lt in leave_types if str(lt.get('code')) == str(leave_type) or str(lt.get('id')) == str(leave_type)), None)
         quota_mode = db.get_payroll_settings(organization_id=get_current_tenant_id()).get('half_leave_quota_mode') or 'category'
-        company_half_allowed = quota_mode in ('monthly_cap', 'monthly_convert')
+        company_half_allowed = quota_mode in ('monthly_cap', 'monthly_convert', 'company')
         type_half_allowed = bool(matched_type and matched_type.get('half_leave_enabled'))
         scoped_rule = db.get_scoped_payroll_rule('half_leave_quota', int(user_id)) if hasattr(db, 'get_scoped_payroll_rule') else None
         if matched_type and not (type_half_allowed or company_half_allowed or scoped_rule):
