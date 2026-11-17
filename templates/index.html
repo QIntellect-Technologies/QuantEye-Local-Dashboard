@@ -8880,8 +8880,7 @@
     }
 
     /* Metric Rail & Cards shared styling for Payroll & Salary Structure */
-    #payroll-view .rpt-rail,
-    #salary-config-tab .rpt-rail {
+    #payroll-view .rpt-rail {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
       gap: 1px;
@@ -8892,8 +8891,7 @@
       overflow: hidden;
       margin-bottom: 16px;
     }
-    #payroll-view .rpt-metric,
-    #salary-config-tab .rpt-metric {
+    #payroll-view .rpt-metric {
       position: relative;
       padding: 15px 18px 16px;
       background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.72));
@@ -8910,7 +8908,218 @@
       background: #ffffff !important;
     }
 
-    /* Overtime Settings Tab: Full Container Width + Equal 38px Input & Dropdown Heights */
+    /* Salary Packages (#salary-config-tab) & Special Dates (#payroll-calendar-tab): Exact Attendance Reports design + spacing */
+    #salary-config-tab .payroll-hub-step,
+    #payroll-calendar-tab .payroll-hub-step {
+      margin-bottom: 24px !important;
+    }
+    #payrollCalendarForm {
+      margin-top: 8px !important;
+    }
+    #salary-config-tab .rpt-rail {
+      display: grid !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      gap: 1px !important;
+      border: 1px solid #e3e8f5 !important;
+      border-radius: 18px !important;
+      background: #e3e8f5 !important;
+      box-shadow: 0 18px 44px -26px rgba(24, 30, 62, 0.28), 0 1px 2px rgba(20, 24, 40, 0.04) !important;
+      overflow: hidden !important;
+      margin-top: 8px !important;
+      margin-bottom: 18px !important;
+    }
+    @media (max-width: 900px) {
+      #salary-config-tab .rpt-rail {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+    }
+    @media (max-width: 520px) {
+      #salary-config-tab .rpt-rail {
+        grid-template-columns: 1fr !important;
+      }
+    }
+    #salary-config-tab .rpt-metric {
+      position: relative;
+      padding: 15px 18px 16px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.62));
+      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px);
+      border: none;
+      text-align: left;
+    }
+    #salary-config-tab .rpt-metric-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    #salary-config-tab .rpt-metric-label {
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+      color: #98a0b4;
+    }
+    #salary-config-tab .rpt-metric-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      font-size: 11px;
+    }
+    #salary-config-tab .rpt-metric-icon.tone-lilac { background: rgba(139, 123, 247, 0.13); color: #5b4bc4; }
+    #salary-config-tab .rpt-metric-icon.tone-mint { background: rgba(21, 184, 166, 0.13); color: #0e7c71; }
+    #salary-config-tab .rpt-metric-icon.tone-amber { background: rgba(245, 165, 36, 0.14); color: #a86407; }
+    #salary-config-tab .rpt-metric-icon.tone-coral { background: rgba(240, 101, 117, 0.14); color: #b83345; }
+    #salary-config-tab .rpt-metric-value {
+      display: block;
+      margin-top: 8px;
+      font-size: 26px;
+      font-weight: 600;
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      color: #151b25;
+      font-variant-numeric: tabular-nums;
+    }
+    #salary-config-tab .rpt-metric-foot {
+      display: block;
+      margin-top: 4px;
+      min-height: 15px;
+      font-size: 11px;
+      color: #98a0b4;
+    }
+    #salary-config-tab .rpt-filters {
+      position: relative;
+      z-index: 30;
+      padding: 12px 14px !important;
+      margin-bottom: 18px !important;
+      border: 1px solid #e3e8f5 !important;
+      border-radius: 16px !important;
+      background: rgba(255, 255, 255, 0.72) !important;
+      -webkit-backdrop-filter: blur(18px);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 18px 44px -26px rgba(24, 30, 62, 0.28), 0 1px 2px rgba(20, 24, 40, 0.04) !important;
+      overflow: visible !important;
+    }
+    #salary-config-tab .rpt-filters .rpt-filters-body {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      align-items: flex-end !important;
+      gap: 10px !important;
+    }
+    #salary-config-tab .rpt-filters .rpt-field {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 4px !important;
+      flex: 0 0 auto !important;
+      min-width: 150px;
+    }
+    #salary-config-tab .rpt-filters .rpt-field.rpt-field--grow {
+      flex: 1 1 240px !important;
+      min-width: 200px !important;
+    }
+    #salary-config-tab .rpt-filters .rpt-field-label {
+      font-size: 9.5px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.1em !important;
+      text-transform: uppercase !important;
+      color: #98a0b4 !important;
+      line-height: 1.2 !important;
+    }
+    #salary-config-tab .rpt-filters .rpt-search {
+      position: relative;
+      width: 100%;
+    }
+    #salary-config-tab .rpt-filters .rpt-search i {
+      position: absolute;
+      left: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 11px;
+      color: #98a0b4;
+      pointer-events: none;
+    }
+    #salary-config-tab .rpt-filters .rpt-search .form-control {
+      width: 100% !important;
+      padding-left: 31px !important;
+    }
+    #salary-config-tab .rpt-filters .form-control,
+    #salary-config-tab .rpt-filters .form-select,
+    #salary-config-tab .rpt-filters .app-camera-select-trigger {
+      height: 36px !important;
+      min-height: 36px !important;
+      max-height: 36px !important;
+      border: 1px solid #e3e8f5 !important;
+      border-radius: 10px !important;
+      background: #ffffff !important;
+      font-size: 12.5px !important;
+      font-weight: 500 !important;
+      color: #151b25 !important;
+      box-sizing: border-box !important;
+    }
+    #salary-config-tab .rpt-pagination {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 12px !important;
+      flex-wrap: wrap !important;
+      padding: 11px 16px !important;
+      border-top: 1px solid rgba(227, 232, 245, 0.7) !important;
+      background: rgba(255, 255, 255, 0.4) !important;
+      font-size: 11.5px !important;
+    }
+    #salary-config-tab .rpt-pagination .app-page-info {
+      color: #646d82 !important;
+      font-weight: 500 !important;
+      font-size: 11.5px !important;
+    }
+    #salary-config-tab .rpt-pagination .app-page-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    #salary-config-tab .rpt-pagination .app-page-btn {
+      min-width: 30px;
+      height: 30px !important;
+      min-height: 0 !important;
+      padding: 0 9px;
+      border: 1px solid #e3e8f5;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #2b3547;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      box-shadow: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    #salary-config-tab .rpt-pagination .app-page-btn:hover:not(:disabled) {
+      border-color: rgba(139, 123, 247, 0.4);
+      background: #ffffff;
+      color: #151b25;
+    }
+    #salary-config-tab .rpt-pagination .app-page-btn.active {
+      border-color: #1b2430;
+      background: #1b2430;
+      color: #ffffff;
+      font-weight: 600;
+      box-shadow: 0 8px 16px -12px rgba(20, 24, 40, 0.95);
+    }
+    #salary-config-tab .rpt-pagination .app-page-btn:disabled {
+      opacity: 0.4;
+      background: rgba(255, 255, 255, 0.6);
+      color: #98a0b4;
+      cursor: not-allowed;
+    }
+
+    /* Overtime Settings Tab: Full Container Width + Compact Field Widths + Equal 38px Input & Dropdown Heights */
     #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"],
     #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] > .payroll-panel,
     #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .ot-settings-section,
@@ -8918,6 +9127,24 @@
       max-width: 100% !important;
       width: 100% !important;
       box-sizing: border-box !important;
+    }
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .ot-settings-row {
+      grid-template-columns: repeat(auto-fill, minmax(190px, 240px)) !important;
+    }
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .ot-settings-row.is-actions {
+      grid-template-columns: 180px 220px auto !important;
+      justify-content: start !important;
+    }
+    #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .payroll-rule-form {
+      grid-template-columns: 170px 220px 150px 190px auto !important;
+      justify-content: start !important;
+    }
+    @media (max-width: 900px) {
+      #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .ot-settings-row,
+      #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .ot-settings-row.is-actions,
+      #payroll-rules-tab .payroll-hub-pane[data-payroll-hub-pane="overtime"] .payroll-rule-form {
+        grid-template-columns: 1fr !important;
+      }
     }
     #payroll-rules-tab .ot-settings-field .form-control,
     #payroll-rules-tab .ot-settings-field .form-select,
@@ -9002,10 +9229,12 @@
       align-items: end !important;
     }
     #payroll-rules-tab #companyHalfLeavePolicyForm {
-      grid-template-columns: minmax(240px, 1.4fr) minmax(180px, 1fr) auto !important;
+      grid-template-columns: minmax(220px, 280px) minmax(160px, 190px) auto !important;
+      justify-content: start !important;
     }
     #payroll-rules-tab #halfLeaveSpecificRuleForm {
-      grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.4fr) minmax(150px, 1fr) auto !important;
+      grid-template-columns: minmax(150px, 180px) minmax(200px, 250px) minmax(140px, 170px) auto !important;
+      justify-content: start !important;
     }
     @media (max-width: 820px) {
       #payroll-rules-tab #companyHalfLeavePolicyForm,
@@ -9230,10 +9459,10 @@
     #otResetFiltersBtn,
     #salaryResetFiltersBtn,
     #salaryResetFilterBtn,
-    button[onclick="resetLeaveRequestFilters()"],
-    button[onclick="resetLeaveBalanceFilters()"],
-    button[onclick="resetShiftStaffFilters()"],
-    button[onclick="resetStaffDirectoryFilters()"] {
+    #leaves-view button[onclick="resetLeaveRequestFilters()"],
+    #leaves-view button[onclick="resetLeaveBalanceFilters()"],
+    #shifts-view button[onclick="resetShiftStaffFilters()"],
+    #staff-view button[onclick="resetStaffDirectoryFilters()"] {
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
@@ -9264,10 +9493,10 @@
     #otResetFiltersBtn:hover,
     #salaryResetFiltersBtn:hover,
     #salaryResetFilterBtn:hover,
-    button[onclick="resetLeaveRequestFilters()"]:hover,
-    button[onclick="resetLeaveBalanceFilters()"]:hover,
-    button[onclick="resetShiftStaffFilters()"]:hover,
-    button[onclick="resetStaffDirectoryFilters()"]:hover {
+    #leaves-view button[onclick="resetLeaveRequestFilters()"]:hover,
+    #leaves-view button[onclick="resetLeaveBalanceFilters()"]:hover,
+    #shifts-view button[onclick="resetShiftStaffFilters()"]:hover,
+    #staff-view button[onclick="resetStaffDirectoryFilters()"]:hover {
       background: #f8fafc !important;
       border-color: #8b7bf7 !important;
       color: #0f172a !important;
@@ -9279,10 +9508,10 @@
     #otResetFiltersBtn i,
     #salaryResetFiltersBtn i,
     #salaryResetFilterBtn i,
-    button[onclick="resetLeaveRequestFilters()"] i,
-    button[onclick="resetLeaveBalanceFilters()"] i,
-    button[onclick="resetShiftStaffFilters()"] i,
-    button[onclick="resetStaffDirectoryFilters()"] i {
+    #leaves-view button[onclick="resetLeaveRequestFilters()"] i,
+    #leaves-view button[onclick="resetLeaveBalanceFilters()"] i,
+    #shifts-view button[onclick="resetShiftStaffFilters()"] i,
+    #staff-view button[onclick="resetStaffDirectoryFilters()"] i {
       font-size: 11px !important;
       color: #475569 !important;
     }
@@ -13773,7 +14002,7 @@ async function fetchMultiLiveDetections() {
         <p class="payroll-hub-step" data-payroll-hub-step style="margin-bottom:24px;">Step 6 of 8 — Salary packages<span>Set each person’s basic pay, extras, and overtime rate.</span></p>
 
         <!-- PR-14: Standardized KPI Summary Stat Cards matching Attendance Reports -->
-        <section class="rpt-rail" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px; margin-bottom:20px;" aria-label="Salary packages summary">
+        <section class="rpt-rail" aria-label="Salary packages summary">
           <article class="rpt-metric">
             <div class="rpt-metric-head">
               <span class="rpt-metric-label">Active Employees</span>
@@ -13809,8 +14038,8 @@ async function fetchMultiLiveDetections() {
         </section>
 
         <!-- PR-15, PR-16, PR-17: Filter & Search Toolbar matching Attendance Reports -->
-        <section class="rpt-filters app-camera-select-host" style="margin-bottom:18px;">
-          <div class="rpt-filters-body" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+        <section class="rpt-filters app-camera-select-host">
+          <div class="rpt-filters-body">
             <div class="rpt-field rpt-field--grow">
               <span class="rpt-field-label">Search</span>
               <div class="rpt-search">
@@ -26534,9 +26763,11 @@ async function fetchMultiLiveDetections() {
         }
         if (controls) {
           let cHtml = '';
-          cHtml += `<button type="button" class="btn btn-sm btn-outline-secondary" onclick="goToSalaryPage(${salaryCurrentPage - 1})" ${salaryCurrentPage <= 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i> Prev</button>`;
-          cHtml += `<span class="mx-2 small fw-bold text-muted">Page ${salaryCurrentPage} of ${totalPages}</span>`;
-          cHtml += `<button type="button" class="btn btn-sm btn-outline-secondary" onclick="goToSalaryPage(${salaryCurrentPage + 1})" ${salaryCurrentPage >= totalPages ? 'disabled' : ''}>Next <i class="fa-solid fa-chevron-right"></i></button>`;
+          cHtml += `<button type="button" class="app-page-btn" onclick="goToSalaryPage(${salaryCurrentPage - 1})" ${salaryCurrentPage <= 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i> Prev</button>`;
+          for (let page = 1; page <= totalPages && page <= 8; page++) {
+            cHtml += `<button type="button" class="app-page-btn ${page === salaryCurrentPage ? 'active' : ''}" onclick="goToSalaryPage(${page})">${page}</button>`;
+          }
+          cHtml += `<button type="button" class="app-page-btn" onclick="goToSalaryPage(${salaryCurrentPage + 1})" ${salaryCurrentPage >= totalPages ? 'disabled' : ''}>Next <i class="fa-solid fa-chevron-right"></i></button>`;
           controls.innerHTML = cHtml;
         }
 
