@@ -8760,11 +8760,12 @@
       line-height: 1.35 !important;
       vertical-align: middle !important;
     }
-    #payrollMainTable thead th.sticky-col-employee,
-    #payrollMainTable thead th:first-child {
-      position: sticky;
-      left: 0;
-      z-index: 8;
+    #payroll-view #payrollMainTable thead th.sticky-col-employee,
+    #payroll-view #payrollMainTable thead th:first-child {
+      position: sticky !important;
+      left: 0 !important;
+      top: 0 !important;
+      z-index: 12 !important;
       background: rgba(248, 249, 254, 0.99) !important;
       min-width: 230px !important;
       max-width: 280px !important;
@@ -9662,6 +9663,108 @@
       position: static !important;
       top: auto !important;
       z-index: 1 !important;
+    }
+
+    /* PR-23: Standardized Hover Effects for Payroll Rules Action Buttons */
+    .pr-action-btn {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 6px !important;
+      height: 36px !important;
+      min-height: 36px !important;
+      padding: 0 14px !important;
+      border: 1px solid #cbd5e1 !important;
+      border-radius: 10px !important;
+      background: #ffffff !important;
+      color: #151b25 !important;
+      font-family: inherit !important;
+      font-size: 12.5px !important;
+      font-weight: 600 !important;
+      line-height: 1 !important;
+      white-space: nowrap !important;
+      cursor: pointer !important;
+      box-shadow: none !important;
+      transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease !important;
+    }
+    .pr-action-btn i {
+      font-size: 12px !important;
+      color: #5847c8 !important;
+      transition: color 0.16s ease !important;
+    }
+    .pr-action-btn:hover,
+    .pr-action-btn:focus-visible {
+      background: #f8fafc !important;
+      border-color: #8b7bf7 !important;
+      color: #0f172a !important;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+      transform: translateY(-1px) !important;
+      outline: none !important;
+    }
+    .pr-action-btn:hover i,
+    .pr-action-btn:focus-visible i {
+      color: #4c3bb8 !important;
+    }
+    .pr-action-btn:active {
+      transform: translateY(0) !important;
+    }
+
+    /* Mobile App Credential Buttons matching application lilac theme */
+    .mobile-cred-primary-btn {
+      background: #8b7bf7 !important;
+      border: 1px solid #8b7bf7 !important;
+      color: #ffffff !important;
+      border-radius: 10px !important;
+      font-weight: 600 !important;
+      height: 38px !important;
+      padding: 0 16px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease !important;
+    }
+    .mobile-cred-primary-btn:hover,
+    .mobile-cred-primary-btn:focus-visible {
+      background: #7765ef !important;
+      border-color: #7765ef !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.2), 0 4px 10px rgba(139, 123, 247, 0.25) !important;
+      transform: translateY(-1px) !important;
+    }
+    .mobile-cred-secondary-btn {
+      background: #ffffff !important;
+      border: 1px solid #cbd5e1 !important;
+      color: #151b25 !important;
+      border-radius: 10px !important;
+      font-weight: 600 !important;
+      height: 38px !important;
+      padding: 0 16px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease !important;
+    }
+    .mobile-cred-secondary-btn:hover,
+    .mobile-cred-secondary-btn:focus-visible {
+      background: #f8fafc !important;
+      border-color: #8b7bf7 !important;
+      color: #0f172a !important;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+      transform: translateY(-1px) !important;
+    }
+
+    /* Payslip letterhead input validation feedback */
+    #payslipLetterheadForm .payslip-field-error {
+      display: none;
+      color: #dc2626;
+      font-size: 0.78em;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    #payslipLetterheadForm .form-control.is-invalid {
+      border-color: #dc2626 !important;
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12) !important;
+    }
+    #payslipLetterheadForm .form-control.is-valid {
+      border-color: #10b981 !important;
     }
   </style>
 </head>
@@ -11327,6 +11430,9 @@ async function fetchMultiLiveDetections() {
           <p class="rpt-hero-sub" id="payrollHeroSubtitle"><span id="payrollSelectedPeriod">-- Payroll</span> · Monthly payroll review and finalization.</p>
         </div>
         <div class="rpt-hero-actions">
+          <button id="payrollRefreshBtn" type="button" onclick="loadMonthlyPayroll(document.getElementById('payrollMonth')?.value, true)" class="rpt-btn rpt-btn-dark" style="min-height:36px;" title="Refresh payroll">
+            <i class="fa-solid fa-rotate"></i><span>Refresh</span>
+          </button>
           <div class="dropdown">
             <button id="payrollExportDropdownBtn" class="rpt-btn rpt-btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="min-height:36px;">
               <i class="fa-solid fa-arrow-up-from-bracket export-btn-icon"></i><span>Export</span>
@@ -12013,8 +12119,8 @@ async function fetchMultiLiveDetections() {
         <p style="margin:0 0 8px; color:#173042; font-weight:700;">Phone page</p>
         <p style="margin:0 0 14px; color:#475569;">The phone app is installed once. Username is the employee email. Password is the first name plus @123. Salman becomes salman@123.</p>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-primary" onclick="generateMobileCredentials(false, 'mobileCredentialResult')" style="background:#0d9488; border:none; font-weight:700;">Generate credentials for all employees</button>
-          <button type="button" class="btn btn-outline-primary" onclick="generateMobileCredentials(true, 'mobileCredentialResult')" style="font-weight:700;">Generate remaining employees</button>
+          <button type="button" class="btn btn-primary mobile-cred-primary-btn" onclick="generateMobileCredentials(false, 'mobileCredentialResult')">Generate credentials for all employees</button>
+          <button type="button" class="btn btn-outline-secondary mobile-cred-secondary-btn" onclick="generateMobileCredentials(true, 'mobileCredentialResult')">Generate remaining employees</button>
         </div>
         <div id="mobileCredentialResult" style="margin-top:16px;"></div>
       </div>
@@ -12913,8 +13019,8 @@ async function fetchMultiLiveDetections() {
         <h3 style="font-size: 1.15em; font-weight: 800; color: #173042; margin-bottom: 6px;">Mobile App</h3>
         <p style="font-size: 0.9em; color: #64748b; margin-bottom: 16px;">Username is the employee email. Password is the first name plus @123. Salman becomes salman@123. The phone app is installed once. These buttons only create logins.</p>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-primary" onclick="generateMobileCredentials(false, 'settingsMobileCredentialResult')" style="background:#0d9488; border:none; font-weight:700;">Generate credentials for all employees</button>
-          <button type="button" class="btn btn-outline-primary" onclick="generateMobileCredentials(true, 'settingsMobileCredentialResult')" style="font-weight:700;">Generate remaining employees</button>
+          <button type="button" class="btn btn-primary mobile-cred-primary-btn" onclick="generateMobileCredentials(false, 'settingsMobileCredentialResult')">Generate credentials for all employees</button>
+          <button type="button" class="btn btn-outline-secondary mobile-cred-secondary-btn" onclick="generateMobileCredentials(true, 'settingsMobileCredentialResult')">Generate remaining employees</button>
         </div>
         <div id="settingsMobileCredentialResult" style="margin-top:16px;"></div>
       </div>
@@ -13118,8 +13224,8 @@ async function fetchMultiLiveDetections() {
             <p id="payrollRulesCardSubtitle" style="color:#64748b; margin:6px 0 0;">Take-home pay = basic salary + extras − deductions. Open Payroll Guide for formulas and examples.</p>
           </div>
           <div class="payroll-quick-links">
-            <button type="button" class="btn btn-outline-primary btn-sm" id="payrollGuideHeaderBtn" onclick="openPayrollGuide()" style="border-color:#3d9fd4; color:#0f4c6d; font-weight:700;">
-              <i class="fa-solid fa-book-open" style="margin-right:6px;"></i>Payroll Guide
+            <button type="button" class="btn btn-outline-secondary btn-sm pr-action-btn" id="payrollGuideHeaderBtn" onclick="openPayrollGuide()">
+              <i class="fa-solid fa-book-open"></i>Payroll Guide
             </button>
             <button type="button" class="btn btn-primary btn-sm payroll-only-ui" id="otOpenPayrollBtn" onclick="switchTab('payroll-view', document.getElementById('menuItemPayroll'))" style="background:#148f77; border:none; font-weight:700;">Open Payroll</button>
           </div>
@@ -13847,43 +13953,55 @@ async function fetchMultiLiveDetections() {
             <p class="payroll-panel-help">These details print on every payslip, in the same layout as a QuantEye invoice. Type on the left — the preview on the right updates immediately. Click Save letterhead to keep the change.</p>
             <div class="payslip-letterhead-grid">
               <form id="payslipLetterheadForm" oninput="_payslipLetterheadDirty = true; refreshPayslipLetterheadPreview()" onsubmit="event.preventDefault(); savePayslipLetterhead();">
-                <label class="payroll-rule-field" style="margin-bottom:10px;">Company name
-                  <input id="payslip_company_name" class="form-control" type="text" maxlength="120" autocomplete="organization">
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Company name *
+                  <input id="payslip_company_name" class="form-control" type="text" maxlength="120" autocomplete="organization" required>
+                  <small class="payslip-field-error" id="payslip_company_name_error"></small>
                 </label>
                 <label class="payroll-rule-field" style="margin-bottom:10px;">Tagline
                   <input id="payslip_tagline" class="form-control" type="text" maxlength="160">
+                  <small class="payslip-field-error" id="payslip_tagline_error"></small>
                 </label>
-                <label class="payroll-rule-field" style="margin-bottom:10px;">Phone
-                  <input id="payslip_phone" class="form-control" type="text" maxlength="60">
+                <label class="payroll-rule-field" style="margin-bottom:10px;">Phone *
+                  <input id="payslip_phone" class="form-control" type="text" maxlength="20" inputmode="tel" placeholder="+92 300 1234567">
+                  <small class="payslip-field-error" id="payslip_phone_error"></small>
                 </label>
                 <label class="payroll-rule-field" style="margin-bottom:10px;">Email
-                  <input id="payslip_email" class="form-control" type="text" maxlength="120">
+                  <input id="payslip_email" class="form-control" type="email" maxlength="120" placeholder="hr@company.com">
+                  <small class="payslip-field-error" id="payslip_email_error"></small>
                 </label>
                 <label class="payroll-rule-field" style="margin-bottom:10px;">Website
-                  <input id="payslip_website" class="form-control" type="text" maxlength="120">
+                  <input id="payslip_website" class="form-control" type="text" maxlength="120" placeholder="https://example.com">
+                  <small class="payslip-field-error" id="payslip_website_error"></small>
                 </label>
                 <label class="payroll-rule-field" style="margin-bottom:10px;">Address / branch
                   <input id="payslip_address" class="form-control" type="text" maxlength="200">
+                  <small class="payslip-field-error" id="payslip_address_error"></small>
                 </label>
                 <label class="payroll-rule-field" style="margin-bottom:10px;">NTN
-                  <input id="payslip_ntn" class="form-control" type="text" maxlength="40">
+                  <input id="payslip_ntn" class="form-control" type="text" maxlength="40" placeholder="1234567-8">
+                  <small class="payslip-field-error" id="payslip_ntn_error"></small>
                 </label>
                 <label class="payroll-rule-field" style="margin-bottom:10px;">Bank account title
                   <input id="payslip_bank_title" class="form-control" type="text" maxlength="120">
+                  <small class="payslip-field-error" id="payslip_bank_title_error"></small>
                 </label>
                 <label class="payroll-rule-field" style="margin-bottom:10px;">Bank name
                   <input id="payslip_bank_name" class="form-control" type="text" maxlength="120">
+                  <small class="payslip-field-error" id="payslip_bank_name_error"></small>
                 </label>
                 <label class="payroll-rule-field" style="margin-bottom:10px;">IBAN
-                  <input id="payslip_bank_iban" class="form-control" type="text" maxlength="60">
+                  <input id="payslip_bank_iban" class="form-control" type="text" maxlength="34" placeholder="PK46UNIL0109000400912116">
+                  <small class="payslip-field-error" id="payslip_bank_iban_error"></small>
                 </label>
                 <label class="payroll-rule-field" style="margin-bottom:10px;">Footer
                   <input id="payslip_footer" class="form-control" type="text" maxlength="200">
+                  <small class="payslip-field-error" id="payslip_footer_error"></small>
                 </label>
                 <label class="payroll-rule-field" style="margin-bottom:14px;">Powered by
                   <input id="payslip_powered" class="form-control" type="text" maxlength="120">
+                  <small class="payslip-field-error" id="payslip_powered_error"></small>
                 </label>
-                <button type="submit" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">Save letterhead</button>
+                <button type="submit" id="savePayslipLetterheadBtn" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">Save letterhead</button>
               </form>
               <div>
                 <p class="payroll-panel-help" style="margin-bottom:8px;">Live preview (sample staff, not a real person)</p>
@@ -13906,10 +14024,12 @@ async function fetchMultiLiveDetections() {
             <p class="payroll-panel-help" style="margin-top:6px;">Mark a date as working, off, or holiday. This overrides the weekly shift for the people you select.</p>
           </div>
           <div class="payroll-quick-links">
-            <button type="button" class="btn btn-outline-primary btn-sm" onclick="openPayrollGuide()" style="border-color:#3d9fd4; color:#0f4c6d; font-weight:700;">
-              <i class="fa-solid fa-book-open" style="margin-right:6px;"></i>Payroll Guide
+            <button type="button" class="btn btn-outline-secondary btn-sm pr-action-btn" onclick="openPayrollGuide()">
+              <i class="fa-solid fa-book-open"></i>Payroll Guide
             </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="switchTab('shifts-view', document.getElementById('menuItemShifts'))">Shift Management</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm pr-action-btn" onclick="switchTab('shifts-view', document.getElementById('menuItemShifts'))">
+              <i class="fa-solid fa-business-time"></i>Shift Management
+            </button>
           </div>
         </div>
         <div class="payroll-hub-tabs-mount"></div>
@@ -13987,14 +14107,14 @@ async function fetchMultiLiveDetections() {
             </p>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-outline-primary btn-sm" onclick="openPayrollGuide()" style="border-color:#3d9fd4; color:#0f4c6d; font-weight:700;">
-              <i class="fa-solid fa-book-open" style="margin-right:6px;"></i>Payroll Guide
+            <button type="button" class="btn btn-outline-secondary btn-sm pr-action-btn" onclick="openPayrollGuide()">
+              <i class="fa-solid fa-book-open"></i>Payroll Guide
             </button>
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="openAutoOtRateModal()" style="border-radius: 8px; font-weight: 700; border-color: #3d9fd4; color: #247eae;">
-              <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Auto-Set OT Rates (Shift Schedule Base)
+            <button type="button" class="btn btn-outline-secondary btn-sm pr-action-btn" onclick="openAutoOtRateModal()">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Set OT Rates (Shift Schedule Base)
             </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadSalaryConfigs()" style="border-radius: 8px; font-weight: 700;">
-              <i class="fa-solid fa-rotate me-1"></i> Refresh List
+            <button type="button" class="btn btn-outline-secondary btn-sm pr-action-btn" onclick="loadSalaryConfigs()">
+              <i class="fa-solid fa-rotate"></i> Refresh List
             </button>
           </div>
         </div>
@@ -22355,10 +22475,13 @@ async function fetchMultiLiveDetections() {
         }
       }
 
-      function openTabEditStaffModal(userId) {
+      async function openTabEditStaffModal(userId) {
         const user = tabAllStaff.find(s => s.id === userId);
         if (!user) return;
 
+        if (!cachedActiveCameras || !cachedActiveCameras.length) {
+          await loadCameraAssignmentDropdowns();
+        }
         populateCameraAssignmentDropdowns();
 
         document.getElementById('editUserId').value = userId;
@@ -24733,7 +24856,89 @@ async function fetchMultiLiveDetections() {
         refreshPayslipLetterheadPreview();
       }
 
+      function validatePayslipLetterheadField(fieldId) {
+        const el = document.getElementById(fieldId);
+        const errEl = document.getElementById(`${fieldId}_error`);
+        if (!el) return '';
+        const val = String(el.value || '').trim();
+        let msg = '';
+        if (fieldId === 'payslip_company_name') {
+          if (!val) msg = 'Company name is required.';
+          else if (val.length < 2) msg = 'Company name must be at least 2 characters.';
+        } else if (fieldId === 'payslip_tagline') {
+          if (val.length > 160) msg = 'Tagline must be 160 characters or fewer.';
+        } else if (fieldId === 'payslip_phone') {
+          if (!val) msg = 'Contact number is required.';
+          else if (typeof validateStaffPhoneValue === 'function') msg = validateStaffPhoneValue(val);
+        } else if (fieldId === 'payslip_email') {
+          if (val && typeof validateStaffEmailValue === 'function') msg = validateStaffEmailValue(val);
+        } else if (fieldId === 'payslip_website') {
+          if (val && !/^(https?:\/\/)?[A-Za-z0-9.-]+\.[A-Za-z]{2,}(\/.*)?$/.test(val)) {
+            msg = 'Enter a valid website URL (e.g. https://example.com).';
+          }
+        } else if (fieldId === 'payslip_address') {
+          if (val && val.length < 3) msg = 'Address must be at least 3 characters.';
+        } else if (fieldId === 'payslip_ntn') {
+          if (val && !/^[A-Za-z0-9\- ]{4,40}$/.test(val)) msg = 'NTN may only include letters, digits, spaces, and hyphens (4–40 chars).';
+        } else if (fieldId === 'payslip_bank_title') {
+          if (val && val.length < 2) msg = 'Bank account title must be at least 2 characters.';
+        } else if (fieldId === 'payslip_bank_name') {
+          if (val && val.length < 2) msg = 'Bank name must be at least 2 characters.';
+        } else if (fieldId === 'payslip_bank_iban') {
+          const iban = val.replace(/\s+/g, '').toUpperCase();
+          if (iban && !/^[A-Z]{2}[0-9]{2}[A-Z0-9]{10,30}$/.test(iban)) {
+            msg = 'Enter a valid IBAN (e.g. PK46UNIL0109000400912116).';
+          }
+        } else if (fieldId === 'payslip_footer') {
+          if (val.length > 200) msg = 'Footer must be 200 characters or fewer.';
+        } else if (fieldId === 'payslip_powered') {
+          if (val.length > 120) msg = 'Powered by text must be 120 characters or fewer.';
+        }
+        el.classList.toggle('is-invalid', Boolean(msg));
+        el.classList.toggle('is-valid', !msg && Boolean(val));
+        if (errEl) {
+          errEl.textContent = msg;
+          errEl.style.display = msg ? 'block' : 'none';
+        }
+        return msg;
+      }
+
+      function validateAllPayslipLetterheadFields() {
+        let firstInvalidId = null;
+        let firstMsg = '';
+        PAYSLIP_LETTERHEAD_FIELDS.forEach((key) => {
+          const msg = validatePayslipLetterheadField(key);
+          if (msg && !firstInvalidId) {
+            firstInvalidId = key;
+            firstMsg = msg;
+          }
+        });
+        return { valid: !firstInvalidId, firstInvalidId, firstMsg };
+      }
+
+      function bindPayslipLetterheadValidation() {
+        const form = document.getElementById('payslipLetterheadForm');
+        if (!form || form.dataset.validationBound === '1') return;
+        form.dataset.validationBound = '1';
+        PAYSLIP_LETTERHEAD_FIELDS.forEach((key) => {
+          const el = document.getElementById(key);
+          if (!el) return;
+          const run = () => validatePayslipLetterheadField(key);
+          el.addEventListener('input', run);
+          el.addEventListener('blur', run);
+        });
+      }
+      document.addEventListener('DOMContentLoaded', bindPayslipLetterheadValidation);
+      if (document.readyState !== 'loading') setTimeout(bindPayslipLetterheadValidation, 0);
+
       async function savePayslipLetterhead() {
+        bindPayslipLetterheadValidation();
+        const check = validateAllPayslipLetterheadFields();
+        if (!check.valid) {
+          showAppToast(check.firstMsg || 'Please fix the highlighted payslip letterhead fields.', 'error');
+          document.getElementById(check.firstInvalidId)?.focus();
+          return;
+        }
         _payslipLetterheadDirty = true;
         const deduct = document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false;
         await savePayrollSettings(Boolean(deduct));
@@ -25038,18 +25243,53 @@ async function fetchMultiLiveDetections() {
           <!-- SECTION 2: ATTENDANCE SUMMARY -->
           <div class="payslip-section">
             <div class="attendance-header">
-              <h3 class="section-title" style="margin:0; border:none; padding:0;">2. Attendance Summary</h3>
+              <h3 class="section-title calc-title" style="margin:0; border:none; padding:0;">2. Attendance Summary</h3>
               <span class="attendance-badge"><strong>${presentDays} / ${workDaysAuthoritative}</strong> Working Days</span>
             </div>
-            <div class="attendance-grid">
-              <div class="att-card"><div class="att-val">${workDaysAuthoritative}</div><div class="att-lbl">Total Working</div></div>
-              <div class="att-card highlight"><div class="att-val text-success">${presentDays}</div><div class="att-lbl">Worked / Present</div></div>
-              <div class="att-card"><div class="att-val">${lateDays}</div><div class="att-lbl">Late Days</div></div>
-              <div class="att-card warning"><div class="att-val text-danger">${absentDays}</div><div class="att-lbl">Absent Days</div></div>
-              <div class="att-card"><div class="att-val">${totalLeavesStr}</div><div class="att-lbl">Leaves (P:${paidLeave}/U:${unpaidLeave}/H:${halfLeaves})</div></div>
-              <div class="att-card"><div class="att-val">${restDays}</div><div class="att-lbl">Rest Days</div></div>
-              <div class="att-card"><div class="att-val">${publicHolidays}</div><div class="att-lbl">Public Holidays</div></div>
-            </div>
+            <table class="payslip-table">
+              <thead>
+                <tr>
+                  <th>Attendance Metric</th>
+                  <th style="text-align:right;">Days / Count</th>
+                  <th>Leave &amp; Off Breakdown</th>
+                  <th style="text-align:right;">Days / Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Total Scheduled Working Days</td>
+                  <td style="text-align:right;" class="mono">${workDaysAuthoritative}</td>
+                  <td>Paid Leaves</td>
+                  <td style="text-align:right;" class="mono">${paidLeave}</td>
+                </tr>
+                <tr>
+                  <td>Worked / Present Days</td>
+                  <td style="text-align:right;" class="mono text-success">${presentDays}</td>
+                  <td>Unpaid Leaves</td>
+                  <td style="text-align:right;" class="mono">${unpaidLeave}</td>
+                </tr>
+                <tr>
+                  <td>Late Days</td>
+                  <td style="text-align:right;" class="mono">${lateDays}</td>
+                  <td>Half Leaves</td>
+                  <td style="text-align:right;" class="mono">${halfLeaves}</td>
+                </tr>
+                <tr>
+                  <td>Absent Days</td>
+                  <td style="text-align:right;" class="mono ${absentDays > 0 ? 'text-danger' : ''}">${absentDays}</td>
+                  <td>Rest Days / Public Holidays</td>
+                  <td style="text-align:right;" class="mono">${restDays} / ${publicHolidays}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th>Total Payable Days (${paidBasis})</th>
+                  <th style="text-align:right;" class="mono text-success">${daysPaidAuthoritative}</th>
+                  <th>Total Leaves Taken</th>
+                  <th style="text-align:right;" class="mono">${totalLeavesStr}</th>
+                </tr>
+              </tfoot>
+            </table>
           </div>
 
           <!-- TWO COLUMNS: EARNINGS BREAKDOWN & DEDUCTIONS BREAKDOWN -->
@@ -25854,6 +26094,8 @@ async function fetchMultiLiveDetections() {
           const result = await response.json();
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save exception');
           showAppToast('Exception saved for this month.', 'success');
+          const adjFlag = document.getElementById('flag_enable_individual_adjustments');
+          if (adjFlag) adjFlag.checked = true;
           await loadPayrollExceptions();
           if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
             await loadMonthlyPayroll(month, true);

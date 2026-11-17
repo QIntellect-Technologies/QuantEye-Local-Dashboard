@@ -7824,10 +7824,21 @@ def api_save_payroll_adjustment():
     )
     if not saved_id:
         return jsonify({'error': 'Choose a valid exception type and amount or multiplier.'}), 400
+    # Ensure individual exceptions are active when the user saves one from Payroll UI.
+    tenant_kwargs = payroll_tenant()
+    current_settings = db.get_payroll_settings(**tenant_kwargs)
+    if not int(current_settings.get('enable_individual_adjustments') or 0):
+        db.update_payroll_settings(
+            bool(current_settings.get('deduct_unpaid_leave', False)),
+            current_settings.get('half_leave_quota_mode') or 'category',
+            int(current_settings.get('half_leaves_per_quota_day') or 2),
+            feature_flags={'enable_individual_adjustments': 1},
+            **tenant_kwargs,
+        )
     return jsonify({
         'success': True,
         'id': saved_id,
-        'adjustments': db.list_payroll_adjustments(payroll_month, **payroll_tenant()),
+        'adjustments': db.list_payroll_adjustments(payroll_month, **tenant_kwargs),
     })
 
 
