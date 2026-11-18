@@ -7912,8 +7912,17 @@ def api_save_scoped_half_leave_rule():
     quota_mode = data.get('half_leave_quota_mode')
     monthly_count = data.get('half_leaves_per_quota_day')
     
-    if not scope_type or not scope_id or not quota_mode or not monthly_count:
+    if not scope_type or not scope_id or not quota_mode or monthly_count is None or str(monthly_count).strip() == '':
         return jsonify({'error': 'Missing required fields'}), 400
+    try:
+        if isinstance(monthly_count, bool):
+            raise ValueError()
+        raw_mc = float(monthly_count)
+        if not raw_mc.is_integer() or int(raw_mc) < 1 or int(raw_mc) > 31:
+            raise ValueError()
+        monthly_count = int(raw_mc)
+    except (TypeError, ValueError, OverflowError):
+        return jsonify({'error': 'Times per month must be a whole number from 1 to 31.'}), 400
         
     try:
         res = db.save_scoped_half_leave_rule(scope_type, scope_id, quota_mode, monthly_count, **payroll_tenant())

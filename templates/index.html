@@ -13679,7 +13679,8 @@ async function fetchMultiLiveDetections() {
             </label>
             <label for="halfLeavesPerQuotaDay" class="payroll-rule-field">
               Occurrences per month
-              <input id="halfLeavesPerQuotaDay" class="form-control" type="number" min="1" step="1" value="2" style="height:38px;" oninput="updateHalfLeaveQuotaModeUI()">
+              <input id="halfLeavesPerQuotaDay" class="form-control" type="number" min="1" max="31" step="1" value="2" style="height:38px;" oninput="updateHalfLeaveQuotaModeUI()">
+              <small id="halfLeavesPerQuotaDayError" class="text-danger" style="display:none; font-size:0.78em; font-weight:600;"></small>
             </label>
             <div class="payroll-rule-actions">
               <button type="button" id="saveLeaveSettingsBtn" class="btn btn-primary btn-sm rpt-btn rpt-btn-primary" onclick="saveLeaveSettings()" style="min-height:38px; height:38px; padding: 0 20px; font-weight:600;">
@@ -13710,7 +13711,7 @@ async function fetchMultiLiveDetections() {
             </label>
             <label class="payroll-rule-field">
               Times per month
-              <input class="form-control" type="number" min="1" step="1" id="halfLeaveRuleValue" style="height:38px;">
+              <input class="form-control" type="number" min="1" max="31" step="1" id="halfLeaveRuleValue" style="height:38px;">
             </label>
             <div class="payroll-rule-actions">
               <button type="submit" class="btn btn-primary btn-sm rpt-btn rpt-btn-primary" style="min-height:38px; height:38px; padding: 0 18px; font-weight:600;">
@@ -23793,11 +23794,35 @@ async function fetchMultiLiveDetections() {
         return 'Use each leave type’s own rules.';
       }
 
+      function validateCompanyHalfLeaveOccurrences() {
+        const count = document.getElementById('halfLeavesPerQuotaDay');
+        const err = document.getElementById('halfLeavesPerQuotaDayError');
+        const btn = document.getElementById('saveLeaveSettingsBtn');
+        if (!count) return true;
+        const raw = String(count.value ?? '').trim();
+        let msg = '';
+        if ((count.validity && count.validity.badInput) || !raw || !/^\d+$/.test(raw)) {
+          msg = 'Occurrences per month must be a whole number from 1 to 31.';
+        } else {
+          const n = Number(raw);
+          if (!Number.isInteger(n) || n < 1 || n > 31) {
+            msg = 'Occurrences per month must be a whole number from 1 to 31.';
+          }
+        }
+        count.classList.toggle('is-invalid', Boolean(msg));
+        if (err) {
+          err.textContent = msg;
+          err.style.display = msg ? 'block' : 'none';
+        }
+        if (btn) btn.disabled = Boolean(msg);
+        return !msg;
+      }
+
       function updateHalfLeaveQuotaModeUI() {
         const mode = document.getElementById('halfLeaveQuotaMode')?.value || 'category';
         const count = document.getElementById('halfLeavesPerQuotaDay');
         const description = document.getElementById('halfLeaveQuotaDescription');
-        if (count) count.disabled = mode === 'category';
+        if (count) count.disabled = false;
         if (description) description.textContent = describeHalfLeaveQuotaMode(mode, count?.value || 2);
         
         const countLabel = count ? count.closest('label') : null;
@@ -23810,6 +23835,7 @@ async function fetchMultiLiveDetections() {
             countLabel.childNodes[0].nodeValue = 'Occurrences per month ';
           }
         }
+        validateCompanyHalfLeaveOccurrences();
       }
 
       async function loadPayrollScopeOptions(force = false) {
@@ -23894,8 +23920,11 @@ async function fetchMultiLiveDetections() {
           else alert(msg);
         };
         if (!target) return toast('Please select who the rule applies to (department or employee).', 'warning');
-        if (!count || String(count).trim() === '') return toast('Enter Times per month — this field cannot be empty.', 'warning');
-        if (Number(count) <= 0 || isNaN(Number(count))) return toast('Times per month must be a positive number (for example 1 or 2).', 'warning');
+        const rawCount = String(count ?? '').trim();
+        const ruleEl = document.getElementById('halfLeaveRuleValue');
+        if ((ruleEl?.validity && ruleEl.validity.badInput) || !rawCount || !/^\d+$/.test(rawCount) || Number(rawCount) < 1 || Number(rawCount) > 31) {
+          return toast('Times per month must be a whole number from 1 to 31.', 'warning');
+        }
         try {
           const res = await fetch('/api/payroll-settings/scoped-rules/half-leave', {
             method: 'POST',
@@ -26556,6 +26585,11 @@ async function fetchMultiLiveDetections() {
         const message = document.getElementById('leaveSettingsMessage');
         const quotaMode = document.getElementById('halfLeaveQuotaMode');
         const conversionCount = document.getElementById('halfLeavesPerQuotaDay');
+        if (typeof validateCompanyHalfLeaveOccurrences === 'function' && !validateCompanyHalfLeaveOccurrences()) {
+          showAppToast('Occurrences per month must be a whole number from 1 to 31.', 'error');
+          conversionCount?.focus();
+          return;
+        }
         if (btn) btn.disabled = true;
         try {
           let current = window._payrollSettings;

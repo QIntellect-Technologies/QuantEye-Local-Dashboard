@@ -10737,6 +10737,7 @@ def resolve_half_leave_rule(
     user_id: int,
     leave_type: Union[Dict[str, Any], str, int],
     reference_date: Union[datetime, date, str],
+    exclude_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Authoritative half-leave rule resolution implementing strict precedence:
@@ -10938,14 +10939,23 @@ def resolve_half_leave_rule(
 
     # 4. LEAVE TYPE DEFAULT (if no person, department, or company rule)
     if not winning_rule:
+        cursor.execute(
+            "SELECT half_leaves_per_quota_day FROM payroll_settings WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ? AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?",
+            (org_id, branch_id),
+        )
+        ps_row = cursor.fetchone()
+        company_occurrences = max(1, int((ps_row[0] if ps_row and ps_row[0] else None) or 2))
         half_enabled = bool(lt_dict.get('half_leave_enabled'))
-        explicit = int(lt_dict.get('half_leave_allowance_explicit') or 0)
         half_allowance = int(lt_dict.get('half_leave_allowance_count') or 0)
-        if half_enabled and half_allowance == 0 and not explicit:
-            half_allowance = max(1, int(lt_dict.get('half_leaves_per_quota_day') or 2))
         half_mode = str(lt_dict.get('half_leave_mode') or 'separate').lower()
-        half_months = max(1, min(12, int(lt_dict.get('half_leave_allowance_months') or 12)))
-        if half_enabled and (half_allowance > 0 or half_mode == 'convert'):
+        if half_enabled and half_allowance <= 0:
+            # QA-147 / QA-148: Fall back to Company Half-Leave Policy occurrences per month
+            # whenever the leave type does not specify a positive allowance.
+            half_allowance = company_occurrences
+            half_months = 1
+        else:
+            half_months = max(1, min(12, int(lt_dict.get('half_leave_allowance_months') or 12)))
+        if half_enabled and half_allowance > 0:
             period_str = 'monthly' if half_months == 1 else f"{half_months}-month cycle"
             period_text = 'this month' if half_months == 1 else f"in this {half_months}-month cycle"
             winning_rule = {
@@ -10998,21 +11008,30 @@ def resolve_half_leave_rule(
                 OR INSTR(',' || REPLACE(restored_dates, ' ', '') || ',', ',' || start_date || ',') = 0
               )
     """
+    excl_clause = " AND id != ?" if exclude_id is not None else ""
     if winning_rule['mode'] == 'monthly_cap':
+        params: List[Any] = [user_id, cycle_start, cycle_end]
+        if exclude_id is not None:
+            params.append(int(exclude_id))
         cursor.execute(f"""
             SELECT COUNT(*) FROM leave_requests
             WHERE user_id = ? AND leave_duration = 'half'
               AND end_date >= ? AND start_date <= ?
               {half_restore_guard}
-        """, (user_id, cycle_start, cycle_end))
+              {excl_clause}
+        """, params)
     else:
+        params = [user_id, lt_code, leave_name, cycle_start, cycle_end]
+        if exclude_id is not None:
+            params.append(int(exclude_id))
         cursor.execute(f"""
             SELECT COUNT(*) FROM leave_requests
             WHERE user_id = ? AND (leave_type = ? OR leave_type = ?)
               AND leave_duration = 'half'
               AND end_date >= ? AND start_date <= ?
               {half_restore_guard}
-        """, (user_id, lt_code, leave_name, cycle_start, cycle_end))
+              {excl_clause}
+        """, params)
 
     used_count = int(cursor.fetchone()[0] or 0)
     allowance = winning_rule['allowance']
@@ -11023,7 +11042,7 @@ def resolve_half_leave_rule(
     return {
         'allowed': not is_exhausted,
         'reason_code': 'half_leave_allowance_reached' if is_exhausted else 'ok',
-        'message': f"{leave_name} half-leave allowance reached ({allowance} occurrence(s) per {period_str})." if is_exhausted else 'OK',
+        'message': f"{leave_name} half-leave limit reached: {allowance} allowed per {period_str}, {used_count} already used." if is_exhausted else 'OK',
         'winning_source': winning_rule['source'],
         'half_leave_enabled': True,
         'half_leave_mode': winning_rule['mode'],
@@ -11268,7 +11287,7 @@ def check_leave_quota(
                 }
 
             if duration == 'half':
-                rule_res = resolve_half_leave_rule(cursor, user_id, lt_dict, reference_date)
+                rule_res = resolve_half_leave_rule(cursor, user_id, lt_dict, reference_date, exclude_id=exclude_id)
 
                 # LH-5: compute full-day remaining the same way for half and full requests.
                 allocated = float(lt_dict.get('yearly_allowance', 10.0))
@@ -13511,12 +13530,17 @@ def update_payroll_settings(
     mode = {'separate': 'category', 'convert': 'monthly_convert'}.get(mode, mode)
     if mode not in ('category', 'monthly_cap', 'monthly_convert'):
         raise ValueError('Choose a valid half-leave quota mode.')
+    if isinstance(half_leaves_per_quota_day, bool):
+        raise ValueError('Occurrences per month must be a whole number from 1 to 31.')
     try:
-        conversion_count = int(half_leaves_per_quota_day)
+        raw_occ = float(half_leaves_per_quota_day)
     except (TypeError, ValueError, OverflowError):
-        raise ValueError('Half-leave conversion count must be a positive integer.')
-    if conversion_count < 1:
-        raise ValueError('Half-leave conversion count must be a positive integer.')
+        raise ValueError('Occurrences per month must be a whole number from 1 to 31.')
+    if not raw_occ.is_integer():
+        raise ValueError('Occurrences per month must be a whole number from 1 to 31.')
+    conversion_count = int(raw_occ)
+    if conversion_count < 1 or conversion_count > 31:
+        raise ValueError('Occurrences per month must be a whole number from 1 to 31.')
     try:
         holiday_premium = round(float(holiday_ot_premium_percent), 2)
         non_working_premium = round(float(non_working_day_ot_premium_percent), 2)
