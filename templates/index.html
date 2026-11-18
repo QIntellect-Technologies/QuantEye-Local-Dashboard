@@ -9731,9 +9731,9 @@
       transform: translateY(-1px) !important;
     }
     .mobile-cred-secondary-btn {
-      background: #ffffff !important;
-      border: 1px solid #cbd5e1 !important;
-      color: #151b25 !important;
+      background: #8b7bf7 !important;
+      border: 1px solid #8b7bf7 !important;
+      color: #ffffff !important;
       border-radius: 10px !important;
       font-weight: 600 !important;
       height: 38px !important;
@@ -9744,10 +9744,10 @@
     }
     .mobile-cred-secondary-btn:hover,
     .mobile-cred-secondary-btn:focus-visible {
-      background: #f8fafc !important;
-      border-color: #8b7bf7 !important;
-      color: #0f172a !important;
-      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+      background: #7765ef !important;
+      border-color: #7765ef !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 0 3px rgba(139, 123, 247, 0.2), 0 4px 10px rgba(139, 123, 247, 0.25) !important;
       transform: translateY(-1px) !important;
     }
 
@@ -11458,7 +11458,6 @@ async function fetchMultiLiveDetections() {
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
         <div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px;">
           <span id="payrollStateBadge" class="badge bg-secondary-subtle text-secondary" style="display:none; padding:6px 14px; border-radius:9999px; font-weight:700; font-size:12px; letter-spacing:0.02em;">Not loaded</span>
-          <div id="payrollPeriodNote" role="status" style="font-size:0.82em; color:#64748b;">Choose a month to load payroll.</div>
         </div>
         <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
           <button id="calculatePayrollButton" type="button" onclick="loadMonthlyPayroll(undefined, true)" class="rpt-btn" style="height:36px;" title="Calculate Payroll">
@@ -11593,6 +11592,7 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
       </div>
+      <div id="payrollPeriodNote" role="status" style="font-size:0.8em; color:#64748b; margin:-4px 0 10px;"></div>
       <div id="payrollMessage" aria-live="polite" style="margin-bottom:12px;"></div>
 
       <!-- PAY-09: Filter bar with Calendar Month selector after Run Status, followed by Reset button -->
@@ -11775,15 +11775,15 @@ async function fetchMultiLiveDetections() {
             </select>
           </label>
           <label class="payroll-rule-field">Pay as
-            <select id="payrollExceptionMode" class="form-select">
+            <select id="payrollExceptionMode" class="form-select" onchange="updatePayrollExceptionModeUI()">
               <option value="fixed">Fixed amount</option>
               <option value="multiplier">Multiplier of daily rate</option>
             </select>
           </label>
-          <label class="payroll-rule-field">Amount
+          <label id="payrollExceptionAmountWrap" class="payroll-rule-field">Amount
             <input id="payrollExceptionAmount" class="form-control" type="number" min="0" step="0.01" value="0">
           </label>
-          <label class="payroll-rule-field">Multiplier
+          <label id="payrollExceptionMultiplierWrap" class="payroll-rule-field" style="display:none;">Multiplier
             <input id="payrollExceptionMultiplier" class="form-control" type="number" min="0" step="0.01" value="1.5">
           </label>
           <label class="payroll-rule-field">Work date
@@ -13227,7 +13227,7 @@ async function fetchMultiLiveDetections() {
             <button type="button" class="btn btn-outline-secondary btn-sm pr-action-btn" id="payrollGuideHeaderBtn" onclick="openPayrollGuide()">
               <i class="fa-solid fa-book-open"></i>Payroll Guide
             </button>
-            <button type="button" class="btn btn-primary btn-sm payroll-only-ui" id="otOpenPayrollBtn" onclick="switchTab('payroll-view', document.getElementById('menuItemPayroll'))" style="background:#148f77; border:none; font-weight:700;">Open Payroll</button>
+            <button type="button" class="btn btn-primary btn-sm payroll-only-ui" id="otOpenPayrollBtn" onclick="switchTab('payroll-view', document.getElementById('menuItemPayroll'))" style="background:#148f77; border:none; font-weight:700; height:36px; min-height:36px; padding:0 14px; border-radius:10px; display:inline-flex; align-items:center;">Open Payroll</button>
           </div>
         </div>
         <div class="payroll-hub-tabs-mount"></div>
@@ -13811,7 +13811,7 @@ async function fetchMultiLiveDetections() {
             </label>
             <label id="holidayOtPercentWrap" class="ot-settings-field" for="holidayOtPremiumPercent">
               Extra %
-              <input id="holidayOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" value="0" data-ot-validate="percent" oninput="validateOvertimeSettingsLive()">
+              <input id="holidayOtPremiumPercent" class="form-control" type="number" min="0" max="100" step="0.01" value="0" data-ot-validate="percent" oninput="validateOvertimeSettingsLive()">
               <span class="field-error" id="holidayOtPremiumPercentError"></span>
             </label>
             <label id="holidayOtMultiplierWrap" class="ot-settings-field" for="holidayOtMultiplier" style="display:none;">
@@ -13821,7 +13821,7 @@ async function fetchMultiLiveDetections() {
             </label>
             <label id="holidayOtFixedWrap" class="ot-settings-field" for="holidayOtFixedAmount" style="display:none;">
               Extra per OT hour
-              <input id="holidayOtFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" data-ot-validate="fixed" oninput="validateOvertimeSettingsLive()">
+              <input id="holidayOtFixedAmount" class="form-control" type="number" min="0" max="100000" step="0.01" value="0" data-ot-validate="fixed" oninput="validateOvertimeSettingsLive()">
               <span class="field-error" id="holidayOtFixedAmountError"></span>
             </label>
             <div class="ot-settings-actions">
@@ -13840,7 +13840,7 @@ async function fetchMultiLiveDetections() {
             </label>
             <label id="nonWorkingOtPercentWrap" class="ot-settings-field" for="nonWorkingDayOtPremiumPercent">
               Extra %
-              <input id="nonWorkingDayOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" value="0" data-ot-validate="percent" oninput="validateOvertimeSettingsLive()">
+              <input id="nonWorkingDayOtPremiumPercent" class="form-control" type="number" min="0" max="100" step="0.01" value="0" data-ot-validate="percent" oninput="validateOvertimeSettingsLive()">
               <span class="field-error" id="nonWorkingDayOtPremiumPercentError"></span>
             </label>
             <label id="nonWorkingOtMultiplierWrap" class="ot-settings-field" for="nonWorkingDayOtMultiplier" style="display:none;">
@@ -13850,7 +13850,7 @@ async function fetchMultiLiveDetections() {
             </label>
             <label id="nonWorkingOtFixedWrap" class="ot-settings-field" for="nonWorkingDayOtFixedAmount" style="display:none;">
               Extra per OT hour
-              <input id="nonWorkingDayOtFixedAmount" class="form-control" type="number" min="0" step="0.01" value="0" data-ot-validate="fixed" oninput="validateOvertimeSettingsLive()">
+              <input id="nonWorkingDayOtFixedAmount" class="form-control" type="number" min="0" max="100000" step="0.01" value="0" data-ot-validate="fixed" oninput="validateOvertimeSettingsLive()">
               <span class="field-error" id="nonWorkingDayOtFixedAmountError"></span>
             </label>
             <div class="ot-settings-actions">
@@ -13871,7 +13871,7 @@ async function fetchMultiLiveDetections() {
               </label>
               <label class="ot-settings-field" for="holidaySpecificOtPremiumPercent">
                 Holiday premium (%)
-                <input id="holidaySpecificOtPremiumPercent" class="form-control" type="number" min="0" max="1000" step="0.01" placeholder="Default rate" disabled data-ot-validate="percent-optional" oninput="validateOvertimeSettingsLive()">
+                <input id="holidaySpecificOtPremiumPercent" class="form-control" type="number" min="0" max="100" step="0.01" placeholder="Default rate" disabled data-ot-validate="percent-optional" oninput="validateOvertimeSettingsLive()">
                 <span class="field-error" id="holidaySpecificOtPremiumPercentError"></span>
               </label>
               <div class="ot-settings-actions">
@@ -13917,7 +13917,7 @@ async function fetchMultiLiveDetections() {
               </label>
               <label class="payroll-rule-field ot-settings-field">
                 Premium (%)
-                <input class="form-control" type="number" min="0" max="1000" step="0.01" id="overtimeRuleValue" data-ot-validate="percent" oninput="validateOvertimeSettingsLive()">
+                <input class="form-control" type="number" min="0" max="100" step="0.01" id="overtimeRuleValue" data-ot-validate="percent" oninput="validateOvertimeSettingsLive()">
                 <span class="field-error" id="overtimeRuleValueError"></span>
               </label>
               <div class="payroll-rule-actions">
@@ -16112,13 +16112,16 @@ async function fetchMultiLiveDetections() {
             if (projectedValue) projectedValue.textContent = payrollMoney(projectedTotal);
           }
         }
-        document.getElementById('payrollPeriodNote').textContent = isFinalized
-          ? `Finalized snapshot · ${payroll.finalized_at || 'finalization time unavailable'}`
-          : monthOpen
-            ? `Live through ${payroll.period_end || 'today'}. ${payroll.earned_so_far_label || 'Earned so far'} vs ${payroll.projected_month_end_label || 'Projected month-end'}. Divisor is whole-month working days.`
-            : (payMode === 'payable_days'
-              ? `Complete month · Pay = payable days ÷ working days in the month × (basic + allowances), plus extras minus other deductions.`
-              : `Complete month · Full salary minus absence brackets and other deductions.`);
+        const periodNoteEl = document.getElementById('payrollPeriodNote');
+        if (periodNoteEl) {
+          periodNoteEl.textContent = isFinalized
+            ? `Finalized snapshot · ${payroll.finalized_at || 'finalization time unavailable'}`
+            : monthOpen
+              ? ''
+              : (payMode === 'payable_days'
+                ? `Complete month · Pay = payable days ÷ working days in the month × (basic + allowances), plus extras minus other deductions.`
+                : `Complete month · Full salary minus absence brackets and other deductions.`);
+        }
         setPayrollStateBadge(state);
         populatePayrollDepartmentFilter(records);
         calculateButton.innerHTML = `<i class="fa-solid fa-calculator"></i> ${isFinalized ? 'Finalized Payroll' : (payroll.payroll_run_id ? 'Recalculate Payroll' : 'Calculate Payroll')}`;
@@ -24042,13 +24045,19 @@ async function fetchMultiLiveDetections() {
         if (!el || el.disabled || (el.offsetParent === null && getComputedStyle(el).display === 'none')) {
           return setOtSettingsFieldError(el, '');
         }
-        const wrap = el.closest('[style*="display:none"], [hidden]');
+        const wrap = el.closest('[style*="display:none"], [style*="display: none"], [hidden]');
         if (wrap && wrap !== el && (wrap.hasAttribute('hidden') || wrap.style.display === 'none')) {
           return setOtSettingsFieldError(el, '');
+        }
+        if (el.validity && el.validity.badInput) {
+          return setOtSettingsFieldError(el, 'Enter a valid number only (no letters or special characters).');
         }
         const raw = String(el.value ?? '').trim();
         if (!raw) {
           return setOtSettingsFieldError(el, required ? `${label} is required.` : '');
+        }
+        if (!/^-?\d+(\.\d+)?$/.test(raw)) {
+          return setOtSettingsFieldError(el, 'Enter a valid number only.');
         }
         const n = Number(raw);
         if (!Number.isFinite(n)) return setOtSettingsFieldError(el, 'Enter a valid number.');
@@ -24109,14 +24118,14 @@ async function fetchMultiLiveDetections() {
         const holidayMult = document.getElementById('holidayOtMultiplier');
         const holidayFixed = document.getElementById('holidayOtFixedAmount');
         if (isOtFieldVisible(holidayPercent)) {
-          holidayModeOk = validateOtNumberField(holidayPercent, { min: 0, max: 1000, required: true, label: 'Extra %' }) && holidayModeOk;
+          holidayModeOk = validateOtNumberField(holidayPercent, { min: 0, max: 100, required: true, label: 'Extra %' }) && holidayModeOk;
         } else setOtSettingsFieldError(holidayPercent, '');
         if (isOtFieldVisible(holidayMult)) {
           // OT-29/30: Holiday multiplier uses its own 1.0–5.0 rule (not Rest-day).
           holidayModeOk = validateOtNumberField(holidayMult, { min: 1, max: 5, required: true, label: 'Holiday OT multiplier' }) && holidayModeOk;
         } else setOtSettingsFieldError(holidayMult, '');
         if (isOtFieldVisible(holidayFixed)) {
-          holidayModeOk = validateOtNumberField(holidayFixed, { min: 0, max: null, required: true, label: 'Extra per OT hour' }) && holidayModeOk;
+          holidayModeOk = validateOtNumberField(holidayFixed, { min: 0, max: 100000, required: true, label: 'Extra per OT hour' }) && holidayModeOk;
         } else setOtSettingsFieldError(holidayFixed, '');
 
         let restModeOk = true;
@@ -24124,14 +24133,14 @@ async function fetchMultiLiveDetections() {
         const restMult = document.getElementById('nonWorkingDayOtMultiplier');
         const restFixed = document.getElementById('nonWorkingDayOtFixedAmount');
         if (isOtFieldVisible(restPercent)) {
-          restModeOk = validateOtNumberField(restPercent, { min: 0, max: 1000, required: true, label: 'Extra %' }) && restModeOk;
+          restModeOk = validateOtNumberField(restPercent, { min: 0, max: 100, required: true, label: 'Extra %' }) && restModeOk;
         } else setOtSettingsFieldError(restPercent, '');
         if (isOtFieldVisible(restMult)) {
           // OT-30: Rest-day multiplier range matches input + server (1.0–5.0).
           restModeOk = validateOtNumberField(restMult, { min: 1, max: 5, required: true, label: 'Rest-day OT multiplier' }) && restModeOk;
         } else setOtSettingsFieldError(restMult, '');
         if (isOtFieldVisible(restFixed)) {
-          restModeOk = validateOtNumberField(restFixed, { min: 0, max: null, required: true, label: 'Extra per OT hour' }) && restModeOk;
+          restModeOk = validateOtNumberField(restFixed, { min: 0, max: 100000, required: true, label: 'Extra per OT hour' }) && restModeOk;
         } else setOtSettingsFieldError(restFixed, '');
 
         const holidaySelect = document.getElementById('holidaySpecificOtSelect');
@@ -24141,7 +24150,7 @@ async function fetchMultiLiveDetections() {
         let holidayPremiumOk = true;
         if (holidaySelected && holidayPremium && !holidayPremium.disabled) {
           holidayPremiumOk = validateOtNumberField(holidayPremium, {
-            min: 0, max: 1000, required: true, label: 'Holiday premium (%)'
+            min: 0, max: 100, required: true, label: 'Holiday premium (%)'
           });
         } else {
           setOtSettingsFieldError(holidayPremium, '');
@@ -24151,13 +24160,13 @@ async function fetchMultiLiveDetections() {
         const premiumValue = document.getElementById('overtimeRuleValue');
         const premiumTouched = Boolean(
           (premiumTarget && String(premiumTarget.value || '').trim())
-          || (premiumValue && String(premiumValue.value || '').trim() !== '')
+          || (premiumValue && (String(premiumValue.value || '').trim() !== '' || Boolean(premiumValue.validity && premiumValue.validity.badInput)))
         );
         const premiumTargetOk = validateOtSelectField(premiumTarget, {
           required: premiumTouched, label: 'Target'
         });
         const premiumValueOk = validateOtNumberField(premiumValue, {
-          min: 0, max: 1000, required: premiumTouched, label: 'Premium (%)'
+          min: 0, max: 100, required: premiumTouched, label: 'Premium (%)'
         });
 
         const globalOk = maxHoursOk && maxPeriodOk && roundingOk && holidayModeOk && restModeOk;
@@ -24297,7 +24306,7 @@ async function fetchMultiLiveDetections() {
             <table class="table table-sm align-middle mb-0" style="min-width:540px; font-size:0.84em;">
               <thead><tr><th>When</th><th class="text-end">Extra</th><th>Rate</th><th>Status</th><th class="text-end"></th></tr></thead>
               <tbody>${configuredRules.map(rule => {
-                const premium = Number(rule.premium_percent) || 0;
+                const premium = Number(rule.premium_percent ?? rule.overtime_premium_percent ?? 0) || 0;
                 const factor = (1 + premium / 100).toFixed(2);
                 const status = rule.active
                   ? '<span class="badge bg-success-subtle text-success">Active</span>'
@@ -24696,7 +24705,15 @@ async function fetchMultiLiveDetections() {
       function updatePayrollExtraPayModeUI() {
         const holidayMode = document.getElementById('holidayOtPayMode')?.value || 'percent';
         const restMode = document.getElementById('nonWorkingDayOtPayMode')?.value || 'percent';
-        const show = (id, visible) => { const el = document.getElementById(id); if (el) el.style.display = visible ? '' : 'none'; };
+        const show = (id, visible) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          if (visible) {
+            el.style.removeProperty('display');
+          } else {
+            el.style.setProperty('display', 'none', 'important');
+          }
+        };
         show('holidayOtPercentWrap', holidayMode === 'percent');
         show('holidayOtMultiplierWrap', holidayMode === 'multiplier');
         show('holidayOtFixedWrap', holidayMode === 'fixed_hour');
@@ -24710,6 +24727,23 @@ async function fetchMultiLiveDetections() {
         show('offDayFixedWrap', offMode === 'fixed_day');
         if (typeof validateOvertimeSettingsLive === 'function') validateOvertimeSettingsLive();
       }
+
+      function updatePayrollExceptionModeUI() {
+        const mode = document.getElementById('payrollExceptionMode')?.value || 'fixed';
+        const amtWrap = document.getElementById('payrollExceptionAmountWrap');
+        const multWrap = document.getElementById('payrollExceptionMultiplierWrap');
+        if (amtWrap) {
+          if (mode === 'fixed') amtWrap.style.removeProperty('display');
+          else amtWrap.style.setProperty('display', 'none', 'important');
+        }
+        if (multWrap) {
+          if (mode === 'multiplier') multWrap.style.removeProperty('display');
+          else multWrap.style.setProperty('display', 'none', 'important');
+        }
+      }
+      window.updatePayrollExceptionModeUI = updatePayrollExceptionModeUI;
+      document.addEventListener('DOMContentLoaded', updatePayrollExceptionModeUI);
+      if (document.readyState !== 'loading') setTimeout(updatePayrollExceptionModeUI, 0);
 
       function payrollBonusMonthValue() {
         const settingsMonth = document.getElementById('payrollBonusSettingsMonth');
@@ -25445,7 +25479,11 @@ async function fetchMultiLiveDetections() {
         const unused = document.getElementById('payrollAbsenceUnusedBanner');
         const brackets = document.getElementById('payrollAbsenceBracketsFieldset');
         const absenceSection = document.getElementById('payrollAbsenceSection');
+        const legacyBanner = document.getElementById('payrollLegacyFullSalaryBanner');
+        const noRulesNotice = document.getElementById('payrollFullSalaryNoRulesNotice');
         if (unused) unused.hidden = !payable;
+        if (legacyBanner) legacyBanner.hidden = payable;
+        if (noRulesNotice && payable) noRulesNotice.hidden = true;
         if (brackets) {
           brackets.disabled = payable;
           brackets.style.opacity = payable ? '0.55' : '1';
@@ -26489,6 +26527,10 @@ async function fetchMultiLiveDetections() {
             leaveMessage.textContent = 'Leave settings saved.';
           }
           showAppToast(successToast, 'success');
+          const activeMonth = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+          if (activeMonth && currentPayrollPreview && !currentPayrollPreview.is_finalized && typeof loadMonthlyPayroll === 'function') {
+            await loadMonthlyPayroll(activeMonth, true);
+          }
           if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
             await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
           }

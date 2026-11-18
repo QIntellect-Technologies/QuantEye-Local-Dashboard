@@ -14502,6 +14502,14 @@ def save_employee_component(
                     'affected_months': affected,
                 }
         try:
+            if not excluded and scope == 'employee' and uid:
+                cursor.execute(
+                    """DELETE FROM payroll_employee_components
+                       WHERE component_type_id = ? AND excluded = 1
+                         AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                         AND (user_id = ? OR scope_id = ?)""",
+                    (type_id, org, uid, str(uid)),
+                )
             cursor.execute(
                 """INSERT INTO payroll_employee_components (
                        organization_id, branch_id, user_id, component_type_id, amount, percent,
@@ -14705,6 +14713,28 @@ def bulk_remove_employee_components(
                 (*clean_ids, org, uid, str(uid), str(uid)),
             )
             total_deleted += cursor.rowcount
+            # If any of these items are still inherited from a broader scope (org/department/designation/shift/branch),
+            # insert an employee-level exclusion row so resolve_named_assignments() omits them from payroll & payslip.
+            if uid:
+                for tid in clean_ids:
+                    has_broader = cursor.execute(
+                        """SELECT 1 FROM payroll_employee_components
+                           WHERE component_type_id = ?
+                             AND active = 1 AND COALESCE(excluded, 0) = 0
+                             AND COALESCE(scope_type, 'employee') != 'employee'
+                             AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                           LIMIT 1""",
+                        (tid, org),
+                    ).fetchone()
+                    if has_broader:
+                        cursor.execute(
+                            """INSERT INTO payroll_employee_components (
+                                   organization_id, branch_id, user_id, component_type_id, amount, percent,
+                                   effective_from, effective_to, scope_type, scope_id, excluded, active
+                               ) VALUES (?, ?, ?, ?, 0, 0, '1900-01-01', NULL, 'employee', ?, 1, 1)""",
+                            (org, branch, uid, tid, str(uid)),
+                        )
+                        total_deleted += 1
         elif scope == 'department':
             dept_name = str(scope_id or '').strip()
             cursor.execute(
@@ -14903,7 +14933,9 @@ def get_overtime_holiday_premium_rules(
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute('''
-                SELECT id, name, holiday_date, end_date, is_recurring, overtime_premium_percent
+                SELECT id, name, holiday_date, end_date, is_recurring,
+                       overtime_premium_percent,
+                       overtime_premium_percent AS premium_percent
                 FROM company_holidays
                 WHERE overtime_premium_percent IS NOT NULL
                   AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
