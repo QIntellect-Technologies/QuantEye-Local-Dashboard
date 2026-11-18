@@ -33217,6 +33217,7 @@ async function fetchMultiLiveDetections() {
       const hoursInput = document.getElementById('modalOtHoursInput');
       const reasonInput = document.getElementById('modalOtReasonInput');
       const msg = document.getElementById('addOvertimeMsg');
+      const submitBtn = document.getElementById('modalOtSubmitBtn');
       if (!modal || !select) return;
 
       if (msg) msg.innerHTML = '';
@@ -33249,40 +33250,77 @@ async function fetchMultiLiveDetections() {
       modal.style.display = 'flex';
 
       try {
-        const [usersRes, deptRes, salaryRes] = await Promise.all([
-          fetch('/api/users', { cache: 'no-store' }),
-          fetch('/api/departments', { cache: 'no-store' }).catch(() => null),
-          fetch('/api/salary', { cache: 'no-store' }).catch(() => null)
+        const [usersRes, deptRes, reportDeptRes, salaryRes] = await Promise.all([
+          fetch(`${API_BASE}/users`, { cache: 'no-store' }).catch(() => null),
+          fetch(`${API_BASE}/departments`, { cache: 'no-store' }).catch(() => null),
+          fetch(`${API_BASE}/reports/departments`, { cache: 'no-store' }).catch(() => null),
+          fetch(`${API_BASE}/salary`, { cache: 'no-store' }).catch(() => null)
         ]);
-        const usersData = await usersRes.json();
-        _allOtUsers = Array.isArray(usersData?.users) ? usersData.users : (Array.isArray(usersData) ? usersData : []);
+
+        let usersOk = false;
+        let loadedUsers = [];
+        if (usersRes && usersRes.ok) {
+          try {
+            const usersData = await usersRes.json();
+            loadedUsers = Array.isArray(usersData?.users) ? usersData.users : (Array.isArray(usersData) ? usersData : []);
+            usersOk = true;
+          } catch (_) {}
+        }
+        if (!loadedUsers.length && Array.isArray(window.tabAllStaff) && window.tabAllStaff.length) {
+          loadedUsers = window.tabAllStaff;
+        }
+        _allOtUsers = loadedUsers;
         window._allOtUsers = _allOtUsers;
 
         let salaryConfigs = [];
         if (salaryRes && salaryRes.ok) {
-          const configs = await salaryRes.json();
-          salaryConfigs = Array.isArray(configs) ? configs : [];
+          try {
+            const configs = await salaryRes.json();
+            salaryConfigs = Array.isArray(configs) ? configs : [];
+          } catch (_) {}
         }
         window._allOtSalaryConfigs = salaryConfigs;
         _otSalaryConfigs = {};
         salaryConfigs.forEach(sc => { _otSalaryConfigs[sc.user_id] = sc; });
 
-        let allDepts = _allOtUsers.map(u => u.department).filter(Boolean);
-        salaryConfigs.forEach(c => { if (c.department) allDepts.push(c.department); });
-        if (deptRes && deptRes.ok) {
-          try {
-            const deptData = await deptRes.json();
-            const deptList = Array.isArray(deptData) ? deptData : (deptData.departments || []);
-            deptList.forEach(d => {
-              const name = typeof d === 'string' ? d : (d.name || d.department);
-              if (name) allDepts.push(name);
-            });
-          } catch (_) {}
+        const deptSet = new Map();
+        const addDeptName = (val) => {
+          const clean = String(val || '').trim();
+          if (!clean) return;
+          const key = clean.toLowerCase();
+          if (!deptSet.has(key)) deptSet.set(key, clean);
+        };
+
+        _allOtUsers.forEach(u => addDeptName(u.department));
+        salaryConfigs.forEach(c => addDeptName(c.department));
+
+        let deptApiOk = false;
+        for (const res of [deptRes, reportDeptRes]) {
+          if (res && res.ok) {
+            try {
+              const deptData = await res.json();
+              const deptList = Array.isArray(deptData) ? deptData : (deptData.departments || []);
+              deptList.forEach(d => {
+                const name = typeof d === 'string' ? d : (d?.name || d?.department);
+                addDeptName(name);
+              });
+              deptApiOk = true;
+            } catch (_) {}
+          }
         }
-        const departments = [...new Set(allDepts)].sort();
+        if (Array.isArray(window._payrollScopeOptions?.departments)) {
+          window._payrollScopeOptions.departments.forEach(d => addDeptName(typeof d === 'string' ? d : (d?.name || d?.department)));
+        }
+
+        const departments = Array.from(deptSet.values()).sort((a, b) => a.localeCompare(b));
+        if (!departments.length && !usersOk && !deptApiOk) {
+          throw new Error('Could not load departments from the server.');
+        }
+
         if (deptSelect) {
           deptSelect.innerHTML = '<option value="">Select Department...</option>' +
             departments.map(department => `<option value="${escapeOtHtml(department)}">${escapeOtHtml(department)}</option>`).join('');
+          deptSelect.disabled = false;
           if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(deptSelect);
           else if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(deptSelect);
         }
@@ -33292,7 +33330,17 @@ async function fetchMultiLiveDetections() {
           else if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(statusSelect);
         }
       } catch (e) {
-        if (deptSelect) deptSelect.innerHTML = '<option value="">Failed to load departments</option>';
+        if (deptSelect) {
+          deptSelect.innerHTML = '<option value="">Select Department...</option>';
+          deptSelect.value = '';
+          if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(deptSelect);
+        }
+        if (msg) {
+          msg.innerHTML = `<div class="alert alert-danger py-2 px-3 d-flex align-items-center justify-content-between gap-2" style="font-size:0.85em; border-radius:10px;">
+            <span><i class="fa-solid fa-circle-exclamation me-1"></i> ${escapeOtHtml(e?.message || 'Failed to load departments.')}</span>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="openAddOvertimeModal()" style="white-space:nowrap;">Try again</button>
+          </div>`;
+        }
         select.innerHTML = '<option value="">Select Department First...</option>';
         select.disabled = true;
         if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(select);
