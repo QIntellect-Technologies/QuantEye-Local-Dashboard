@@ -9766,6 +9766,157 @@
     #payslipLetterheadForm .form-control.is-valid {
       border-color: #10b981 !important;
     }
+
+    /* Uniform Global Pagination Buttons matching Leave & Holidays across ALL pages */
+    #reports-view .rpt-pagination .app-page-btn,
+    #staff-view .rpt-pagination .app-page-btn,
+    #payroll-view .rpt-pagination .app-page-btn,
+    #leaves-view .app-page-btn,
+    #overtime-view .app-page-btn,
+    #shifts-view .app-page-btn,
+    #salary-config-tab .rpt-pagination .app-page-btn,
+    .app-page-btn {
+      min-width: 32px !important;
+      height: 32px !important;
+      min-height: 32px !important;
+      padding: 0 10px !important;
+      background: #ffffff !important;
+      border: 1px solid #cbd5e1 !important;
+      border-radius: 7px !important;
+      color: #334155 !important;
+      font-family: inherit !important;
+      font-weight: 600 !important;
+      font-size: 0.82rem !important;
+      line-height: 1 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 4px !important;
+      cursor: pointer !important;
+      box-shadow: none !important;
+      transition: all 0.15s ease !important;
+    }
+    #reports-view .rpt-pagination .app-page-btn:hover:not(:disabled),
+    #staff-view .rpt-pagination .app-page-btn:hover:not(:disabled),
+    #payroll-view .rpt-pagination .app-page-btn:hover:not(:disabled),
+    #leaves-view .app-page-btn:hover:not(:disabled),
+    #overtime-view .app-page-btn:hover:not(:disabled),
+    #shifts-view .app-page-btn:hover:not(:disabled),
+    #salary-config-tab .rpt-pagination .app-page-btn:hover:not(:disabled),
+    .app-page-btn:hover:not(:disabled) {
+      border-color: #3d9fd4 !important;
+      background: #f0f9ff !important;
+      color: #0284c7 !important;
+    }
+    #reports-view .rpt-pagination .app-page-btn:focus-visible,
+    #staff-view .rpt-pagination .app-page-btn:focus-visible,
+    #payroll-view .rpt-pagination .app-page-btn:focus-visible,
+    #leaves-view .app-page-btn:focus-visible,
+    #overtime-view .app-page-btn:focus-visible,
+    #shifts-view .app-page-btn:focus-visible,
+    #salary-config-tab .rpt-pagination .app-page-btn:focus-visible,
+    .app-page-btn:focus-visible {
+      outline: none !important;
+      border-color: #0284c7 !important;
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.22) !important;
+    }
+    #reports-view .rpt-pagination .app-page-btn.active,
+    #staff-view .rpt-pagination .app-page-btn.active,
+    #payroll-view .rpt-pagination .app-page-btn.active,
+    #leaves-view .app-page-btn.active,
+    #overtime-view .app-page-btn.active,
+    #shifts-view .app-page-btn.active,
+    #salary-config-tab .rpt-pagination .app-page-btn.active,
+    .app-page-btn.active {
+      background: #0284c7 !important;
+      border-color: #0284c7 !important;
+      color: #ffffff !important;
+      font-weight: 700 !important;
+      box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25) !important;
+    }
+    #reports-view .rpt-pagination .app-page-btn:disabled,
+    #staff-view .rpt-pagination .app-page-btn:disabled,
+    #payroll-view .rpt-pagination .app-page-btn:disabled,
+    #leaves-view .app-page-btn:disabled,
+    #overtime-view .app-page-btn:disabled,
+    #shifts-view .app-page-btn:disabled,
+    #salary-config-tab .rpt-pagination .app-page-btn:disabled,
+    .app-page-btn:disabled {
+      opacity: 0.45 !important;
+      cursor: not-allowed !important;
+      background: #f1f5f9 !important;
+      border-color: #e2e8f0 !important;
+      color: #94a3b8 !important;
+    }
+
+    /* Fixed 640px Table Height with Vertical Scroller matching Attendance Reports */
+    #payroll-view .rpt-table-scroll,
+    #subtab-leave-requests .log-table-wrapper,
+    #subtab-leave-balances .log-table-wrapper {
+      height: 640px !important;
+      max-height: 640px !important;
+      overflow-y: auto !important;
+      overflow-x: auto !important;
+    }
+    #subtab-leave-requests .log-table thead th,
+    #subtab-leave-balances .log-table thead th {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 4 !important;
+      background: #f2faff !important;
+    }
+
+    /* Uniform Edit Staff Modal & Log Overtime Modal Form Fields */
+    #editUserModal .form-control,
+    #editUserModal .form-select,
+    #editUserModal .app-camera-select,
+    #editUserModal .app-camera-select-trigger,
+    #editUserModal .custom-camera-select-trigger,
+    #addOvertimeModal .form-control:not(textarea),
+    #addOvertimeModal .form-select,
+    #addOvertimeModal .app-camera-select,
+    #addOvertimeModal .app-camera-select-trigger {
+      height: 38px !important;
+      min-height: 38px !important;
+      width: 100% !important;
+      border-radius: 10px !important;
+      font-size: 13px !important;
+      box-sizing: border-box !important;
+    }
+    #editUserModal .form-control,
+    #editUserModal .form-select,
+    #editUserModal .app-camera-select-trigger,
+    #editUserModal .custom-camera-select-trigger,
+    #addOvertimeModal .form-control:not(textarea),
+    #addOvertimeModal .form-select,
+    #addOvertimeModal .app-camera-select-trigger {
+      padding: 0 12px !important;
+      border: 1px solid #e3e8f5 !important;
+      background: #ffffff !important;
+      color: #151b25 !important;
+    }
+    #editUserModal .staff-phone-input-group {
+      display: flex !important;
+      align-items: stretch !important;
+      gap: 8px !important;
+      width: 100% !important;
+    }
+    #editUserModal .staff-phone-input-group .app-camera-select {
+      width: 120px !important;
+      min-width: 120px !important;
+      flex: 0 0 120px !important;
+    }
+    #editUserModal .staff-phone-input-group #editPhoneNational {
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+    }
+    #reports-view .rpt-dept {
+      cursor: pointer !important;
+    }
+    #reports-view .rpt-dept.is-selected {
+      border-color: #8b7bf7 !important;
+      box-shadow: 0 0 0 2px rgba(139, 123, 247, 0.25) !important;
+    }
   </style>
 </head>
   <body class="{% if not is_authenticated %}auth-required{% endif %}">
@@ -13821,7 +13972,7 @@ async function fetchMultiLiveDetections() {
             </label>
             <label id="holidayOtFixedWrap" class="ot-settings-field" for="holidayOtFixedAmount" style="display:none;">
               Extra per OT hour
-              <input id="holidayOtFixedAmount" class="form-control" type="number" min="0" max="100000" step="0.01" value="0" data-ot-validate="fixed" oninput="validateOvertimeSettingsLive()">
+              <input id="holidayOtFixedAmount" class="form-control" type="number" min="0" max="100000" step="0.01" value="0" data-ot-validate="fixed" oninput="if(this.value!==''&&Number(this.value)<0)this.value='0';if(this.value!==''&&Number(this.value)>100000)this.value='100000';validateOvertimeSettingsLive();">
               <span class="field-error" id="holidayOtFixedAmountError"></span>
             </label>
             <div class="ot-settings-actions">
@@ -13850,7 +14001,7 @@ async function fetchMultiLiveDetections() {
             </label>
             <label id="nonWorkingOtFixedWrap" class="ot-settings-field" for="nonWorkingDayOtFixedAmount" style="display:none;">
               Extra per OT hour
-              <input id="nonWorkingDayOtFixedAmount" class="form-control" type="number" min="0" max="100000" step="0.01" value="0" data-ot-validate="fixed" oninput="validateOvertimeSettingsLive()">
+              <input id="nonWorkingDayOtFixedAmount" class="form-control" type="number" min="0" max="100000" step="0.01" value="0" data-ot-validate="fixed" oninput="if(this.value!==''&&Number(this.value)<0)this.value='0';if(this.value!==''&&Number(this.value)>100000)this.value='100000';validateOvertimeSettingsLive();">
               <span class="field-error" id="nonWorkingDayOtFixedAmountError"></span>
             </label>
             <div class="ot-settings-actions">
@@ -15146,6 +15297,7 @@ async function fetchMultiLiveDetections() {
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+          <input type="month" id="leaveCompleteMonthFilter" class="form-control form-control-sm" style="width:148px; height:32px; font-size:0.8rem;" title="Filter requests by month" onchange="filterLeaveCompleteViewByMonth()">
           <span id="leaveCompletePeriod" style="background:#f3f0ff; color:#5847c8; border:1px solid #ddd6fe; padding:6px 12px; border-radius:20px; font-size:0.8rem; font-weight:700;"></span>
           <button type="button" class="modal-x-btn" onclick="closeLeaveCompleteView()" aria-label="Close leave details" title="Close"><i class="fa-solid fa-xmark"></i></button>
         </div>
@@ -19923,11 +20075,15 @@ async function fetchMultiLiveDetections() {
           if (customGroup) customGroup.style.display = 'flex';
           const sInput = document.getElementById('mainStartDate');
           const eInput = document.getElementById('mainEndDate');
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
           if (sInput && !sInput.value) {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
             sInput.value = `${year}-${month}-01`;
+          }
+          if (eInput && !eInput.value) {
+            eInput.value = `${year}-${month}-${day}`;
           }
           syncMainCustomEndDateConstraints();
           if (sInput?.value && eInput?.value && eInput.value >= sInput.value) {
@@ -20154,7 +20310,19 @@ async function fetchMultiLiveDetections() {
               const absText = dept.absent_days !== undefined ? `${dept.absent_days} Days` : `${dept.absent || 0} Absent`;
 
               const card = document.createElement('div');
-              card.className = 'rpt-dept';
+              const activeDept = document.getElementById('mainDeptFilter')?.value || 'all';
+              const isSelected = activeDept !== 'all' && activeDept.toLowerCase() === String(dept.department || '').toLowerCase();
+              card.className = 'rpt-dept' + (isSelected ? ' is-selected' : '');
+              card.title = isSelected ? 'Click to show all departments' : `Filter table by ${dept.department}`;
+              card.onclick = function() {
+                const deptSelect = document.getElementById('mainDeptFilter');
+                if (!deptSelect) return;
+                const nextVal = isSelected ? 'all' : dept.department;
+                deptSelect.value = nextVal;
+                if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(deptSelect);
+                mainReportPage = 1;
+                fetchMainReport();
+              };
               card.innerHTML = `
                 <div class="rpt-dept-top">
                   <span class="rpt-dept-name" title="${dept.department}">${dept.department}</span>
@@ -20500,7 +20668,16 @@ async function fetchMultiLiveDetections() {
             `;
 
             const actionCell = tr.lastElementChild;
-            if (allowManualMark || allowLeaveHolidayManualMark || isLeaveToday) {
+            if (currentMainFilterDate === 'yesterday') {
+              const viewBtn = document.createElement('button');
+              viewBtn.style.cssText = 'padding:4px 10px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #cbd5e1; color:#334155; background:#ffffff; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
+              viewBtn.innerHTML = '<i class="fa-solid fa-eye"></i> View Details';
+              viewBtn.title = 'View attendance details for this employee';
+              viewBtn.addEventListener('mouseenter', function() { this.style.background = '#f8fafc'; this.style.borderColor = '#8b7bf7'; });
+              viewBtn.addEventListener('mouseleave', function() { this.style.background = '#ffffff'; this.style.borderColor = '#cbd5e1'; });
+              viewBtn.addEventListener('click', function() { openMainCompleteView(r.user_id); });
+              actionCell.appendChild(viewBtn);
+            } else if (allowManualMark || allowLeaveHolidayManualMark || isLeaveToday) {
               const btn = document.createElement('button');
               btn.style.cssText = 'padding:4px 10px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #16a34a; color:#15803d; background:#f0fdf4; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
               btn.innerHTML = (allowLeaveHolidayManualMark || (isLeaveToday && isPublicHolidayDay))
@@ -24370,8 +24547,8 @@ async function fetchMultiLiveDetections() {
           showAppToast('Select a holiday first.', 'error');
           return;
         }
-        if (!Number.isFinite(premium) || premium < 0 || premium > 1000) {
-          showAppToast('Enter a holiday premium between 0 and 1000 percent.', 'error');
+        if (!Number.isFinite(premium) || premium < 0 || premium > 100) {
+          showAppToast('Enter a holiday premium between 0 and 100 percent.', 'error');
           return;
         }
         try {
@@ -24384,8 +24561,11 @@ async function fetchMultiLiveDetections() {
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save holiday premium');
           showAppToast(result.message || 'Holiday OT premium saved.', 'success');
           await loadOvertimePremiumRules();
-          if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
-            await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
+          const activePayrollMonth = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+          if (activePayrollMonth && (!currentPayrollPreview || !currentPayrollPreview.is_finalized) && typeof loadMonthlyPayroll === 'function') {
+            await loadMonthlyPayroll(activePayrollMonth, true);
+          } else {
+            currentPayrollPreview = null;
           }
         } catch (error) {
           showAppToast(error.message || 'Failed to save holiday premium.', 'error');
@@ -24399,8 +24579,11 @@ async function fetchMultiLiveDetections() {
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to reset holiday premium');
           showAppToast(result.message || 'Holiday premium reset to default.', 'success');
           await loadOvertimePremiumRules();
-          if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
-            await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
+          const activePayrollMonth = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+          if (activePayrollMonth && (!currentPayrollPreview || !currentPayrollPreview.is_finalized) && typeof loadMonthlyPayroll === 'function') {
+            await loadMonthlyPayroll(activePayrollMonth, true);
+          } else {
+            currentPayrollPreview = null;
           }
         } catch (error) {
           showAppToast(error.message || 'Failed to reset holiday premium.', 'error');
@@ -24659,8 +24842,11 @@ async function fetchMultiLiveDetections() {
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save overtime rule');
           showAppToast(result.message || 'Overtime rule saved and activated.', 'success');
           await loadOvertimePremiumRules();
-          if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
-            await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
+          const activePayrollMonth = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+          if (activePayrollMonth && (!currentPayrollPreview || !currentPayrollPreview.is_finalized) && typeof loadMonthlyPayroll === 'function') {
+            await loadMonthlyPayroll(activePayrollMonth, true);
+          } else {
+            currentPayrollPreview = null;
           }
         } catch (error) {
           showAppToast(error.message, 'error');
@@ -24678,8 +24864,11 @@ async function fetchMultiLiveDetections() {
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to update overtime rule');
           showAppToast(result.message || 'Overtime rule updated.', 'success');
           await loadOvertimePremiumRules();
-          if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
-            await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
+          const activePayrollMonth = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+          if (activePayrollMonth && (!currentPayrollPreview || !currentPayrollPreview.is_finalized) && typeof loadMonthlyPayroll === 'function') {
+            await loadMonthlyPayroll(activePayrollMonth, true);
+          } else {
+            currentPayrollPreview = null;
           }
         } catch (error) {
           showAppToast(error.message, 'error');
@@ -24694,8 +24883,11 @@ async function fetchMultiLiveDetections() {
           if (!response.ok || !result.success) throw new Error(result.error || 'Failed to remove overtime rule');
           showAppToast(result.message || 'Overtime rule removed.', 'success');
           await loadOvertimePremiumRules();
-          if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
-            await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
+          const activePayrollMonth = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+          if (activePayrollMonth && (!currentPayrollPreview || !currentPayrollPreview.is_finalized) && typeof loadMonthlyPayroll === 'function') {
+            await loadMonthlyPayroll(activePayrollMonth, true);
+          } else {
+            currentPayrollPreview = null;
           }
         } catch (error) {
           showAppToast(error.message, 'error');
@@ -26048,8 +26240,11 @@ async function fetchMultiLiveDetections() {
           document.getElementById('payLineAmount').value = '';
           document.getElementById('payLinePercent').value = '';
           await loadPayLineDuplicates();
-          if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
-            await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
+          const activePayrollMonth = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+          if (activePayrollMonth && (!currentPayrollPreview || !currentPayrollPreview.is_finalized) && typeof loadMonthlyPayroll === 'function') {
+            await loadMonthlyPayroll(activePayrollMonth, true);
+          } else {
+            currentPayrollPreview = null;
           }
         }
         if (errors.length > 0) {
@@ -26346,7 +26541,10 @@ async function fetchMultiLiveDetections() {
 
       async function switchToPayableDays() {
         const attendancePay = document.getElementById('payrollAttendancePayMode');
-        if (attendancePay) attendancePay.value = 'payable_days';
+        if (attendancePay) {
+          attendancePay.value = 'payable_days';
+          if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(attendancePay);
+        }
         const deduct = document.getElementById('deductUnpaidLeaveToggle')?.checked;
         await savePayrollSettings(Boolean(deduct));
         applyPayableDaysAbsenceUi('payable_days');
@@ -26531,8 +26729,11 @@ async function fetchMultiLiveDetections() {
           if (activeMonth && currentPayrollPreview && !currentPayrollPreview.is_finalized && typeof loadMonthlyPayroll === 'function') {
             await loadMonthlyPayroll(activeMonth, true);
           }
-          if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
-            await loadMonthlyPayroll(currentPayrollPreview.payroll_month, true);
+          const activePayrollMonth = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+          if (activePayrollMonth && (!currentPayrollPreview || !currentPayrollPreview.is_finalized) && typeof loadMonthlyPayroll === 'function') {
+            await loadMonthlyPayroll(activePayrollMonth, true);
+          } else {
+            currentPayrollPreview = null;
           }
           return result;
         } catch (error) {
@@ -30115,8 +30316,55 @@ async function fetchMultiLiveDetections() {
     }
     window.openLeaveCompleteView = openLeaveCompleteView;
 
-    function openLeavesCompleteViewForRequests(requests) {
+    function filterLeaveCompleteViewByMonth() {
+      const monthInput = document.getElementById('leaveCompleteMonthFilter');
+      const selectedMonth = monthInput ? String(monthInput.value || '').trim() : '';
+      const source = Array.isArray(window._leaveCompleteSourceRequests) ? window._leaveCompleteSourceRequests : [];
+      if (!source.length) return;
+      if (!selectedMonth) {
+        openLeavesCompleteViewForRequests(source, true);
+        return;
+      }
+      const filtered = source.filter(req => {
+        const s = String(req.start_date || '').slice(0, 7);
+        const e = String(req.end_date || '').slice(0, 7);
+        return s === selectedMonth || e === selectedMonth || (s && e && s <= selectedMonth && selectedMonth <= e);
+      });
+      if (!filtered.length) {
+        const tbody = document.getElementById('leaveCompleteAllocationBody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted p-3">No leave requests in ${selectedMonth}.</td></tr>`;
+        const summary = document.getElementById('leaveCompleteAllocationSummary');
+        if (summary) summary.textContent = `No leave allocations found for ${selectedMonth}.`;
+        ['leaveCompleteRequestedDays', 'leaveCompletePaidDays', 'leaveCompleteUnpaidDays', 'leaveCompleteQuotaDays'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = '0';
+        });
+        return;
+      }
+      openLeavesCompleteViewForRequests(filtered, true);
+    }
+    window.filterLeaveCompleteViewByMonth = filterLeaveCompleteViewByMonth;
+
+    function openLeavesCompleteViewForRequests(requests, fromMonthFilter = false) {
       if (!requests || !requests.length) return;
+      if (!fromMonthFilter) {
+        window._leaveCompleteSourceRequests = requests.slice();
+        const monthInput = document.getElementById('leaveCompleteMonthFilter');
+        if (monthInput) {
+          const barMonth = document.getElementById('leaveMonthFilter')?.value || '';
+          const reqMonth = String(requests[0]?.start_date || '').slice(0, 7);
+          const targetMonth = barMonth || reqMonth;
+          monthInput.value = targetMonth;
+          if (targetMonth && requests.length > 1) {
+            const monthFiltered = requests.filter(req => {
+              const s = String(req.start_date || '').slice(0, 7);
+              const e = String(req.end_date || '').slice(0, 7);
+              return s === targetMonth || e === targetMonth || (s && e && s <= targetMonth && targetMonth <= e);
+            });
+            if (monthFiltered.length) requests = monthFiltered;
+          }
+        }
+      }
       const statusFilter = document.getElementById('leaveStatusFilter')?.value || 'all';
       const firstReq = requests[0];
       window._leaveCompleteUserId = firstReq.user_id;
@@ -32919,6 +33167,11 @@ async function fetchMultiLiveDetections() {
       if (m) m.value = '';
       upgradeOtFilterSelects();
       filterOvertimeTable();
+    }
+
+    function closeAddOvertimeModal() {
+      const modal = document.getElementById('addOvertimeModal');
+      if (modal) modal.style.display = 'none';
     }
 
     async function openAddOvertimeModal() {

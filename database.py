@@ -14502,14 +14502,31 @@ def save_employee_component(
                     'affected_months': affected,
                 }
         try:
-            if not excluded and scope == 'employee' and uid:
-                cursor.execute(
-                    """DELETE FROM payroll_employee_components
-                       WHERE component_type_id = ? AND excluded = 1
-                         AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                         AND (user_id = ? OR scope_id = ?)""",
-                    (type_id, org, uid, str(uid)),
-                )
+            if not excluded:
+                if scope == 'employee' and uid:
+                    cursor.execute(
+                        """DELETE FROM payroll_employee_components
+                           WHERE component_type_id = ? AND excluded = 1
+                             AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                             AND (user_id = ? OR scope_id = ?)""",
+                        (type_id, org, uid, str(uid)),
+                    )
+                elif scope == 'org':
+                    cursor.execute(
+                        """DELETE FROM payroll_employee_components
+                           WHERE component_type_id = ? AND excluded = 1
+                             AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)""",
+                        (type_id, org),
+                    )
+                elif scope in ('department', 'designation', 'shift', 'branch'):
+                    sid_val = str(scope_id or '').strip()
+                    cursor.execute(
+                        """DELETE FROM payroll_employee_components
+                           WHERE component_type_id = ? AND excluded = 1
+                             AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                             AND scope_type = ? AND LOWER(COALESCE(scope_id, '')) = LOWER(?)""",
+                        (type_id, org, scope, sid_val),
+                    )
             cursor.execute(
                 """INSERT INTO payroll_employee_components (
                        organization_id, branch_id, user_id, component_type_id, amount, percent,
@@ -14735,78 +14752,97 @@ def bulk_remove_employee_components(
                             (org, branch, uid, tid, str(uid)),
                         )
                         total_deleted += 1
-        elif scope == 'department':
-            dept_name = str(scope_id or '').strip()
-            cursor.execute(
-                f"""DELETE FROM payroll_employee_components
-                    WHERE component_type_id IN ({placeholders})
-                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                      AND scope_type = 'department'
-                      AND (LOWER(scope_id) = LOWER(?) OR scope_id = ?)""",
-                (*clean_ids, org, dept_name, dept_name),
-            )
-            total_deleted += cursor.rowcount
-            cursor.execute(
-                f"""DELETE FROM payroll_employee_components
-                    WHERE component_type_id IN ({placeholders})
-                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                      AND COALESCE(scope_type, 'employee') = 'employee'
-                      AND user_id IN (
-                          SELECT id FROM users
-                          WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                            AND LOWER(department) = LOWER(?)
-                      )""",
-                (*clean_ids, org, org, dept_name),
-            )
-            total_deleted += cursor.rowcount
-        elif scope == 'designation':
-            desig_name = str(scope_id or '').strip()
-            cursor.execute(
-                f"""DELETE FROM payroll_employee_components
-                    WHERE component_type_id IN ({placeholders})
-                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                      AND scope_type = 'designation'
-                      AND (LOWER(scope_id) = LOWER(?) OR scope_id = ?)""",
-                (*clean_ids, org, desig_name, desig_name),
-            )
-            total_deleted += cursor.rowcount
-            cursor.execute(
-                f"""DELETE FROM payroll_employee_components
-                    WHERE component_type_id IN ({placeholders})
-                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                      AND COALESCE(scope_type, 'employee') = 'employee'
-                      AND user_id IN (
-                          SELECT id FROM users
-                          WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                            AND (LOWER(position) = LOWER(?) OR LOWER(notes) = LOWER(?))
-                      )""",
-                (*clean_ids, org, org, desig_name, desig_name),
-            )
-            total_deleted += cursor.rowcount
-        elif scope == 'shift':
-            sid = str(scope_id or '').strip()
-            cursor.execute(
-                f"""DELETE FROM payroll_employee_components
-                    WHERE component_type_id IN ({placeholders})
-                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                      AND scope_type = 'shift'
-                      AND (scope_id = ? OR CAST(scope_id AS TEXT) = ?)""",
-                (*clean_ids, org, sid, sid),
-            )
-            total_deleted += cursor.rowcount
-            cursor.execute(
-                f"""DELETE FROM payroll_employee_components
-                    WHERE component_type_id IN ({placeholders})
-                      AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                      AND COALESCE(scope_type, 'employee') = 'employee'
-                      AND user_id IN (
-                          SELECT id FROM users
-                          WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                            AND CAST(shift_id AS TEXT) = ?
-                      )""",
-                (*clean_ids, org, org, sid),
-            )
-            total_deleted += cursor.rowcount
+        elif scope in ('department', 'designation', 'shift', 'branch'):
+            sid_val = str(scope_id or '').strip()
+            if scope == 'department':
+                cursor.execute(
+                    f"""DELETE FROM payroll_employee_components
+                        WHERE component_type_id IN ({placeholders})
+                          AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                          AND scope_type = 'department'
+                          AND (LOWER(scope_id) = LOWER(?) OR scope_id = ?)""",
+                    (*clean_ids, org, sid_val, sid_val),
+                )
+                total_deleted += cursor.rowcount
+                cursor.execute(
+                    f"""DELETE FROM payroll_employee_components
+                        WHERE component_type_id IN ({placeholders})
+                          AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                          AND COALESCE(scope_type, 'employee') = 'employee'
+                          AND user_id IN (
+                              SELECT id FROM users
+                              WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                                AND LOWER(department) = LOWER(?)
+                          )""",
+                    (*clean_ids, org, org, sid_val),
+                )
+                total_deleted += cursor.rowcount
+            elif scope == 'designation':
+                cursor.execute(
+                    f"""DELETE FROM payroll_employee_components
+                        WHERE component_type_id IN ({placeholders})
+                          AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                          AND scope_type = 'designation'
+                          AND (LOWER(scope_id) = LOWER(?) OR scope_id = ?)""",
+                    (*clean_ids, org, sid_val, sid_val),
+                )
+                total_deleted += cursor.rowcount
+                cursor.execute(
+                    f"""DELETE FROM payroll_employee_components
+                        WHERE component_type_id IN ({placeholders})
+                          AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                          AND COALESCE(scope_type, 'employee') = 'employee'
+                          AND user_id IN (
+                              SELECT id FROM users
+                              WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                                AND (LOWER(position) = LOWER(?) OR LOWER(notes) = LOWER(?))
+                          )""",
+                    (*clean_ids, org, org, sid_val, sid_val),
+                )
+                total_deleted += cursor.rowcount
+            elif scope == 'shift':
+                cursor.execute(
+                    f"""DELETE FROM payroll_employee_components
+                        WHERE component_type_id IN ({placeholders})
+                          AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                          AND scope_type = 'shift'
+                          AND scope_id = ?""",
+                    (*clean_ids, org, sid_val),
+                )
+                total_deleted += cursor.rowcount
+            elif scope == 'branch':
+                cursor.execute(
+                    f"""DELETE FROM payroll_employee_components
+                        WHERE component_type_id IN ({placeholders})
+                          AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                          AND scope_type = 'branch'
+                          AND scope_id = ?""",
+                    (*clean_ids, org, sid_val),
+                )
+                total_deleted += cursor.rowcount
+            # If any of these items are still inherited from a broader scope (e.g. org/branch/department),
+            # insert a scope-level exclusion row so resolve_named_assignments() omits them from payroll & payslip.
+            if sid_val:
+                for tid in clean_ids:
+                    has_broader = cursor.execute(
+                        """SELECT 1 FROM payroll_employee_components
+                           WHERE component_type_id = ?
+                             AND active = 1 AND COALESCE(excluded, 0) = 0
+                             AND COALESCE(scope_type, 'employee') IN ('org', 'branch', 'department')
+                             AND COALESCE(scope_type, 'employee') != ?
+                             AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
+                           LIMIT 1""",
+                        (tid, scope, org),
+                    ).fetchone()
+                    if has_broader:
+                        cursor.execute(
+                            """INSERT INTO payroll_employee_components (
+                                   organization_id, branch_id, user_id, component_type_id, amount, percent,
+                                   effective_from, effective_to, scope_type, scope_id, excluded, active
+                               ) VALUES (?, ?, NULL, ?, 0, 0, '1900-01-01', NULL, ?, ?, 1, 1)""",
+                            (org, branch, tid, scope, sid_val),
+                        )
+                        total_deleted += 1
         conn.commit()
         return total_deleted
 
