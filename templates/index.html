@@ -33400,6 +33400,11 @@ async function fetchMultiLiveDetections() {
       validateOtFormLive();
     }
 
+    function onOtEmployeeChange() {
+      validateOtFormLive();
+      updateOtModalPreview();
+    }
+
     function onOtHoursInput() {
       validateOtFormLive();
       updateOtModalPreview();
