@@ -3153,6 +3153,10 @@ def api_edit_attendance():
             return jsonify({'error': 'User not found or unauthorized'}), 404
 
         target_date = data.get('date') or data.get('target_date') or datetime.now().date().isoformat()
+        if target_date is not None and str(target_date).strip():
+            td_norm = str(target_date).strip()[:10]
+            if td_norm.lower() != 'today' and td_norm != datetime.now().strftime('%Y-%m-%d'):
+                return jsonify({'success': False, 'error': 'Attendance can only be marked for today. Previous or future days cannot be marked.'}), 400
         status = str(data.get('status') or '').strip().lower()
         check_in_time = data.get('check_in_time') or data.get('check_in')
         check_out_time = data.get('check_out_time') or data.get('check_out')
@@ -3219,6 +3223,10 @@ def api_bulk_mark_attendance():
         data = request.get_json(silent=True) or {}
         action = data.get('action')
         target_date = data.get('date')
+        if target_date is not None and str(target_date).strip():
+            td_norm = str(target_date).strip()[:10]
+            if td_norm.lower() != 'today' and td_norm != datetime.now().strftime('%Y-%m-%d'):
+                return jsonify({'success': False, 'error': 'Attendance can only be marked for today. Previous or future days cannot be marked.'}), 400
         user_ids_list = data.get('user_ids')
 
         if action not in ('present', 'absent'):

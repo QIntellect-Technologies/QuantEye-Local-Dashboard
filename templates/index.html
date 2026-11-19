@@ -20915,6 +20915,13 @@ async function fetchMultiLiveDetections() {
       }
 
       async function openManualAttendanceForCorrection(userId, targetDate, userName, currentIn, currentOut, shiftId) {
+        const now = new Date();
+        const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const normDate = String(targetDate || '').trim().slice(0, 10);
+        if (normDate && normDate.toLowerCase() !== 'today' && normDate !== todayIso) {
+          showAppToast('Attendance can only be marked for today. Previous days cannot be marked.', 'error');
+          return;
+        }
         document.getElementById('manualAttUserId').value = userId;
         document.getElementById('manualAttDate').value = targetDate && targetDate !== 'today' && targetDate !== 'Today' ? targetDate : '';
         document.getElementById('manualAttNotes').value = '';
@@ -21046,6 +21053,13 @@ async function fetchMultiLiveDetections() {
       }
 
       async function markMainUserAbsent(userId, targetDate, userName, btnElement) {
+        const now = new Date();
+        const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const normDate = String(targetDate || '').trim().slice(0, 10);
+        if (normDate && normDate.toLowerCase() !== 'today' && normDate !== todayIso) {
+          showAppToast('Attendance can only be marked for today. Previous days cannot be marked.', 'error');
+          return;
+        }
         const confirmMsg = `Are you sure you want to mark ${userName || 'this employee'} absent for ${targetDate || 'today'}?\n\nAny existing attendance punch records for this day will be cleared and the employee will be recorded as absent.`;
         if (!(await appConfirm(confirmMsg, 'Please confirm', { danger: true, ok: 'Mark Absent' }))) {
           return;
