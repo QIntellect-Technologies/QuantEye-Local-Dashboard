@@ -33581,10 +33581,30 @@ async function fetchMultiLiveDetections() {
       let hasRate = baseRate > 0;
       let decPlaces = Number.isFinite(Number(window._payrollDecimalPlaces)) ? Number(window._payrollDecimalPlaces) : 2;
       let currencyCode = window._payrollCurrencyCode || 'PKR';
+      const hours = parseFloat(hoursInput?.value || 0) || 0;
+      const formatMoney = (val, dp = decPlaces, cur = currencyCode) => `${cur} ${Number(val || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+
+      // Show immediate synchronous preview before awaiting the date-rule API
+      if (userId) {
+        const immFactor = Math.pow(10, decPlaces);
+        const immAmount = Math.round(hours * baseRate * immFactor) / immFactor;
+        if (baseRate > 0) {
+          if (baseRateDisplay) baseRateDisplay.textContent = `${formatMoney(baseRate)} / hr`;
+          if (rateDisplay) rateDisplay.textContent = `${formatMoney(baseRate)} / hr`;
+          if (amountDisplay) amountDisplay.textContent = formatMoney(immAmount);
+          if (premiumNote && overtimeDate) premiumNote.textContent = 'Checking holiday or Off Day multiplier...';
+        }
+      }
 
       if (userId && overtimeDate) {
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timerId = controller ? setTimeout(() => controller.abort(), 4000) : null;
         try {
-          const response = await fetch(`/api/overtime/rate-preview?user_id=${encodeURIComponent(userId)}&ot_date=${encodeURIComponent(overtimeDate)}`, { cache: 'no-store' });
+          const apiBase = (typeof API_BASE !== 'undefined' && API_BASE) ? API_BASE : '/api';
+          const response = await fetch(`${apiBase}/overtime/rate-preview?user_id=${encodeURIComponent(userId)}&ot_date=${encodeURIComponent(overtimeDate)}`, {
+            cache: 'no-store',
+            signal: controller ? controller.signal : undefined
+          });
           const preview = await response.json();
           if (!response.ok) throw new Error(preview.error || 'Rate preview unavailable');
           if (requestSequence !== otRatePreviewSequence) return;
@@ -33602,14 +33622,14 @@ async function fetchMultiLiveDetections() {
           if (preview.currency_code) currencyCode = String(preview.currency_code);
         } catch (error) {
           previewFailed = true;
+        } finally {
+          if (timerId) clearTimeout(timerId);
         }
       }
 
       if (requestSequence !== otRatePreviewSequence) return;
-      const hours = parseFloat(hoursInput?.value || 0) || 0;
       const factor = Math.pow(10, decPlaces);
       const amount = Math.round(hours * effectiveRate * factor) / factor;
-      const formatMoney = (val) => `${currencyCode} ${Number(val || 0).toLocaleString(undefined, { minimumFractionDigits: decPlaces, maximumFractionDigits: decPlaces })}`;
       const formatRate = rate => `${formatMoney(rate)} / hr`;
       const noRateConfigured = Boolean(userId && !previewFailed && !hasRate && baseRate <= 0 && effectiveRate <= 0);
       if (noRateConfigured) {
