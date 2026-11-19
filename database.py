@@ -14863,7 +14863,7 @@ def bulk_remove_employee_components(
                             """INSERT INTO payroll_employee_components (
                                    organization_id, branch_id, user_id, component_type_id, amount, percent,
                                    effective_from, effective_to, scope_type, scope_id, excluded, active
-                               ) VALUES (?, ?, NULL, ?, 0, 0, '1900-01-01', NULL, ?, ?, 1, 1)""",
+                               ) VALUES (?, ?, 0, ?, 0, 0, '1900-01-01', NULL, ?, ?, 1, 1)""",
                             (org, branch, tid, scope, sid_val),
                         )
                         total_deleted += 1
@@ -14881,86 +14881,72 @@ def get_applied_component_type_ids(
     org, branch = _tenant_ids(organization_id, branch_id)
     scope = str(scope_type or 'org').strip().lower()
     with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        if scope == 'org':
-            rows = cursor.execute(
-                """SELECT DISTINCT component_type_id FROM payroll_employee_components
-                   WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                     AND active = 1 AND excluded = 0""",
+        all_assignments = [
+            dict(r) for r in cursor.execute(
+                """SELECT * FROM payroll_employee_components
+                   WHERE active = 1
+                     AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)""",
                 (org,),
             ).fetchall()
-        elif scope == 'employee':
+        ]
+        if not all_assignments:
+            return []
+
+        user_where = "COALESCE(active, 1) = 1 AND (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)"
+        params: List[Any] = [org]
+        if scope == 'employee':
             uid = int(user_id or (scope_id if str(scope_id).isdigit() else 0))
-            rows = cursor.execute(
-                """SELECT DISTINCT component_type_id FROM payroll_employee_components
-                   WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                     AND active = 1 AND excluded = 0
-                     AND (
-                         (COALESCE(scope_type, 'employee') = 'employee' AND user_id = ?)
-                         OR (scope_type = 'employee' AND (scope_id = ? OR CAST(scope_id AS TEXT) = ?))
-                     )""",
-                (org, uid, str(uid), str(uid)),
-            ).fetchall()
+            user_where += " AND id = ?"
+            params.append(uid)
         elif scope == 'department':
             dept_name = str(scope_id or '').strip()
-            rows = cursor.execute(
-                """SELECT DISTINCT component_type_id FROM payroll_employee_components
-                   WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                     AND active = 1 AND excluded = 0
-                     AND (
-                         (scope_type = 'department' AND (LOWER(scope_id) = LOWER(?) OR scope_id = ?))
-                         OR (
-                             COALESCE(scope_type, 'employee') = 'employee'
-                             AND user_id IN (
-                                 SELECT id FROM users
-                                 WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                                   AND LOWER(department) = LOWER(?)
-                             )
-                         )
-                     )""",
-                (org, dept_name, dept_name, org, dept_name),
-            ).fetchall()
+            user_where += " AND LOWER(TRIM(COALESCE(department, ''))) = LOWER(?)"
+            params.append(dept_name)
         elif scope == 'designation':
             desig_name = str(scope_id or '').strip()
-            rows = cursor.execute(
-                """SELECT DISTINCT component_type_id FROM payroll_employee_components
-                   WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                     AND active = 1 AND excluded = 0
-                     AND (
-                         (scope_type = 'designation' AND (LOWER(scope_id) = LOWER(?) OR scope_id = ?))
-                         OR (
-                             COALESCE(scope_type, 'employee') = 'employee'
-                             AND user_id IN (
-                                 SELECT id FROM users
-                                 WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                                   AND (LOWER(position) = LOWER(?) OR LOWER(notes) = LOWER(?))
-                             )
-                         )
-                     )""",
-                (org, desig_name, desig_name, org, desig_name, desig_name),
-            ).fetchall()
+            user_where += " AND (LOWER(TRIM(COALESCE(position, ''))) = LOWER(?) OR LOWER(TRIM(COALESCE(notes, ''))) = LOWER(?))"
+            params.extend([desig_name, desig_name])
         elif scope == 'shift':
             sid = str(scope_id or '').strip()
-            rows = cursor.execute(
-                """SELECT DISTINCT component_type_id FROM payroll_employee_components
-                   WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                     AND active = 1 AND excluded = 0
-                     AND (
-                         (scope_type = 'shift' AND (scope_id = ? OR CAST(scope_id AS TEXT) = ?))
-                         OR (
-                             COALESCE(scope_type, 'employee') = 'employee'
-                             AND user_id IN (
-                                 SELECT id FROM users
-                                 WHERE (COALESCE(organization_id, 'DEFAULT_ORG') = ? OR organization_id IS NULL)
-                                   AND CAST(shift_id AS TEXT) = ?
-                             )
-                         )
-                     )""",
-                (org, sid, sid, org, sid),
-            ).fetchall()
-        else:
-            rows = []
-        return [int(r[0]) for r in rows if r[0]]
+            user_where += " AND CAST(COALESCE(shift_id, '') AS TEXT) = ?"
+            params.append(sid)
+        elif scope == 'branch':
+            br = str(scope_id or branch).strip()
+            user_where += " AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?"
+            params.append(br)
+
+        users = cursor.execute(
+            f"""SELECT id AS employee_id, department, COALESCE(NULLIF(TRIM(position), ''), NULLIF(TRIM(notes), ''), '') AS designation, shift_id, COALESCE(branch_id, 'DEFAULT_BRANCH') AS branch_id
+                FROM users
+                WHERE {user_where}""",
+            params,
+        ).fetchall()
+
+        from payroll_extensions import resolve_named_assignments
+        today_dt = date.today()
+        applied_ids = set()
+        for u in users:
+            emp = dict(u)
+            resolved = resolve_named_assignments(all_assignments, emp, org, emp.get('branch_id') or branch, today_dt)
+            for item in resolved:
+                tid = int(item.get('component_type_id') or 0)
+                if tid > 0:
+                    applied_ids.add(tid)
+
+        # Also include direct scope-level assignments if no employees currently match
+        for row in all_assignments:
+            if int(row.get('excluded') or 0):
+                continue
+            r_scope = str(row.get('scope_type') or 'employee').strip().lower()
+            r_sid = str(row.get('scope_id') or '').strip().lower()
+            if scope == 'org' and r_scope == 'org':
+                applied_ids.add(int(row.get('component_type_id') or 0))
+            elif scope in ('department', 'designation', 'shift', 'branch') and r_scope == scope and r_sid == str(scope_id or '').strip().lower():
+                applied_ids.add(int(row.get('component_type_id') or 0))
+
+        return sorted(tid for tid in applied_ids if tid > 0)
 
 def get_overtime_premium_rules(
     organization_id: Optional[str] = None,
@@ -15970,9 +15956,18 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         present_statuses = {'present', 'checked_out', 'late'}
         off_day_dates: List[str] = []
         for day in eligible_records:
-            if day.get('scheduled_workday'):
+            is_holiday_or_off = (
+                (not day.get('scheduled_workday'))
+                or bool(day.get('is_public_holiday'))
+                or (str(day.get('calendar_override') or '').strip().lower() == 'holiday')
+                or (str(day.get('day_type_normalized') or '').strip().lower() in ('public_holiday', 'rest_day'))
+            )
+            if not is_holiday_or_off:
                 continue
-            if str(day.get('status') or '') not in present_statuses:
+            st_lower = str(day.get('status') or '').strip().lower()
+            first_seen_str = str(day.get('first_seen') or '').strip().lower()
+            has_real_punch = bool(first_seen_str) and first_seen_str not in ('-', '--', '--:--', 'none', 'null', 'n/a')
+            if st_lower not in present_statuses and not has_real_punch:
                 continue
             if str(day.get('date') or '') in ot_dates:
                 continue

@@ -164,9 +164,14 @@ def overtime_entry_pay(
     if day_type == "holiday":
         if holiday and holiday.get("overtime_premium_percent") is not None:
             return _percent(holiday.get("overtime_premium_percent") or 0.0)
-        if not cfg.get("holiday_ot_premium_active"):
-            return _line(rate, 0.0)
         mode = str(cfg.get("holiday_ot_pay_mode") or "percent").strip().lower()
+        has_configured_extra = (
+            (mode == "multiplier" and float(cfg.get("holiday_ot_multiplier") or 1.0) > 1.0)
+            or (mode == "fixed_hour" and float(cfg.get("holiday_ot_fixed_amount") or 0.0) > 0.0)
+            or (mode == "percent" and float(cfg.get("holiday_ot_premium_percent") or 0.0) > 0.0)
+        )
+        if not cfg.get("holiday_ot_premium_active") and not has_configured_extra:
+            return _line(rate, 0.0)
         if mode == "multiplier":
             factor = float(cfg.get("holiday_ot_multiplier") or 1.0)
             return _line(rate * factor, (factor - 1.0) * 100.0)
@@ -177,9 +182,14 @@ def overtime_entry_pay(
         return _percent(cfg.get("holiday_ot_premium_percent") or 0.0)
 
     if day_type == "non_working_day":
-        if not cfg.get("non_working_day_ot_premium_active"):
-            return _line(rate, 0.0)
         mode = str(cfg.get("non_working_day_ot_pay_mode") or "percent").strip().lower()
+        has_configured_extra = (
+            (mode == "multiplier" and float(cfg.get("non_working_day_ot_multiplier") or 1.0) > 1.0)
+            or (mode == "fixed_hour" and float(cfg.get("non_working_day_ot_fixed_amount") or 0.0) > 0.0)
+            or (mode == "percent" and float(cfg.get("non_working_day_ot_premium_percent") or 0.0) > 0.0)
+        )
+        if not cfg.get("non_working_day_ot_premium_active") and not has_configured_extra:
+            return _line(rate, 0.0)
         if mode == "multiplier":
             factor = float(cfg.get("non_working_day_ot_multiplier") or 1.0)
             return _line(rate * factor, (factor - 1.0) * 100.0)

@@ -9849,11 +9849,11 @@
       color: #94a3b8 !important;
     }
 
-    /* Fixed 640px Table Height with Vertical Scroller matching Attendance Reports */
+    /* Fixed 640px max Table Height (shrinks when fewer rows) with Vertical Scroller matching Attendance Reports */
     #payroll-view .rpt-table-scroll,
     #subtab-leave-requests .log-table-wrapper,
     #subtab-leave-balances .log-table-wrapper {
-      height: 640px !important;
+      height: auto !important;
       max-height: 640px !important;
       overflow-y: auto !important;
       overflow-x: auto !important;
@@ -11606,12 +11606,9 @@ async function fetchMultiLiveDetections() {
         <span style="font-size:12px; font-weight:600; color:#b91c1c; text-decoration:underline;">Review issues</span>
       </div>
 
-      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
-        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px;">
-          <span id="payrollStateBadge" class="badge bg-secondary-subtle text-secondary" style="display:none; padding:6px 14px; border-radius:9999px; font-weight:700; font-size:12px; letter-spacing:0.02em;">Not loaded</span>
-        </div>
-        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
-          <button id="calculatePayrollButton" type="button" onclick="loadMonthlyPayroll(undefined, true)" class="rpt-btn" style="height:36px;" title="Calculate Payroll">
+      <div style="display:flex; align-items:center; justify-content:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+        <span id="payrollStateBadge" class="badge bg-secondary-subtle text-secondary" style="display:none !important;">Not loaded</span>
+        <button id="calculatePayrollButton" type="button" onclick="loadMonthlyPayroll(undefined, true)" class="rpt-btn" style="height:36px;" title="Calculate Payroll">
             <i class="fa-solid fa-calculator"></i><span>Recalculate Payroll</span>
           </button>
           <button id="manageSalaryPackagesButton" type="button" onclick="openSalaryConfigFromPayroll()" class="rpt-btn rpt-btn-light" style="height:36px;" title="Configure Employee Salary Packages">
@@ -11630,7 +11627,6 @@ async function fetchMultiLiveDetections() {
           <button id="finalizePayrollToolbarButton" type="button" onclick="finalizeMonthlyPayroll()" class="btn btn-primary" style="height:36px; min-height:36px; background:#0f766e; border-color:#0f766e; font-weight:700; border-radius:8px; padding:0 16px;" disabled>
             <i class="fa-solid fa-lock me-1"></i> Finalize
           </button>
-        </div>
       </div>
 
       <section class="rpt-rail payroll-rpt-rail" aria-label="Payroll summary">
@@ -12260,21 +12256,26 @@ async function fetchMultiLiveDetections() {
 
     <!-- ================= PAGE: MOBILE APP ================= -->
     <div id="mobile-app-view" class="page-view">
-      <div class="page-header">
-        <div class="page-header-text">
-          <h1><i class="fa-solid fa-mobile-screen" aria-hidden="true" style="color:#0d9488;"></i> Mobile App</h1>
-          <p class="page-subtitle">Employees open one page on their phone, log in, and see only their own attendance.</p>
+      <section class="rpt-hero">
+        <div class="rpt-hero-copy">
+          <span class="rpt-hero-eyebrow"><i class="fa-solid fa-mobile-screen" aria-hidden="true"></i> Mobile App</span>
+          <h1 class="rpt-hero-title">Mobile App</h1>
+          <p class="rpt-hero-sub">Employees open one page on their phone, log in, and see only their own attendance.</p>
         </div>
-      </div>
-      <div style="background:#ffffff; border:1px solid #dbe5ec; border-radius:12px; padding:18px; max-width:860px;">
-        <p style="margin:0 0 8px; color:#173042; font-weight:700;">Phone page</p>
-        <p style="margin:0 0 14px; color:#475569;">The phone app is installed once. Username is the employee email. Password is the first name plus @123. Salman becomes salman@123.</p>
+      </section>
+      <section class="rpt-sheet" style="padding:20px 22px; max-width:920px;">
+        <div class="rpt-sheet-head" style="padding:0 0 14px 0; margin-bottom:14px; border-bottom:1px solid #edf0f9;">
+          <div>
+            <h2 class="rpt-sheet-title" style="margin:0;">Phone page</h2>
+            <p class="rpt-sheet-sub" style="margin:4px 0 0;">The phone app is installed once. Username is the employee email. Password is the first name plus @123. Salman becomes salman@123.</p>
+          </div>
+        </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button type="button" class="btn btn-primary mobile-cred-primary-btn" onclick="generateMobileCredentials(false, 'mobileCredentialResult')">Generate credentials for all employees</button>
           <button type="button" class="btn btn-outline-secondary mobile-cred-secondary-btn" onclick="generateMobileCredentials(true, 'mobileCredentialResult')">Generate remaining employees</button>
         </div>
         <div id="mobileCredentialResult" style="margin-top:16px;"></div>
-      </div>
+      </section>
     </div>
 
     <!-- ================= PAGE: OVERTIME MANAGEMENT TAB ================= -->
@@ -17351,8 +17352,8 @@ async function fetchMultiLiveDetections() {
           el.setAttribute('aria-busy', 'true');
         }
       }
-      function hideAppPageLoader() {
-        _appPageLoaderDepth = Math.max(0, _appPageLoaderDepth - 1);
+      function hideAppPageLoader(force = false) {
+        _appPageLoaderDepth = force ? 0 : Math.max(0, _appPageLoaderDepth - 1);
         if (_appPageLoaderDepth > 0) return;
         const el = document.getElementById('appPageLoader');
         if (el) {
@@ -20216,7 +20217,7 @@ async function fetchMultiLiveDetections() {
           }
           if (typeof showAppToast === 'function') showAppToast(err.message || 'Failed to refresh attendance report.', 'error');
         } finally {
-          if (seq === mainReportFetchSeq && typeof hideAppPageLoader === 'function') hideAppPageLoader();
+          if (seq === mainReportFetchSeq && typeof hideAppPageLoader === 'function') hideAppPageLoader(true);
           if (showRefreshState && refreshButton && seq === mainReportFetchSeq) {
             refreshButton.disabled = false;
             refreshButton.innerHTML = originalButtonHTML;
@@ -20295,12 +20296,19 @@ async function fetchMultiLiveDetections() {
           elSubtitle.textContent = `Period: ${data.date_label || 'Today'}  |  Generated: ${generated}`;
         }
 
-        // Render Department Grid
+        // Render Department Grid (preserve all departments when filtering by a single department)
+        const currentDeptVal = document.getElementById('mainDeptFilter')?.value || 'all';
+        if (currentDeptVal === 'all' && Array.isArray(data.departments) && data.departments.length > 0) {
+          window._mainAllDepartments = data.departments.slice();
+        }
+        const deptCardsSource = (currentDeptVal !== 'all' && Array.isArray(window._mainAllDepartments) && window._mainAllDepartments.length > 0)
+          ? window._mainAllDepartments
+          : (data.departments || []);
         const grid = document.getElementById('mainDeptGrid');
         if (grid) {
           grid.innerHTML = '';
-          if (data.departments && data.departments.length > 0) {
-            data.departments.forEach(dept => {
+          if (deptCardsSource && deptCardsSource.length > 0) {
+            deptCardsSource.forEach(dept => {
               const rate = dept.attendance_rate || 0;
               let barColor = '#10b981';
               if (rate < 50) barColor = '#ef4444';
@@ -22664,6 +22672,12 @@ async function fetchMultiLiveDetections() {
           await loadCameraAssignmentDropdowns();
         }
         populateCameraAssignmentDropdowns();
+        if (typeof loadShiftsList === 'function' && (!allShiftsCache || !allShiftsCache.length)) {
+          await loadShiftsList(false);
+        }
+        if (typeof populateShiftDropdowns === 'function') {
+          populateShiftDropdowns();
+        }
 
         document.getElementById('editUserId').value = userId;
         document.getElementById('editName').value = user.name || '';
@@ -22679,7 +22693,11 @@ async function fetchMultiLiveDetections() {
         if (document.getElementById('editSalary')) document.getElementById('editSalary').value = user.salary || '';
         if (document.getElementById('editJoinDate')) document.getElementById('editJoinDate').value = user.join_date || '';
         if (document.getElementById('editExitDate')) document.getElementById('editExitDate').value = user.exit_date || '';
-        if (document.getElementById('editShiftId')) document.getElementById('editShiftId').value = user.shift_id || 1;
+        const editShiftEl = document.getElementById('editShiftId');
+        if (editShiftEl) {
+          editShiftEl.value = user.shift_id || 1;
+          if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(editShiftEl);
+        }
         const empStatus = document.getElementById('editEmploymentStatus');
         if (empStatus) empStatus.value = user.employment_status || 'permanent';
         const empEnd = document.getElementById('editPeriodEndDate');
@@ -26506,7 +26524,16 @@ async function fetchMultiLiveDetections() {
 
       async function deleteEmployeePayLine(id, userId) {
         const response = await fetch(`${API_BASE}/payroll/employee-components/${id}`, { method: 'DELETE' });
-        if (response.ok) await loadEmployeePayLines(userId);
+        if (response.ok) {
+          await loadEmployeePayLines(userId);
+          if (typeof loadSalaryConfigs === 'function') await loadSalaryConfigs();
+          const m = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+          if (m && (!currentPayrollPreview || !currentPayrollPreview.is_finalized) && typeof loadMonthlyPayroll === 'function') {
+            await loadMonthlyPayroll(m, true);
+          } else {
+            currentPayrollPreview = null;
+          }
+        }
       }
 
       async function previewPayrollSettingsImpact() {
@@ -26759,14 +26786,12 @@ async function fetchMultiLiveDetections() {
             leaveMessage.textContent = 'Leave settings saved.';
           }
           showAppToast(successToast, 'success');
-          const activeMonth = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
-          if (activeMonth && currentPayrollPreview && !currentPayrollPreview.is_finalized && typeof loadMonthlyPayroll === 'function') {
-            await loadMonthlyPayroll(activeMonth, true);
-          }
           const activePayrollMonth = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
-          if (activePayrollMonth && (!currentPayrollPreview || !currentPayrollPreview.is_finalized) && typeof loadMonthlyPayroll === 'function') {
-            await loadMonthlyPayroll(activePayrollMonth, true);
-          } else {
+          if (activePayrollMonth && currentPayrollPreview && !currentPayrollPreview.is_finalized && typeof loadMonthlyPayroll === 'function') {
+            try {
+              await loadMonthlyPayroll(activePayrollMonth, true);
+            } catch (_) {}
+          } else if (!currentPayrollPreview?.is_finalized) {
             currentPayrollPreview = null;
           }
           return result;
@@ -33869,12 +33894,12 @@ async function fetchMultiLiveDetections() {
             <td class="text-center" style="font-weight:700; color:#dc2626;">${rejectedHrs.toFixed(1)} hrs</td>
             <td>
               <div style="display:inline-flex; flex-direction:row; justify-content:center; align-items:center; gap:8px; flex-wrap:nowrap; white-space:nowrap;">
-              <button type="button" class="btn btn-sm btn-outline-primary" onclick="openOtDetailModal(${e.user_id}, '${escapeOtHtml(e.user_name)}')" style="font-size:0.8em; font-weight:700; margin:0; white-space:nowrap;">
+              <button type="button" class="btn btn-sm btn-outline-primary" data-uid="${e.user_id}" data-uname="${escapeOtHtml(e.user_name)}" onclick="openOtDetailModal(Number(this.dataset.uid), this.dataset.uname)" style="font-size:0.8em; font-weight:700; margin:0; white-space:nowrap;">
                 <i class="fa-solid fa-magnifying-glass"></i> View Details
               </button>
               ${hasPending ? `
-                <button type="button" class="btn btn-sm btn-success" onclick="otAcceptAllForEmployee(${e.user_id}, '${escapeOtHtml(e.user_name)}')" style="font-size:0.8em; font-weight:700; margin:0; white-space:nowrap;"><i class="fa-solid fa-check-double"></i> Accept All</button>
-                <button type="button" class="btn btn-sm btn-danger" onclick="otRejectAllForEmployee(${e.user_id}, '${escapeOtHtml(e.user_name)}')" style="font-size:0.8em; font-weight:700; margin:0; white-space:nowrap;"><i class="fa-solid fa-xmark"></i> Reject All</button>
+                <button type="button" class="btn btn-sm btn-success" data-uid="${e.user_id}" data-uname="${escapeOtHtml(e.user_name)}" onclick="otAcceptAllForEmployee(Number(this.dataset.uid), this.dataset.uname)" style="font-size:0.8em; font-weight:700; margin:0; white-space:nowrap;"><i class="fa-solid fa-check-double"></i> Accept All</button>
+                <button type="button" class="btn btn-sm btn-danger" data-uid="${e.user_id}" data-uname="${escapeOtHtml(e.user_name)}" onclick="otRejectAllForEmployee(Number(this.dataset.uid), this.dataset.uname)" style="font-size:0.8em; font-weight:700; margin:0; white-space:nowrap;"><i class="fa-solid fa-xmark"></i> Reject All</button>
               ` : ''}
               </div>
             </td>
