@@ -3045,6 +3045,10 @@ def api_mark_user_absent(user_id):
             return jsonify({'error': 'User not found or unauthorized'}), 404
         data = request.get_json(silent=True) or {}
         target_date = data.get('date')
+        if target_date is not None and str(target_date).strip():
+            td_norm = str(target_date).strip()[:10]
+            if td_norm.lower() != 'today' and td_norm != datetime.now().strftime('%Y-%m-%d'):
+                return jsonify({'success': False, 'error': 'Attendance can only be marked for today. Previous or future days cannot be marked.'}), 400
         success = db.mark_user_absent_today(
             user_id,
             target_date=target_date,
@@ -3072,6 +3076,10 @@ def api_mark_user_present(user_id):
             return jsonify({'error': 'User not found or unauthorized'}), 404
         data = request.get_json(silent=True) or {}
         target_date = data.get('date')
+        if target_date is not None and str(target_date).strip():
+            td_norm = str(target_date).strip()[:10]
+            if td_norm.lower() != 'today' and td_norm != datetime.now().strftime('%Y-%m-%d'):
+                return jsonify({'success': False, 'error': 'Attendance can only be marked for today. Previous or future days cannot be marked.'}), 400
         check_in_time = data.get('check_in_time')
         if check_in_time is None:
             check_in_time = data.get('check_in')
@@ -5982,6 +5990,10 @@ def api_mark_absent():
         return jsonify({'success': False}), 400
     user_id = int(user_id)
     target_date = data.get('date') or data.get('target_date')
+    if target_date is not None and str(target_date).strip():
+        td_norm = str(target_date).strip()[:10]
+        if td_norm.lower() != 'today' and td_norm != datetime.now().strftime('%Y-%m-%d'):
+            return jsonify({'success': False, 'error': 'Attendance can only be marked for today. Previous or future days cannot be marked.'}), 400
     success = db.mark_user_absent_today(
         user_id,
         target_date=target_date,

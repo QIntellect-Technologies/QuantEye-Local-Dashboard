@@ -20677,15 +20677,14 @@ async function fetchMultiLiveDetections() {
             `;
 
             const actionCell = tr.lastElementChild;
-            if (currentMainFilterDate === 'yesterday') {
-              const viewBtn = document.createElement('button');
-              viewBtn.style.cssText = 'padding:4px 10px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #cbd5e1; color:#334155; background:#ffffff; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
-              viewBtn.innerHTML = '<i class="fa-solid fa-eye"></i> View Details';
-              viewBtn.title = 'View attendance details for this employee';
-              viewBtn.addEventListener('mouseenter', function() { this.style.background = '#f8fafc'; this.style.borderColor = '#8b7bf7'; });
-              viewBtn.addEventListener('mouseleave', function() { this.style.background = '#ffffff'; this.style.borderColor = '#cbd5e1'; });
-              viewBtn.addEventListener('click', function() { openMainCompleteView(r.user_id); });
-              actionCell.appendChild(viewBtn);
+            if (currentMainFilterDate !== 'today') {
+              const completeBtn = document.createElement('button');
+              completeBtn.className = 'btn btn-sm';
+              completeBtn.style.cssText = 'background:#8b7bf7; color:#ffffff; border:none; padding:5px 12px; font-size:0.78rem; font-weight:600; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 4px rgba(139,123,247,0.25); white-space:nowrap;';
+              completeBtn.innerHTML = '<i class="fa-solid fa-calendar-days"></i> Complete View';
+              completeBtn.title = 'Open complete attendance view';
+              completeBtn.addEventListener('click', function() { openMainCompleteView(r.user_id); });
+              actionCell.appendChild(completeBtn);
             } else if (allowManualMark || allowLeaveHolidayManualMark || isLeaveToday) {
               const btn = document.createElement('button');
               btn.style.cssText = 'padding:4px 10px; font-size:0.74em; font-weight:700; border-radius:6px; border:1.5px solid #16a34a; color:#15803d; background:#f0fdf4; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.18s; white-space:nowrap;';
@@ -20884,6 +20883,13 @@ async function fetchMultiLiveDetections() {
       }
 
       async function markMainUserPresent(userId, targetDate, userName, btnElement) {
+        const now = new Date();
+        const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const normDate = String(targetDate || '').trim().slice(0, 10);
+        if (normDate && normDate.toLowerCase() !== 'today' && normDate !== todayIso) {
+          showAppToast('Attendance can only be marked for today. Previous days cannot be marked.', 'error');
+          return;
+        }
         document.getElementById('manualAttUserId').value = userId;
         document.getElementById('manualAttDate').value = targetDate && targetDate !== 'today' && targetDate !== 'Today' ? targetDate : '';
         document.getElementById('manualAttNotes').value = '';
@@ -21245,7 +21251,9 @@ async function fetchMultiLiveDetections() {
                 const source = isManualSource ? 'Manual' : 'Auto by System';
                 const sourceBadge = `<span style="font-size:0.75em; font-weight:600; padding:2px 6px; border-radius:4px; background:${isManualSource ? '#e0f2fe' : '#f1f5f9'}; color:${isManualSource ? '#0369a1' : '#475569'};">${source}</span>`;
                 const notesText = d.notes ? `<div style="font-size:0.75em; color:#64748b; margin-top:2px;">${escapeHtml(d.notes)}</div>` : '';
-                const showMarkPresent = Boolean(allowManualMark || allowLeaveHolidayManualMark);
+                const nowDt = new Date();
+                const todayIsoStr = `${nowDt.getFullYear()}-${String(nowDt.getMonth() + 1).padStart(2, '0')}-${String(nowDt.getDate()).padStart(2, '0')}`;
+                const showMarkPresent = (currentMainFilterDate === 'today') && (String(d.date || '').slice(0, 10) === todayIsoStr) && Boolean(allowManualMark || allowLeaveHolidayManualMark);
                 const markLabel = (allowLeaveHolidayManualMark || (isLeaveDay && isPublicHolidayDay))
                   ? 'Mark Present (Holiday)'
                   : 'Mark Present';
