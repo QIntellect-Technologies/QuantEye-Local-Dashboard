@@ -15369,7 +15369,7 @@ async function fetchMultiLiveDetections() {
         <div class="row g-3 mb-3">
           <div class="col-md-6">
             <label class="form-label" style="font-weight: 600; color: #173042;">Overtime Date *</label>
-            <input type="date" id="modalOtDateInput" class="form-control" onchange="updateOtModalPreview(); validateOtFormLive();" oninput="validateOtFormLive();" />
+            <input type="date" id="modalOtDateInput" class="form-control" onchange="updateOtModalPreview(); validateOtFormLive();" oninput="updateOtModalPreview(); validateOtFormLive();" />
             <div id="modalOtDateError" class="text-danger small mt-1" style="display:none; font-weight:600;"></div>
           </div>
           <div class="col-md-6">
@@ -33572,21 +33572,33 @@ async function fetchMultiLiveDetections() {
       let baseRate = Number(opt?.dataset?.rate || 0) || 0;
       let effectiveRate = baseRate;
       let dayType = '';
+      let holidayName = '';
       let premiumPercent = 0;
+      let multiplier = 1.0;
       let premiumActive = false;
       let previewFailed = false;
+      let hasRate = baseRate > 0;
+      let decPlaces = Number.isFinite(Number(window._payrollDecimalPlaces)) ? Number(window._payrollDecimalPlaces) : 2;
+      let currencyCode = window._payrollCurrencyCode || 'PKR';
 
       if (userId && overtimeDate) {
         try {
-          const response = await fetch(`/api/overtime/rate-preview?user_id=${encodeURIComponent(userId)}&ot_date=${encodeURIComponent(overtimeDate)}`);
+          const response = await fetch(`/api/overtime/rate-preview?user_id=${encodeURIComponent(userId)}&ot_date=${encodeURIComponent(overtimeDate)}`, { cache: 'no-store' });
           const preview = await response.json();
           if (!response.ok) throw new Error(preview.error || 'Rate preview unavailable');
           if (requestSequence !== otRatePreviewSequence) return;
           baseRate = Number(preview.base_rate) || 0;
           effectiveRate = Number(preview.effective_rate) || 0;
           dayType = preview.day_type || 'regular';
+          holidayName = preview.holiday_name || '';
           premiumPercent = Number(preview.premium_percent) || 0;
+          multiplier = Number(preview.multiplier) || (baseRate > 0 ? effectiveRate / baseRate : 1.0);
           premiumActive = Boolean(preview.premium_active);
+          hasRate = preview.has_rate !== undefined ? Boolean(preview.has_rate) : (baseRate > 0 || effectiveRate > 0);
+          if (preview.decimal_places !== undefined && Number.isFinite(Number(preview.decimal_places))) {
+            decPlaces = Math.max(0, Math.min(6, Number(preview.decimal_places)));
+          }
+          if (preview.currency_code) currencyCode = String(preview.currency_code);
         } catch (error) {
           previewFailed = true;
         }
@@ -33594,25 +33606,38 @@ async function fetchMultiLiveDetections() {
 
       if (requestSequence !== otRatePreviewSequence) return;
       const hours = parseFloat(hoursInput?.value || 0) || 0;
-      const amount = Math.round(hours * effectiveRate * 100) / 100;
-      const formatRate = rate => `PKR ${rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / hr`;
-      if (baseRateDisplay) baseRateDisplay.textContent = formatRate(baseRate);
-      if (rateDisplay) rateDisplay.textContent = formatRate(effectiveRate);
-      if (amountDisplay) {
-        amountDisplay.textContent = `PKR ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const factor = Math.pow(10, decPlaces);
+      const amount = Math.round(hours * effectiveRate * factor) / factor;
+      const formatMoney = (val) => `${currencyCode} ${Number(val || 0).toLocaleString(undefined, { minimumFractionDigits: decPlaces, maximumFractionDigits: decPlaces })}`;
+      const formatRate = rate => `${formatMoney(rate)} / hr`;
+      const noRateConfigured = Boolean(userId && !previewFailed && !hasRate && baseRate <= 0 && effectiveRate <= 0);
+      if (noRateConfigured) {
+        if (baseRateDisplay) baseRateDisplay.textContent = 'No OT rate set';
+        if (rateDisplay) rateDisplay.textContent = 'No OT rate set';
+        if (amountDisplay) amountDisplay.textContent = 'Set OT rate in Salary Structure';
+      } else {
+        if (baseRateDisplay) baseRateDisplay.textContent = formatRate(baseRate);
+        if (rateDisplay) rateDisplay.textContent = formatRate(effectiveRate);
+        if (amountDisplay) amountDisplay.textContent = formatMoney(amount);
       }
       if (premiumNote) {
-        const category = dayType === 'holiday' ? 'Public holiday' : dayType === 'non_working_day' ? 'Scheduled day off' : 'Regular workday';
-        if (previewFailed) {
+        const category = dayType === 'holiday'
+          ? (holidayName ? `Public holiday (${holidayName})` : 'Public holiday')
+          : dayType === 'non_working_day' ? 'Off Day' : 'Regular workday';
+        if (noRateConfigured) {
+          premiumNote.textContent = 'No overtime rate is set for this employee. Set Basic Salary or OT Hourly Rate in Salary Structure.';
+        } else if (previewFailed) {
           premiumNote.textContent = 'Could not check the date rule; showing the standard rate.';
         } else if (premiumActive) {
-          premiumNote.textContent = `${category}: +${premiumPercent}% premium applied to the hourly rate.`;
+          const multStr = Number(multiplier || 1).toFixed(2).replace(/\.?0+$/, '');
+          const pctStr = Number(premiumPercent || 0).toFixed(2).replace(/\.?0+$/, '');
+          premiumNote.textContent = `${category}: ${multStr}× (+${pctStr}% extra) applied to the hourly rate.`;
         } else if (dayType && dayType !== 'regular') {
           premiumNote.textContent = `${category}: no active premium rule, so the standard rate applies.`;
         } else if (dayType) {
           premiumNote.textContent = `${category}: standard OT rate applies.`;
         } else {
-          premiumNote.textContent = 'Select an employee and date to check for a holiday or scheduled day-off premium.';
+          premiumNote.textContent = 'Select an employee and date to check for a holiday or Off Day multiplier.';
         }
       }
     }

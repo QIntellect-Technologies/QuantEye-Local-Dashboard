@@ -3344,7 +3344,7 @@ def _get_overtime_premium_percent(
                 mult = float(s_map.get('holiday_ot_multiplier') or 1.0)
                 if mult > 1.0:
                     return (mult - 1.0) * 100.0
-            if s_map.get('holiday_ot_premium_active'):
+            if s_map.get('holiday_ot_premium_active') or float(s_map.get('holiday_ot_premium_percent') or 0.0) > 0.0:
                 return float(s_map.get('holiday_ot_premium_percent') or 0.0)
     elif day_type == 'non_working_day' and settings:
         s_map = dict(settings) if hasattr(settings, 'keys') else (settings if isinstance(settings, dict) else {})
@@ -3353,7 +3353,7 @@ def _get_overtime_premium_percent(
             mult = float(s_map.get('non_working_day_ot_multiplier') or 1.0)
             if mult > 1.0:
                 return round((mult - 1.0) * 100.0, 4)
-        if s_map.get('non_working_day_ot_premium_active'):
+        if s_map.get('non_working_day_ot_premium_active') or float(s_map.get('non_working_day_ot_premium_percent') or 0.0) > 0.0:
             return float(s_map.get('non_working_day_ot_premium_percent') or 0.0)
     return 0.0
 
@@ -11854,34 +11854,54 @@ def get_overtime_rate_preview(
             settings = cursor.execute('''
                 SELECT holiday_ot_premium_percent, non_working_day_ot_premium_percent,
                        holiday_ot_premium_active, non_working_day_ot_premium_active,
-                       holiday_ot_pay_mode, holiday_ot_multiplier,
-                       non_working_day_ot_pay_mode, non_working_day_ot_multiplier,
+                       holiday_ot_pay_mode, holiday_ot_multiplier, holiday_ot_fixed_amount,
+                       non_working_day_ot_pay_mode, non_working_day_ot_multiplier, non_working_day_ot_fixed_amount,
                        COALESCE(ot_hour_divisor, 208) AS ot_hour_divisor,
-                       COALESCE(ot_rounding, 'round_rate_first') AS ot_rounding
+                       COALESCE(ot_rounding, 'round_rate_first') AS ot_rounding,
+                       COALESCE(decimal_places, 2) AS decimal_places,
+                       COALESCE(currency_code, 'PKR') AS currency_code
                 FROM payroll_settings
                 WHERE COALESCE(organization_id, 'DEFAULT_ORG') = ?
                   AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
             ''', (emp_org, emp_branch)).fetchone()
+            settings_dict = dict(settings) if settings else {}
+            dec_places = max(0, min(6, int(settings_dict.get('decimal_places') if settings_dict.get('decimal_places') is not None else 2)))
+            currency_code = str(settings_dict.get('currency_code') or 'PKR').strip() or 'PKR'
             raw_rate = calculate_employee_ot_rate(cursor, user_id, as_of_date=overtime_date, basic_salary=salary, configured_rate=configured_rate)
-            rounding = _normalize_ot_rounding(settings['ot_rounding'] if settings else None)
-            base_rate = round(raw_rate, 2) if rounding == 'round_rate_first' else float(raw_rate)
+            rounding = _normalize_ot_rounding(settings_dict.get('ot_rounding'))
+            base_rate = round(raw_rate, dec_places) if rounding == 'round_rate_first' else float(raw_rate)
             day_type = _get_overtime_day_type(cursor, user_id, overtime_date)
             holiday = _get_company_holiday_for_date(
                 cursor, overtime_date, employee['organization_id'], employee['branch_id']
             ) if day_type == 'holiday' else None
-            premium_percent = _get_overtime_premium_percent(
-                cursor, overtime_date, day_type, settings, holiday, user_id=user_id
-            )
+            scoped = _get_scoped_payroll_rule(cursor, 'overtime_premium', int(user_id), day_type) if day_type in ('holiday', 'non_working_day') else None
+            if scoped and scoped.get('overtime_premium_percent') is not None:
+                premium_percent = float(scoped['overtime_premium_percent'] or 0.0)
+                effective_rate = round(raw_rate * (1 + premium_percent / 100.0), dec_places) if rounding == 'round_at_end' else round(base_rate * (1 + premium_percent / 100.0), dec_places)
+            else:
+                effective_rate, _, premium_percent = _overtime_entry_pay(
+                    base_rate if rounding == 'round_rate_first' else raw_rate,
+                    1.0,
+                    day_type,
+                    settings_dict,
+                    holiday=holiday,
+                    decimal_places=dec_places,
+                )
+            mult = round(effective_rate / base_rate, 4) if base_rate > 0 else 1.0
             return {
                 'user_id': user_id,
                 'ot_date': overtime_date,
                 'day_type': day_type,
                 'holiday_id': holiday.get('id') if holiday else None,
                 'holiday_name': holiday.get('name') if holiday else None,
-                'base_rate': base_rate,
-                'premium_percent': premium_percent,
-                'effective_rate': round(base_rate * (1 + premium_percent / 100), 2),
-                'premium_active': premium_percent > 0,
+                'base_rate': round(base_rate, dec_places),
+                'premium_percent': round(float(premium_percent or 0.0), 2),
+                'multiplier': mult,
+                'effective_rate': round(float(effective_rate or 0.0), dec_places),
+                'premium_active': (float(premium_percent or 0.0) > 0) or (float(effective_rate or 0.0) > float(base_rate or 0.0)),
+                'has_rate': raw_rate > 0,
+                'decimal_places': dec_places,
+                'currency_code': currency_code,
             }
     except (TypeError, ValueError):
         return None
