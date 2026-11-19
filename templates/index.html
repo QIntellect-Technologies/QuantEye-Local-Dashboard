@@ -32929,6 +32929,7 @@ async function fetchMultiLiveDetections() {
     let otLogPageSize = 25;
     let otApprovalCurrentPage = 1;
     let otApprovalPageSize = 25;
+    let otRatePreviewSequence = 0;
 
     function formatOtEmpId(userId) {
       return `EMP-${String(userId ?? '').padStart(3, '0')}`;
