@@ -4712,7 +4712,7 @@ def api_mobile_list_credentials():
         get_current_tenant_id(),
         get_current_branch_id(),
     )
-    return jsonify({'success': True, 'credentials': result['credentials']})
+    return jsonify({'success': True, **result})
 
 
 @app.route('/api/mobile/credentials', methods=['POST'])
@@ -4722,16 +4722,31 @@ def api_mobile_generate_credentials():
     if not licensed_module_flags(browser_licensed_modules() or []).get('mobile'):
         return _forbidden_module_response('mobile')
     data = request.get_json(silent=True) or {}
+    raw_uid = data.get('user_id')
+    target_uid = None
+    if raw_uid not in (None, ''):
+        try:
+            target_uid = int(raw_uid)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Invalid user_id.'}), 400
+    tenant_id = get_current_tenant_id()
+    branch_id = get_current_branch_id()
     result = db.generate_mobile_credentials(
-        get_current_tenant_id(),
-        get_current_branch_id(),
+        tenant_id,
+        branch_id,
         remaining_only=bool(data.get('remaining_only')),
+        user_id=target_uid,
     )
+    listing = db.list_mobile_credentials(tenant_id, branch_id)
     return jsonify({
         'success': True,
         'phone_page': '/m',
         'credentials': result['credentials'],
         'skipped': result['skipped'],
+        'employees': listing.get('employees', []),
+        'total_employees': listing.get('total_employees', 0),
+        'generated_count': listing.get('generated_count', 0),
+        'remaining_count': listing.get('remaining_count', 0),
     })
 
 

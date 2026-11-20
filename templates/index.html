@@ -6358,17 +6358,21 @@
       #leaves-view .log-table {
         width: 100%; border-collapse: separate; border-spacing: 0;
       }
-      #leaves-view .log-table thead { background: #f7f8fc !important; }
+      #leaves-view .log-table thead { background: rgba(248, 249, 254, 0.99) !important; }
       #leaves-view .log-table thead th {
         position: sticky; top: 0; z-index: 2;
-        color: #6b7488 !important; font-size: 11px !important; font-weight: 700 !important; letter-spacing: 0.06em !important; text-transform: uppercase !important;
-        padding: 12px 14px !important; border-bottom: 1px solid #e3e8f5 !important; background: #f7f8fc !important; white-space: nowrap;
+        height: auto !important;
+        color: #6b7488 !important; font-size: 9px !important; font-weight: 600 !important; letter-spacing: 0.1em !important; text-transform: uppercase !important;
+        padding: 9px 12px !important; border: 0 !important; border-bottom: 1px solid #e3e8f5 !important; background: rgba(248, 249, 254, 0.99) !important; white-space: nowrap;
+        vertical-align: middle;
       }
       #leaves-view .log-table tbody td {
-        border-bottom: 1px solid #edf0f9 !important; color: #2b3547 !important; font-size: 12.5px !important;
-        padding: 12px 14px !important; background: transparent !important; vertical-align: middle;
+        height: auto !important; min-height: 0 !important;
+        border-bottom: 1px solid #e9edf7 !important; color: #3d4757 !important; font-size: 12px !important;
+        padding: 9px 12px !important; background: transparent !important; vertical-align: middle;
       }
-      #leaves-view .log-table tbody tr:hover td { background: #f8f7ff !important; }
+      #leaves-view .log-table tbody tr:hover td { background: rgba(139, 123, 247, 0.055) !important; }
+      #leaves-view .log-table tbody tr:last-child td { border-bottom: 0 !important; }
       /* cards -> glass */
       #leaves-view .card {
         background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.62)) !important;
@@ -6661,6 +6665,48 @@
       }
       #mobile-app-view .rpt-hero-title { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: #fff; }
       #mobile-app-view .rpt-hero-sub { margin: 4px 0 0; font-size: 13px; color: rgba(255,255,255,0.72); }
+      #mobile-app-view .rpt-hero-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      #mobile-app-view .rpt-menu {
+        min-width: 175px; padding: 6px; border-radius: 12px; border: 1px solid var(--line);
+        box-shadow: 0 18px 40px -18px rgba(18,24,44,0.35);
+      }
+      #mobile-app-view .rpt-menu .dropdown-item {
+        border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); padding: 8px 10px;
+      }
+      #mobile-app-view .rpt-menu .dropdown-item:hover { background: #f4f5fc; color: var(--ink); }
+      #mobile-app-view .rpt-rail {
+        display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px;
+        border: 1px solid var(--line); border-radius: 18px; background: var(--line);
+        box-shadow: var(--shadow); overflow: hidden; margin-bottom: 18px;
+      }
+      #mobile-app-view .rpt-metric {
+        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88));
+        padding: 16px 20px; display: flex; flex-direction: column; gap: 4px;
+      }
+      #mobile-app-view .rpt-metric-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      #mobile-app-view .rpt-metric-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--mut); }
+      #mobile-app-view .rpt-metric-icon {
+        width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px;
+      }
+      #mobile-app-view .rpt-metric-icon.tone-lilac { background: rgba(139,123,247,0.14); color: #6f5ce7; }
+      #mobile-app-view .rpt-metric-icon.tone-mint { background: rgba(16,185,129,0.14); color: #059669; }
+      #mobile-app-view .rpt-metric-icon.tone-amber { background: rgba(245,158,11,0.14); color: #d97706; }
+      #mobile-app-view .rpt-metric-value { font-size: 24px; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; line-height: 1.15; }
+      #mobile-app-view .rpt-metric-foot { font-size: 12px; color: var(--mut); }
+      #mobile-app-view .rpt-filters {
+        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88));
+        border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow);
+        padding: 16px 20px; margin-bottom: 18px;
+      }
+      #mobile-app-view .rpt-filters-body { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+      #mobile-app-view .rpt-field { display: flex; flex-direction: column; gap: 5px; min-width: 170px; }
+      #mobile-app-view .rpt-field--grow { flex: 1 1 240px; min-width: 220px; }
+      #mobile-app-view .rpt-field-label { font-size: 11px; font-weight: 700; color: var(--mut); text-transform: uppercase; letter-spacing: 0.06em; }
+      #mobile-app-view .rpt-search { position: relative; }
+      #mobile-app-view .rpt-search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--faint); font-size: 12px; pointer-events: none; }
+      #mobile-app-view .rpt-search input { padding-left: 34px; height: 38px; border-radius: 10px; border: 1px solid var(--line); font-size: 13px; }
+      #mobile-app-view .rpt-field .form-select,
+      #mobile-app-view .rpt-field .app-camera-select-trigger { height: 38px; min-height: 38px; border-radius: 10px; border: 1px solid var(--line); font-size: 13px; }
       #mobile-app-view .rpt-sheet {
         background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88));
         border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden;
@@ -6671,6 +6717,26 @@
       }
       #mobile-app-view .rpt-sheet-title { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
       #mobile-app-view .rpt-sheet-sub { font-size: 12.5px; color: var(--mut); margin: 3px 0 0; }
+      #mobile-app-view .rpt-sheet-tools { display: flex; align-items: center; gap: 8px; }
+      #mobile-app-view .rpt-tool-label { font-size: 11.5px; font-weight: 700; color: var(--mut); text-transform: uppercase; letter-spacing: 0.05em; }
+      #mobile-app-view .rpt-table-scroll { overflow-x: auto; overflow-y: auto; max-height: 540px; }
+      #mobile-app-view .rpt-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+      #mobile-app-view .rpt-table thead th {
+        position: sticky; top: 0; z-index: 2; padding: 9px 12px !important; border: 0 !important;
+        border-bottom: 1px solid var(--line) !important; background: rgba(248, 249, 254, 0.99) !important;
+        color: var(--mut) !important; font-size: 9px !important; font-weight: 600 !important;
+        letter-spacing: 0.1em !important; text-transform: uppercase; white-space: nowrap; vertical-align: middle;
+      }
+      #mobile-app-view .rpt-table tbody td {
+        padding: 9px 12px !important; border-bottom: 1px solid #e9edf7 !important;
+        background: transparent !important; color: var(--txt); font-size: 12px !important; vertical-align: middle;
+      }
+      #mobile-app-view .rpt-table tbody tr:hover td { background: rgba(139, 123, 247, 0.055) !important; }
+      #mobile-app-view .rpt-table tbody tr:last-child td { border-bottom: 0 !important; }
+      #mobile-app-view .rpt-pagination {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+        padding: 12px 20px; border-top: 1px solid var(--line-soft);
+      }
       #mobile-app-view .rpt-btn {
         display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px;
         border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;
@@ -6680,6 +6746,9 @@
       #mobile-app-view .rpt-btn-light { background: #fff; color: var(--ink-2); border: 1px solid var(--line); }
       #mobile-app-view .rpt-btn-light:hover { background: #f8f7ff; border-color: #d0cef7; }
       #mobile-app-view #mobileCredentialResult { color: var(--ink-2, #2b3547); }
+      @media (max-width: 780px) {
+        #mobile-app-view .rpt-rail { grid-template-columns: 1fr; }
+      }
       @media (max-width: 620px) {
         #mobile-app-view .rpt-hero-title { font-size: 21px; }
       }
@@ -12314,21 +12383,125 @@ async function fetchMultiLiveDetections() {
         <div class="rpt-hero-copy">
           <span class="rpt-hero-eyebrow"><i class="fa-solid fa-mobile-screen" aria-hidden="true"></i> Mobile App</span>
           <h1 class="rpt-hero-title">Mobile App</h1>
-          <p class="rpt-hero-sub">Employees open one page on their phone, log in, and see only their own attendance.</p>
+          <p class="rpt-hero-sub">Create and manage phone logins for employees. Username is email and initial password is first name + @123.</p>
         </div>
-      </section>
-      <section class="rpt-sheet" style="padding:20px 22px; max-width:920px;">
-        <div class="rpt-sheet-head" style="padding:0 0 14px 0; margin-bottom:14px; border-bottom:1px solid #edf0f9;">
-          <div>
-            <h2 class="rpt-sheet-title" style="margin:0;">Phone page</h2>
-            <p class="rpt-sheet-sub" style="margin:4px 0 0;">The phone app is installed once. Username is the employee email. Password is the first name plus @123. Salman becomes salman@123.</p>
+        <div class="rpt-hero-actions">
+          <button id="mobileRefreshBtn" type="button" onclick="loadMobileCredentials('mobileCredentialResult', true)" class="rpt-btn rpt-btn-dark">
+            <i class="fa-solid fa-rotate"></i><span>Refresh</span>
+          </button>
+          <div class="dropdown">
+            <button id="mobileExportDropdownBtn" class="rpt-btn rpt-btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fa-solid fa-arrow-up-from-bracket export-btn-icon"></i><span>Export</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end rpt-menu">
+              <li><button type="button" class="dropdown-item" onclick="exportMobileCredentialsCsv()"><i class="fa-solid fa-file-csv me-2 text-primary"></i>Export as CSV</button></li>
+              <li><button type="button" class="dropdown-item" onclick="exportMobileCredentialsPdf()"><i class="fa-solid fa-file-pdf me-2 text-danger"></i>Export as PDF</button></li>
+            </ul>
           </div>
         </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap; padding: 18px 22px 0;">
-          <button type="button" class="rpt-btn rpt-btn-dark mobile-cred-primary-btn" onclick="generateMobileCredentials(false, 'mobileCredentialResult')"><i class="fa-solid fa-key"></i> Generate credentials for all employees</button>
-          <button type="button" class="rpt-btn rpt-btn-light mobile-cred-secondary-btn" onclick="generateMobileCredentials(true, 'mobileCredentialResult')"><i class="fa-solid fa-user-plus"></i> Generate remaining employees</button>
+      </section>
+
+      <section class="rpt-rail" aria-label="Mobile app summary">
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Total Employees</span>
+            <span class="rpt-metric-icon tone-lilac"><i class="fa-solid fa-users"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="mobileStatTotal">0</strong>
+          <span class="rpt-metric-foot">Active staff in this organization</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Credentials Generated</span>
+            <span class="rpt-metric-icon tone-mint"><i class="fa-solid fa-user-check"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="mobileStatGenerated">0</strong>
+          <span class="rpt-metric-foot">Employees with active phone logins</span>
+        </article>
+        <article class="rpt-metric">
+          <div class="rpt-metric-head">
+            <span class="rpt-metric-label">Remaining Employees</span>
+            <span class="rpt-metric-icon tone-amber"><i class="fa-solid fa-user-clock"></i></span>
+          </div>
+          <strong class="rpt-metric-value" id="mobileStatRemaining">0</strong>
+          <span class="rpt-metric-foot">Pending credential generation</span>
+        </article>
+      </section>
+
+      <section class="rpt-filters app-camera-select-host" aria-label="Mobile credential filters">
+        <div class="rpt-filters-body">
+          <div class="rpt-field rpt-field--grow">
+            <span class="rpt-field-label">Search</span>
+            <div class="rpt-search">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="search" id="mobileSearchInput" class="form-control" maxlength="100" placeholder="Search name, email, department..." oninput="filterMobileCredentialsTable()">
+            </div>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Department</span>
+            <select id="mobileDeptFilter" class="form-select" onchange="filterMobileCredentialsTable()">
+              <option value="all">All Departments</option>
+            </select>
+          </div>
+          <div class="rpt-field">
+            <span class="rpt-field-label">Status</span>
+            <select id="mobileStatusFilter" class="form-select" onchange="filterMobileCredentialsTable()">
+              <option value="all">All Statuses</option>
+              <option value="generated">Generated</option>
+              <option value="remaining">Remaining</option>
+            </select>
+          </div>
+          <div class="rpt-field" style="min-width:auto;">
+            <span class="rpt-field-label">&nbsp;</span>
+            <button type="button" onclick="resetMobileFilters()" class="rpt-btn rpt-btn-light" style="height:38px;">
+              <i class="fa-solid fa-filter-circle-xmark"></i> Reset
+            </button>
+          </div>
+          <div class="rpt-field" style="min-width:auto; flex-direction:row; align-items:center; gap:8px; margin-left:auto;">
+            <button type="button" class="rpt-btn rpt-btn-dark mobile-cred-primary-btn" onclick="generateMobileCredentials(false, 'mobileCredentialResult')" style="height:38px;"><i class="fa-solid fa-key"></i> Generate All</button>
+            <button type="button" class="rpt-btn rpt-btn-light mobile-cred-secondary-btn" onclick="generateMobileCredentials(true, 'mobileCredentialResult')" style="height:38px;"><i class="fa-solid fa-user-plus"></i> Generate Remaining</button>
+          </div>
         </div>
-        <div id="mobileCredentialResult" style="margin-top:16px; padding: 0 22px 20px;"></div>
+      </section>
+
+      <section class="rpt-sheet">
+        <div class="rpt-sheet-head">
+          <div>
+            <h2 class="rpt-sheet-title">Mobile login credentials</h2>
+            <p class="rpt-sheet-sub">Generate credentials for all employees, remaining employees, or individually per employee</p>
+          </div>
+          <div class="rpt-sheet-tools">
+            <span class="rpt-tool-label">Rows</span>
+            <select id="mobilePageSize" class="form-select" onchange="changeMobilePageSize(this.value)">
+              <option value="10">10 / page</option>
+              <option value="25" selected>25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+          </div>
+        </div>
+        <div id="mobileCredentialResult" style="padding: 0 22px;"></div>
+        <div class="rpt-table-scroll">
+          <table class="log-table rpt-table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Department</th>
+                <th>Username (Email)</th>
+                <th>Password</th>
+                <th>Status</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody id="mobileCredentialsTableBody">
+              <tr><td colspan="6" class="text-center text-muted p-4">Loading employees...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="mobilePaginationBar" class="app-table-pagination rpt-pagination">
+          <div id="mobilePaginationInfo" class="app-page-info">Showing 0 of 0 employees</div>
+          <div id="mobilePageControls" class="app-page-controls"></div>
+        </div>
       </section>
     </div>
 
@@ -15644,51 +15817,59 @@ async function fetchMultiLiveDetections() {
         <div id="modalSalaryMsg" aria-live="polite" style="margin-bottom: 14px;"></div>
 
         <form id="editSalaryForm" onsubmit="event.preventDefault(); saveSalaryConfig();">
-          <div class="row g-3">
+          <div class="row g-3 align-items-start">
             <div class="col-md-6">
-              <label class="form-label" style="font-weight: 700; color: #334155; font-size: 0.85em;">Basic Salary (PKR) *</label>
-              <div style="position: relative;">
-                <input type="number" id="modalSalaryBasic" class="form-control payroll-amount-input" placeholder="0.00" min="10000" max="50000000" step="0.01" required oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #0f172a;" />
-                <span style="position: absolute; right: 12px; top: 8px; font-size: 0.75em; color: #94a3b8; font-weight: 700;">PKR</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; min-height: 24px; margin-bottom: 6px;">
+                <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">Basic Salary (PKR) *</label>
               </div>
-              <small style="font-size: 0.75em; color: #64748b;">Synchronized with employee payroll base.</small>
+              <div style="position: relative;">
+                <input type="number" id="modalSalaryBasic" class="form-control payroll-amount-input" placeholder="0.00" min="10000" max="50000000" step="0.01" required oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #0f172a; padding-right: 48px !important;" />
+                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75em; color: #94a3b8; font-weight: 700; pointer-events: none;">PKR</span>
+              </div>
+              <small style="font-size: 0.75em; color: #64748b; margin-top: 4px; display: block;">Synchronized with employee payroll base.</small>
             </div>
 
             <div class="col-md-6">
-              <label class="form-label" style="font-weight: 700; color: #334155; font-size: 0.85em;">Monthly Allowances (PKR)</label>
-              <div style="position: relative;">
-                <input type="number" id="modalSalaryAllowances" class="form-control" placeholder="0.00" min="0" step="0.01" oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #059669;" />
-                <span style="position: absolute; right: 12px; top: 8px; font-size: 0.75em; color: #94a3b8; font-weight: 700;">PKR</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; min-height: 24px; margin-bottom: 6px;">
+                <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">Monthly Allowances (PKR)</label>
               </div>
-              <small style="font-size: 0.75em; color: #64748b;">Medical, conveyance, fuel, housing, etc.</small>
+              <div style="position: relative;">
+                <input type="number" id="modalSalaryAllowances" class="form-control" placeholder="0.00" min="0" step="0.01" oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #059669; padding-right: 48px !important;" />
+                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75em; color: #94a3b8; font-weight: 700; pointer-events: none;">PKR</span>
+              </div>
+              <small style="font-size: 0.75em; color: #64748b; margin-top: 4px; display: block;">Medical, conveyance, fuel, housing, etc.</small>
             </div>
 
             <div class="col-md-6">
-              <label class="form-label" style="font-weight: 700; color: #334155; font-size: 0.85em;">Standard Deductions (PKR)</label>
-              <div style="position: relative;">
-                <input type="number" id="modalSalaryDeductions" class="form-control" placeholder="0.00" min="0" step="0.01" oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #dc2626;" />
-                <span style="position: absolute; right: 12px; top: 8px; font-size: 0.75em; color: #94a3b8; font-weight: 700;">PKR</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; min-height: 24px; margin-bottom: 6px;">
+                <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">Standard Deductions (PKR)</label>
               </div>
-              <small style="font-size: 0.75em; color: #64748b;">Fixed tax, provident fund, insurance, etc.</small>
+              <div style="position: relative;">
+                <input type="number" id="modalSalaryDeductions" class="form-control" placeholder="0.00" min="0" step="0.01" oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #dc2626; padding-right: 48px !important;" />
+                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75em; color: #94a3b8; font-weight: 700; pointer-events: none;">PKR</span>
+              </div>
+              <small style="font-size: 0.75em; color: #64748b; margin-top: 4px; display: block;">Fixed tax, provident fund, insurance, etc.</small>
             </div>
 
             <div class="col-md-6">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">OT Hourly Rate (PKR/hr)</label>
-                <button type="button" id="modalSalaryCalcOtBtn" class="btn btn-link p-0 text-decoration-none" onclick="calcSuggestedOtRate()" style="font-size: 0.72em; font-weight: 700; color: #247eae;">
+              <div style="display: flex; justify-content: space-between; align-items: center; min-height: 24px; margin-bottom: 6px; gap: 8px;">
+                <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em; white-space: nowrap;">OT Hourly Rate (PKR/hr)</label>
+                <button type="button" id="modalSalaryCalcOtBtn" class="btn btn-link p-0 text-decoration-none" onclick="calcSuggestedOtRate()" style="font-size: 0.72em; font-weight: 700; color: #247eae; white-space: nowrap;">
                   <i class="fa-solid fa-calculator"></i> Calculate OT Rate
                 </button>
               </div>
               <div style="position: relative;">
-                <input type="number" id="modalSalaryOtRate" class="form-control" placeholder="0.00" min="0" step="0.01" style="border-radius: 8px; font-weight: 700; color: #0284c7;" />
-                <span style="position: absolute; right: 12px; top: 8px; font-size: 0.75em; color: #94a3b8; font-weight: 700;">/ hr</span>
+                <input type="number" id="modalSalaryOtRate" class="form-control" placeholder="0.00" min="0" step="0.01" style="border-radius: 8px; font-weight: 700; color: #0284c7; padding-right: 48px !important;" />
+                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75em; color: #94a3b8; font-weight: 700; pointer-events: none;">/ hr</span>
               </div>
-              <small style="font-size: 0.75em; color: #64748b;">Rate applied to approved overtime hours.</small>
+              <small style="font-size: 0.75em; color: #64748b; margin-top: 4px; display: block;">Rate applied to approved overtime hours.</small>
             </div>
             <div class="col-md-6">
-              <label class="form-label" style="font-weight: 700; color: #334155; font-size: 0.85em;">Effective from</label>
+              <div style="display: flex; justify-content: space-between; align-items: center; min-height: 24px; margin-bottom: 6px;">
+                <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">Effective from</label>
+              </div>
               <input type="date" id="modalSalaryEffectiveFrom" class="form-control" style="border-radius: 8px;" />
-              <small style="font-size: 0.75em; color: #64748b;">Used when salary effective dates are enabled. Mid-month changes split the month by calendar day.</small>
+              <small style="font-size: 0.75em; color: #64748b; margin-top: 4px; display: block;">Used when salary effective dates are enabled. Mid-month changes split the month by calendar day.</small>
             </div>
           </div>
 
@@ -17013,6 +17194,141 @@ async function fetchMultiLiveDetections() {
 
       window.entitledModules = window.entitledModules || { attendance: true, payroll: true, leave: true, overtime: true, shifts: true, mobile: true };
 
+      let _mobileEmployeesCache = [];
+      let _mobileFilteredEmployees = [];
+      let _mobileCurrentPage = 1;
+      let _mobilePageSize = 25;
+
+      function _escapeMobileHtml(value) {
+        return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      }
+
+      function renderMobileAppDashboard(data) {
+        const employees = Array.isArray(data.employees) ? data.employees : [];
+        _mobileEmployeesCache = employees;
+
+        const totalEl = document.getElementById('mobileStatTotal');
+        const genEl = document.getElementById('mobileStatGenerated');
+        const remEl = document.getElementById('mobileStatRemaining');
+        if (totalEl) totalEl.textContent = data.total_employees ?? employees.length;
+        if (genEl) genEl.textContent = data.generated_count ?? employees.filter(e => e.has_credentials).length;
+        if (remEl) remEl.textContent = data.remaining_count ?? employees.filter(e => !e.has_credentials).length;
+
+        const deptSelect = document.getElementById('mobileDeptFilter');
+        if (deptSelect) {
+          const prev = deptSelect.value || 'all';
+          const depts = Array.from(new Set(employees.map(e => e.department).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+          deptSelect.innerHTML = '<option value="all">All Departments</option>' +
+            depts.map(d => `<option value="${_escapeMobileHtml(d)}">${_escapeMobileHtml(d)}</option>`).join('');
+          if (depts.includes(prev)) deptSelect.value = prev;
+          if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(deptSelect);
+        }
+        filterMobileCredentialsTable(false);
+      }
+
+      function filterMobileCredentialsTable(resetPage = true) {
+        const q = (document.getElementById('mobileSearchInput')?.value || '').trim().toLowerCase();
+        const dept = (document.getElementById('mobileDeptFilter')?.value || 'all').trim().toLowerCase();
+        const status = (document.getElementById('mobileStatusFilter')?.value || 'all').trim().toLowerCase();
+        _mobileFilteredEmployees = (_mobileEmployeesCache || []).filter(emp => {
+          if (dept !== 'all' && String(emp.department || '').trim().toLowerCase() !== dept) return false;
+          if (status === 'generated' && !emp.has_credentials) return false;
+          if (status === 'remaining' && emp.has_credentials) return false;
+          if (q) {
+            const hay = `${emp.name || ''} ${emp.username || ''} ${emp.department || ''} ${emp.position || ''}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+        if (resetPage) _mobileCurrentPage = 1;
+        renderMobileCredentialsPage();
+      }
+      window.filterMobileCredentialsTable = filterMobileCredentialsTable;
+
+      function resetMobileFilters() {
+        const s = document.getElementById('mobileSearchInput');
+        const d = document.getElementById('mobileDeptFilter');
+        const st = document.getElementById('mobileStatusFilter');
+        if (s) s.value = '';
+        if (d) { d.value = 'all'; if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(d); }
+        if (st) { st.value = 'all'; if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(st); }
+        filterMobileCredentialsTable(true);
+      }
+      window.resetMobileFilters = resetMobileFilters;
+
+      function changeMobilePageSize(val) {
+        _mobilePageSize = Math.max(1, parseInt(val, 10) || 25);
+        _mobileCurrentPage = 1;
+        renderMobileCredentialsPage();
+      }
+      window.changeMobilePageSize = changeMobilePageSize;
+
+      function renderMobileCredentialsPage() {
+        const tbody = document.getElementById('mobileCredentialsTableBody');
+        const infoEl = document.getElementById('mobilePaginationInfo');
+        const ctrlEl = document.getElementById('mobilePageControls');
+        if (!tbody) return;
+
+        const total = _mobileFilteredEmployees.length;
+        const totalPages = Math.max(1, Math.ceil(total / _mobilePageSize));
+        if (_mobileCurrentPage > totalPages) _mobileCurrentPage = totalPages;
+        const startIdx = (_mobileCurrentPage - 1) * _mobilePageSize;
+        const slice = _mobileFilteredEmployees.slice(startIdx, startIdx + _mobilePageSize);
+
+        if (!slice.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted p-4">No employees match the selected filter criteria.</td></tr>';
+        } else {
+          tbody.innerHTML = slice.map(emp => {
+            const statusBadge = emp.has_credentials
+              ? '<span class="badge bg-success-subtle text-success">Generated</span>'
+              : `<span class="badge bg-warning-subtle text-warning-emphasis">${_escapeMobileHtml(emp.reason || 'Remaining')}</span>`;
+            const btnLabel = emp.has_credentials ? 'Regenerate' : 'Generate';
+            const btnClass = emp.has_credentials ? 'btn-outline-secondary' : 'btn-primary';
+            const btnDisabled = emp.reason === 'No email address' || emp.reason === 'Duplicate email' ? 'disabled' : '';
+            return `<tr>
+              <td><div style="font-weight:700; color:#151b25;">${_escapeMobileHtml(emp.name)}</div>${emp.position ? `<div style="font-size:11px; color:#6b7488;">${_escapeMobileHtml(emp.position)}</div>` : ''}</td>
+              <td>${_escapeMobileHtml(emp.department)}</td>
+              <td style="font-family:'JetBrains Mono',monospace;">${_escapeMobileHtml(emp.username || '—')}</td>
+              <td style="font-family:'JetBrains Mono',monospace;">${_escapeMobileHtml(emp.password || '—')}</td>
+              <td>${statusBadge}</td>
+              <td class="text-end">
+                <button type="button" class="btn btn-sm ${btnClass}" ${btnDisabled} onclick="generateSingleMobileCredential(${Number(emp.id)})" style="border-radius:8px; font-weight:600; font-size:12px;">
+                  <i class="fa-solid fa-key me-1"></i>${btnLabel}
+                </button>
+              </td>
+            </tr>`;
+          }).join('');
+        }
+
+        if (infoEl) {
+          const from = total ? startIdx + 1 : 0;
+          const to = Math.min(total, startIdx + slice.length);
+          infoEl.textContent = `Showing ${from} to ${to} of ${total} employees`;
+        }
+        if (ctrlEl) {
+          ctrlEl.innerHTML = '';
+          const prev = document.createElement('button');
+          prev.className = 'app-page-btn';
+          prev.textContent = 'Prev';
+          prev.disabled = _mobileCurrentPage <= 1;
+          prev.onclick = () => { _mobileCurrentPage -= 1; renderMobileCredentialsPage(); };
+          ctrlEl.appendChild(prev);
+          for (let p = 1; p <= totalPages; p++) {
+            const btn = document.createElement('button');
+            btn.className = 'app-page-btn' + (p === _mobileCurrentPage ? ' active' : '');
+            btn.textContent = String(p);
+            btn.onclick = () => { _mobileCurrentPage = p; renderMobileCredentialsPage(); };
+            ctrlEl.appendChild(btn);
+          }
+          const next = document.createElement('button');
+          next.className = 'app-page-btn';
+          next.textContent = 'Next';
+          next.disabled = _mobileCurrentPage >= totalPages;
+          next.onclick = () => { _mobileCurrentPage += 1; renderMobileCredentialsPage(); };
+          ctrlEl.appendChild(next);
+        }
+      }
+
       function renderMobileCredentialBox(box, data, emptyMessage) {
         if (!box) return;
         const safe = (value) => String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -17026,25 +17342,30 @@ async function fetchMultiLiveDetections() {
           ? `${readyCount} employee login${readyCount === 1 ? '' : 's'} ready.`
           : (emptyMessage || 'No phone logins yet.');
         box.innerHTML = `
-          <p style="font-weight:700; color:#173042;">${headline}</p>
-          ${readyCount ? `<table style="width:100%; border-collapse:collapse;">
+          <p style="font-weight:700; color:#173042; margin:12px 0 6px;">${headline}</p>
+          ${box.id === 'settingsMobileCredentialResult' && readyCount ? `<table style="width:100%; border-collapse:collapse;">
             <thead><tr><th align="left">Name</th><th align="left">Username</th><th align="left">Password</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>` : ''}
-          ${skipped ? `<p style="margin-top:12px; font-weight:700;">Not generated</p><ul>${skipped}</ul>` : ''}
+          ${skipped ? `<p style="margin-top:8px; font-weight:700;">Not generated</p><ul>${skipped}</ul>` : ''}
         `;
       }
 
-      async function loadMobileCredentials(boxId) {
+      async function loadMobileCredentials(boxId, showToast = false) {
         const box = document.getElementById(boxId || 'mobileCredentialResult');
-        if (!box) return;
         try {
-          const response = await fetch('/api/mobile/credentials', { credentials: 'same-origin' });
+          const response = await fetch('/api/mobile/credentials', { credentials: 'same-origin', cache: 'no-store' });
           const data = await response.json();
           if (!response.ok || !data.success) throw new Error(data.message || data.error || 'Could not load phone logins.');
-          renderMobileCredentialBox(box, data, 'No phone logins yet. Generate credentials for all employees.');
+          renderMobileAppDashboard(data);
+          if (box && box.id === 'settingsMobileCredentialResult') {
+            renderMobileCredentialBox(box, data, 'No phone logins yet. Generate credentials for all employees.');
+          } else if (box) {
+            box.innerHTML = '';
+          }
+          if (showToast && typeof showAppToast === 'function') showAppToast('Mobile credentials refreshed.', 'success');
         } catch (error) {
-          box.textContent = error.message || 'Could not load phone logins.';
+          if (box) box.textContent = error.message || 'Could not load phone logins.';
         }
       }
 
@@ -17060,15 +17381,75 @@ async function fetchMultiLiveDetections() {
           });
           const data = await response.json();
           if (!response.ok || !data.success) throw new Error(data.message || data.error || 'Could not generate credentials.');
+          renderMobileAppDashboard(data);
           const emptyMessage = remainingOnly
             ? 'No remaining employees. Existing phone logins were left as they are.'
             : 'No employees could be given a login.';
           renderMobileCredentialBox(box, data, emptyMessage);
+          if (typeof showAppToast === 'function') showAppToast('Mobile credentials updated.', 'success');
         } catch (error) {
           if (box) box.textContent = error.message || 'Could not generate credentials.';
         }
       }
+
+      async function generateSingleMobileCredential(userId) {
+        try {
+          const response = await fetch('/api/mobile/credentials', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: Number(userId) })
+          });
+          const data = await response.json();
+          if (!response.ok || !data.success) throw new Error(data.message || data.error || 'Could not generate credential.');
+          renderMobileAppDashboard(data);
+          if (data.credentials && data.credentials.length) {
+            if (typeof showAppToast === 'function') showAppToast(`Credentials generated for ${data.credentials[0].name}.`, 'success');
+          } else if (data.skipped && data.skipped.length) {
+            if (typeof showAppToast === 'function') showAppToast(`${data.skipped[0].name}: ${data.skipped[0].reason}`, 'error');
+          }
+        } catch (error) {
+          if (typeof showAppToast === 'function') showAppToast(error.message || 'Failed to generate credential.', 'error');
+        }
+      }
+
+      function exportMobileCredentialsCsv() {
+        const rows = _mobileFilteredEmployees || [];
+        if (!rows.length) {
+          if (typeof showAppToast === 'function') showAppToast('No mobile credential records to export.', 'info');
+          return;
+        }
+        const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const csv = [
+          ['Employee', 'Department', 'Username', 'Password', 'Status'].map(esc).join(','),
+          ...rows.map(r => [r.name, r.department, r.username || '', r.password || '', r.has_credentials ? 'Generated' : (r.reason || 'Remaining')].map(esc).join(','))
+        ].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `mobile-credentials-${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+      }
+
+      function exportMobileCredentialsPdf() {
+        const rows = _mobileFilteredEmployees || [];
+        if (!rows.length) {
+          if (typeof showAppToast === 'function') showAppToast('No mobile credential records to export.', 'info');
+          return;
+        }
+        const lines = rows.map(r => `${r.name} | ${r.department} | ${r.username || '-'} | ${r.password || '-'} | ${r.has_credentials ? 'Generated' : 'Remaining'}`);
+        const w = window.open('', '_blank', 'width=900,height=650');
+        if (w) {
+          w.document.write(`<html><head><title>Mobile Credentials</title></head><body style="font-family:sans-serif;padding:24px;"><h2>Mobile App Credentials</h2><pre>${_escapeMobileHtml(lines.join('\n'))}</pre></body></html>`);
+          w.document.close();
+          w.print();
+        }
+      }
+
       window.generateMobileCredentials = generateMobileCredentials;
+      window.generateSingleMobileCredential = generateSingleMobileCredential;
+      window.exportMobileCredentialsCsv = exportMobileCredentialsCsv;
+      window.exportMobileCredentialsPdf = exportMobileCredentialsPdf;
       window.loadMobileCredentials = loadMobileCredentials;
 
       const VIEW_MODULE_MAP = {
@@ -17990,7 +18371,7 @@ async function fetchMultiLiveDetections() {
           editNational.addEventListener('input', runEditPhone);
           editNational.addEventListener('blur', runEditPhone);
         }
-        wire('editCNIC', 'editCNICError', validateStaffCnicValue, { formatCnic: true, onSync: syncEditSubmitEnabled });
+        wire('editCNIC', 'editCNICError', (v) => validateStaffCnicValue(v, document.getElementById('editUserId')?.value || null), { formatCnic: true, onSync: syncEditSubmitEnabled });
         ['editEmploymentStatus', 'editPeriodEndDate'].forEach(id => {
           const el = document.getElementById(id);
           if (el && el.dataset.liveValidationBound !== '1') {
@@ -27122,7 +27503,7 @@ async function fetchMultiLiveDetections() {
         const monthInput = document.getElementById('payrollMonth');
         if (currentPayrollPreview && !currentPayrollPreview.is_finalized &&
             currentPayrollPreview.payroll_month === monthInput?.value) {
-          await loadMonthlyPayroll();
+          await loadMonthlyPayroll(undefined, true);
         }
       }
 

@@ -7748,14 +7748,16 @@ def generate_mobile_credentials(
     organization_id: str,
     branch_id: Optional[str] = None,
     remaining_only: bool = False,
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Give employees a phone login. Username is their email. Password is name@123.
 
     remaining_only keeps people who already have a mobile login and creates
     logins only for employees added after the last generate.
+    user_id targets a single employee when specified.
     """
     already_ids = set()
-    if remaining_only:
+    if remaining_only and user_id is None:
         with sqlite3.connect(DB_PATH) as conn:
             rows = conn.execute(
                 """SELECT id FROM users
@@ -7772,25 +7774,29 @@ def generate_mobile_credentials(
         email = str(user.get('email') or '').strip().lower()
         if email:
             seen_emails[email] = seen_emails.get(email, 0) + 1
+    target_uid = int(user_id) if user_id is not None else None
     for user in users:
+        if target_uid is not None and int(user['id']) != target_uid:
+            continue
         name = str(user.get('name') or '').strip()
         email = str(user.get('email') or '').strip().lower()
         password = mobile_password_for_name(name)
         if not email:
-            skipped.append({'name': name or 'Employee', 'reason': 'No email address'})
+            skipped.append({'id': int(user['id']), 'name': name or 'Employee', 'reason': 'No email address'})
             continue
         if seen_emails.get(email, 0) > 1:
-            skipped.append({'name': name or email, 'reason': 'Email is used by more than one employee'})
+            skipped.append({'id': int(user['id']), 'name': name or email, 'reason': 'Email is used by more than one employee'})
             continue
         if not password:
-            skipped.append({'name': name or email, 'reason': 'Name cannot be turned into a password'})
+            skipped.append({'id': int(user['id']), 'name': name or email, 'reason': 'Name cannot be turned into a password'})
             continue
-        if remaining_only and int(user['id']) in already_ids:
+        if remaining_only and target_uid is None and int(user['id']) in already_ids:
             continue
         if not assign_mobile_employee_password(int(user['id']), organization_id, password):
-            skipped.append({'name': name or email, 'reason': 'Password could not be saved'})
+            skipped.append({'id': int(user['id']), 'name': name or email, 'reason': 'Password could not be saved'})
             continue
         credentials.append({
+            'id': int(user['id']),
             'name': name,
             'username': email,
             'password': password,
@@ -7802,15 +7808,14 @@ def list_mobile_credentials(
     organization_id: str,
     branch_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Return phone logins already saved for this company. The password is the same name@123."""
+    """Return phone logins and per-employee credential status for this company."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             query = """
-                SELECT name, email
+                SELECT id, name, email, department, position, COALESCE(mobile_login, 0) AS mobile_login
                   FROM users
                  WHERE active = 1
-                   AND COALESCE(mobile_login, 0) = 1
                    AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
             """
             params: List[Any] = [organization_id or 'DEFAULT_ORG']
@@ -7821,16 +7826,53 @@ def list_mobile_credentials(
             rows = conn.execute(query, params).fetchall()
     except Exception as error:
         logger.error(f"List mobile credentials error: {error}")
-        return {'credentials': []}
-    credentials = []
+        return {'credentials': [], 'employees': [], 'total_employees': 0, 'generated_count': 0, 'remaining_count': 0}
+
+    seen_emails: Dict[str, int] = {}
     for row in rows:
+        email = str(row['email'] or '').strip().lower()
+        if email:
+            seen_emails[email] = seen_emails.get(email, 0) + 1
+
+    credentials = []
+    employees = []
+    generated_count = 0
+    for row in rows:
+        uid = int(row['id'])
         name = str(row['name'] or '').strip()
         email = str(row['email'] or '').strip().lower()
+        dept = str(row['department'] or '').strip() or 'General / Unassigned'
+        pos = str(row['position'] or '').strip()
         password = mobile_password_for_name(name)
-        if not email or not password:
-            continue
-        credentials.append({'name': name, 'username': email, 'password': password})
-    return {'credentials': credentials}
+        is_generated = bool(int(row['mobile_login'] or 0) == 1 and email and password)
+        reason = ''
+        if not email:
+            reason = 'No email address'
+        elif seen_emails.get(email, 0) > 1:
+            reason = 'Duplicate email'
+        elif not password:
+            reason = 'Invalid name for password'
+        if is_generated:
+            generated_count += 1
+            credentials.append({'id': uid, 'name': name, 'username': email, 'password': password})
+        employees.append({
+            'id': uid,
+            'name': name or f'Employee #{uid}',
+            'department': dept,
+            'position': pos,
+            'username': email,
+            'password': password if is_generated else '',
+            'has_credentials': is_generated,
+            'reason': reason,
+        })
+    total_employees = len(employees)
+    return {
+        'credentials': credentials,
+        'employees': employees,
+        'total_employees': total_employees,
+        'generated_count': generated_count,
+        'remaining_count': max(0, total_employees - generated_count),
+    }
 
 
 def authenticate_employee_email(email: str, password: str) -> Optional[Dict]:
