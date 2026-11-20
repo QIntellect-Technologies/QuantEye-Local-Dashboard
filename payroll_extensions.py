@@ -503,9 +503,10 @@ def apply_adjustments(
     extra_earn = 0.0
     extra_deduct = 0.0
     arrears = 0.0
+    rest_day_earn = 0.0
     covered_off_days = set()
     lines: List[Dict[str, Any]] = []
-    off_set = {str(d) for d in off_day_dates}
+    off_set = {str(d) for d in off_day_dates if d}
     for adj in adjustments:
         adj_type = str(adj.get("adj_type") or "").strip().lower()
         mode = str(adj.get("pay_mode") or "fixed").strip().lower()
@@ -515,8 +516,9 @@ def apply_adjustments(
         else:
             amount = money(float(adj.get("amount") or 0), decimal_places)
         if adj_type == "rest_day":
-            covered_off_days.add(work_date or "")
-            extra_earn += amount
+            if work_date:
+                covered_off_days.add(work_date)
+            rest_day_earn += amount
         elif adj_type in ("bonus", "earning", "overtime"):
             extra_earn += amount
         elif adj_type == "deduction":
@@ -534,11 +536,14 @@ def apply_adjustments(
             "note": adj.get("note") or "",
             "source_month": adj.get("source_month"),
         })
-    remaining_off = [d for d in off_set if d not in covered_off_days]
+    remaining_off = [d for d in off_day_dates if str(d) not in covered_off_days]
+    rest_day_covered_count = len([d for d in off_set if d in covered_off_days])
     return {
         "extra_earn": money(extra_earn, decimal_places),
         "extra_deduct": money(extra_deduct, decimal_places),
         "arrears": money(arrears, decimal_places),
+        "rest_day_earn": money(rest_day_earn, decimal_places),
+        "rest_day_covered_count": rest_day_covered_count,
         "remaining_off_days": remaining_off,
         "lines": lines,
     }

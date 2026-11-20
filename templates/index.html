@@ -6242,6 +6242,32 @@
       }
       #editSalaryConfigModal .modal-header { border-bottom: 1px solid var(--line-soft); }
       #editSalaryConfigModal .modal-footer { border-top: 1px solid var(--line-soft); }
+      #editSalaryConfigModal .row.g-3 > [class*="col-"] {
+        display: flex; flex-direction: column;
+      }
+      #editSalaryConfigModal .form-label,
+      #editSalaryConfigModal .payroll-rule-field {
+        font-size: 12.5px; font-weight: 700; color: #334155; margin-bottom: 5px;
+      }
+      #editSalaryConfigModal .form-control,
+      #editSalaryConfigModal .form-select,
+      #editSalaryConfigModal .app-camera-select-trigger {
+        height: 38px !important; min-height: 38px !important;
+        padding: 7px 12px !important; font-size: 13px !important;
+        border-radius: 8px !important; box-sizing: border-box !important;
+        border: 1px solid #cbd5e1;
+      }
+      #editSalaryConfigModal .payroll-rule-form {
+        display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px; align-items: end;
+      }
+      #editSalaryConfigModal .payroll-rule-form .payroll-rule-field {
+        display: flex; flex-direction: column; gap: 5px; margin-bottom: 0;
+      }
+      #editSalaryConfigModal .payroll-rule-form > .btn {
+        height: 38px; min-height: 38px; padding: 0 16px; border-radius: 8px;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
       /* exceptions table container */
       #payroll-view div[style*="background:#ffffff; border:1px solid #cfe8f7"] {
         background: rgba(255,255,255,0.62) !important;
@@ -6323,19 +6349,26 @@
         border-color: var(--line) !important; color: var(--ink-2) !important;
         background: rgba(255,255,255,0.7) !important;
       }
-      /* tables -> frost */
+      /* tables -> Attendance Reports standardized table */
       #leaves-view .log-table-wrapper {
-        background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.7));
-        border: 1px solid rgba(226,231,246,0.9); border-radius: 16px; overflow: hidden;
-        box-shadow: 0 1px 2px rgba(20,24,40,0.04), 0 26px 54px -42px rgba(52,62,120,0.6);
+        background: transparent;
+        border: 0; border-radius: 0; overflow-x: auto; overflow-y: auto; max-height: 540px;
+        box-shadow: none;
       }
-      #leaves-view .log-table thead { background: rgba(248,249,254,0.99) !important; }
+      #leaves-view .log-table {
+        width: 100%; border-collapse: separate; border-spacing: 0;
+      }
+      #leaves-view .log-table thead { background: #f7f8fc !important; }
       #leaves-view .log-table thead th {
-        color: var(--mut) !important; font-size: 9.5px !important; font-weight: 600 !important; letter-spacing: 0.1em !important; text-transform: uppercase !important;
-        padding: 12px 16px !important; border-bottom: 1px solid var(--line-soft) !important; background: transparent !important;
+        position: sticky; top: 0; z-index: 2;
+        color: #6b7488 !important; font-size: 11px !important; font-weight: 700 !important; letter-spacing: 0.06em !important; text-transform: uppercase !important;
+        padding: 12px 14px !important; border-bottom: 1px solid #e3e8f5 !important; background: #f7f8fc !important; white-space: nowrap;
       }
-      #leaves-view .log-table tbody td { border-bottom: 1px solid var(--line-soft) !important; color: var(--ink-2) !important; font-size: 12.5px !important; padding: 12px 16px !important; background: transparent !important; }
-      #leaves-view .log-table tbody tr:hover td { background: rgba(139,123,247,0.04); }
+      #leaves-view .log-table tbody td {
+        border-bottom: 1px solid #edf0f9 !important; color: #2b3547 !important; font-size: 12.5px !important;
+        padding: 12px 14px !important; background: transparent !important; vertical-align: middle;
+      }
+      #leaves-view .log-table tbody tr:hover td { background: #f8f7ff !important; }
       /* cards -> glass */
       #leaves-view .card {
         background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.62)) !important;
@@ -6604,29 +6637,51 @@
       }
     </style>
     <style>
-      /* ============ Mobile App — Frost premium surface (GUI only) ============ */
-      #mobile-app-view { --ink: #151b25; --ink-2: #2b3547; --txt: #3d4757; --mut: #6b7488; --line: #e3e8f5; --lav: #8b7bf7; --teal: #34d3c4; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
-      #mobile-app-view .page-header {
+      /* ============ Mobile App — match Attendance Reports design (GUI-16) ============ */
+      #mobile-app-view {
+        --ink: #151b25; --ink-2: #2b3547; --txt: #3d4757; --mut: #6b7488; --faint: #98a0b4;
+        --line: #e3e8f5; --line-soft: #edf0f9; --lav: #8b7bf7; --teal: #34d3c4;
+        --shadow: 0 1px 2px rgba(20,24,40,0.04), 0 26px 54px -42px rgba(52,62,120,0.55);
+        font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        color: var(--ink-2);
+      }
+      #mobile-app-view .rpt-hero {
+        position: relative; overflow: hidden; display: flex; align-items: flex-end; justify-content: space-between;
+        gap: 18px; flex-wrap: wrap; padding: 22px 24px 20px; border-radius: 22px; color: #fff;
         background: radial-gradient(48% 88% at 100% 0%, rgba(139,123,247,0.45), transparent 62%),
                     radial-gradient(40% 70% at 0% 100%, rgba(52,211,196,0.22), transparent 60%),
                     linear-gradient(135deg, #151b25 0%, #1f2736 55%, #2a3346 100%);
-        border-radius: 22px; padding: 22px 24px 20px; color: #fff; position: relative; overflow: hidden;
         box-shadow: 0 24px 48px -30px rgba(21,27,37,0.75), 0 2px 6px rgba(21,27,37,0.12);
-        margin-bottom: 18px; border: 1px solid rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.06); margin-bottom: 18px;
       }
-      #mobile-app-view .page-header h1 { color: #fff; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
-      #mobile-app-view .page-header .page-subtitle { color: rgba(255,255,255,0.72); font-size: 13px; margin-top: 4px; }
-      #mobile-app-view .page-header i { color: #34d3c4 !important; }
-      #mobile-app-view > div[style*="background:#ffffff"] {
-        background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85)) !important;
-        border: 1px solid rgba(226,231,246,0.9) !important; border-radius: 18px !important;
-        box-shadow: 0 24px 48px -30px rgba(21,27,37,0.4); backdrop-filter: blur(12px);
+      #mobile-app-view .rpt-hero-eyebrow {
+        display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+        background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.14);
+        font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #b7aeff; margin-bottom: 8px;
       }
-      #mobile-app-view .btn-primary { background: #34d3c4 !important; border-color: #34d3c4 !important; border-radius: 10px; font-weight: 600; }
-      #mobile-app-view .btn-outline-primary { border-color: rgba(52,211,196,0.5) !important; color: #0d9488 !important; background: rgba(52,211,196,0.09) !important; border-radius: 10px; font-weight: 600; }
+      #mobile-app-view .rpt-hero-title { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: #fff; }
+      #mobile-app-view .rpt-hero-sub { margin: 4px 0 0; font-size: 13px; color: rgba(255,255,255,0.72); }
+      #mobile-app-view .rpt-sheet {
+        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88));
+        border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden;
+      }
+      #mobile-app-view .rpt-sheet-head {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+        padding: 16px 22px; border-bottom: 1px solid var(--line-soft);
+      }
+      #mobile-app-view .rpt-sheet-title { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
+      #mobile-app-view .rpt-sheet-sub { font-size: 12.5px; color: var(--mut); margin: 3px 0 0; }
+      #mobile-app-view .rpt-btn {
+        display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px;
+        border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;
+      }
+      #mobile-app-view .rpt-btn-dark { background: #8b7bf7; color: #fff; border: 1px solid #8b7bf7; }
+      #mobile-app-view .rpt-btn-dark:hover { background: #7664f0; border-color: #7664f0; }
+      #mobile-app-view .rpt-btn-light { background: #fff; color: var(--ink-2); border: 1px solid var(--line); }
+      #mobile-app-view .rpt-btn-light:hover { background: #f8f7ff; border-color: #d0cef7; }
       #mobile-app-view #mobileCredentialResult { color: var(--ink-2, #2b3547); }
       @media (max-width: 620px) {
-        #mobile-app-view .page-header h1 { font-size: 21px; }
+        #mobile-app-view .rpt-hero-title { font-size: 21px; }
       }
     </style>
     <style>
@@ -11606,8 +11661,7 @@ async function fetchMultiLiveDetections() {
         <span style="font-size:12px; font-weight:600; color:#b91c1c; text-decoration:underline;">Review issues</span>
       </div>
 
-      <div style="display:flex; align-items:center; justify-content:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
-        <span id="payrollStateBadge" class="badge bg-secondary-subtle text-secondary" style="display:none !important;">Not loaded</span>
+      <div id="payrollActionButtonsBar" style="display:flex; align-items:center; justify-content:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
         <button id="calculatePayrollButton" type="button" onclick="loadMonthlyPayroll(undefined, true)" class="rpt-btn" style="height:36px;" title="Calculate Payroll">
             <i class="fa-solid fa-calculator"></i><span>Recalculate Payroll</span>
           </button>
@@ -11900,7 +11954,7 @@ async function fetchMultiLiveDetections() {
         </div>
       </div>
 
-      <section style="margin-top:28px; padding:18px; background:#ffffff; border:1px solid #cfe8f7; border-radius:8px;">
+      <section id="payrollOnePersonExtrasSection" style="margin-top:28px; padding:18px; background:#ffffff; border:1px solid #cfe8f7; border-radius:8px; display:none;">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
           <div>
             <h2 style="font-size:1.12em; font-weight:800; color:#173042; margin:0;">One-person exceptions</h2>
@@ -12270,11 +12324,11 @@ async function fetchMultiLiveDetections() {
             <p class="rpt-sheet-sub" style="margin:4px 0 0;">The phone app is installed once. Username is the employee email. Password is the first name plus @123. Salman becomes salman@123.</p>
           </div>
         </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-primary mobile-cred-primary-btn" onclick="generateMobileCredentials(false, 'mobileCredentialResult')">Generate credentials for all employees</button>
-          <button type="button" class="btn btn-outline-secondary mobile-cred-secondary-btn" onclick="generateMobileCredentials(true, 'mobileCredentialResult')">Generate remaining employees</button>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; padding: 18px 22px 0;">
+          <button type="button" class="rpt-btn rpt-btn-dark mobile-cred-primary-btn" onclick="generateMobileCredentials(false, 'mobileCredentialResult')"><i class="fa-solid fa-key"></i> Generate credentials for all employees</button>
+          <button type="button" class="rpt-btn rpt-btn-light mobile-cred-secondary-btn" onclick="generateMobileCredentials(true, 'mobileCredentialResult')"><i class="fa-solid fa-user-plus"></i> Generate remaining employees</button>
         </div>
-        <div id="mobileCredentialResult" style="margin-top:16px;"></div>
+        <div id="mobileCredentialResult" style="margin-top:16px; padding: 0 22px 20px;"></div>
       </section>
     </div>
 
@@ -16111,15 +16165,15 @@ async function fetchMultiLiveDetections() {
         const searchInput = document.getElementById('payrollEmployeeSearch');
         if (searchInput) searchInput.value = '';
         const deptFilter = document.getElementById('payrollDepartmentFilter');
-        if (deptFilter) deptFilter.value = 'all';
         const statusFilter = document.getElementById('payrollEmployeeStatusFilter');
-        if (statusFilter) statusFilter.value = 'all';
         const issueFilter = document.getElementById('payrollIssueFilter');
-        if (issueFilter) issueFilter.value = 'all';
         const deductFilter = document.getElementById('payrollDeductionFilter');
-        if (deductFilter) deductFilter.value = 'all';
         const runFilter = document.getElementById('payrollRunStatusFilter');
-        if (runFilter) runFilter.value = 'all';
+        [deptFilter, statusFilter, issueFilter, deductFilter, runFilter].forEach((el) => {
+          if (!el) return;
+          el.value = 'all';
+          if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(el);
+        });
         payrollCurrentPage = 1;
         applyPayrollFilters();
       }
@@ -16174,15 +16228,8 @@ async function fetchMultiLiveDetections() {
       function setPayrollStateBadge(state) {
         const badge = document.getElementById('payrollStateBadge');
         if (!badge) return;
-        const styles = {
-          'Draft': 'bg-secondary-subtle text-secondary',
-          'Ready for Finalization': 'bg-success-subtle text-success',
-          'In progress': 'bg-warning-subtle text-warning-emphasis',
-          'Finalized': 'bg-success text-white'
-        };
-        badge.className = `badge ${styles[state] || 'bg-secondary-subtle text-secondary'}`;
-        badge.textContent = state;
-        badge.style.display = 'inline-block';
+        badge.style.display = 'none';
+        badge.textContent = '';
       }
 
       function payrollStatusLabel(record, isFinalized) {
@@ -20193,7 +20240,8 @@ async function fetchMultiLiveDetections() {
         // AR-3 / Ticket 12: keep prior rows visible during refresh; never flash empty state mid-flight.
         if (emptyEl) emptyEl.style.display = 'none';
         url += `_t=${Date.now()}`;
-        if (typeof showAppPageLoader === 'function') showAppPageLoader('Loading attendance records...');
+        const shouldShowMainLoader = !mainReportData || showRefreshState;
+        if (shouldShowMainLoader && typeof showAppPageLoader === 'function') showAppPageLoader('Loading attendance records...');
 
         try {
           const res = await fetch(url, { cache: 'no-store', signal: mainReportFetchController.signal });
@@ -20327,6 +20375,12 @@ async function fetchMultiLiveDetections() {
                 const deptSelect = document.getElementById('mainDeptFilter');
                 if (!deptSelect) return;
                 const nextVal = isSelected ? 'all' : dept.department;
+                if (nextVal !== 'all' && !Array.from(deptSelect.options).some(o => o.value === nextVal)) {
+                  const opt = document.createElement('option');
+                  opt.value = nextVal;
+                  opt.textContent = nextVal;
+                  deptSelect.appendChild(opt);
+                }
                 deptSelect.value = nextVal;
                 if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(deptSelect);
                 mainReportPage = 1;
@@ -22687,31 +22741,36 @@ async function fetchMultiLiveDetections() {
       }
 
       async function openTabEditStaffModal(userId) {
-        const user = tabAllStaff.find(s => s.id === userId);
+        const user = (tabAllStaff || []).find(s => String(s.id) === String(userId));
         if (!user) return;
 
-        if (!cachedActiveCameras || !cachedActiveCameras.length) {
-          await loadCameraAssignmentDropdowns();
-        }
-        populateCameraAssignmentDropdowns();
-        if (typeof loadShiftsList === 'function' && (!allShiftsCache || !allShiftsCache.length)) {
-          await loadShiftsList(false);
-        }
-        if (typeof populateShiftDropdowns === 'function') {
-          populateShiftDropdowns();
-        }
+        try {
+          if (!cachedActiveCameras || !cachedActiveCameras.length) {
+            await loadCameraAssignmentDropdowns();
+          }
+          if (typeof populateCameraAssignmentDropdowns === 'function') populateCameraAssignmentDropdowns();
+        } catch (e) { console.warn('Camera dropdown init error:', e); }
 
-        document.getElementById('editUserId').value = userId;
+        try {
+          if (typeof loadShiftsList === 'function' && (!allShiftsCache || !allShiftsCache.length)) {
+            await loadShiftsList(false);
+          }
+          if (typeof populateShiftDropdowns === 'function') {
+            populateShiftDropdowns();
+          }
+        } catch (e) { console.warn('Shift dropdown init error:', e); }
+
+        document.getElementById('editUserId').value = user.id;
         document.getElementById('editName').value = user.name || '';
         document.getElementById('editEmail').value = user.email || '';
         document.getElementById('editDepartment').value = user.department || '';
-        setStaffPhoneFields('edit', user.phone || '');
+        if (typeof setStaffPhoneFields === 'function') setStaffPhoneFields('edit', user.phone || '');
         if (typeof onEditDeptChange === 'function') {
           onEditDeptChange(user.department || '', user.position || '');
         } else if (document.getElementById('editPosition')) {
           document.getElementById('editPosition').value = user.position || '';
         }
-        if (document.getElementById('editCNIC')) document.getElementById('editCNIC').value = formatPakistanCnic(user.cnic || '');
+        if (document.getElementById('editCNIC')) document.getElementById('editCNIC').value = typeof formatPakistanCnic === 'function' ? formatPakistanCnic(user.cnic || '') : (user.cnic || '');
         if (document.getElementById('editSalary')) document.getElementById('editSalary').value = user.salary || '';
         if (document.getElementById('editJoinDate')) document.getElementById('editJoinDate').value = user.join_date || '';
         if (document.getElementById('editExitDate')) document.getElementById('editExitDate').value = user.exit_date || '';
@@ -22725,11 +22784,11 @@ async function fetchMultiLiveDetections() {
         const empEnd = document.getElementById('editPeriodEndDate');
         if (empEnd) empEnd.value = user.period_end_date || '';
         const editBadgeSlot = document.getElementById('editUserStatusBadge');
-        if (editBadgeSlot) {
+        if (editBadgeSlot && typeof formatEmploymentPeriodBadge === 'function') {
           editBadgeSlot.innerHTML = formatEmploymentPeriodBadge(user.employment_status, user.period_end_date);
         }
         window._editConfirmPermanent = false;
-        onEmploymentStatusChange('edit');
+        if (typeof onEmploymentStatusChange === 'function') onEmploymentStatusChange('edit');
         if (typeof bindStaffLiveValidation === 'function') bindStaffLiveValidation();
         if (typeof syncEditSubmitEnabled === 'function') {
           ['editName', 'editEmail', 'editPhoneNational', 'editCNIC'].forEach(id => {
@@ -22739,13 +22798,19 @@ async function fetchMultiLiveDetections() {
           syncEditSubmitEnabled();
         }
 
-        setMultiSelectValues('editCheckinCamerasWrapper', user.checkin_cameras || 'all');
-        setMultiSelectValues('editCheckoutCamerasWrapper', user.checkout_cameras || 'all');
+        try {
+          if (typeof setMultiSelectValues === 'function') {
+            setMultiSelectValues('editCheckinCamerasWrapper', user.checkin_cameras || 'all');
+            setMultiSelectValues('editCheckoutCamerasWrapper', user.checkout_cameras || 'all');
+          }
+        } catch (e) { console.warn('Camera multi-select init error:', e); }
 
-        document.getElementById('editModalMessage').innerHTML = '';
+        const editMsg = document.getElementById('editModalMessage');
+        if (editMsg) editMsg.innerHTML = '';
         const modal = document.getElementById('editUserModal');
         if (modal) modal.style.display = 'flex';
       }
+      window.openTabEditStaffModal = openTabEditStaffModal;
 
       async function deleteTabStaffMember(userId, userName) {
         if (!await appConfirm(`Are you sure you want to permanently delete staff member "${userName}" (#${userId})?`)) return;
@@ -24067,6 +24132,12 @@ async function fetchMultiLiveDetections() {
           const sec = document.getElementById(`section_${flag}`);
           if (sec) {
             sec.style.display = isEnabled ? 'block' : 'none';
+          }
+          if (flag === 'enable_individual_adjustments') {
+            const payrollCard = document.getElementById('payrollOnePersonExtrasSection');
+            if (payrollCard) {
+              payrollCard.style.display = isEnabled ? 'block' : 'none';
+            }
           }
         });
         updatePayrollComponentCategoryDropdown();
@@ -26415,9 +26486,11 @@ async function fetchMultiLiveDetections() {
           return;
         }
         await loadPayrollExceptions();
-        const month = document.getElementById('payrollMonth')?.value;
-        if (month && currentPayrollPreview && !currentPayrollPreview.is_finalized) {
+        const month = document.getElementById('payrollMonth')?.value || currentPayrollPreview?.payroll_month;
+        if (month && (!currentPayrollPreview || !currentPayrollPreview.is_finalized) && typeof loadMonthlyPayroll === 'function') {
           await loadMonthlyPayroll(month, true);
+        } else {
+          currentPayrollPreview = null;
         }
       }
 
@@ -27448,30 +27521,19 @@ async function fetchMultiLiveDetections() {
         const deptFilter = document.getElementById('salaryDeptFilter');
         const statusFilter = document.getElementById('salaryStatusFilter');
         if (searchInput) searchInput.value = '';
-        if (deptFilter) deptFilter.value = 'all';
-        if (statusFilter) statusFilter.value = 'all';
+        if (deptFilter) {
+          deptFilter.value = 'all';
+          if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(deptFilter);
+        }
+        if (statusFilter) {
+          statusFilter.value = 'all';
+          if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(statusFilter);
+        }
         renderSalaryTable(cachedSalaryConfigs);
       }
 
-      async function openEditSalaryModal(userId) {
-        const modal = document.getElementById('editSalaryConfigModal');
-        const msgEl = document.getElementById('modalSalaryMsg');
-        if (msgEl) msgEl.innerHTML = '';
-        if (!modal) return;
-
-        let item = (cachedSalaryConfigs || []).find(c => c.user_id === userId);
-        try {
-          const resp = await fetch(`${API_BASE}/salary/${userId}`);
-          if (resp.ok) item = await resp.json();
-        } catch (e) {
-          console.warn("Could not fetch fresh user salary config, using cache:", e);
-        }
-
-        if (!item) {
-          showAppToast('Employee not found', 'error');
-          return;
-        }
-
+      let _salaryModalOpenSeq = 0;
+      function _populateEditSalaryModalFields(item) {
         document.getElementById('modalSalaryUserId').value = item.user_id;
         const modalSalaryEmpNameEl = document.getElementById('modalSalaryEmpName');
         if (modalSalaryEmpNameEl) {
@@ -27506,7 +27568,39 @@ async function fetchMultiLiveDetections() {
         }
 
         updateSalaryModalLiveCalc();
-        await loadEmployeePayLines(item.user_id);
+      }
+
+      async function openEditSalaryModal(userId) {
+        const seq = ++_salaryModalOpenSeq;
+        const modal = document.getElementById('editSalaryConfigModal');
+        const msgEl = document.getElementById('modalSalaryMsg');
+        if (msgEl) msgEl.innerHTML = '';
+        if (!modal) return;
+
+        let item = (cachedSalaryConfigs || []).find(c => Number(c.user_id) === Number(userId));
+        if (item) {
+          _populateEditSalaryModalFields(item);
+          modal.style.display = 'flex';
+        }
+
+        const [freshItem] = await Promise.all([
+          fetch(`${API_BASE}/salary/${userId}`, { cache: 'no-store' })
+            .then(resp => (resp.ok ? resp.json() : null))
+            .catch(e => {
+              console.warn("Could not fetch fresh user salary config, using cache:", e);
+              return null;
+            }),
+          loadEmployeePayLines(userId).catch(() => {})
+        ]);
+        if (seq !== _salaryModalOpenSeq) return;
+        if (freshItem) {
+          item = freshItem;
+          _populateEditSalaryModalFields(item);
+        }
+        if (!item) {
+          showAppToast('Employee not found', 'error');
+          return;
+        }
         modal.style.display = 'flex';
       }
 

@@ -5140,8 +5140,15 @@ def get_light_attendance_report(
             '''
             user_params: List[Any] = [start_date]
             if department and department.strip() and department.lower() != 'all':
-                user_query += " AND LOWER(TRIM(u.department)) = LOWER(TRIM(?))"
-                user_params.append(department.strip())
+                dept_clean = department.strip().lower()
+                if dept_clean in ('general / unassigned', 'general/unassigned', 'unassigned'):
+                    user_query += (
+                        " AND (u.department IS NULL OR TRIM(u.department) = '' "
+                        "OR LOWER(TRIM(u.department)) IN ('general / unassigned', 'general/unassigned', 'unassigned'))"
+                    )
+                else:
+                    user_query += " AND LOWER(TRIM(u.department)) = LOWER(TRIM(?))"
+                    user_params.append(department.strip())
             if user_id is not None:
                 user_query += " AND u.id = ?"
                 user_params.append(int(user_id))
@@ -5841,8 +5848,15 @@ def get_detailed_attendance_report(
             '''
             user_params = [start_date]
             if department and department.strip() and department.lower() != 'all':
-                user_query += " AND LOWER(TRIM(u.department)) = LOWER(TRIM(?))"
-                user_params.append(department.strip())
+                dept_clean = department.strip().lower()
+                if dept_clean in ('general / unassigned', 'general/unassigned', 'unassigned'):
+                    user_query += (
+                        " AND (u.department IS NULL OR TRIM(u.department) = '' "
+                        "OR LOWER(TRIM(u.department)) IN ('general / unassigned', 'general/unassigned', 'unassigned'))"
+                    )
+                else:
+                    user_query += " AND LOWER(TRIM(u.department)) = LOWER(TRIM(?))"
+                    user_params.append(department.strip())
             if shift_id and str(shift_id).strip() and str(shift_id).lower() != 'all':
                 s_val = str(shift_id).strip()
                 user_query += """ AND (
@@ -6332,7 +6346,10 @@ def get_detailed_attendance_report(
                     leave_info = leave_map.get((uid, cur_date))
                     # Resolve holiday early so leave-on-holiday can keep leave status + Mark Present.
                     cur_holiday_name = holiday_names.get(cur_date) or ''
-                    is_public_holiday = bool(override_type == 'holiday' or cur_holiday_name)
+                    is_public_holiday = bool(
+                        override_type not in ('working_day', 'off_day')
+                        and (override_type == 'holiday' or cur_holiday_name)
+                    )
                     half_leave_active = False
                     if leave_info and leave_info['is_half_leave'] and att:
                         now = datetime.now()
@@ -14277,6 +14294,35 @@ def save_payroll_component_type(
             raise ValueError("An item with this name or code already exists.")
 
 
+def _recalculate_draft_payroll_runs(
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    payroll_months: Optional[Sequence[str]] = None,
+) -> None:
+    """Recalculate any non-finalized draft payroll runs after component/adjustment changes."""
+    org, branch = _tenant_ids(organization_id, branch_id)
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute(
+                """SELECT DISTINCT payroll_month FROM payroll_runs
+                   WHERE COALESCE(organization_id,'DEFAULT_ORG')=?
+                     AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+                     AND LOWER(COALESCE(status,'draft')) != 'finalized'""",
+                (org, branch),
+            ).fetchall()
+        draft_months = [r[0] for r in rows if r and r[0]]
+        if payroll_months:
+            allowed = {str(m).strip() for m in payroll_months if m}
+            draft_months = [m for m in draft_months if m in allowed]
+        for month in draft_months:
+            try:
+                calculate_monthly_payroll(month, organization_id=org, branch_id=branch)
+            except Exception:
+                logger.exception("Failed to recalculate draft payroll for %s", month)
+    except Exception:
+        logger.exception("Failed to query draft payroll runs for recalculation")
+
+
 def delete_payroll_component_type(component_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> bool:
     org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
@@ -14287,7 +14333,10 @@ def delete_payroll_component_type(component_id: int, organization_id: Optional[s
         )
         conn.execute("DELETE FROM payroll_employee_components WHERE component_type_id=?", (int(component_id),))
         conn.commit()
-        return cursor.rowcount > 0
+        deleted = cursor.rowcount > 0
+    if deleted:
+        _recalculate_draft_payroll_runs(org, branch)
+    return deleted
 
 
 def list_payroll_component_duplicates(organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -14611,7 +14660,10 @@ def delete_employee_component(assignment_id: int, organization_id: Optional[str]
             (int(assignment_id), org, branch),
         )
         conn.commit()
-        return cursor.rowcount > 0
+        deleted = cursor.rowcount > 0
+    if deleted:
+        _recalculate_draft_payroll_runs(org, branch)
+    return deleted
 
 
 def list_payroll_adjustments(payroll_month: str, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -14669,13 +14721,22 @@ def save_payroll_adjustment(
 def delete_payroll_adjustment(adjustment_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> bool:
     org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            """SELECT payroll_month FROM payroll_adjustments WHERE id=?
+               AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
+            (int(adjustment_id), org, branch),
+        ).fetchone()
         cursor = conn.execute(
             """DELETE FROM payroll_adjustments WHERE id=?
                AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
             (int(adjustment_id), org, branch),
         )
         conn.commit()
-        return cursor.rowcount > 0
+        deleted = cursor.rowcount > 0
+    if deleted:
+        months = [row[0]] if row and row[0] else None
+        _recalculate_draft_payroll_runs(org, branch, months)
+    return deleted
 
 
 def list_payroll_audit(payroll_month: Optional[str] = None, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -15248,6 +15309,7 @@ def save_special_date_override(
             conn.commit()
     except sqlite3.IntegrityError as e:
         raise ValueError("A special date is already configured for this date") from e
+    _recalculate_draft_payroll_runs(org, branch, [normalized_date[:7]])
     return next(
         item for item in get_special_date_overrides(organization_id=organization_id, branch_id=branch_id)
         if item['id'] == target_id
@@ -15263,6 +15325,13 @@ def delete_special_date_override(
     org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
+        row = cursor.execute(
+            """SELECT calendar_date FROM special_date_overrides
+               WHERE id = ?
+                 AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                 AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+            (override_id, org, branch),
+        ).fetchone()
         cursor.execute(
             """DELETE FROM special_date_overrides
                WHERE id = ?
@@ -15271,7 +15340,11 @@ def delete_special_date_override(
             (override_id, org, branch),
         )
         conn.commit()
-        return cursor.rowcount > 0
+        deleted = cursor.rowcount > 0
+    if deleted:
+        months = [str(row[0])[:7]] if row and row[0] else None
+        _recalculate_draft_payroll_runs(org, branch, months)
+    return deleted
 
 
 def _validate_payroll_rule_range(
@@ -15976,6 +16049,8 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
         present_statuses = {'present', 'checked_out', 'late'}
         off_day_dates: List[str] = []
         for day in eligible_records:
+            if str(day.get('calendar_override') or '').strip().lower() == 'working_day':
+                continue
             is_holiday_or_off = (
                 (not day.get('scheduled_workday'))
                 or bool(day.get('is_public_holiday'))
@@ -16002,11 +16077,13 @@ def calculate_monthly_payroll(payroll_month: str | int | None = None, month: Opt
                 extra_maps['adjustments'].get(int(employee_id), []),
                 daily_rate, off_day_dates, decimal_places,
             )
-        attendance_off_days_worked = len(adj_pack.get('remaining_off_days') or [])
+        remaining_off_days = adj_pack.get('remaining_off_days') or []
+        rest_day_covered_count = int(adj_pack.get('rest_day_covered_count') or 0)
+        attendance_off_days_worked = len(remaining_off_days) + rest_day_covered_count
         attendance_off_day_extra = _off_day_attendance_extra(
-            daily_rate, attendance_off_days_worked, payroll_settings, decimal_places
+            daily_rate, len(remaining_off_days), payroll_settings, decimal_places
         )
-        off_day_extra_pay = _m(attendance_off_day_extra)
+        off_day_extra_pay = _m(attendance_off_day_extra + float(adj_pack.get('rest_day_earn') or 0))
         off_days_worked = attendance_off_days_worked
         bonus_amount = _m(bonus_amounts.get(int(employee_id), 0.0)) if _payroll_flag_on(payroll_settings, 'enable_bonuses') else 0.0
 
