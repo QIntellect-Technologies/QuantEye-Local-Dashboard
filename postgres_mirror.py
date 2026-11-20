@@ -701,25 +701,43 @@ def mirror_company_holiday(holiday: Dict[str, Any]) -> None:
     end_date = str(holiday.get("end_date") or h_date).strip()
     desc = str(holiday.get("description") or "").strip()
     is_rec = int(holiday.get("is_recurring") or 0)
-    ot_prem = float(holiday.get("overtime_premium_percent") or 0.0)
+    has_ot_prem = "overtime_premium_percent" in holiday
+    raw_ot_prem = holiday.get("overtime_premium_percent")
+    ot_prem = float(raw_ot_prem) if raw_ot_prem is not None and raw_ot_prem != "" else None
 
     def _write(cur):
         _ensure_tenant(cur, org_id, branch_id)
-        cur.execute(
-            """
-            INSERT INTO company_holidays (
-                id, organization_id, branch_id, name, holiday_date, end_date, description, is_recurring, overtime_premium_percent
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (organization_id, id) DO UPDATE SET
-                name = EXCLUDED.name,
-                holiday_date = EXCLUDED.holiday_date,
-                end_date = EXCLUDED.end_date,
-                description = EXCLUDED.description,
-                is_recurring = EXCLUDED.is_recurring,
-                overtime_premium_percent = EXCLUDED.overtime_premium_percent
-            """,
-            (hid, org_id, branch_id, name, h_date, end_date, desc, is_rec, ot_prem),
-        )
+        if has_ot_prem:
+            cur.execute(
+                """
+                INSERT INTO company_holidays (
+                    id, organization_id, branch_id, name, holiday_date, end_date, description, is_recurring, overtime_premium_percent
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (organization_id, id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    holiday_date = EXCLUDED.holiday_date,
+                    end_date = EXCLUDED.end_date,
+                    description = EXCLUDED.description,
+                    is_recurring = EXCLUDED.is_recurring,
+                    overtime_premium_percent = EXCLUDED.overtime_premium_percent
+                """,
+                (hid, org_id, branch_id, name, h_date, end_date, desc, is_rec, ot_prem),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO company_holidays (
+                    id, organization_id, branch_id, name, holiday_date, end_date, description, is_recurring
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (organization_id, id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    holiday_date = EXCLUDED.holiday_date,
+                    end_date = EXCLUDED.end_date,
+                    description = EXCLUDED.description,
+                    is_recurring = EXCLUDED.is_recurring
+                """,
+                (hid, org_id, branch_id, name, h_date, end_date, desc, is_rec),
+            )
 
     return _with_cursor(_write)
 
@@ -788,7 +806,7 @@ def fetch_pg_company_holidays(organization_id: str, branch_id: Optional[str] = N
                         r.get("end_date"),
                         r.get("description") or "",
                         int(r.get("is_recurring") or 0),
-                        float(r.get("overtime_premium_percent") or 0.0),
+                        float(r["overtime_premium_percent"]) if r.get("overtime_premium_percent") is not None else None,
                     ),
                 )
             sqlite_conn.commit()

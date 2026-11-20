@@ -15056,6 +15056,12 @@ def get_overtime_holiday_premium_rules(
 ) -> List[Dict[str, Any]]:
     """Return company holidays with an explicitly configured OT premium."""
     org, branch = _tenant_ids(organization_id, branch_id)
+    if org not in ('all', 'DEFAULT_ORG') and postgres_is_configured():
+        try:
+            import postgres_mirror as cloud_pg
+            cloud_pg.fetch_pg_company_holidays(org, branch)
+        except Exception as error:
+            logger.warning("Postgres unreachable for holiday OT rules; using SQLite cache: %s", error)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -15066,7 +15072,10 @@ def get_overtime_holiday_premium_rules(
                 FROM company_holidays
                 WHERE overtime_premium_percent IS NOT NULL
                   AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                  AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                  AND (
+                      COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                      OR COALESCE(NULLIF(TRIM(branch_id), ''), 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+                  )
                 ORDER BY holiday_date, name
             ''', (org, branch)).fetchall()
             return [dict(row) for row in rows]
@@ -15092,17 +15101,30 @@ def set_company_holiday_overtime_premium(
     else:
         premium = None
     try:
+        org, branch = _tenant_ids(organization_id, branch_id)
+        updated_row = None
         with sqlite3.connect(DB_PATH) as conn:
-            org, branch = _tenant_ids(organization_id, branch_id)
+            conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 """UPDATE company_holidays SET overtime_premium_percent = ?
                    WHERE id = ?
                      AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
-                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                     AND (
+                         COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                         OR COALESCE(NULLIF(TRIM(branch_id), ''), 'DEFAULT_BRANCH') = 'DEFAULT_BRANCH'
+                     )""",
                 (premium, int(holiday_id), org, branch),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            updated = cursor.rowcount > 0
+            if updated:
+                row = conn.execute("SELECT * FROM company_holidays WHERE id = ?", (int(holiday_id),)).fetchone()
+                if row:
+                    updated_row = dict(row)
+        if updated and updated_row:
+            _cloud_mirror("mirror_company_holiday", updated_row)
+            _recalculate_draft_payroll_runs(org, branch)
+        return updated
     except Exception as e:
         logger.error(f"Failed to update holiday overtime premium: {e}")
         return False
