@@ -26428,15 +26428,22 @@ async function fetchMultiLiveDetections() {
             }
           }
           const rows = adjBody.adjustments || [];
-          tbody.innerHTML = rows.length ? rows.map((row) => `
+          tbody.innerHTML = rows.length ? rows.map((row) => {
+            const isApplied = row.applied !== false;
+            const statusHtml = isApplied
+              ? '<span class="badge bg-success-subtle text-success">Applied</span>'
+              : `<span class="badge bg-warning-subtle text-warning-emphasis" title="${payrollEscape(row.status_reason || '')}">Not applied</span>`;
+            const noteText = [row.note || '', (!isApplied && row.status_reason) ? row.status_reason : ''].filter(Boolean).join(' · ');
+            return `
             <tr>
               <td>${payrollEscape(row.employee_name || ('#' + row.user_id))}</td>
-              <td>${payrollEscape(row.adj_type)}</td>
+              <td>${payrollEscape(row.adj_type)} ${statusHtml}</td>
               <td>${payrollEscape(row.work_date || row.source_month || '—')}</td>
               <td>${row.pay_mode === 'multiplier' ? (row.multiplier + '×') : payrollMoney(row.amount)}</td>
-              <td>${payrollEscape(row.note || '')}</td>
+              <td>${payrollEscape(noteText)}</td>
               <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger" onclick="deletePayrollException(${row.id})">Remove</button></td>
-            </tr>`).join('') : '<tr><td colspan="6" class="text-center text-muted p-4">No exceptions for this month.</td></tr>';
+            </tr>`;
+          }).join('') : '<tr><td colspan="6" class="text-center text-muted p-4">No exceptions for this month.</td></tr>';
         } catch (error) {
           tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center p-4">${payrollEscape(error.message)}</td></tr>`;
         }
@@ -26448,14 +26455,45 @@ async function fetchMultiLiveDetections() {
           showAppToast('Choose a payroll month first.', 'error');
           return;
         }
+        const userId = Number(document.getElementById('payrollExceptionUser')?.value);
+        const adjType = document.getElementById('payrollExceptionType')?.value;
+        const payMode = document.getElementById('payrollExceptionMode')?.value;
+        const amount = Number(document.getElementById('payrollExceptionAmount')?.value || 0);
+        const multiplier = Number(document.getElementById('payrollExceptionMultiplier')?.value || 0);
+        const workDate = (document.getElementById('payrollExceptionDate')?.value || '').trim() || null;
+        const sourceMonth = (document.getElementById('payrollExceptionSourceMonth')?.value || '').trim() || null;
+
+        if (!userId) {
+          showAppToast('Select an employee first.', 'error');
+          return;
+        }
+        if (adjType === 'rest_day') {
+          if (!workDate) {
+            showAppToast('Work date is required for Rest-day extra.', 'error');
+            return;
+          }
+          if (workDate.slice(0, 7) !== month) {
+            showAppToast(`Rest-day work date (${workDate}) must be within ${month}.`, 'error');
+            return;
+          }
+        }
+        if (payMode === 'multiplier' && (!Number.isFinite(multiplier) || multiplier <= 0)) {
+          showAppToast('Multiplier must be greater than 0.', 'error');
+          return;
+        }
+        if (payMode === 'fixed' && adjType !== 'arrears' && (!Number.isFinite(amount) || amount <= 0)) {
+          showAppToast('Amount must be greater than 0.', 'error');
+          return;
+        }
+
         const payload = {
-          user_id: Number(document.getElementById('payrollExceptionUser')?.value),
-          adj_type: document.getElementById('payrollExceptionType')?.value,
-          pay_mode: document.getElementById('payrollExceptionMode')?.value,
-          amount: Number(document.getElementById('payrollExceptionAmount')?.value || 0),
-          multiplier: Number(document.getElementById('payrollExceptionMultiplier')?.value || 0),
-          work_date: document.getElementById('payrollExceptionDate')?.value || null,
-          source_month: document.getElementById('payrollExceptionSourceMonth')?.value || null,
+          user_id: userId,
+          adj_type: adjType,
+          pay_mode: payMode,
+          amount: amount,
+          multiplier: multiplier,
+          work_date: workDate,
+          source_month: sourceMonth,
           note: document.getElementById('payrollExceptionNote')?.value || ''
         };
         try {
@@ -26470,7 +26508,7 @@ async function fetchMultiLiveDetections() {
           const adjFlag = document.getElementById('flag_enable_individual_adjustments');
           if (adjFlag) adjFlag.checked = true;
           await loadPayrollExceptions();
-          if (currentPayrollPreview && !currentPayrollPreview.is_finalized) {
+          if (!currentPayrollPreview || !currentPayrollPreview.is_finalized) {
             await loadMonthlyPayroll(month, true);
           }
         } catch (error) {

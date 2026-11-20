@@ -516,9 +516,32 @@ def apply_adjustments(
         else:
             amount = money(float(adj.get("amount") or 0), decimal_places)
         if adj_type == "rest_day":
-            if work_date:
+            applied = bool(work_date and work_date in off_set)
+            if applied:
                 covered_off_days.add(work_date)
-            rest_day_earn += amount
+                rest_day_earn += amount
+                lines.append({
+                    "type": adj_type,
+                    "date": work_date,
+                    "amount": amount,
+                    "applied": True,
+                    "note": adj.get("note") or "",
+                    "source_month": adj.get("source_month"),
+                })
+            else:
+                reason = adj.get("status_reason") or (
+                    f"Not applied: no attendance on {work_date}" if work_date else "Not applied: rest-day work date missing"
+                )
+                lines.append({
+                    "type": adj_type,
+                    "date": work_date,
+                    "amount": 0.0,
+                    "applied": False,
+                    "reason": reason,
+                    "note": adj.get("note") or "",
+                    "source_month": adj.get("source_month"),
+                })
+            continue
         elif adj_type in ("bonus", "earning", "overtime"):
             extra_earn += amount
         elif adj_type == "deduction":
@@ -533,6 +556,7 @@ def apply_adjustments(
             "type": adj_type,
             "date": work_date,
             "amount": amount,
+            "applied": True,
             "note": adj.get("note") or "",
             "source_month": adj.get("source_month"),
         })

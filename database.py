@@ -14670,7 +14670,8 @@ def list_payroll_adjustments(payroll_month: str, organization_id: Optional[str] 
     org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
+        cursor = conn.cursor()
+        rows = cursor.execute(
             """SELECT a.*, u.name AS employee_name
                FROM payroll_adjustments a
                LEFT JOIN users u ON u.id = a.user_id
@@ -14680,7 +14681,50 @@ def list_payroll_adjustments(payroll_month: str, organization_id: Optional[str] 
                ORDER BY a.id""",
             (payroll_month, org, branch),
         ).fetchall()
-        return [dict(row) for row in rows]
+        items = [dict(row) for row in rows]
+        for item in items:
+            item['applied'] = True
+            item['status_reason'] = 'Applied'
+            if str(item.get('adj_type') or '').strip().lower() == 'rest_day':
+                wdate = str(item.get('work_date') or '').strip()
+                uid = int(item.get('user_id') or 0)
+                if not wdate:
+                    item['applied'] = False
+                    item['status_reason'] = 'Not applied: no rest-day date specified'
+                    continue
+                day_type = _get_overtime_day_type(cursor, uid, wdate)
+                if day_type == 'regular':
+                    item['applied'] = False
+                    item['status_reason'] = f'Not applied: {wdate} is a regular working day'
+                    continue
+                has_att = cursor.execute(
+                    "SELECT 1 FROM attendance WHERE user_id=? AND substr(timestamp, 1, 10)=? LIMIT 1",
+                    (uid, wdate),
+                ).fetchone()
+                has_ot = cursor.execute(
+                    "SELECT 1 FROM overtime WHERE user_id=? AND ot_date=? AND LOWER(COALESCE(status,''))='approved' LIMIT 1",
+                    (uid, wdate),
+                ).fetchone()
+                if has_ot:
+                    item['applied'] = False
+                    item['status_reason'] = f'Not applied: {wdate} is already paid under approved overtime'
+                elif not has_att:
+                    on_leave = cursor.execute(
+                        """SELECT 1 FROM leave_requests
+                           WHERE user_id=? AND start_date<=? AND end_date>=?
+                             AND LOWER(COALESCE(status,'')) IN ('approved', 'partially_approved')
+                           LIMIT 1""",
+                        (uid, wdate, wdate),
+                    ).fetchone()
+                    item['applied'] = False
+                    item['status_reason'] = (
+                        f'Not applied: employee was on leave on {wdate}'
+                        if on_leave else f'Not applied: no attendance on {wdate}'
+                    )
+                else:
+                    item['applied'] = True
+                    item['status_reason'] = f'Applied for worked rest day ({wdate})'
+        return items
 
 
 def save_payroll_adjustment(
@@ -14701,21 +14745,68 @@ def save_payroll_adjustment(
     mode = str(pay_mode or 'fixed').strip().lower()
     if kind not in VALID_ADJ_TYPES or mode not in VALID_ADJ_MODES:
         return None
+    amt_val = float(amount or 0)
+    mult_val = float(multiplier or 0)
+    if mode == 'multiplier' and mult_val <= 0:
+        raise ValueError("Multiplier must be greater than 0.")
+    if mode == 'fixed' and kind != 'arrears' and amt_val <= 0:
+        raise ValueError("Amount must be greater than 0.")
+    if mode == 'fixed' and kind == 'arrears' and amt_val == 0:
+        raise ValueError("Arrears amount cannot be 0.")
+
+    clean_work_date = str(work_date or '').strip() or None
+    clean_source_month = str(source_month or '').strip() or None
     org, branch = _tenant_ids(organization_id, branch_id)
+
     with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        finalized_row = cursor.execute(
+            """SELECT 1 FROM payroll_runs
+               WHERE payroll_month=?
+                 AND COALESCE(organization_id,'DEFAULT_ORG')=?
+                 AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+                 AND LOWER(COALESCE(status,'draft'))='finalized'
+               LIMIT 1""",
+            (payroll_month, org, branch),
+        ).fetchone()
+        if finalized_row:
+            raise ValueError(f"Payroll for {payroll_month} is finalized and cannot be modified.")
+
+        if kind == 'rest_day':
+            if not clean_work_date:
+                raise ValueError("Work date is required for Rest-day extra.")
+            try:
+                datetime.strptime(clean_work_date, "%Y-%m-%d")
+            except ValueError as exc:
+                raise ValueError("Work date must use YYYY-MM-DD format.") from exc
+            if clean_work_date[:7] != payroll_month:
+                raise ValueError(f"Rest-day work date ({clean_work_date}) must be within {payroll_month}.")
+            day_type = _get_overtime_day_type(cursor, int(user_id), clean_work_date)
+            if day_type == 'regular':
+                raise ValueError(f"{clean_work_date} is a scheduled working day for this employee, not a weekly Off Day or holiday.")
+        elif kind == 'arrears' and clean_source_month:
+            try:
+                datetime.strptime(clean_source_month, "%Y-%m")
+            except ValueError as exc:
+                raise ValueError("Arrears source month must use YYYY-MM format.") from exc
+            if clean_source_month >= payroll_month:
+                raise ValueError(f"Arrears source month ({clean_source_month}) must be earlier than {payroll_month}.")
+
         cursor = conn.execute(
             """INSERT INTO payroll_adjustments (
                    organization_id, branch_id, user_id, payroll_month, work_date, adj_type, pay_mode,
                    amount, multiplier, note, source_month, created_by
                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (org, branch, int(user_id), payroll_month, work_date, kind, mode, float(amount or 0),
-             float(multiplier or 0), note or '', source_month, created_by),
+            (org, branch, int(user_id), payroll_month, clean_work_date, kind, mode, amt_val,
+             mult_val, note or '', clean_source_month, created_by),
         )
         _write_payroll_audit(conn.cursor(), 'adjustment_added', org, branch, payroll_month, created_by, {
-            'user_id': int(user_id), 'adj_type': kind, 'amount': amount, 'multiplier': multiplier, 'work_date': work_date,
+            'user_id': int(user_id), 'adj_type': kind, 'amount': amt_val, 'multiplier': mult_val, 'work_date': clean_work_date,
         })
         conn.commit()
-        return cursor.lastrowid
+        saved_id = cursor.lastrowid
+    _recalculate_draft_payroll_runs(org, branch, [payroll_month])
+    return saved_id
 
 
 def delete_payroll_adjustment(adjustment_id: int, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> bool:
@@ -14726,6 +14817,18 @@ def delete_payroll_adjustment(adjustment_id: int, organization_id: Optional[str]
                AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",
             (int(adjustment_id), org, branch),
         ).fetchone()
+        if row and row[0]:
+            finalized_row = conn.execute(
+                """SELECT 1 FROM payroll_runs
+                   WHERE payroll_month=?
+                     AND COALESCE(organization_id,'DEFAULT_ORG')=?
+                     AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+                     AND LOWER(COALESCE(status,'draft'))='finalized'
+                   LIMIT 1""",
+                (row[0], org, branch),
+            ).fetchone()
+            if finalized_row:
+                raise ValueError(f"Payroll for {row[0]} is finalized and cannot be modified.")
         cursor = conn.execute(
             """DELETE FROM payroll_adjustments WHERE id=?
                AND COALESCE(organization_id,'DEFAULT_ORG')=? AND COALESCE(branch_id,'DEFAULT_BRANCH')=?""",

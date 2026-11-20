@@ -7829,19 +7829,22 @@ def api_save_payroll_adjustment():
         return jsonify({'error': 'Employee is required'}), 400
     if not verify_user_access(user_id):
         return jsonify({'error': 'Employee not found or access denied'}), 404
-    saved_id = db.save_payroll_adjustment(
-        user_id=user_id,
-        payroll_month=payroll_month,
-        adj_type=str(data.get('adj_type') or ''),
-        pay_mode=str(data.get('pay_mode') or 'fixed'),
-        amount=float(data.get('amount') or 0),
-        multiplier=float(data.get('multiplier') or 0),
-        work_date=data.get('work_date'),
-        note=str(data.get('note') or ''),
-        source_month=data.get('source_month'),
-        created_by=get_admin_display_name(),
-        **payroll_tenant(),
-    )
+    try:
+        saved_id = db.save_payroll_adjustment(
+            user_id=user_id,
+            payroll_month=payroll_month,
+            adj_type=str(data.get('adj_type') or ''),
+            pay_mode=str(data.get('pay_mode') or 'fixed'),
+            amount=float(data.get('amount') or 0),
+            multiplier=float(data.get('multiplier') or 0),
+            work_date=data.get('work_date'),
+            note=str(data.get('note') or ''),
+            source_month=data.get('source_month'),
+            created_by=get_admin_display_name(),
+            **payroll_tenant(),
+        )
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     if not saved_id:
         return jsonify({'error': 'Choose a valid exception type and amount or multiplier.'}), 400
     # Ensure individual exceptions are active when the user saves one from Payroll UI.
@@ -7864,7 +7867,11 @@ def api_save_payroll_adjustment():
 
 @app.route('/api/payroll/adjustments/<int:adjustment_id>', methods=['DELETE'])
 def api_delete_payroll_adjustment(adjustment_id):
-    if not db.delete_payroll_adjustment(adjustment_id, **payroll_tenant()):
+    try:
+        deleted = db.delete_payroll_adjustment(adjustment_id, **payroll_tenant())
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    if not deleted:
         return jsonify({'error': 'Exception not found'}), 404
     return jsonify({'success': True})
 
