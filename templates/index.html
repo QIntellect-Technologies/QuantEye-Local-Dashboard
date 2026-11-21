@@ -6284,6 +6284,27 @@
         border: 1px solid rgba(226,231,246,0.9) !important;
         border-radius: 16px !important;
       }
+      #payrollOnePersonExtrasSection .payroll-rule-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+        gap: 12px;
+        align-items: end;
+      }
+      #payrollOnePersonExtrasSection .payroll-rule-form .payroll-rule-field {
+        display: flex; flex-direction: column; gap: 5px; margin-bottom: 0; min-width: 0; width: 100%;
+      }
+      #payrollOnePersonExtrasSection .payroll-rule-form .form-control,
+      #payrollOnePersonExtrasSection .payroll-rule-form .form-select,
+      #payrollOnePersonExtrasSection .payroll-rule-form .app-camera-select,
+      #payrollOnePersonExtrasSection .payroll-rule-form .app-camera-select-trigger {
+        width: 100% !important; min-width: 0; height: 38px; min-height: 38px; box-sizing: border-box;
+      }
+      #payrollOnePersonExtrasSection .payroll-rule-actions {
+        display: flex; align-items: flex-end;
+      }
+      #payrollOnePersonExtrasSection .payroll-rule-actions .btn {
+        height: 38px; min-height: 38px; padding: 0 16px; white-space: nowrap;
+      }
       /* QA-154: One-person exception Work Date Calendar */
       .qe-ex-cal-wrap { position: relative; }
       .qe-ex-cal-trigger {
@@ -12137,7 +12158,7 @@ async function fetchMultiLiveDetections() {
         </div>
       </div>
 
-      <section id="payrollOnePersonExtrasSection" style="margin-top:28px; padding:18px; background:#ffffff; border:1px solid #cfe8f7; border-radius:8px; display:none;">
+      <section id="payrollOnePersonExtrasSection" style="margin-top:28px; padding:18px; background:#ffffff; border:1px solid #cfe8f7; border-radius:8px;">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
           <div>
             <h2 style="font-size:1.12em; font-weight:800; color:#173042; margin:0;">One-person exceptions</h2>
@@ -24648,7 +24669,7 @@ async function fetchMultiLiveDetections() {
           if (sec) {
             sec.style.display = isEnabled ? 'block' : 'none';
           }
-          if (flag === 'enable_individual_adjustments') {
+          if (flag === 'enable_individual_adjustments' && (settings || window._payrollSettings)) {
             const payrollCard = document.getElementById('payrollOnePersonExtrasSection');
             if (payrollCard) {
               payrollCard.style.display = isEnabled ? 'block' : 'none';
@@ -27055,12 +27076,26 @@ async function fetchMultiLiveDetections() {
         const userSelect = document.getElementById('payrollExceptionUser');
         if (!tbody || !month) return;
         try {
-          const [adjRes, usersRes] = await Promise.all([
-            fetch(`${API_BASE}/payroll/adjustments?month=${encodeURIComponent(month)}`),
-            fetch(`${API_BASE}/users`)
+          const [adjRes, usersRes, settingsRes] = await Promise.all([
+            fetch(`${API_BASE}/payroll/adjustments?month=${encodeURIComponent(month)}`, { cache: 'no-store' }),
+            fetch(`${API_BASE}/users`, { cache: 'no-store' }),
+            fetch(`${API_BASE}/settings/payroll`, { cache: 'no-store' }).catch(() => null)
           ]);
           const adjBody = await adjRes.json();
           const users = payrollListFromPayload(await usersRes.json(), ['users', 'employees', 'staff']);
+          let settings = window._payrollSettings || null;
+          if (settingsRes && settingsRes.ok) {
+            try {
+              settings = await settingsRes.json();
+              window._payrollSettings = settings;
+            } catch (_) {}
+          }
+          const rows = adjBody.adjustments || [];
+          const sectionEl = document.getElementById('payrollOnePersonExtrasSection');
+          if (sectionEl) {
+            const explicitlyDisabled = settings && Number(settings.enable_individual_adjustments) === 0;
+            sectionEl.style.display = (explicitlyDisabled && rows.length === 0) ? 'none' : 'block';
+          }
           if (userSelect && Array.isArray(users)) {
             const prevUser = userSelect.value;
             userSelect.innerHTML = '<option value="">Search employee name or EMP code...</option>' + users.filter((u) => u.active !== 0).map((u) => {
@@ -27076,7 +27111,6 @@ async function fetchMultiLiveDetections() {
             }
           }
           await loadPayrollExceptionCalendar();
-          const rows = adjBody.adjustments || [];
           tbody.innerHTML = rows.length ? rows.map((row) => {
             const isApplied = row.applied !== false;
             const statusHtml = isApplied
