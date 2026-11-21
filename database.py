@@ -14965,6 +14965,30 @@ def save_payroll_adjustment(
         if finalized_row:
             raise ValueError(f"Payroll for {payroll_month} is finalized and cannot be modified.")
 
+        # PAY-16: Prevent duplicate identical exceptions from repeated/concurrent clicks.
+        dup_row = cursor.execute(
+            """SELECT id FROM payroll_adjustments
+               WHERE COALESCE(organization_id,'DEFAULT_ORG')=?
+                 AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+                 AND user_id=?
+                 AND payroll_month=?
+                 AND adj_type=?
+                 AND pay_mode=?
+                 AND ABS(COALESCE(amount,0) - ?) < 0.001
+                 AND ABS(COALESCE(multiplier,0) - ?) < 0.001
+                 AND COALESCE(work_date,'')=?
+                 AND COALESCE(source_month,'')=?
+                 AND COALESCE(note,'')=?
+                 AND created_at >= datetime('now', '-15 seconds')
+               LIMIT 1""",
+            (
+                org, branch, int(user_id), payroll_month, kind, mode,
+                amt_val, mult_val, clean_work_date or '', clean_source_month or '', note or '',
+            ),
+        ).fetchone()
+        if dup_row:
+            raise ValueError("This exception was already saved. Please wait a moment or refresh the list.")
+
         if kind == 'rest_day':
             if not clean_work_date:
                 raise ValueError("Work date is required for Rest-day extra.")
