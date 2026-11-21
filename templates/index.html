@@ -1482,7 +1482,26 @@
         gap: 16px;
       }
       .invoice-brand { display: flex; align-items: center; gap: 14px; }
-      .invoice-brand img { width: 76px; height: 76px; object-fit: contain; }
+      .invoice-brand img {
+        width: 72px; height: 72px; max-width: 72px; max-height: 72px;
+        object-fit: contain; flex-shrink: 0; border-radius: 8px;
+      }
+      .payslip-logo-upload-box {
+        display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        padding: 10px 12px; border: 1px dashed #cbd5e1; border-radius: 10px; background: #f8fafc;
+      }
+      .payslip-logo-thumb-wrap {
+        width: 56px; height: 56px; border-radius: 8px; border: 1px solid #e2e8f0;
+        background: #ffffff; display: flex; align-items: center; justify-content: center;
+        overflow: hidden; flex-shrink: 0;
+      }
+      .payslip-logo-thumb-wrap img {
+        width: 100%; height: 100%; object-fit: contain; display: block;
+      }
+      .payslip-logo-upload-box.is-invalid {
+        border-color: #dc2626 !important;
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12) !important;
+      }
       .payslip-letterhead-grid {
         display: grid;
         grid-template-columns: minmax(280px, 1fr) minmax(340px, 1.15fr);
@@ -14579,6 +14598,29 @@ async function fetchMultiLiveDetections() {
             <p class="payroll-panel-help">These details print on every payslip, in the same layout as a QuantEye invoice. Type on the left — the preview on the right updates immediately. Click Save letterhead to keep the change.</p>
             <div class="payslip-letterhead-grid">
               <form id="payslipLetterheadForm" oninput="_payslipLetterheadDirty = true; refreshPayslipLetterheadPreview()" onsubmit="event.preventDefault(); savePayslipLetterhead();">
+                <div class="payroll-rule-field" style="margin-bottom:12px;">
+                  <span>Upload Company Logo</span>
+                  <div class="payslip-logo-upload-box" id="payslipLogoUploadBox">
+                    <div class="payslip-logo-thumb-wrap">
+                      <img id="payslipLogoThumb" src="" alt="Company logo preview" style="display:none;">
+                      <i id="payslipLogoPlaceholderIcon" class="fa-regular fa-image" style="font-size:1.35rem; color:#94a3b8;"></i>
+                    </div>
+                    <div style="flex:1; min-width:170px;">
+                      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <button type="button" id="payslipLogoChooseBtn" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('payslip_logo_file').click()" style="font-weight:600;">
+                          <i class="fa-solid fa-upload me-1"></i> <span id="payslipLogoChooseLabel">Upload Logo</span>
+                        </button>
+                        <button type="button" id="payslipLogoRemoveBtn" class="btn btn-outline-danger btn-sm" onclick="removePayslipLogo()" style="display:none; font-weight:600;">
+                          <i class="fa-solid fa-trash-can me-1"></i> Remove
+                        </button>
+                      </div>
+                      <small style="display:block; margin-top:4px; font-size:0.76em; color:#64748b;">Supported formats: PNG, JPG, JPEG · Max 2 MB</small>
+                    </div>
+                  </div>
+                  <input id="payslip_logo_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" style="display:none;" onchange="onPayslipLogoFileChange(this)">
+                  <input id="payslip_logo_url" type="hidden" value="">
+                  <small class="payslip-field-error" id="payslip_logo_error" role="alert"></small>
+                </div>
                 <label class="payroll-rule-field" style="margin-bottom:10px;">Company name *
                   <input id="payslip_company_name" class="form-control" type="text" maxlength="120" autocomplete="organization" required>
                   <small class="payslip-field-error" id="payslip_company_name_error"></small>
@@ -25965,7 +26007,7 @@ async function fetchMultiLiveDetections() {
       const PAYSLIP_LETTERHEAD_FIELDS = [
         'payslip_company_name', 'payslip_tagline', 'payslip_phone', 'payslip_email', 'payslip_website',
         'payslip_address', 'payslip_ntn', 'payslip_footer', 'payslip_powered',
-        'payslip_bank_title', 'payslip_bank_name', 'payslip_bank_iban'
+        'payslip_bank_title', 'payslip_bank_name', 'payslip_bank_iban', 'payslip_logo_url'
       ];
       const PAYSLIP_LETTERHEAD_DEFAULTS = {
         payslip_company_name: 'QIntellect Technologies',
@@ -25979,9 +26021,11 @@ async function fetchMultiLiveDetections() {
         payslip_powered: 'Powered by QIntellect Technologies',
         payslip_bank_title: 'QIntellect Technologies',
         payslip_bank_name: 'United Bank Limited (UBL)',
-        payslip_bank_iban: 'PK46UNIL0109000400912116'
+        payslip_bank_iban: 'PK46UNIL0109000400912116',
+        payslip_logo_url: ''
       };
-      const PAYSLIP_PRINT_CSS = `@page{size:A4;margin:10mm}body{font-family:Arial,sans-serif;margin:0;color:#173042;-webkit-print-color-adjust:exact;print-color-adjust:exact;}.invoice-paper{max-width:820px;margin:auto;padding:28px;border:1px solid #dcecf4;background:#fff;border-radius:8px;}.invoice-paper header{display:flex;justify-content:space-between;border-bottom:2px solid #0d9488;padding-bottom:16px;}.invoice-brand{display:flex;align-items:center;gap:14px;}.invoice-brand img{width:70px;height:70px;object-fit:contain;}.payslip-mark{width:70px;height:70px;border-radius:16px;background:linear-gradient(135deg,#0d9488,#115e59);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.8rem;}.invoice-meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;padding:12px 0;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;}.invoice-meta small,.bank-details small{display:block;color:#64748b;font-size:11px;font-weight:bold;text-transform:uppercase;}.mono{font-family:ui-monospace,Menlo,Consolas,monospace;}.badge{display:inline-block;background:#e6fffa;color:#0d9488;border:1px solid #99f6e4;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800;}.payslip-section{margin-top:16px;}.section-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 8px;padding-bottom:4px;border-bottom:2px solid #cbd5e1;color:#1e293b;}.earnings-title{color:#0f766e;border-bottom-color:#0f766e;}.deductions-title{color:#b91c1c;border-bottom-color:#b91c1c;}.calc-title{color:#0f4c6d;border-bottom-color:#0d9488;}.attendance-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}.attendance-badge{background:#f0fdfa;border:1px solid #99f6e4;color:#0f766e;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;}.attendance-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:6px;}.att-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 4px;text-align:center;}.att-card.highlight{background:#f0fdfa;border-color:#99f6e4;}.att-card.warning{background:#fffbeb;border-color:#fde68a;}.att-val{font-size:15px;font-weight:800;color:#0f172a;}.att-lbl{font-size:9px;color:#64748b;font-weight:600;margin-top:2px;text-transform:uppercase;}.breakdown-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;}.payslip-table{width:100%;border-collapse:collapse;font-size:11px;}.payslip-table th{text-align:left;padding:6px 8px;background:#f1f5f9;color:#334155;font-size:10px;text-transform:uppercase;border-bottom:1px solid #cbd5e1;}.payslip-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#1e293b;}.payslip-table tfoot th{padding:8px;background:#f8fafc;border-top:2px solid #cbd5e1;font-weight:800;}.text-success{color:#0f766e!important;}.text-danger{color:#b91c1c!important;}.calc-cards-row{display:flex;align-items:center;justify-content:space-between;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-top:6px;}.calc-card{flex:1;text-align:center;}.calc-op{font-size:16px;font-weight:800;color:#94a3b8;}.calc-label{font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:2px;}.calc-amount{font-size:13px;font-weight:700;color:#1e293b;}.net-pay-card{background:#0d9488;color:#fff;border-radius:6px;padding:6px 10px;}.net-pay-card .calc-label{color:#ccfbf1;}.net-pay-card .net-pay-amount{font-size:15px;font-weight:800;color:#fff;}.shortfall-alert{color:#b91c1c;font-weight:700;margin-top:6px;font-size:11px;text-align:right;}.bank-details{margin-top:16px;padding:12px;border:1px solid #cfe8f7;background:#f5fbff;border-radius:6px;font-size:11px;}.app-preview-footer{margin:20px -28px -28px;padding:10px 28px;background:#173042;color:#fff;font-size:11px;border-radius:0 0 8px 8px;}`;
+      const MAX_PAYSLIP_LOGO_BYTES = 2 * 1024 * 1024;
+      const PAYSLIP_PRINT_CSS = `@page{size:A4;margin:10mm}body{font-family:Arial,sans-serif;margin:0;color:#173042;-webkit-print-color-adjust:exact;print-color-adjust:exact;}.invoice-paper{max-width:820px;margin:auto;padding:28px;border:1px solid #dcecf4;background:#fff;border-radius:8px;}.invoice-paper header{display:flex;justify-content:space-between;border-bottom:2px solid #0d9488;padding-bottom:16px;}.invoice-brand{display:flex;align-items:center;gap:14px;}.invoice-brand img{width:72px;height:72px;max-width:72px;max-height:72px;object-fit:contain;flex-shrink:0;border-radius:8px;}.payslip-mark{width:70px;height:70px;border-radius:16px;background:linear-gradient(135deg,#0d9488,#115e59);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.8rem;}.invoice-meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;padding:12px 0;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;}.invoice-meta small,.bank-details small{display:block;color:#64748b;font-size:11px;font-weight:bold;text-transform:uppercase;}.mono{font-family:ui-monospace,Menlo,Consolas,monospace;}.badge{display:inline-block;background:#e6fffa;color:#0d9488;border:1px solid #99f6e4;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800;}.payslip-section{margin-top:16px;}.section-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 8px;padding-bottom:4px;border-bottom:2px solid #cbd5e1;color:#1e293b;}.earnings-title{color:#0f766e;border-bottom-color:#0f766e;}.deductions-title{color:#b91c1c;border-bottom-color:#b91c1c;}.calc-title{color:#0f4c6d;border-bottom-color:#0d9488;}.attendance-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}.attendance-badge{background:#f0fdfa;border:1px solid #99f6e4;color:#0f766e;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;}.attendance-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:6px;}.att-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 4px;text-align:center;}.att-card.highlight{background:#f0fdfa;border-color:#99f6e4;}.att-card.warning{background:#fffbeb;border-color:#fde68a;}.att-val{font-size:15px;font-weight:800;color:#0f172a;}.att-lbl{font-size:9px;color:#64748b;font-weight:600;margin-top:2px;text-transform:uppercase;}.breakdown-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;}.payslip-table{width:100%;border-collapse:collapse;font-size:11px;}.payslip-table th{text-align:left;padding:6px 8px;background:#f1f5f9;color:#334155;font-size:10px;text-transform:uppercase;border-bottom:1px solid #cbd5e1;}.payslip-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#1e293b;}.payslip-table tfoot th{padding:8px;background:#f8fafc;border-top:2px solid #cbd5e1;font-weight:800;}.text-success{color:#0f766e!important;}.text-danger{color:#b91c1c!important;}.calc-cards-row{display:flex;align-items:center;justify-content:space-between;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-top:6px;}.calc-card{flex:1;text-align:center;}.calc-op{font-size:16px;font-weight:800;color:#94a3b8;}.calc-label{font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:2px;}.calc-amount{font-size:13px;font-weight:700;color:#1e293b;}.net-pay-card{background:#0d9488;color:#fff;border-radius:6px;padding:6px 10px;}.net-pay-card .calc-label{color:#ccfbf1;}.net-pay-card .net-pay-amount{font-size:15px;font-weight:800;color:#fff;}.shortfall-alert{color:#b91c1c;font-weight:700;margin-top:6px;font-size:11px;text-align:right;}.bank-details{margin-top:16px;padding:12px;border:1px solid #cfe8f7;background:#f5fbff;border-radius:6px;font-size:11px;}.app-preview-footer{margin:20px -28px -28px;padding:10px 28px;background:#173042;color:#fff;font-size:11px;border-radius:0 0 8px 8px;}`;
 
       function collectPayslipLetterhead() {
         if (typeof syncStaffPhoneHidden === 'function') syncStaffPhoneHidden('payslip');
@@ -25996,6 +26040,106 @@ async function fetchMultiLiveDetections() {
         window._payslipLetterhead = out;
         return out;
       }
+
+      function syncPayslipLogoPreviewUI() {
+        const thumb = document.getElementById('payslipLogoThumb');
+        const placeholder = document.getElementById('payslipLogoPlaceholderIcon');
+        const removeBtn = document.getElementById('payslipLogoRemoveBtn');
+        const chooseLabel = document.getElementById('payslipLogoChooseLabel');
+        const savedUrl = String(document.getElementById('payslip_logo_url')?.value || '').trim();
+        const activeUrl = String(window._pendingPayslipLogoPreviewUrl || savedUrl || '').trim();
+        if (thumb) {
+          if (activeUrl) {
+            thumb.src = activeUrl;
+            thumb.style.display = 'block';
+            if (placeholder) placeholder.style.display = 'none';
+          } else {
+            thumb.removeAttribute('src');
+            thumb.style.display = 'none';
+            if (placeholder) placeholder.style.display = 'block';
+          }
+        }
+        if (removeBtn) removeBtn.style.display = activeUrl ? 'inline-flex' : 'none';
+        if (chooseLabel) chooseLabel.textContent = activeUrl ? 'Replace Logo' : 'Upload Logo';
+      }
+
+      function setPayslipLogoError(msg) {
+        window._payslipLogoError = String(msg || '');
+        const errEl = document.getElementById('payslip_logo_error');
+        const box = document.getElementById('payslipLogoUploadBox');
+        if (errEl) {
+          errEl.textContent = window._payslipLogoError;
+          errEl.style.display = window._payslipLogoError ? 'block' : 'none';
+        }
+        if (box) box.classList.toggle('is-invalid', Boolean(window._payslipLogoError));
+        if (typeof syncPayslipSaveButtonState === 'function') syncPayslipSaveButtonState();
+      }
+
+      function onPayslipLogoFileChange(input) {
+        const file = input && input.files && input.files[0];
+        if (!file) return;
+        const name = String(file.name || '').toLowerCase();
+        const type = String(file.type || '').toLowerCase();
+        const validExt = /\.(png|jpe?g)$/.test(name);
+        const validMime = !type || ['image/png', 'image/jpeg', 'image/jpg'].includes(type);
+        if (!validExt || !validMime) {
+          input.value = '';
+          window._pendingPayslipLogoFile = null;
+          window._pendingPayslipLogoPreviewUrl = '';
+          syncPayslipLogoPreviewUI();
+          setPayslipLogoError('Unsupported file format. Only PNG, JPG, and JPEG images are allowed.');
+          refreshPayslipLetterheadPreview();
+          return;
+        }
+        if (file.size <= 0) {
+          input.value = '';
+          window._pendingPayslipLogoFile = null;
+          window._pendingPayslipLogoPreviewUrl = '';
+          syncPayslipLogoPreviewUI();
+          setPayslipLogoError('Uploaded image file is empty.');
+          refreshPayslipLetterheadPreview();
+          return;
+        }
+        if (file.size > MAX_PAYSLIP_LOGO_BYTES) {
+          input.value = '';
+          window._pendingPayslipLogoFile = null;
+          window._pendingPayslipLogoPreviewUrl = '';
+          syncPayslipLogoPreviewUI();
+          setPayslipLogoError('Logo file size must not exceed 2 MB.');
+          refreshPayslipLetterheadPreview();
+          return;
+        }
+        window._pendingPayslipLogoFile = file;
+        setPayslipLogoError('');
+        _payslipLetterheadDirty = true;
+        if (typeof FileReader !== 'undefined') {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            window._pendingPayslipLogoPreviewUrl = String(ev?.target?.result || '');
+            syncPayslipLogoPreviewUI();
+            refreshPayslipLetterheadPreview();
+          };
+          reader.readAsDataURL(file);
+        } else {
+          syncPayslipLogoPreviewUI();
+          refreshPayslipLetterheadPreview();
+        }
+      }
+      window.onPayslipLogoFileChange = onPayslipLogoFileChange;
+
+      function removePayslipLogo() {
+        const fileInput = document.getElementById('payslip_logo_file');
+        const urlInput = document.getElementById('payslip_logo_url');
+        if (fileInput) fileInput.value = '';
+        if (urlInput) urlInput.value = '';
+        window._pendingPayslipLogoFile = null;
+        window._pendingPayslipLogoPreviewUrl = '';
+        setPayslipLogoError('');
+        _payslipLetterheadDirty = true;
+        syncPayslipLogoPreviewUI();
+        refreshPayslipLetterheadPreview();
+      }
+      window.removePayslipLogo = removePayslipLogo;
 
       function applyPayslipLetterhead(settings) {
         PAYSLIP_LETTERHEAD_FIELDS.forEach((key) => {
@@ -26017,6 +26161,12 @@ async function fetchMultiLiveDetections() {
             el.value = PAYSLIP_LETTERHEAD_DEFAULTS[key] || '';
           }
         });
+        window._pendingPayslipLogoFile = null;
+        window._pendingPayslipLogoPreviewUrl = '';
+        const fileInput = document.getElementById('payslip_logo_file');
+        if (fileInput) fileInput.value = '';
+        setPayslipLogoError('');
+        syncPayslipLogoPreviewUI();
         _payslipLetterheadDirty = false;
         window._payslipLetterhead = collectPayslipLetterhead();
         refreshPayslipLetterheadPreview();
@@ -26101,12 +26251,16 @@ async function fetchMultiLiveDetections() {
         const btn = document.getElementById('savePayslipLetterheadBtn');
         if (!btn) return;
         const allValid = PAYSLIP_LETTERHEAD_FIELDS.every((key) => !validatePayslipLetterheadField(key, { silent: true }));
-        btn.disabled = !allValid;
+        btn.disabled = !(allValid && !window._payslipLogoError);
       }
 
       function validateAllPayslipLetterheadFields() {
         let firstInvalidId = null;
         let firstMsg = '';
+        if (window._payslipLogoError) {
+          firstInvalidId = 'payslipLogoChooseBtn';
+          firstMsg = window._payslipLogoError;
+        }
         PAYSLIP_LETTERHEAD_FIELDS.forEach((key) => {
           const msg = validatePayslipLetterheadField(key);
           if (msg && !firstInvalidId) {
@@ -26124,6 +26278,7 @@ async function fetchMultiLiveDetections() {
         if (!form || form.dataset.validationBound === '1') return;
         form.dataset.validationBound = '1';
         PAYSLIP_LETTERHEAD_FIELDS.forEach((key) => {
+          if (key === 'payslip_logo_url') return;
           const el = key === 'payslip_phone'
             ? document.getElementById('payslipPhoneNational')
             : document.getElementById(key);
@@ -26152,13 +26307,44 @@ async function fetchMultiLiveDetections() {
           document.getElementById(check.firstInvalidId)?.focus();
           return;
         }
+        if (window._pendingPayslipLogoFile) {
+          const btn = document.getElementById('savePayslipLetterheadBtn');
+          if (btn) btn.disabled = true;
+          try {
+            const fd = new FormData();
+            fd.append('logo', window._pendingPayslipLogoFile);
+            const uploadResp = await fetch(`${API_BASE}/settings/payroll/logo`, {
+              method: 'POST',
+              body: fd,
+            });
+            const uploadData = await uploadResp.json();
+            if (!uploadResp.ok || !uploadData.success || !uploadData.logo_url) {
+              throw new Error(uploadData.error || 'Failed to upload company logo.');
+            }
+            const urlInput = document.getElementById('payslip_logo_url');
+            if (urlInput) urlInput.value = uploadData.logo_url;
+            window._pendingPayslipLogoFile = null;
+            window._pendingPayslipLogoPreviewUrl = '';
+            setPayslipLogoError('');
+            syncPayslipLogoPreviewUI();
+          } catch (err) {
+            const msg = err?.message || 'Failed to upload company logo.';
+            setPayslipLogoError(msg);
+            showAppToast(msg, 'error');
+            syncPayslipSaveButtonState();
+            return;
+          }
+        }
         _payslipLetterheadDirty = true;
         const deduct = document.getElementById('deductUnpaidLeaveToggle') ? document.getElementById('deductUnpaidLeaveToggle').checked : false;
         await savePayrollSettings(Boolean(deduct));
       }
 
       function samplePayslipPayload() {
-        const letterhead = collectPayslipLetterhead();
+        const letterhead = Object.assign({}, collectPayslipLetterhead());
+        if (window._pendingPayslipLogoPreviewUrl) {
+          letterhead.payslip_logo_url = window._pendingPayslipLogoPreviewUrl;
+        }
         return {
           payroll_month: '2026-10',
           period_start: '2026-10-01',
@@ -26417,10 +26603,11 @@ async function fetchMultiLiveDetections() {
           </tr>
         `;
 
+        const logoUrl = String(lh.payslip_logo_url || '').trim() || '/static/Logo.png';
         return `<div class="invoice-paper" id="printPayslip">
           <header>
             <div class="invoice-brand">
-              <img src="/static/Logo.png" alt="Company logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+              <img src="${payrollEscape(logoUrl)}" alt="Company logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
               <div class="payslip-mark" style="display:none">Q</div>
               <div>
                 <strong style="font-size:1.25rem">${payrollEscape(lh.payslip_company_name)}</strong>

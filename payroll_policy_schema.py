@@ -88,6 +88,7 @@ DEFAULT_PAYROLL_SETTINGS = {
     "payslip_bank_title": "QIntellect Technologies",
     "payslip_bank_name": "United Bank Limited (UBL)",
     "payslip_bank_iban": "PK46UNIL0109000400912116",
+    "payslip_logo_url": "",
 }
 
 PAYSLIP_LETTERHEAD_FIELDS = (
@@ -103,6 +104,7 @@ PAYSLIP_LETTERHEAD_FIELDS = (
     "payslip_bank_title",
     "payslip_bank_name",
     "payslip_bank_iban",
+    "payslip_logo_url",
 )
 
 

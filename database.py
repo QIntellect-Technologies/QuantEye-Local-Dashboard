@@ -1237,6 +1237,7 @@ def init_db():
                 ("payslip_bank_title", "TEXT NOT NULL DEFAULT 'QIntellect Technologies'"),
                 ("payslip_bank_name", "TEXT NOT NULL DEFAULT 'United Bank Limited (UBL)'"),
                 ("payslip_bank_iban", "TEXT NOT NULL DEFAULT 'PK46UNIL0109000400912116'"),
+                ("payslip_logo_url", "TEXT NOT NULL DEFAULT ''"),
                 ("min_basic_salary", "REAL NOT NULL DEFAULT 10000"),
                 # QA-118: keep current Late rule until the company chooses Option A/B.
                 ("half_leave_late_grace_mode", "TEXT NOT NULL DEFAULT 'shift_start'"),

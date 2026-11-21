@@ -8491,6 +8491,61 @@ def api_update_payroll_settings():
     })
 
 
+MAX_COMPANY_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
+ALLOWED_COMPANY_LOGO_EXTS = {'.png', '.jpg', '.jpeg'}
+
+
+def _is_valid_company_logo_bytes(data: bytes, ext: str) -> bool:
+    if not data:
+        return False
+    if ext == '.png':
+        return data.startswith(b'\x89PNG\r\n\x1a\n')
+    if ext in ('.jpg', '.jpeg'):
+        return data.startswith(b'\xff\xd8\xff')
+    return False
+
+
+@app.route('/api/settings/payroll/logo', methods=['POST'])
+def api_upload_payslip_company_logo():
+    """Validate and store an uploaded organization logo for employee payslips."""
+    if 'logo' not in request.files:
+        return jsonify({'error': 'Please choose an image file to upload.'}), 400
+    logo_file = request.files['logo']
+    raw_name = (logo_file.filename or '').strip()
+    if not raw_name:
+        return jsonify({'error': 'Please choose an image file to upload.'}), 400
+    ext = os.path.splitext(raw_name)[1].lower()
+    if ext not in ALLOWED_COMPANY_LOGO_EXTS:
+        return jsonify({'error': 'Unsupported file format. Only PNG, JPG, and JPEG images are allowed.'}), 400
+
+    content_len = request.content_length
+    if content_len is not None and content_len > MAX_COMPANY_LOGO_BYTES + 65536:
+        return jsonify({'error': 'Logo file size exceeds the 2 MB limit.'}), 400
+
+    raw_bytes = logo_file.read(MAX_COMPANY_LOGO_BYTES + 1)
+    if not raw_bytes:
+        return jsonify({'error': 'Uploaded image file is empty.'}), 400
+    if len(raw_bytes) > MAX_COMPANY_LOGO_BYTES:
+        return jsonify({'error': 'Logo file size exceeds the 2 MB limit.'}), 400
+    if not _is_valid_company_logo_bytes(raw_bytes, ext):
+        return jsonify({'error': 'Invalid image file. Please upload a valid PNG, JPG, or JPEG image.'}), 400
+
+    import re as _re
+    tenant = payroll_tenant()
+    safe_org = _re.sub(r'[^A-Za-z0-9_-]+', '_', str(tenant.get('organization_id') or 'org')).strip('_') or 'org'
+    safe_branch = _re.sub(r'[^A-Za-z0-9_-]+', '_', str(tenant.get('branch_id') or 'branch')).strip('_') or 'branch'
+    filename = f"logo_{safe_org}_{safe_branch}_{uuid.uuid4().hex[:10]}{ext}"
+    logos_dir = os.path.join(app.root_path, 'static', 'company_logos')
+    os.makedirs(logos_dir, exist_ok=True)
+    target_path = os.path.join(logos_dir, filename)
+    with open(target_path, 'wb') as out_fp:
+        out_fp.write(raw_bytes)
+    return jsonify({
+        'success': True,
+        'logo_url': f'/static/company_logos/{filename}',
+    })
+
+
 @app.route('/api/settings/payroll/preview', methods=['GET', 'POST'])
 def api_preview_payroll_settings():
     data = request.get_json(silent=True) or {}
