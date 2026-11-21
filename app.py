@@ -7822,6 +7822,26 @@ def api_bulk_remove_employee_components():
     return jsonify({'success': True, 'removed_count': removed_count})
 
 
+@app.route('/api/payroll/exception-calendar', methods=['GET'])
+def api_get_payroll_exception_calendar():
+    try:
+        payroll_month, _year, _month = _parse_payroll_month_arg()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    raw_uid = (request.args.get('user_id') or '').strip()
+    user_id = None
+    if raw_uid:
+        try:
+            user_id = int(raw_uid)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid user_id'}), 400
+        if not verify_user_access(user_id):
+            return jsonify({'error': 'Employee not found or access denied'}), 404
+    return jsonify(db.get_payroll_exception_calendar(
+        payroll_month, user_id=user_id, **payroll_tenant()
+    ))
+
+
 @app.route('/api/payroll/adjustments', methods=['GET'])
 def api_list_payroll_adjustments():
     try:

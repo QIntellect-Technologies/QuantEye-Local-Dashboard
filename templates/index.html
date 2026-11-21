@@ -6274,6 +6274,65 @@
         border: 1px solid rgba(226,231,246,0.9) !important;
         border-radius: 16px !important;
       }
+      /* QA-154: One-person exception Work Date Calendar */
+      .qe-ex-cal-wrap { position: relative; }
+      .qe-ex-cal-trigger {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        width: 100%; height: 38px; padding: 7px 12px; font-size: 13px;
+        background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; color: #1e293b; cursor: pointer;
+        text-align: left;
+      }
+      .qe-ex-cal-trigger:hover { border-color: #8b7bf7; }
+      .qe-ex-cal-popover {
+        position: absolute; top: calc(100% + 6px); left: 0; z-index: 2500;
+        width: 296px; padding: 12px; background: #fff;
+        border: 1px solid #dbe3f3; border-radius: 14px;
+        box-shadow: 0 22px 44px -18px rgba(15, 23, 42, 0.35);
+      }
+      .qe-ex-cal-head {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        margin-bottom: 8px; font-weight: 700; font-size: 13px; color: #151b25;
+      }
+      .qe-ex-cal-grid {
+        display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+      }
+      .qe-ex-cal-dow {
+        text-align: center; font-size: 10px; font-weight: 700; color: #64748b; padding: 2px 0 4px;
+        text-transform: uppercase;
+      }
+      .qe-ex-cal-day {
+        position: relative; height: 32px; border-radius: 8px; border: 1px solid transparent;
+        background: #f8fafc; color: #1e293b; font-size: 12px; font-weight: 600;
+        display: flex; align-items: center; justify-content: center; cursor: pointer;
+        transition: all 0.12s ease;
+      }
+      .qe-ex-cal-day:hover:not(:disabled) { border-color: #8b7bf7; background: #f3f0ff; }
+      .qe-ex-cal-day.is-offday {
+        background: #fffbeb; border-color: #fde68a; color: #b45309; font-weight: 700;
+      }
+      .qe-ex-cal-day.is-holiday {
+        background: #f3f0ff; border-color: #c4b5fd; color: #6d28d9; font-weight: 700;
+      }
+      .qe-ex-cal-day.is-offday::after,
+      .qe-ex-cal-day.is-holiday::after {
+        content: ''; position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 999px;
+      }
+      .qe-ex-cal-day.is-offday::after { background: #d97706; }
+      .qe-ex-cal-day.is-holiday::after { background: #7c3aed; }
+      .qe-ex-cal-day.is-selected {
+        background: #0f766e !important; border-color: #0f766e !important; color: #fff !important;
+      }
+      .qe-ex-cal-day.is-selected::after { background: #fff !important; }
+      .qe-ex-cal-day:disabled {
+        opacity: 0.35; cursor: not-allowed; background: #f1f5f9; color: #94a3b8; border-color: transparent;
+      }
+      .qe-ex-cal-legend {
+        display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+        margin-top: 10px; padding-top: 8px; border-top: 1px solid #edf0f9;
+        font-size: 11px; color: #475569;
+      }
+      .qe-ex-cal-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+      .qe-ex-cal-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
     </style>
     <style>
       /* ============ Leave & Holidays — Frost premium surface (GUI only) ============ */
@@ -12032,10 +12091,10 @@ async function fetchMultiLiveDetections() {
         </div>
         <form class="payroll-rule-form" onsubmit="event.preventDefault(); savePayrollException();">
           <label class="payroll-rule-field">Employee
-            <select id="payrollExceptionUser" class="form-select"></select>
+            <select id="payrollExceptionUser" class="form-select" onchange="onPayrollExceptionTargetChange()"></select>
           </label>
           <label class="payroll-rule-field">Type
-            <select id="payrollExceptionType" class="form-select">
+            <select id="payrollExceptionType" class="form-select" onchange="onPayrollExceptionTargetChange()">
               <option value="rest_day">Rest-day extra (this date only)</option>
               <option value="bonus">Bonus</option>
               <option value="earning">Extra earning</option>
@@ -12051,14 +12110,20 @@ async function fetchMultiLiveDetections() {
             </select>
           </label>
           <label id="payrollExceptionAmountWrap" class="payroll-rule-field">Amount
-            <input id="payrollExceptionAmount" class="form-control" type="number" min="0" step="0.01" value="0">
+            <input id="payrollExceptionAmount" class="form-control" type="number" min="0" step="0.01" value="" placeholder="0.00">
           </label>
           <label id="payrollExceptionMultiplierWrap" class="payroll-rule-field" style="display:none;">Multiplier
             <input id="payrollExceptionMultiplier" class="form-control" type="number" min="0" step="0.01" value="1.5">
           </label>
-          <label class="payroll-rule-field">Work date
-            <input id="payrollExceptionDate" class="form-control" type="date">
-          </label>
+          <div class="payroll-rule-field qe-ex-cal-wrap" id="payrollExceptionDateWrap">
+            <span>Work date</span>
+            <input id="payrollExceptionDate" type="hidden" value="">
+            <button type="button" id="payrollExceptionDateTrigger" class="qe-ex-cal-trigger" onclick="togglePayrollExceptionCalendar(event)">
+              <span id="payrollExceptionDateLabel">Select work date...</span>
+              <i class="fa-regular fa-calendar" style="color:#64748b;"></i>
+            </button>
+            <div id="payrollExceptionCalendarPopover" class="qe-ex-cal-popover" style="display:none;" onclick="event.stopPropagation()"></div>
+          </div>
           <label class="payroll-rule-field">Source month (arrears)
             <input id="payrollExceptionSourceMonth" class="form-control" type="month">
           </label>
@@ -12066,7 +12131,7 @@ async function fetchMultiLiveDetections() {
             <input id="payrollExceptionNote" class="form-control" type="text" maxlength="200">
           </label>
           <div class="payroll-rule-actions">
-            <button type="submit" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">Add exception</button>
+            <button id="payrollExceptionSubmitBtn" type="submit" class="btn btn-primary btn-sm" style="background:#3d9fd4; border:none; font-weight:700;">Add exception</button>
           </div>
         </form>
         <div class="log-table-wrapper" style="margin-top:10px;">
@@ -26784,6 +26849,131 @@ async function fetchMultiLiveDetections() {
         await loadPayrollComponentTypes();
       }
 
+      let _payrollExceptionCalendarData = null;
+      let _savingPayrollException = false;
+
+      function setPayrollExceptionDateValue(dateStr) {
+        const input = document.getElementById('payrollExceptionDate');
+        const label = document.getElementById('payrollExceptionDateLabel');
+        const val = String(dateStr || '').trim();
+        if (input) input.value = val;
+        if (label) label.textContent = val || 'Select work date...';
+      }
+
+      async function loadPayrollExceptionCalendar() {
+        const month = document.getElementById('payrollMonth')?.value;
+        const userId = document.getElementById('payrollExceptionUser')?.value || '';
+        if (!month) return;
+        try {
+          const url = `${API_BASE}/payroll/exception-calendar?month=${encodeURIComponent(month)}${userId ? `&user_id=${encodeURIComponent(userId)}` : ''}`;
+          const res = await fetch(url, { cache: 'no-store' });
+          const data = await res.json();
+          if (res.ok && data && Array.isArray(data.days)) {
+            _payrollExceptionCalendarData = data;
+            const currentVal = document.getElementById('payrollExceptionDate')?.value || '';
+            const adjType = document.getElementById('payrollExceptionType')?.value || 'rest_day';
+            if (currentVal) {
+              const dayObj = data.days.find(d => d.date === currentVal);
+              if (!dayObj || data.is_finalized || (adjType === 'rest_day' && !dayObj.is_rest_day)) {
+                setPayrollExceptionDateValue('');
+              }
+            }
+            renderPayrollExceptionCalendar();
+          }
+        } catch (err) {
+          console.warn('Could not load exception calendar:', err);
+        }
+      }
+
+      function renderPayrollExceptionCalendar() {
+        const pop = document.getElementById('payrollExceptionCalendarPopover');
+        if (!pop) return;
+        const data = _payrollExceptionCalendarData;
+        const month = data?.month || document.getElementById('payrollMonth')?.value || '';
+        if (!data || !Array.isArray(data.days) || !data.days.length) {
+          pop.innerHTML = '<div class="text-muted small">Select a payroll month first.</div>';
+          return;
+        }
+        const adjType = document.getElementById('payrollExceptionType')?.value || 'rest_day';
+        const selectedDate = document.getElementById('payrollExceptionDate')?.value || '';
+        const isFinalized = Boolean(data.is_finalized);
+        const firstDate = new Date(`${data.days[0].date}T00:00:00`);
+        const mondayOffset = (firstDate.getDay() + 6) % 7;
+        const monthLabel = firstDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        const blanks = Array.from({ length: mondayOffset }, () => '<div></div>').join('');
+        const cells = data.days.map(d => {
+          const isRest = Boolean(d.is_rest_day);
+          const disabled = isFinalized || (adjType === 'rest_day' && !isRest);
+          const cls = [
+            'qe-ex-cal-day',
+            d.day_type === 'non_working_day' ? 'is-offday' : '',
+            d.day_type === 'holiday' ? 'is-holiday' : '',
+            selectedDate === d.date ? 'is-selected' : '',
+          ].filter(Boolean).join(' ');
+          const tip = d.day_type === 'holiday'
+            ? (d.holiday_name || 'Public holiday')
+            : d.day_type === 'non_working_day'
+              ? 'Weekly Off Day'
+              : 'Working day';
+          return `<button type="button" class="${cls}" ${disabled ? 'disabled' : ''} title="${payrollEscape(tip)}" onclick="selectPayrollExceptionDate('${d.date}')">${d.day}</button>`;
+        }).join('');
+        const noteText = isFinalized
+          ? 'Finalized month — all dates locked.'
+          : adjType === 'rest_day'
+            ? 'Only Off Days & Holidays can be selected.'
+            : 'All dates in this month are available.';
+        pop.innerHTML = `
+          <div class="qe-ex-cal-head">
+            <span>${payrollEscape(monthLabel)}</span>
+            ${isFinalized ? '<span class="badge bg-secondary-subtle text-secondary">Finalized</span>' : ''}
+          </div>
+          <div class="qe-ex-cal-grid">
+            <div class="qe-ex-cal-dow">Mo</div><div class="qe-ex-cal-dow">Tu</div><div class="qe-ex-cal-dow">We</div>
+            <div class="qe-ex-cal-dow">Th</div><div class="qe-ex-cal-dow">Fr</div><div class="qe-ex-cal-dow">Sa</div><div class="qe-ex-cal-dow">Su</div>
+            ${blanks}${cells}
+          </div>
+          <div class="qe-ex-cal-legend">
+            <span class="qe-ex-cal-legend-item"><span class="qe-ex-cal-dot" style="background:#d97706;"></span> Off Day</span>
+            <span class="qe-ex-cal-legend-item"><span class="qe-ex-cal-dot" style="background:#7c3aed;"></span> Holiday</span>
+            <span style="width:100%; color:#64748b;">${payrollEscape(noteText)}</span>
+          </div>
+        `;
+      }
+
+      function selectPayrollExceptionDate(dateStr) {
+        setPayrollExceptionDateValue(dateStr);
+        const pop = document.getElementById('payrollExceptionCalendarPopover');
+        if (pop) pop.style.display = 'none';
+        renderPayrollExceptionCalendar();
+      }
+      window.selectPayrollExceptionDate = selectPayrollExceptionDate;
+
+      function togglePayrollExceptionCalendar(event) {
+        if (event) event.stopPropagation();
+        const pop = document.getElementById('payrollExceptionCalendarPopover');
+        if (!pop) return;
+        const willOpen = pop.style.display === 'none' || !pop.style.display;
+        if (willOpen) {
+          loadPayrollExceptionCalendar().then(() => { pop.style.display = 'block'; });
+        } else {
+          pop.style.display = 'none';
+        }
+      }
+      window.togglePayrollExceptionCalendar = togglePayrollExceptionCalendar;
+
+      function onPayrollExceptionTargetChange() {
+        loadPayrollExceptionCalendar();
+      }
+      window.onPayrollExceptionTargetChange = onPayrollExceptionTargetChange;
+
+      document.addEventListener('click', (ev) => {
+        const wrap = document.getElementById('payrollExceptionDateWrap');
+        const pop = document.getElementById('payrollExceptionCalendarPopover');
+        if (pop && wrap && !wrap.contains(ev.target)) {
+          pop.style.display = 'none';
+        }
+      });
+
       async function loadPayrollExceptions() {
         const month = document.getElementById('payrollMonth')?.value;
         const tbody = document.getElementById('payrollExceptionsTableBody');
@@ -26797,10 +26987,12 @@ async function fetchMultiLiveDetections() {
           const adjBody = await adjRes.json();
           const users = payrollListFromPayload(await usersRes.json(), ['users', 'employees', 'staff']);
           if (userSelect && Array.isArray(users)) {
+            const prevUser = userSelect.value;
             userSelect.innerHTML = '<option value="">Search employee name or EMP code...</option>' + users.filter((u) => u.active !== 0).map((u) => {
               const empCode = `EMP-${String(u.id).padStart(3, '0')}`;
               return `<option value="${u.id}" data-emp-code="${empCode}">${payrollEscape(u.name)} · ${empCode}</option>`;
             }).join('');
+            if (prevUser) userSelect.value = prevUser;
             userSelect.dataset.appCameraSearchable = '1';
             if (typeof upgradeSelectToCameraStyle === 'function') {
               upgradeSelectToCameraStyle(userSelect, { searchable: true });
@@ -26808,6 +27000,7 @@ async function fetchMultiLiveDetections() {
               refreshAppCameraSelect(userSelect);
             }
           }
+          await loadPayrollExceptionCalendar();
           const rows = adjBody.adjustments || [];
           tbody.innerHTML = rows.length ? rows.map((row) => {
             const isApplied = row.applied !== false;
@@ -26831,6 +27024,7 @@ async function fetchMultiLiveDetections() {
       }
 
       async function savePayrollException() {
+        if (_savingPayrollException) return;
         const month = document.getElementById('payrollMonth')?.value;
         if (!month) {
           showAppToast('Choose a payroll month first.', 'error');
@@ -26877,6 +27071,9 @@ async function fetchMultiLiveDetections() {
           source_month: sourceMonth,
           note: document.getElementById('payrollExceptionNote')?.value || ''
         };
+        const submitBtn = document.getElementById('payrollExceptionSubmitBtn');
+        _savingPayrollException = true;
+        if (submitBtn) submitBtn.disabled = true;
         try {
           const response = await fetch(`${API_BASE}/payroll/adjustments?month=${encodeURIComponent(month)}`, {
             method: 'POST',
@@ -26888,12 +27085,34 @@ async function fetchMultiLiveDetections() {
           showAppToast('Exception saved for this month.', 'success');
           const adjFlag = document.getElementById('flag_enable_individual_adjustments');
           if (adjFlag) adjFlag.checked = true;
+
+          // QA-155: Clear every field of the form after a successful save
+          const uSel = document.getElementById('payrollExceptionUser');
+          const tSel = document.getElementById('payrollExceptionType');
+          const mSel = document.getElementById('payrollExceptionMode');
+          const aInp = document.getElementById('payrollExceptionAmount');
+          const multInp = document.getElementById('payrollExceptionMultiplier');
+          const smInp = document.getElementById('payrollExceptionSourceMonth');
+          const nInp = document.getElementById('payrollExceptionNote');
+          if (uSel) { uSel.value = ''; if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(uSel); }
+          if (tSel) { tSel.value = 'rest_day'; if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(tSel); }
+          if (mSel) { mSel.value = 'fixed'; if (typeof refreshAppCameraSelect === 'function') refreshAppCameraSelect(mSel); }
+          if (typeof updatePayrollExceptionModeUI === 'function') updatePayrollExceptionModeUI();
+          if (aInp) aInp.value = '';
+          if (multInp) multInp.value = '1.5';
+          setPayrollExceptionDateValue('');
+          if (smInp) smInp.value = '';
+          if (nInp) nInp.value = '';
+
           await loadPayrollExceptions();
           if (!currentPayrollPreview || !currentPayrollPreview.is_finalized) {
             await loadMonthlyPayroll(month, true);
           }
         } catch (error) {
           showAppToast(error.message, 'error');
+        } finally {
+          _savingPayrollException = false;
+          if (submitBtn) submitBtn.disabled = false;
         }
       }
 

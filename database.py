@@ -14708,6 +14708,59 @@ def delete_employee_component(assignment_id: int, organization_id: Optional[str]
     return deleted
 
 
+def get_payroll_exception_calendar(
+    payroll_month: str,
+    user_id: Optional[int] = None,
+    organization_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return per-day rest-day/holiday classification for a month and optional employee."""
+    import calendar as _py_cal
+    parsed = datetime.strptime(payroll_month, "%Y-%m")
+    year, month_num = parsed.year, parsed.month
+    num_days = _py_cal.monthrange(year, month_num)[1]
+    org, branch = _tenant_ids(organization_id, branch_id)
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        finalized_row = cursor.execute(
+            """SELECT 1 FROM payroll_runs
+               WHERE payroll_month=?
+                 AND COALESCE(organization_id,'DEFAULT_ORG')=?
+                 AND COALESCE(branch_id,'DEFAULT_BRANCH')=?
+                 AND LOWER(COALESCE(status,'draft'))='finalized'
+               LIMIT 1""",
+            (payroll_month, org, branch),
+        ).fetchone()
+        is_finalized = bool(finalized_row)
+
+        days: List[Dict[str, Any]] = []
+        for day_num in range(1, num_days + 1):
+            day_str = f"{year:04d}-{month_num:02d}-{day_num:02d}"
+            holiday = _get_company_holiday_for_date(cursor, day_str, org, branch)
+            holiday_name = str(holiday.get('name') or '') if holiday else ''
+            if user_id:
+                day_type = _get_overtime_day_type(cursor, int(user_id), day_str)
+            else:
+                day_type = 'holiday' if holiday else 'regular'
+            if day_type != 'holiday':
+                holiday_name = '' if day_type == 'regular' else holiday_name
+            days.append({
+                'date': day_str,
+                'day': day_num,
+                'day_type': day_type,
+                'holiday_name': holiday_name,
+                'is_rest_day': day_type in ('non_working_day', 'holiday'),
+            })
+    return {
+        'user_id': int(user_id) if user_id else None,
+        'month': payroll_month,
+        'is_finalized': is_finalized,
+        'days': days,
+    }
+
+
 def list_payroll_adjustments(payroll_month: str, organization_id: Optional[str] = None, branch_id: Optional[str] = None) -> List[Dict[str, Any]]:
     org, branch = _tenant_ids(organization_id, branch_id)
     with sqlite3.connect(DB_PATH) as conn:
