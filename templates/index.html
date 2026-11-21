@@ -6285,8 +6285,8 @@
       .qe-ex-cal-trigger:hover { border-color: #8b7bf7; }
       .qe-ex-cal-popover {
         position: absolute; top: calc(100% + 6px); left: 0; z-index: 2500;
-        width: 296px; padding: 12px; background: #fff;
-        border: 1px solid #dbe3f3; border-radius: 14px;
+        width: 312px; max-width: calc(100vw - 32px); padding: 12px; background: #fff;
+        border: 1px solid #dbe3f3; border-radius: 14px; box-sizing: border-box; overflow: hidden;
         box-shadow: 0 22px 44px -18px rgba(15, 23, 42, 0.35);
       }
       .qe-ex-cal-head {
@@ -6294,14 +6294,15 @@
         margin-bottom: 8px; font-weight: 700; font-size: 13px; color: #151b25;
       }
       .qe-ex-cal-grid {
-        display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+        display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; width: 100%;
       }
       .qe-ex-cal-dow {
         text-align: center; font-size: 10px; font-weight: 700; color: #64748b; padding: 2px 0 4px;
         text-transform: uppercase;
       }
       .qe-ex-cal-day {
-        position: relative; height: 32px; border-radius: 8px; border: 1px solid transparent;
+        position: relative; width: 100%; min-width: 0 !important; height: 34px; padding: 0 !important;
+        border-radius: 8px; border: 1px solid transparent; box-sizing: border-box;
         background: #f8fafc; color: #1e293b; font-size: 12px; font-weight: 600;
         display: flex; align-items: center; justify-content: center; cursor: pointer;
         transition: all 0.12s ease;
@@ -6313,12 +6314,20 @@
       .qe-ex-cal-day.is-holiday {
         background: #f3f0ff; border-color: #c4b5fd; color: #6d28d9; font-weight: 700;
       }
+      .qe-ex-cal-day.is-both {
+        background: linear-gradient(135deg, #fffbeb 50%, #f3f0ff 50%);
+        border-color: #a78bfa; color: #5b21b6; font-weight: 700;
+      }
       .qe-ex-cal-day.is-offday::after,
-      .qe-ex-cal-day.is-holiday::after {
+      .qe-ex-cal-day.is-holiday::after,
+      .qe-ex-cal-day.is-both::after {
         content: ''; position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 999px;
       }
       .qe-ex-cal-day.is-offday::after { background: #d97706; }
       .qe-ex-cal-day.is-holiday::after { background: #7c3aed; }
+      .qe-ex-cal-day.is-both::after {
+        width: 10px; height: 4px; background: linear-gradient(90deg, #d97706 50%, #7c3aed 50%);
+      }
       .qe-ex-cal-day.is-selected {
         background: #0f766e !important; border-color: #0f766e !important; color: #fff !important;
       }
@@ -26850,6 +26859,7 @@ async function fetchMultiLiveDetections() {
       }
 
       let _payrollExceptionCalendarData = null;
+      let _payrollExceptionCalSeq = 0;
       let _savingPayrollException = false;
 
       function setPayrollExceptionDateValue(dateStr) {
@@ -26864,17 +26874,19 @@ async function fetchMultiLiveDetections() {
         const month = document.getElementById('payrollMonth')?.value;
         const userId = document.getElementById('payrollExceptionUser')?.value || '';
         if (!month) return;
+        const seq = ++_payrollExceptionCalSeq;
         try {
           const url = `${API_BASE}/payroll/exception-calendar?month=${encodeURIComponent(month)}${userId ? `&user_id=${encodeURIComponent(userId)}` : ''}`;
           const res = await fetch(url, { cache: 'no-store' });
           const data = await res.json();
+          if (seq !== _payrollExceptionCalSeq) return;
           if (res.ok && data && Array.isArray(data.days)) {
             _payrollExceptionCalendarData = data;
             const currentVal = document.getElementById('payrollExceptionDate')?.value || '';
             const adjType = document.getElementById('payrollExceptionType')?.value || 'rest_day';
             if (currentVal) {
               const dayObj = data.days.find(d => d.date === currentVal);
-              if (!dayObj || data.is_finalized || (adjType === 'rest_day' && !dayObj.is_rest_day)) {
+              if (!dayObj || data.is_finalized || (adjType === 'rest_day' && (!data.user_id || !dayObj.is_rest_day))) {
                 setPayrollExceptionDateValue('');
               }
             }
@@ -26889,7 +26901,6 @@ async function fetchMultiLiveDetections() {
         const pop = document.getElementById('payrollExceptionCalendarPopover');
         if (!pop) return;
         const data = _payrollExceptionCalendarData;
-        const month = data?.month || document.getElementById('payrollMonth')?.value || '';
         if (!data || !Array.isArray(data.days) || !data.days.length) {
           pop.innerHTML = '<div class="text-muted small">Select a payroll month first.</div>';
           return;
@@ -26897,30 +26908,33 @@ async function fetchMultiLiveDetections() {
         const adjType = document.getElementById('payrollExceptionType')?.value || 'rest_day';
         const selectedDate = document.getElementById('payrollExceptionDate')?.value || '';
         const isFinalized = Boolean(data.is_finalized);
+        const hasEmployee = Boolean(data.user_id);
         const firstDate = new Date(`${data.days[0].date}T00:00:00`);
         const mondayOffset = (firstDate.getDay() + 6) % 7;
         const monthLabel = firstDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
         const blanks = Array.from({ length: mondayOffset }, () => '<div></div>').join('');
         const cells = data.days.map(d => {
           const isRest = Boolean(d.is_rest_day);
-          const disabled = isFinalized || (adjType === 'rest_day' && !isRest);
+          const disabled = isFinalized || (adjType === 'rest_day' && (!hasEmployee || !isRest));
+          const isBoth = Boolean(d.is_both || (d.is_off_day && d.is_holiday));
           const cls = [
             'qe-ex-cal-day',
-            d.day_type === 'non_working_day' ? 'is-offday' : '',
-            d.day_type === 'holiday' ? 'is-holiday' : '',
+            isBoth ? 'is-both' : (d.is_holiday || d.day_type === 'holiday' ? 'is-holiday' : (d.is_off_day || d.day_type === 'non_working_day' ? 'is-offday' : '')),
             selectedDate === d.date ? 'is-selected' : '',
           ].filter(Boolean).join(' ');
-          const tip = d.day_type === 'holiday'
-            ? (d.holiday_name || 'Public holiday')
-            : d.day_type === 'non_working_day'
-              ? 'Weekly Off Day'
-              : 'Working day';
+          const tip = isBoth
+            ? `Weekly Off Day + Holiday${d.holiday_name ? ` (${d.holiday_name})` : ''}`
+            : (d.is_holiday || d.day_type === 'holiday')
+              ? (d.holiday_name || 'Public holiday')
+              : (d.is_off_day || d.day_type === 'non_working_day')
+                ? 'Weekly Off Day'
+                : 'Working day';
           return `<button type="button" class="${cls}" ${disabled ? 'disabled' : ''} title="${payrollEscape(tip)}" onclick="selectPayrollExceptionDate('${d.date}')">${d.day}</button>`;
         }).join('');
         const noteText = isFinalized
           ? 'Finalized month — all dates locked.'
           : adjType === 'rest_day'
-            ? 'Only Off Days & Holidays can be selected.'
+            ? (hasEmployee ? 'Only Off Days & Holidays can be selected.' : 'Select an employee first to see their shift Off Days.')
             : 'All dates in this month are available.';
         pop.innerHTML = `
           <div class="qe-ex-cal-head">
@@ -26935,6 +26949,7 @@ async function fetchMultiLiveDetections() {
           <div class="qe-ex-cal-legend">
             <span class="qe-ex-cal-legend-item"><span class="qe-ex-cal-dot" style="background:#d97706;"></span> Off Day</span>
             <span class="qe-ex-cal-legend-item"><span class="qe-ex-cal-dot" style="background:#7c3aed;"></span> Holiday</span>
+            <span class="qe-ex-cal-legend-item"><span class="qe-ex-cal-dot" style="background:linear-gradient(90deg,#d97706 50%,#7c3aed 50%);"></span> Both</span>
             <span style="width:100%; color:#64748b;">${payrollEscape(noteText)}</span>
           </div>
         `;

@@ -14735,23 +14735,121 @@ def get_payroll_exception_calendar(
         ).fetchone()
         is_finalized = bool(finalized_row)
 
+        shift_history: List[Dict[str, Any]] = []
+        default_shift_id = 1
+        default_working_days = set(_normalize_shift_working_days(None))
+        overrides: Dict[Tuple[str, str, int], str] = {}
+
+        if user_id:
+            uid = int(user_id)
+            u_row = cursor.execute(
+                """SELECT COALESCE(u.shift_id, 1) AS shift_id,
+                          s.working_days AS working_days,
+                          COALESCE(u.organization_id, 'DEFAULT_ORG') AS org_id,
+                          COALESCE(u.branch_id, 'DEFAULT_BRANCH') AS branch_id
+                   FROM users u LEFT JOIN shifts s ON s.id = COALESCE(u.shift_id, 1)
+                   WHERE u.id = ?""",
+                (uid,),
+            ).fetchone()
+            if u_row:
+                default_shift_id = int(u_row['shift_id'] or 1)
+                default_working_days = set(_normalize_shift_working_days(u_row['working_days']))
+                u_org = u_row['org_id'] or org
+                u_branch = u_row['branch_id'] or branch
+            else:
+                u_org, u_branch = org, branch
+
+            hist_rows = cursor.execute(
+                """SELECT shift_id, working_days, effective_from
+                   FROM employee_shift_history
+                   WHERE user_id = ?
+                   ORDER BY effective_from ASC, id ASC""",
+                (uid,),
+            ).fetchall()
+            shift_history = [
+                {
+                    'shift_id': int(r['shift_id'] or default_shift_id),
+                    'working_days': set(_normalize_shift_working_days(r['working_days'])),
+                    'effective_from': str(r['effective_from'] or ''),
+                }
+                for r in hist_rows
+            ]
+
+            month_start_str = f"{year:04d}-{month_num:02d}-01"
+            month_end_str = f"{year:04d}-{month_num:02d}-{num_days:02d}"
+            ov_rows = cursor.execute(
+                """SELECT calendar_date, override_type, scope_type, scope_id
+                   FROM special_date_overrides
+                   WHERE calendar_date >= ? AND calendar_date <= ?
+                     AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                     AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?""",
+                (month_start_str, month_end_str, u_org, u_branch),
+            ).fetchall()
+            overrides = {
+                (str(r['calendar_date']), str(r['scope_type']), int(r['scope_id'] or 0)): str(r['override_type'])
+                for r in ov_rows
+            }
+        else:
+            u_org, u_branch = org, branch
+
         days: List[Dict[str, Any]] = []
         for day_num in range(1, num_days + 1):
             day_str = f"{year:04d}-{month_num:02d}-{day_num:02d}"
-            holiday = _get_company_holiday_for_date(cursor, day_str, org, branch)
-            holiday_name = str(holiday.get('name') or '') if holiday else ''
+            day_dt = datetime(year, month_num, day_num).date()
+
+            # Step 1: Weekly Off Days from the selected person's shift (and special-date overrides)
+            is_off_day = False
+            override_type = None
             if user_id:
-                day_type = _get_overtime_day_type(cursor, int(user_id), day_str)
+                eff_shift_id = default_shift_id
+                eff_working_days = default_working_days
+                for h in shift_history:
+                    if h['effective_from'] <= day_str:
+                        eff_shift_id = h['shift_id']
+                        eff_working_days = h['working_days']
+                    else:
+                        break
+                override_type = _resolve_calendar_override(overrides, day_str, int(user_id), eff_shift_id)
+                if override_type == 'off_day':
+                    is_off_day = True
+                elif override_type == 'working_day':
+                    is_off_day = False
+                else:
+                    is_off_day = day_dt.weekday() not in eff_working_days
+
+            # Step 2: Holidays
+            holiday = _get_company_holiday_for_date(cursor, day_str, u_org, u_branch)
+            holiday_name = str(holiday.get('name') or '') if holiday else ''
+            if override_type == 'holiday':
+                is_holiday = True
+                if not holiday_name:
+                    holiday_name = 'Special Holiday'
+            elif override_type == 'working_day':
+                is_holiday = False
+                holiday_name = ''
             else:
-                day_type = 'holiday' if holiday else 'regular'
-            if day_type != 'holiday':
-                holiday_name = '' if day_type == 'regular' else holiday_name
+                is_holiday = bool(holiday)
+
+            # Step 3: Mark Off Day, Holiday, or Both
+            is_both = is_off_day and is_holiday
+            if is_both:
+                day_type = 'both'
+            elif is_holiday:
+                day_type = 'holiday'
+            elif is_off_day:
+                day_type = 'non_working_day'
+            else:
+                day_type = 'regular'
+
             days.append({
                 'date': day_str,
                 'day': day_num,
                 'day_type': day_type,
+                'is_off_day': is_off_day,
+                'is_holiday': is_holiday,
+                'is_both': is_both,
                 'holiday_name': holiday_name,
-                'is_rest_day': day_type in ('non_working_day', 'holiday'),
+                'is_rest_day': is_off_day or is_holiday,
             })
     return {
         'user_id': int(user_id) if user_id else None,
