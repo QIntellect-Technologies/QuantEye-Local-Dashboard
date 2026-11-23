@@ -16224,7 +16224,16 @@ async function fetchMultiLiveDetections() {
                 <small id="modalSalaryComponentPercentError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.75em; font-weight:600; margin-top:4px;"></small>
               </label>
               <label class="payroll-rule-field">Effective from
-                <input id="modalSalaryComponentFrom" class="form-control" type="date" required>
+                <div class="qe-ex-cal-wrap" id="modalSalaryComponentFromWrap" style="position:relative;">
+                  <div style="display:flex; gap:6px; align-items:center;">
+                    <input id="modalSalaryComponentFrom" class="form-control" type="date" required style="flex:1;" oninput="onSalaryModalFieldInput('componentFrom')" onchange="onSalaryModalFieldInput('componentFrom')" onblur="onSalaryModalFieldInput('componentFrom')">
+                    <button type="button" id="modalSalaryComponentFromCalBtn" class="btn btn-outline-secondary btn-sm" onclick="toggleSalaryEffectiveCalendar(undefined, 'component')" title="Pick non-finalized date" style="height:38px; width:38px; flex:0 0 38px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center;">
+                      <i class="fa-regular fa-calendar"></i>
+                    </button>
+                  </div>
+                  <div id="modalSalaryComponentFromCalPopover" class="qe-ex-cal-popover" style="display:none; z-index:10050;"></div>
+                </div>
+                <small id="modalSalaryComponentFromError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.75em; font-weight:600; margin-top:4px;"></small>
               </label>
               <button id="modalSalaryAssignPayLineBtn" type="button" class="btn btn-outline-primary btn-sm" onclick="assignEmployeePayLine()">Assign</button>
             </div>
@@ -27974,6 +27983,20 @@ async function fetchMultiLiveDetections() {
           showAppToast('This pay line category is disabled in Settings → Payroll Rules → Extra Pay.', 'error');
           return;
         }
+        const compFromEl = document.getElementById('modalSalaryComponentFrom');
+        const compFromVal = String(compFromEl?.value || '').trim();
+        if (compFromEl) compFromEl.dataset.touched = '1';
+        if (typeof validateSalaryModalFields === 'function') validateSalaryModalFields();
+        if (!compFromVal || !isRealCalendarDateValue(compFromVal)) {
+          showAppToast('Please select a valid Effective from date for the pay line.', 'error');
+          compFromEl?.focus();
+          return;
+        }
+        if (typeof isSalaryEffectiveMonthFinalized === 'function' && isSalaryEffectiveMonthFinalized(compFromVal)) {
+          showAppToast(`Payroll for ${compFromVal.slice(0, 7)} is finalized. Choose an open or future month.`, 'error');
+          compFromEl?.focus();
+          return;
+        }
         const isPercent = comp && (comp.calc_mode === 'percent_basic' || comp.calc_mode === 'percent_gross');
 
 
@@ -29159,14 +29182,14 @@ async function fetchMultiLiveDetections() {
         const msgEl = document.getElementById('modalSalaryMsg');
         if (msgEl) msgEl.innerHTML = '';
         if (!modal) return;
-        ['modalSalaryBasic', 'modalSalaryAllowances', 'modalSalaryDeductions', 'modalSalaryOtRate', 'modalSalaryEffectiveFrom', 'modalSalaryComponentAmount', 'modalSalaryComponentPercent'].forEach((id) => {
+        ['modalSalaryBasic', 'modalSalaryAllowances', 'modalSalaryDeductions', 'modalSalaryOtRate', 'modalSalaryEffectiveFrom', 'modalSalaryComponentAmount', 'modalSalaryComponentPercent', 'modalSalaryComponentFrom'].forEach((id) => {
           const el = document.getElementById(id);
           if (el) {
             delete el.dataset.touched;
             el.classList.remove('is-invalid', 'is-valid');
           }
         });
-        ['modalSalaryBasicError', 'modalSalaryAllowancesError', 'modalSalaryDeductionsError', 'modalSalaryOtRateError', 'modalSalaryEffectiveFromError', 'modalSalaryComponentAmountError', 'modalSalaryComponentPercentError'].forEach((id) => {
+        ['modalSalaryBasicError', 'modalSalaryAllowancesError', 'modalSalaryDeductionsError', 'modalSalaryOtRateError', 'modalSalaryEffectiveFromError', 'modalSalaryComponentAmountError', 'modalSalaryComponentPercentError', 'modalSalaryComponentFromError'].forEach((id) => {
           const err = document.getElementById(id);
           if (err) { err.textContent = ''; err.style.display = 'none'; }
         });
@@ -29222,6 +29245,8 @@ async function fetchMultiLiveDetections() {
         if (modal) modal.style.display = 'none';
         const pop = document.getElementById('modalSalaryEffectiveCalPopover');
         if (pop) pop.style.display = 'none';
+        const compPop = document.getElementById('modalSalaryComponentFromCalPopover');
+        if (compPop) compPop.style.display = 'none';
         const msgEl = document.getElementById('modalSalaryMsg');
         if (msgEl) msgEl.innerHTML = '';
       }
@@ -29323,26 +29348,26 @@ async function fetchMultiLiveDetections() {
       window.isSalaryEffectiveMonthFinalized = isSalaryEffectiveMonthFinalized;
 
       function syncSalaryEffectiveDateConstraints() {
-        const el = document.getElementById('modalSalaryEffectiveFrom');
-        if (!el) return;
         const joinFloor = String(window._currentSalaryJoinDate || '').trim().slice(0, 10);
         const finalized = (Array.isArray(window._finalizedPayrollMonths) ? window._finalizedPayrollMonths : []).slice().sort();
-        let minDate = joinFloor || '';
-        // If finalized months exist, compute first day after the latest finalized month if it advances past joinFloor
-        if (finalized.length) {
-          const lastYm = finalized[finalized.length - 1];
-          const [y, m] = lastYm.split('-').map(Number);
-          if (y && m) {
-            const nextMonth = new Date(y, m, 1);
-            const nextStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
-            // Only raise native min if the current effective_from is not before it (or if all earlier months are finalized)
-            if (!minDate || (!el.value || el.value >= nextStr)) {
-              if (!minDate || nextStr > minDate) minDate = nextStr;
+        ['modalSalaryEffectiveFrom', 'modalSalaryComponentFrom'].forEach((id) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          let minDate = joinFloor || '';
+          if (finalized.length) {
+            const lastYm = finalized[finalized.length - 1];
+            const [y, m] = lastYm.split('-').map(Number);
+            if (y && m) {
+              const nextMonth = new Date(y, m, 1);
+              const nextStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
+              if (!minDate || (!el.value || el.value >= nextStr)) {
+                if (!minDate || nextStr > minDate) minDate = nextStr;
+              }
             }
           }
-        }
-        if (minDate) el.min = minDate;
-        else el.removeAttribute('min');
+          if (minDate) el.min = minDate;
+          else el.removeAttribute('min');
+        });
       }
       window.syncSalaryEffectiveDateConstraints = syncSalaryEffectiveDateConstraints;
 
@@ -29352,24 +29377,36 @@ async function fetchMultiLiveDetections() {
         return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}`;
       }
 
-      function toggleSalaryEffectiveCalendar(forceOpen) {
-        const pop = document.getElementById('modalSalaryEffectiveCalPopover');
+      function _salaryCalElements(target) {
+        const isComp = target === 'component';
+        return {
+          target: isComp ? 'component' : 'package',
+          input: document.getElementById(isComp ? 'modalSalaryComponentFrom' : 'modalSalaryEffectiveFrom'),
+          pop: document.getElementById(isComp ? 'modalSalaryComponentFromCalPopover' : 'modalSalaryEffectiveCalPopover'),
+          otherPop: document.getElementById(isComp ? 'modalSalaryEffectiveCalPopover' : 'modalSalaryComponentFromCalPopover'),
+          fieldKey: isComp ? 'componentFrom' : 'effectiveFrom',
+        };
+      }
+
+      function toggleSalaryEffectiveCalendar(forceOpen, target = 'package') {
+        const { input, pop, otherPop, target: normTarget } = _salaryCalElements(target);
+        if (otherPop) otherPop.style.display = 'none';
         if (!pop) return;
         const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : (pop.style.display === 'none' || !pop.style.display);
         if (!shouldOpen) {
           pop.style.display = 'none';
           return;
         }
-        const cur = String(document.getElementById('modalSalaryEffectiveFrom')?.value || '').trim().slice(0, 7);
+        const cur = String(input?.value || '').trim().slice(0, 7);
         const todayYm = new Date().toISOString().slice(0, 7);
         window._salaryEffectiveCalYm = /^\d{4}-\d{2}$/.test(cur) ? cur : todayYm;
-        renderSalaryEffectiveCalendar(window._salaryEffectiveCalYm);
+        renderSalaryEffectiveCalendar(window._salaryEffectiveCalYm, normTarget);
         pop.style.display = 'block';
       }
       window.toggleSalaryEffectiveCalendar = toggleSalaryEffectiveCalendar;
 
-      function renderSalaryEffectiveCalendar(ym) {
-        const pop = document.getElementById('modalSalaryEffectiveCalPopover');
+      function renderSalaryEffectiveCalendar(ym, target = 'package') {
+        const { input, pop, target: normTarget } = _salaryCalElements(target);
         if (!pop) return;
         const viewYm = /^\d{4}-\d{2}$/.test(String(ym || '')) ? ym : new Date().toISOString().slice(0, 7);
         window._salaryEffectiveCalYm = viewYm;
@@ -29378,7 +29415,7 @@ async function fetchMultiLiveDetections() {
         const daysInMonth = new Date(year, month, 0).getDate();
         const mondayOffset = (first.getDay() + 6) % 7;
         const monthLabel = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-        const selected = String(document.getElementById('modalSalaryEffectiveFrom')?.value || '').trim();
+        const selected = String(input?.value || '').trim();
         const joinFloor = String(window._currentSalaryJoinDate || '').trim().slice(0, 10);
         const isFinalized = isSalaryEffectiveMonthFinalized(`${viewYm}-01`);
         const blanks = Array.from({ length: mondayOffset }, () => '<div></div>').join('');
@@ -29389,13 +29426,13 @@ async function fetchMultiLiveDetections() {
           const disabled = isFinalized || beforeJoin;
           const isSel = selected === iso;
           const tip = isFinalized ? 'Finalized payroll month (locked)' : (beforeJoin ? `Before joining date (${joinFloor})` : iso);
-          cells += `<button type="button" class="qe-ex-cal-day${isSel ? ' is-selected' : ''}" ${disabled ? 'disabled' : `onclick="selectSalaryEffectiveDate('${iso}')"`} title="${tip}">${d}</button>`;
+          cells += `<button type="button" class="qe-ex-cal-day${isSel ? ' is-selected' : ''}" ${disabled ? 'disabled' : `onclick="selectSalaryEffectiveDate('${iso}', '${normTarget}')"`} title="${tip}">${d}</button>`;
         }
         pop.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="renderSalaryEffectiveCalendar('${_nextMonthYm(viewYm, -1)}')" style="padding:2px 8px;">&lsaquo;</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="renderSalaryEffectiveCalendar('${_nextMonthYm(viewYm, -1)}', '${normTarget}')" style="padding:2px 8px;">&lsaquo;</button>
             <strong style="font-size:0.86rem; color:#173042;">${monthLabel}${isFinalized ? ' <span class="badge bg-danger-subtle text-danger ms-1">Finalized</span>' : ''}</strong>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="renderSalaryEffectiveCalendar('${_nextMonthYm(viewYm, 1)}')" style="padding:2px 8px;">&rsaquo;</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="renderSalaryEffectiveCalendar('${_nextMonthYm(viewYm, 1)}', '${normTarget}')" style="padding:2px 8px;">&rsaquo;</button>
           </div>
           <div class="qe-ex-cal-grid">
             <div class="qe-ex-cal-dow">Mo</div><div class="qe-ex-cal-dow">Tu</div><div class="qe-ex-cal-dow">We</div><div class="qe-ex-cal-dow">Th</div><div class="qe-ex-cal-dow">Fr</div><div class="qe-ex-cal-dow">Sa</div><div class="qe-ex-cal-dow">Su</div>
@@ -29406,15 +29443,15 @@ async function fetchMultiLiveDetections() {
       }
       window.renderSalaryEffectiveCalendar = renderSalaryEffectiveCalendar;
 
-      function selectSalaryEffectiveDate(dateStr) {
+      function selectSalaryEffectiveDate(dateStr, target = 'package') {
         if (isSalaryEffectiveMonthFinalized(dateStr)) return;
-        const el = document.getElementById('modalSalaryEffectiveFrom');
-        if (el) {
-          el.value = dateStr;
-          el.dataset.touched = '1';
+        const { input, fieldKey, target: normTarget } = _salaryCalElements(target);
+        if (input) {
+          input.value = dateStr;
+          input.dataset.touched = '1';
         }
-        toggleSalaryEffectiveCalendar(false);
-        onSalaryModalFieldInput('effectiveFrom');
+        toggleSalaryEffectiveCalendar(false, normTarget);
+        onSalaryModalFieldInput(fieldKey);
       }
       window.selectSalaryEffectiveDate = selectSalaryEffectiveDate;
 
@@ -29501,6 +29538,18 @@ async function fetchMultiLiveDetections() {
 
         const amtMsg = _validateSalaryNumericField(compAmtEl, 'Amount', { required: false, min: 0, max: 50000000 });
         const pctMsg = _validateSalaryNumericField(compPctEl, 'Percent of basic', { required: false, min: 0, max: 100 });
+        const compFromEl = document.getElementById('modalSalaryComponentFrom');
+        let compFromMsg = '';
+        if (compFromEl) {
+          const cfVal = String(compFromEl.value || '').trim();
+          if (cfVal) {
+            if (!isRealCalendarDateValue(cfVal)) {
+              compFromMsg = 'Effective from is not a valid calendar date.';
+            } else if (isSalaryEffectiveMonthFinalized(cfVal)) {
+              compFromMsg = `Payroll for ${cfVal.slice(0, 7)} is finalized. Choose an open or future month.`;
+            }
+          }
+        }
 
         const showFor = (el, msg) => Boolean(msg) && (forceShow || (!silentInitial && el?.dataset.touched === '1'));
         _setSalaryModalFieldFeedback('modalSalaryBasic', 'modalSalaryBasicError', basicMsg, showFor(basicEl, basicMsg));
@@ -29510,14 +29559,16 @@ async function fetchMultiLiveDetections() {
         _setSalaryModalFieldFeedback('modalSalaryEffectiveFrom', 'modalSalaryEffectiveFromError', effMsg, showFor(effEl, effMsg));
         _setSalaryModalFieldFeedback('modalSalaryComponentAmount', 'modalSalaryComponentAmountError', amtMsg, showFor(compAmtEl, amtMsg));
         _setSalaryModalFieldFeedback('modalSalaryComponentPercent', 'modalSalaryComponentPercentError', pctMsg, showFor(compPctEl, pctMsg));
+        _setSalaryModalFieldFeedback('modalSalaryComponentFrom', 'modalSalaryComponentFromError', compFromMsg, showFor(compFromEl, compFromMsg));
 
         const saveBtn = document.getElementById('saveSalaryBtn');
         const packageValid = !basicMsg && !allowMsg && !deductMsg && !otMsg && !effMsg && !amtMsg && !pctMsg;
         if (saveBtn) saveBtn.disabled = !packageValid;
 
         const assignBtn = document.getElementById('modalSalaryAssignPayLineBtn');
-        if (assignBtn && (amtMsg || pctMsg)) {
-          assignBtn.disabled = true;
+        if (assignBtn) {
+          const noCompTypes = Boolean(document.getElementById('modalSalaryComponentType')?.disabled);
+          assignBtn.disabled = Boolean(noCompTypes || amtMsg || pctMsg || compFromMsg);
         }
         return packageValid;
       }
@@ -29532,6 +29583,7 @@ async function fetchMultiLiveDetections() {
           effectiveFrom: 'modalSalaryEffectiveFrom',
           componentAmount: 'modalSalaryComponentAmount',
           componentPercent: 'modalSalaryComponentPercent',
+          componentFrom: 'modalSalaryComponentFrom',
         };
         const el = document.getElementById(map[which]);
         if (el) {
