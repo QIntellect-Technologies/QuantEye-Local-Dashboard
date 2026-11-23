@@ -29249,6 +29249,7 @@ async function fetchMultiLiveDetections() {
         const suggested = basic > 0 ? (Math.round((basic / divisor) * 100) / 100) : 0;
         const input = document.getElementById('modalSalaryOtRate');
         if (input) input.value = suggested;
+        if (typeof onSalaryModalFieldInput === 'function') onSalaryModalFieldInput('otRate');
       }
 
       function isRealCalendarDateValue(iso) {
@@ -29456,7 +29457,7 @@ async function fetchMultiLiveDetections() {
         if (num > max) {
           return `${label} cannot exceed ${max.toLocaleString()}.`;
         }
-        const places = payrollDecimalPlaces();
+        const places = payrollAmountDecimalPlaces();
         const parsed = parseMoney2dpOrError(raw, label, { min, requireMinPositive: false });
         if (parsed.error) return parsed.error;
         if (places > 0 && raw.includes('.') && raw.split('.')[1].length > places) {
