@@ -16123,9 +16123,10 @@ async function fetchMultiLiveDetections() {
                 <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">Basic Salary (PKR) *</label>
               </div>
               <div style="position: relative;">
-                <input type="number" id="modalSalaryBasic" class="form-control payroll-amount-input" placeholder="0.00" min="10000" max="50000000" step="0.01" required oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #0f172a; padding-right: 48px !important;" />
+                <input type="number" id="modalSalaryBasic" class="form-control payroll-amount-input" placeholder="0.00" min="10000" max="50000000" step="0.01" required oninput="onSalaryModalFieldInput('basic')" onblur="onSalaryModalFieldInput('basic')" style="border-radius: 8px; font-weight: 700; color: #0f172a; padding-right: 48px !important;" />
                 <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75em; color: #94a3b8; font-weight: 700; pointer-events: none;">PKR</span>
               </div>
+              <small id="modalSalaryBasicError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.75em; font-weight:600; margin-top:4px;"></small>
               <small style="font-size: 0.75em; color: #64748b; margin-top: 4px; display: block;">Synchronized with employee payroll base.</small>
             </div>
 
@@ -16134,9 +16135,10 @@ async function fetchMultiLiveDetections() {
                 <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">Monthly Allowances (PKR)</label>
               </div>
               <div style="position: relative;">
-                <input type="number" id="modalSalaryAllowances" class="form-control" placeholder="0.00" min="0" step="0.01" oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #059669; padding-right: 48px !important;" />
+                <input type="number" id="modalSalaryAllowances" class="form-control" placeholder="0.00" min="0" max="50000000" step="0.01" oninput="onSalaryModalFieldInput('allowances')" onblur="onSalaryModalFieldInput('allowances')" style="border-radius: 8px; font-weight: 700; color: #059669; padding-right: 48px !important;" />
                 <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75em; color: #94a3b8; font-weight: 700; pointer-events: none;">PKR</span>
               </div>
+              <small id="modalSalaryAllowancesError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.75em; font-weight:600; margin-top:4px;"></small>
               <small style="font-size: 0.75em; color: #64748b; margin-top: 4px; display: block;">Medical, conveyance, fuel, housing, etc.</small>
             </div>
 
@@ -16145,9 +16147,10 @@ async function fetchMultiLiveDetections() {
                 <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">Standard Deductions (PKR)</label>
               </div>
               <div style="position: relative;">
-                <input type="number" id="modalSalaryDeductions" class="form-control" placeholder="0.00" min="0" step="0.01" oninput="updateSalaryModalLiveCalc()" style="border-radius: 8px; font-weight: 700; color: #dc2626; padding-right: 48px !important;" />
+                <input type="number" id="modalSalaryDeductions" class="form-control" placeholder="0.00" min="0" max="50000000" step="0.01" oninput="onSalaryModalFieldInput('deductions')" onblur="onSalaryModalFieldInput('deductions')" style="border-radius: 8px; font-weight: 700; color: #dc2626; padding-right: 48px !important;" />
                 <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75em; color: #94a3b8; font-weight: 700; pointer-events: none;">PKR</span>
               </div>
+              <small id="modalSalaryDeductionsError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.75em; font-weight:600; margin-top:4px;"></small>
               <small style="font-size: 0.75em; color: #64748b; margin-top: 4px; display: block;">Fixed tax, provident fund, insurance, etc.</small>
             </div>
 
@@ -16159,16 +16162,26 @@ async function fetchMultiLiveDetections() {
                 </button>
               </div>
               <div style="position: relative;">
-                <input type="number" id="modalSalaryOtRate" class="form-control" placeholder="0.00" min="0" step="0.01" style="border-radius: 8px; font-weight: 700; color: #0284c7; padding-right: 48px !important;" />
+                <input type="number" id="modalSalaryOtRate" class="form-control" placeholder="0.00" min="0" max="1000000" step="0.01" oninput="onSalaryModalFieldInput('otRate')" onblur="onSalaryModalFieldInput('otRate')" style="border-radius: 8px; font-weight: 700; color: #0284c7; padding-right: 48px !important;" />
                 <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75em; color: #94a3b8; font-weight: 700; pointer-events: none;">/ hr</span>
               </div>
+              <small id="modalSalaryOtRateError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.75em; font-weight:600; margin-top:4px;"></small>
               <small style="font-size: 0.75em; color: #64748b; margin-top: 4px; display: block;">Rate applied to approved overtime hours.</small>
             </div>
             <div class="col-md-6">
               <div style="display: flex; justify-content: space-between; align-items: center; min-height: 24px; margin-bottom: 6px;">
                 <label class="form-label mb-0" style="font-weight: 700; color: #334155; font-size: 0.85em;">Effective from</label>
               </div>
-              <input type="date" id="modalSalaryEffectiveFrom" class="form-control" style="border-radius: 8px;" />
+              <div class="qe-ex-cal-wrap" id="modalSalaryEffectiveWrap" style="position:relative;">
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <input type="date" id="modalSalaryEffectiveFrom" class="form-control" style="border-radius: 8px; flex:1;" oninput="onSalaryModalFieldInput('effectiveFrom')" onchange="onSalaryModalFieldInput('effectiveFrom')" onblur="onSalaryModalFieldInput('effectiveFrom')" />
+                  <button type="button" id="modalSalaryEffectiveCalBtn" class="btn btn-outline-secondary btn-sm" onclick="toggleSalaryEffectiveCalendar()" title="Pick non-finalized date" style="height:38px; width:38px; flex:0 0 38px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center;">
+                    <i class="fa-regular fa-calendar"></i>
+                  </button>
+                </div>
+                <div id="modalSalaryEffectiveCalPopover" class="qe-ex-cal-popover" style="display:none; z-index:10050;"></div>
+              </div>
+              <small id="modalSalaryEffectiveFromError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.75em; font-weight:600; margin-top:4px;"></small>
               <small style="font-size: 0.75em; color: #64748b; margin-top: 4px; display: block;">Used when salary effective dates are enabled. Mid-month changes split the month by calendar day.</small>
             </div>
           </div>
@@ -16203,10 +16216,12 @@ async function fetchMultiLiveDetections() {
                 <select id="modalSalaryComponentType" class="form-select" onchange="updateModalSalaryComponentInputs()"></select>
               </label>
               <label class="payroll-rule-field" id="modalSalaryComponentAmountWrap">Amount
-                <input id="modalSalaryComponentAmount" class="form-control" type="number" min="0" step="0.01" value="0">
+                <input id="modalSalaryComponentAmount" class="form-control" type="number" min="0" max="50000000" step="0.01" value="0" oninput="onSalaryModalFieldInput('componentAmount')" onblur="onSalaryModalFieldInput('componentAmount')">
+                <small id="modalSalaryComponentAmountError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.75em; font-weight:600; margin-top:4px;"></small>
               </label>
               <label class="payroll-rule-field" id="modalSalaryComponentPercentWrap" style="display:none;">Percent of basic
-                <input id="modalSalaryComponentPercent" class="form-control" type="number" min="0" max="100" step="0.01" value="0">
+                <input id="modalSalaryComponentPercent" class="form-control" type="number" min="0" max="100" step="0.01" value="0" oninput="onSalaryModalFieldInput('componentPercent')" onblur="onSalaryModalFieldInput('componentPercent')">
+                <small id="modalSalaryComponentPercentError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.75em; font-weight:600; margin-top:4px;"></small>
               </label>
               <label class="payroll-rule-field">Effective from
                 <input id="modalSalaryComponentFrom" class="form-control" type="date" required>
@@ -29134,6 +29149,8 @@ async function fetchMultiLiveDetections() {
         }
 
         updateSalaryModalLiveCalc();
+        if (typeof bindSalaryModalInputGuards === 'function') bindSalaryModalInputGuards();
+        if (typeof validateSalaryModalFields === 'function') validateSalaryModalFields({ silentInitial: true });
       }
 
       async function openEditSalaryModal(userId) {
@@ -29142,6 +29159,17 @@ async function fetchMultiLiveDetections() {
         const msgEl = document.getElementById('modalSalaryMsg');
         if (msgEl) msgEl.innerHTML = '';
         if (!modal) return;
+        ['modalSalaryBasic', 'modalSalaryAllowances', 'modalSalaryDeductions', 'modalSalaryOtRate', 'modalSalaryEffectiveFrom', 'modalSalaryComponentAmount', 'modalSalaryComponentPercent'].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) {
+            delete el.dataset.touched;
+            el.classList.remove('is-invalid', 'is-valid');
+          }
+        });
+        ['modalSalaryBasicError', 'modalSalaryAllowancesError', 'modalSalaryDeductionsError', 'modalSalaryOtRateError', 'modalSalaryEffectiveFromError', 'modalSalaryComponentAmountError', 'modalSalaryComponentPercentError'].forEach((id) => {
+          const err = document.getElementById(id);
+          if (err) { err.textContent = ''; err.style.display = 'none'; }
+        });
 
         let item = (cachedSalaryConfigs || []).find(c => Number(c.user_id) === Number(userId));
         if (item) {
@@ -29167,6 +29195,12 @@ async function fetchMultiLiveDetections() {
               }
             })
             .catch(() => {}),
+          fetch(`${API_BASE}/payroll/finalized-months`, { cache: 'no-store' })
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => {
+              window._finalizedPayrollMonths = Array.isArray(d?.finalized_months) ? d.finalized_months : [];
+            })
+            .catch(() => { window._finalizedPayrollMonths = window._finalizedPayrollMonths || []; }),
           loadEmployeePayLines(userId).catch(() => {})
         ]);
         if (seq !== _salaryModalOpenSeq) return;
@@ -29178,12 +29212,16 @@ async function fetchMultiLiveDetections() {
           showAppToast('Employee not found', 'error');
           return;
         }
+        if (typeof syncSalaryEffectiveDateConstraints === 'function') syncSalaryEffectiveDateConstraints();
+        if (typeof validateSalaryModalFields === 'function') validateSalaryModalFields({ silentInitial: true });
         modal.style.display = 'flex';
       }
 
       function closeEditSalaryModal() {
         const modal = document.getElementById('editSalaryConfigModal');
         if (modal) modal.style.display = 'none';
+        const pop = document.getElementById('modalSalaryEffectiveCalPopover');
+        if (pop) pop.style.display = 'none';
         const msgEl = document.getElementById('modalSalaryMsg');
         if (msgEl) msgEl.innerHTML = '';
       }
@@ -29275,11 +29313,279 @@ async function fetchMultiLiveDetections() {
       window.parseMoney2dpOrError = parseMoney2dpOrError;
       window.applyPayrollAmountInputSteps = applyPayrollAmountInputSteps;
 
+      function isSalaryEffectiveMonthFinalized(dateStr) {
+        const ym = String(dateStr || '').trim().slice(0, 7);
+        if (!/^\d{4}-\d{2}$/.test(ym)) return false;
+        const finalized = Array.isArray(window._finalizedPayrollMonths) ? window._finalizedPayrollMonths : [];
+        return finalized.includes(ym);
+      }
+      window.isSalaryEffectiveMonthFinalized = isSalaryEffectiveMonthFinalized;
+
+      function syncSalaryEffectiveDateConstraints() {
+        const el = document.getElementById('modalSalaryEffectiveFrom');
+        if (!el) return;
+        const joinFloor = String(window._currentSalaryJoinDate || '').trim().slice(0, 10);
+        const finalized = (Array.isArray(window._finalizedPayrollMonths) ? window._finalizedPayrollMonths : []).slice().sort();
+        let minDate = joinFloor || '';
+        // If finalized months exist, compute first day after the latest finalized month if it advances past joinFloor
+        if (finalized.length) {
+          const lastYm = finalized[finalized.length - 1];
+          const [y, m] = lastYm.split('-').map(Number);
+          if (y && m) {
+            const nextMonth = new Date(y, m, 1);
+            const nextStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
+            // Only raise native min if the current effective_from is not before it (or if all earlier months are finalized)
+            if (!minDate || (!el.value || el.value >= nextStr)) {
+              if (!minDate || nextStr > minDate) minDate = nextStr;
+            }
+          }
+        }
+        if (minDate) el.min = minDate;
+        else el.removeAttribute('min');
+      }
+      window.syncSalaryEffectiveDateConstraints = syncSalaryEffectiveDateConstraints;
+
+      function _nextMonthYm(ym, delta) {
+        const [y, m] = String(ym || '').split('-').map(Number);
+        const base = (y && m) ? new Date(y, m - 1 + delta, 1) : new Date();
+        return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}`;
+      }
+
+      function toggleSalaryEffectiveCalendar(forceOpen) {
+        const pop = document.getElementById('modalSalaryEffectiveCalPopover');
+        if (!pop) return;
+        const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : (pop.style.display === 'none' || !pop.style.display);
+        if (!shouldOpen) {
+          pop.style.display = 'none';
+          return;
+        }
+        const cur = String(document.getElementById('modalSalaryEffectiveFrom')?.value || '').trim().slice(0, 7);
+        const todayYm = new Date().toISOString().slice(0, 7);
+        window._salaryEffectiveCalYm = /^\d{4}-\d{2}$/.test(cur) ? cur : todayYm;
+        renderSalaryEffectiveCalendar(window._salaryEffectiveCalYm);
+        pop.style.display = 'block';
+      }
+      window.toggleSalaryEffectiveCalendar = toggleSalaryEffectiveCalendar;
+
+      function renderSalaryEffectiveCalendar(ym) {
+        const pop = document.getElementById('modalSalaryEffectiveCalPopover');
+        if (!pop) return;
+        const viewYm = /^\d{4}-\d{2}$/.test(String(ym || '')) ? ym : new Date().toISOString().slice(0, 7);
+        window._salaryEffectiveCalYm = viewYm;
+        const [year, month] = viewYm.split('-').map(Number);
+        const first = new Date(year, month - 1, 1);
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const mondayOffset = (first.getDay() + 6) % 7;
+        const monthLabel = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        const selected = String(document.getElementById('modalSalaryEffectiveFrom')?.value || '').trim();
+        const joinFloor = String(window._currentSalaryJoinDate || '').trim().slice(0, 10);
+        const isFinalized = isSalaryEffectiveMonthFinalized(`${viewYm}-01`);
+        const blanks = Array.from({ length: mondayOffset }, () => '<div></div>').join('');
+        let cells = '';
+        for (let d = 1; d <= daysInMonth; d++) {
+          const iso = `${viewYm}-${String(d).padStart(2, '0')}`;
+          const beforeJoin = Boolean(joinFloor && iso < joinFloor);
+          const disabled = isFinalized || beforeJoin;
+          const isSel = selected === iso;
+          const tip = isFinalized ? 'Finalized payroll month (locked)' : (beforeJoin ? `Before joining date (${joinFloor})` : iso);
+          cells += `<button type="button" class="qe-ex-cal-day${isSel ? ' is-selected' : ''}" ${disabled ? 'disabled' : `onclick="selectSalaryEffectiveDate('${iso}')"`} title="${tip}">${d}</button>`;
+        }
+        pop.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="renderSalaryEffectiveCalendar('${_nextMonthYm(viewYm, -1)}')" style="padding:2px 8px;">&lsaquo;</button>
+            <strong style="font-size:0.86rem; color:#173042;">${monthLabel}${isFinalized ? ' <span class="badge bg-danger-subtle text-danger ms-1">Finalized</span>' : ''}</strong>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="renderSalaryEffectiveCalendar('${_nextMonthYm(viewYm, 1)}')" style="padding:2px 8px;">&rsaquo;</button>
+          </div>
+          <div class="qe-ex-cal-grid">
+            <div class="qe-ex-cal-dow">Mo</div><div class="qe-ex-cal-dow">Tu</div><div class="qe-ex-cal-dow">We</div><div class="qe-ex-cal-dow">Th</div><div class="qe-ex-cal-dow">Fr</div><div class="qe-ex-cal-dow">Sa</div><div class="qe-ex-cal-dow">Su</div>
+            ${blanks}${cells}
+          </div>
+          ${isFinalized ? '<div class="text-danger small mt-2" style="font-weight:600;">This month is finalized and cannot be selected.</div>' : '<div class="text-muted small mt-2">Select a date in an open payroll month.</div>'}
+        `;
+      }
+      window.renderSalaryEffectiveCalendar = renderSalaryEffectiveCalendar;
+
+      function selectSalaryEffectiveDate(dateStr) {
+        if (isSalaryEffectiveMonthFinalized(dateStr)) return;
+        const el = document.getElementById('modalSalaryEffectiveFrom');
+        if (el) {
+          el.value = dateStr;
+          el.dataset.touched = '1';
+        }
+        toggleSalaryEffectiveCalendar(false);
+        onSalaryModalFieldInput('effectiveFrom');
+      }
+      window.selectSalaryEffectiveDate = selectSalaryEffectiveDate;
+
+      function _setSalaryModalFieldFeedback(inputId, errorId, msg, showErr) {
+        const el = document.getElementById(inputId);
+        const err = document.getElementById(errorId);
+        if (!el) return;
+        const hasVal = String(el.value ?? '').trim() !== '';
+        el.classList.toggle('is-invalid', Boolean(msg) && showErr);
+        el.classList.toggle('is-valid', !msg && hasVal);
+        if (err) {
+          err.textContent = showErr ? (msg || '') : '';
+          err.style.display = (msg && showErr) ? 'block' : 'none';
+        }
+      }
+
+      function _validateSalaryNumericField(el, label, { required = false, min = 0, max = 50000000 } = {}) {
+        if (!el) return '';
+        if (el.dataset.pasteError) return el.dataset.pasteError;
+        if (el.validity && el.validity.badInput) {
+          return `${label} must be a valid non-negative number (no letters or symbols).`;
+        }
+        const raw = String(el.value ?? '').trim();
+        if (!raw) {
+          return required ? `${label} is required.` : '';
+        }
+        if (/[<>]|[A-Za-z]/.test(raw)) {
+          return `${label} cannot contain letters or HTML/script characters.`;
+        }
+        const num = Number(raw);
+        if (!Number.isFinite(num)) {
+          return `${label} must be a valid number.`;
+        }
+        if (num < 0) {
+          return `${label} cannot be negative.`;
+        }
+        if (num < min) {
+          return `${label} must be at least ${min.toLocaleString()}.`;
+        }
+        if (num > max) {
+          return `${label} cannot exceed ${max.toLocaleString()}.`;
+        }
+        const places = payrollDecimalPlaces();
+        const parsed = parseMoney2dpOrError(raw, label, { min, requireMinPositive: false });
+        if (parsed.error) return parsed.error;
+        if (places > 0 && raw.includes('.') && raw.split('.')[1].length > places) {
+          return `${label} may use at most ${places} decimal place${places === 1 ? '' : 's'}.`;
+        }
+        return '';
+      }
+
+      function validateSalaryModalFields(opts = {}) {
+        const forceShow = Boolean(opts && opts.forceShow);
+        const silentInitial = Boolean(opts && opts.silentInitial);
+        const basicMin = payrollBasicSalaryMinimum();
+
+        const basicEl = document.getElementById('modalSalaryBasic');
+        const allowEl = document.getElementById('modalSalaryAllowances');
+        const deductEl = document.getElementById('modalSalaryDeductions');
+        const otEl = document.getElementById('modalSalaryOtRate');
+        const effEl = document.getElementById('modalSalaryEffectiveFrom');
+        const compAmtEl = document.getElementById('modalSalaryComponentAmount');
+        const compPctEl = document.getElementById('modalSalaryComponentPercent');
+
+        const basicMsg = _validateSalaryNumericField(basicEl, 'Basic Salary', { required: true, min: basicMin, max: 50000000 });
+        const allowMsg = _validateSalaryNumericField(allowEl, 'Monthly Allowances', { required: false, min: 0, max: 50000000 });
+        const deductMsg = _validateSalaryNumericField(deductEl, 'Standard Deductions', { required: false, min: 0, max: 50000000 });
+        const otMsg = _validateSalaryNumericField(otEl, 'OT Hourly Rate', { required: false, min: 0, max: 1000000 });
+
+        let effMsg = '';
+        if (effEl) {
+          const effVal = String(effEl.value || '').trim();
+          const joinFloor = String(window._currentSalaryJoinDate || '').trim().slice(0, 10);
+          if (!effVal) {
+            effMsg = 'Effective from date is required.';
+          } else if (!isRealCalendarDateValue(effVal)) {
+            effMsg = 'Effective from is not a valid calendar date.';
+          } else if (joinFloor && effVal < joinFloor) {
+            effMsg = `Effective from cannot be earlier than joining date (${joinFloor}).`;
+          } else if (isSalaryEffectiveMonthFinalized(effVal) && (forceShow || effEl.dataset.touched === '1')) {
+            effMsg = `Payroll for ${effVal.slice(0, 7)} is finalized. Choose an open or future month.`;
+          }
+        }
+
+        const amtMsg = _validateSalaryNumericField(compAmtEl, 'Amount', { required: false, min: 0, max: 50000000 });
+        const pctMsg = _validateSalaryNumericField(compPctEl, 'Percent of basic', { required: false, min: 0, max: 100 });
+
+        const showFor = (el, msg) => Boolean(msg) && (forceShow || (!silentInitial && el?.dataset.touched === '1'));
+        _setSalaryModalFieldFeedback('modalSalaryBasic', 'modalSalaryBasicError', basicMsg, showFor(basicEl, basicMsg));
+        _setSalaryModalFieldFeedback('modalSalaryAllowances', 'modalSalaryAllowancesError', allowMsg, showFor(allowEl, allowMsg));
+        _setSalaryModalFieldFeedback('modalSalaryDeductions', 'modalSalaryDeductionsError', deductMsg, showFor(deductEl, deductMsg));
+        _setSalaryModalFieldFeedback('modalSalaryOtRate', 'modalSalaryOtRateError', otMsg, showFor(otEl, otMsg));
+        _setSalaryModalFieldFeedback('modalSalaryEffectiveFrom', 'modalSalaryEffectiveFromError', effMsg, showFor(effEl, effMsg));
+        _setSalaryModalFieldFeedback('modalSalaryComponentAmount', 'modalSalaryComponentAmountError', amtMsg, showFor(compAmtEl, amtMsg));
+        _setSalaryModalFieldFeedback('modalSalaryComponentPercent', 'modalSalaryComponentPercentError', pctMsg, showFor(compPctEl, pctMsg));
+
+        const saveBtn = document.getElementById('saveSalaryBtn');
+        const packageValid = !basicMsg && !allowMsg && !deductMsg && !otMsg && !effMsg && !amtMsg && !pctMsg;
+        if (saveBtn) saveBtn.disabled = !packageValid;
+
+        const assignBtn = document.getElementById('modalSalaryAssignPayLineBtn');
+        if (assignBtn && (amtMsg || pctMsg)) {
+          assignBtn.disabled = true;
+        }
+        return packageValid;
+      }
+      window.validateSalaryModalFields = validateSalaryModalFields;
+
+      function onSalaryModalFieldInput(which) {
+        const map = {
+          basic: 'modalSalaryBasic',
+          allowances: 'modalSalaryAllowances',
+          deductions: 'modalSalaryDeductions',
+          otRate: 'modalSalaryOtRate',
+          effectiveFrom: 'modalSalaryEffectiveFrom',
+          componentAmount: 'modalSalaryComponentAmount',
+          componentPercent: 'modalSalaryComponentPercent',
+        };
+        const el = document.getElementById(map[which]);
+        if (el) {
+          el.dataset.touched = '1';
+          if (el.dataset.pasteError) delete el.dataset.pasteError;
+        }
+        updateSalaryModalLiveCalc();
+        validateSalaryModalFields();
+      }
+      window.onSalaryModalFieldInput = onSalaryModalFieldInput;
+
+      function bindSalaryModalInputGuards() {
+        const ids = [
+          'modalSalaryBasic', 'modalSalaryAllowances', 'modalSalaryDeductions',
+          'modalSalaryOtRate', 'modalSalaryComponentAmount', 'modalSalaryComponentPercent'
+        ];
+        ids.forEach((id) => {
+          const el = document.getElementById(id);
+          if (!el || el.dataset.salaryGuardsBound === '1') return;
+          el.dataset.salaryGuardsBound = '1';
+          el.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (['e', 'E', '+', '-', '<', '>'].includes(e.key) || (e.key.length === 1 && /[A-Za-z]/.test(e.key))) {
+              e.preventDefault();
+            }
+          });
+          el.addEventListener('paste', (e) => {
+            const pasted = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+            const trimmed = pasted.trim();
+            if (!trimmed) return;
+            if (/[<>]|[A-Za-z]/.test(trimmed) || trimmed.startsWith('-') || !/^\d+(\.\d+)?$/.test(trimmed)) {
+              e.preventDefault();
+              el.dataset.touched = '1';
+              el.dataset.pasteError = trimmed.startsWith('-')
+                ? 'Negative values are not allowed.'
+                : 'Only non-negative numeric values are allowed (no letters or HTML/script characters).';
+              validateSalaryModalFields();
+            } else {
+              delete el.dataset.pasteError;
+            }
+          });
+        });
+      }
+      window.bindSalaryModalInputGuards = bindSalaryModalInputGuards;
+      document.addEventListener('DOMContentLoaded', bindSalaryModalInputGuards);
+
       async function saveSalaryConfig() {
         const uid = document.getElementById('modalSalaryUserId')?.value;
         const msgEl = document.getElementById('modalSalaryMsg');
         const btn = document.getElementById('saveSalaryBtn');
         if (!uid) return;
+
+        if (!validateSalaryModalFields({ forceShow: true })) {
+          return;
+        }
 
         const basicMin = payrollBasicSalaryMinimum();
         const basicParsed = parseMoney2dpOrError(document.getElementById('modalSalaryBasic')?.value, 'Basic salary', { min: basicMin, requireMinPositive: true });
@@ -29297,6 +29603,10 @@ async function fetchMultiLiveDetections() {
         }
         if (!isRealCalendarDateValue(effectiveFrom)) {
           if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">Effective from is not a valid calendar date (for example 31 Nov does not exist). Nothing was saved.</div>`;
+          return;
+        }
+        if (isSalaryEffectiveMonthFinalized(effectiveFrom)) {
+          if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:0.85em;">Payroll for ${escapeSalaryHtml(effectiveFrom.slice(0, 7))} is finalized. Select an open or future month.</div>`;
           return;
         }
         const joinDateFloor = String(window._currentSalaryJoinDate || '').trim().slice(0, 10);

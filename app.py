@@ -7098,6 +7098,12 @@ def api_set_salary(user_id=None):
 
         try:
             uid = int(uid)
+            for fname in ('basic_salary', 'allowances', 'deductions', 'ot_rate'):
+                raw_val = data.get(fname)
+                if raw_val is not None and isinstance(raw_val, str):
+                    stripped = raw_val.strip()
+                    if '<' in stripped or '>' in stripped or re.search(r'[A-Za-z]', stripped):
+                        return jsonify({'success': False, 'message': f'{fname.replace("_", " ").title()} must be a valid non-negative number without letters or HTML/script characters.'}), 400
             basic_salary = float(data.get('basic_salary', 0) or 0)
             allowances = float(data.get('allowances', 0) or 0)
             deductions = float(data.get('deductions', 0) or 0)
@@ -7142,6 +7148,8 @@ def api_set_salary(user_id=None):
                 require_two_decimals=(places == 2),
                 max_decimals=places,
             )
+            if ot_rate > 1_000_000:
+                return jsonify({'success': False, 'message': 'OT hourly rate cannot exceed 1,000,000'}), 400
             effective_from = data.get('effective_from')
             if effective_from is not None and str(effective_from).strip():
                 effective_from = db.validate_calendar_date(effective_from, 'Effective from')
@@ -7711,9 +7719,44 @@ def api_list_payroll_component_duplicates():
     return jsonify({'duplicates': db.list_payroll_component_duplicates(**payroll_tenant())})
 
 
+@app.route('/api/payroll/finalized-months', methods=['GET'])
+def api_get_finalized_payroll_months():
+    """Return finalized YYYY-MM payroll months for the current tenant/branch."""
+    tenant = payroll_tenant()
+    org = tenant.get('organization_id') or 'DEFAULT_ORG'
+    branch = tenant.get('branch_id') or 'DEFAULT_BRANCH'
+    with db.sqlite3.connect(db.DB_PATH) as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT payroll_month
+              FROM payroll_runs
+             WHERE LOWER(COALESCE(status, '')) = 'finalized'
+               AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+               AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+             ORDER BY payroll_month ASC
+            """,
+            (org, branch),
+        ).fetchall()
+    return jsonify({'finalized_months': [r[0] for r in rows if r and r[0]]})
+
+
 @app.route('/api/payroll/employee-components', methods=['POST'])
 def api_save_employee_component():
     data = request.get_json(silent=True) or {}
+    for num_field, label, lo, hi in (
+        ('amount', 'Amount', 0.0, 50_000_000.0),
+        ('percent', 'Percent of basic', 0.0, 100.0),
+    ):
+        raw_v = data.get(num_field)
+        if raw_v is not None and raw_v != '':
+            if isinstance(raw_v, str) and ('<' in raw_v or '>' in raw_v or any(ch.isalpha() for ch in raw_v)):
+                return jsonify({'error': f'{label} must be a valid number without letters or HTML characters.', 'field': num_field}), 400
+            try:
+                num_v = float(raw_v)
+            except (TypeError, ValueError):
+                return jsonify({'error': f'{label} must be a valid number.', 'field': num_field}), 400
+            if num_v < lo or num_v > hi:
+                return jsonify({'error': f'{label} must be between {lo:g} and {hi:,.0f}.', 'field': num_field}), 400
     scope = str(data.get('scope') or data.get('scope_type') or 'employee').strip().lower()
     user_id = data.get('user_id')
     join_date = None
