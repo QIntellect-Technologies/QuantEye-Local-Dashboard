@@ -9587,11 +9587,14 @@
       margin-bottom: 0 !important;
       line-height: 1.25 !important;
     }
-    #payroll-rules-tab .payroll-rule-form > .payroll-rule-field {
+    #payroll-rules-tab .payroll-rule-form > .payroll-rule-field:not([hidden]) {
       display: flex !important;
       flex-direction: column !important;
       justify-content: flex-end !important;
       gap: 6px !important;
+    }
+    #payroll-rules-tab .payroll-rule-form > .payroll-rule-field[hidden] {
+      display: none !important;
     }
     #payroll-rules-tab .payroll-rule-form > .payroll-rule-actions {
       display: flex !important;
@@ -14204,10 +14207,11 @@ async function fetchMultiLiveDetections() {
             </label>
             <label class="payroll-rule-field">
               Times per month
-              <input class="form-control" type="number" min="1" max="31" step="1" id="halfLeaveRuleValue" style="height:38px;">
+              <input class="form-control" type="number" min="1" max="31" step="1" id="halfLeaveRuleValue" placeholder="1–31" style="height:38px;" oninput="onHalfLeaveSpecificRuleFieldInput('value')" onblur="onHalfLeaveSpecificRuleFieldInput('value')">
+              <small id="halfLeaveRuleValueError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.78em; font-weight:600; margin-top:4px;"></small>
             </label>
             <div class="payroll-rule-actions">
-              <button type="submit" class="btn btn-primary btn-sm rpt-btn rpt-btn-primary" style="min-height:38px; height:38px; padding: 0 18px; font-weight:600;">
+              <button id="halfLeaveSpecificRuleSaveBtn" type="submit" class="btn btn-primary btn-sm rpt-btn rpt-btn-primary" style="min-height:38px; height:38px; padding: 0 18px; font-weight:600;" disabled>
                 <i class="fa-solid fa-plus me-1"></i> Add Rule
               </button>
             </div>
@@ -14280,11 +14284,13 @@ async function fetchMultiLiveDetections() {
           </label>
           <label for="payrollRuleMin" class="payroll-rule-field">
             <span id="payrollRuleMinLabel">Minimum absent days</span>
-            <input id="payrollRuleMin" class="form-control" type="number" min="1" step="1" required>
+            <input id="payrollRuleMin" class="form-control" type="number" min="1" max="31" step="1" required oninput="onPayrollRuleFieldInput('min')" onblur="onPayrollRuleFieldInput('min')">
+            <small id="payrollRuleMinError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.78em; font-weight:600; margin-top:4px;"></small>
           </label>
           <label for="payrollRuleMax" class="payroll-rule-field">
             <span id="payrollRuleMaxLabel">Maximum absent days</span>
-            <input id="payrollRuleMax" class="form-control" type="number" min="1" step="1" placeholder="No upper limit">
+            <input id="payrollRuleMax" class="form-control" type="number" min="1" max="31" step="1" placeholder="No upper limit" oninput="onPayrollRuleFieldInput('max')" onblur="onPayrollRuleFieldInput('max')">
+            <small id="payrollRuleMaxError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.78em; font-weight:600; margin-top:4px;"></small>
           </label>
           <label for="payrollRuleType" class="payroll-rule-field">
             Deduction method
@@ -14295,14 +14301,16 @@ async function fetchMultiLiveDetections() {
           </label>
           <label id="payrollRulePercentField" for="payrollRulePercent" class="payroll-rule-field">
             Deduction percentage
-            <input id="payrollRulePercent" class="form-control" type="number" min="0" max="100" step="0.01" required style="height:38px;">
+            <input id="payrollRulePercent" class="form-control" type="number" min="0" max="100" step="0.01" required style="height:38px;" oninput="onPayrollRuleFieldInput('percent')" onblur="onPayrollRuleFieldInput('percent')">
+            <small id="payrollRulePercentError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.78em; font-weight:600; margin-top:4px;"></small>
           </label>
-          <label id="payrollRuleFixedField" for="payrollRuleFixed" class="payroll-rule-field" style="display:none;">
+          <label id="payrollRuleFixedField" for="payrollRuleFixed" class="payroll-rule-field" hidden style="display:none;">
             Deduction amount
-            <input id="payrollRuleFixed" class="form-control" type="number" min="0" step="0.01" style="height:38px;">
+            <input id="payrollRuleFixed" class="form-control" type="number" min="0" max="10000000" step="0.01" disabled style="height:38px;" oninput="onPayrollRuleFieldInput('fixed')" onblur="onPayrollRuleFieldInput('fixed')">
+            <small id="payrollRuleFixedError" class="field-inline-error" role="alert" style="display:none; color:#dc2626; font-size:0.78em; font-weight:600; margin-top:4px;"></small>
           </label>
           <div class="payroll-rule-actions" style="margin-bottom:0;">
-            <button id="payrollRuleSaveButton" type="submit" class="btn btn-primary btn-sm rpt-btn rpt-btn-primary" style="height:38px; min-height:38px; padding:0 20px; font-weight:600; border-radius:8px;">Save</button>
+            <button id="payrollRuleSaveButton" type="submit" class="btn btn-primary btn-sm rpt-btn rpt-btn-primary" style="height:38px; min-height:38px; padding:0 20px; font-weight:600; border-radius:8px;" disabled>Save</button>
             <button id="payrollRuleCancelButton" type="button" class="btn btn-outline-secondary btn-sm" onclick="cancelPayrollRuleEdit()" hidden style="height:38px; min-height:38px; border-radius:8px;">Cancel</button>
           </div>
         </form>
@@ -16188,7 +16196,7 @@ async function fetchMultiLiveDetections() {
             </div>
           </div>
 
-          <div style="margin-top:18px; padding-top:14px; border-top:1px solid #e2e8f0;">
+          <div id="modalSalaryPayLinesSection" style="margin-top:18px; padding-top:14px; border-top:1px solid #e2e8f0;">
             <div style="font-weight:800; color:#173042; font-size:0.9em; margin-bottom:8px;">Named pay lines for this employee</div>
             <div class="payroll-rule-form">
               <label class="payroll-rule-field">Pay line
@@ -24822,8 +24830,61 @@ async function fetchMultiLiveDetections() {
         } else if (typeof refreshAppCameraSelect === 'function') {
           refreshAppCameraSelect(targetSelect);
         }
+        if (targetSelect && targetSelect.dataset.pr35Bound !== '1') {
+          targetSelect.dataset.pr35Bound = '1';
+          targetSelect.addEventListener('change', () => validateHalfLeaveSpecificRuleForm());
+        }
+        if (typeof validateHalfLeaveSpecificRuleForm === 'function') {
+          validateHalfLeaveSpecificRuleForm();
+        }
       }
       window.updateHalfLeaveRuleScopeOptions = updateHalfLeaveRuleScopeOptions;
+
+      function validateHalfLeaveSpecificRuleForm(opts = {}) {
+        const forceShow = Boolean(opts && opts.forceShow);
+        const targetEl = document.getElementById('halfLeaveRuleTarget');
+        const valEl = document.getElementById('halfLeaveRuleValue');
+        const errEl = document.getElementById('halfLeaveRuleValueError');
+        const saveBtn = document.getElementById('halfLeaveSpecificRuleSaveBtn');
+        const targetOk = Boolean(String(targetEl?.value || '').trim());
+        let msg = '';
+        if (valEl) {
+          const raw = String(valEl.value ?? '').trim();
+          const badInput = Boolean(valEl.validity && valEl.validity.badInput);
+          if (badInput) {
+            msg = 'Times per month must be a whole number from 1 to 31.';
+          } else if (!raw) {
+            msg = 'Times per month is required.';
+          } else {
+            const num = Number(raw);
+            if (!Number.isFinite(num) || num < 0) {
+              msg = 'Negative values are not allowed. Enter a whole number from 1 to 31.';
+            } else if (!/^\d+$/.test(raw) || !Number.isInteger(num)) {
+              msg = 'Times per month must be a whole number from 1 to 31 (no decimals).';
+            } else if (num < 1 || num > 31) {
+              msg = 'Times per month must be between 1 and 31.';
+            }
+          }
+          const showErr = Boolean(msg) && (forceShow || valEl.dataset.touched === '1');
+          valEl.classList.toggle('is-invalid', showErr);
+          valEl.classList.toggle('is-valid', !msg && Boolean(raw));
+          if (errEl) {
+            errEl.textContent = showErr ? msg : '';
+            errEl.style.display = showErr ? 'block' : 'none';
+          }
+        }
+        const formValid = targetOk && !msg;
+        if (saveBtn) saveBtn.disabled = !formValid;
+        return formValid;
+      }
+      window.validateHalfLeaveSpecificRuleForm = validateHalfLeaveSpecificRuleForm;
+
+      function onHalfLeaveSpecificRuleFieldInput(field) {
+        const valEl = document.getElementById('halfLeaveRuleValue');
+        if (field === 'value' && valEl) valEl.dataset.touched = '1';
+        validateHalfLeaveSpecificRuleForm();
+      }
+      window.onHalfLeaveSpecificRuleFieldInput = onHalfLeaveSpecificRuleFieldInput;
 
       async function loadHalfLeaveSpecificRules() {
         const tbody = document.getElementById('halfLeaveSpecificRulesTableBody');
@@ -24865,11 +24926,10 @@ async function fetchMultiLiveDetections() {
           else if (typeof nativeAlert === 'function') nativeAlert(msg);
           else alert(msg);
         };
-        if (!target) return toast('Please select who the rule applies to (department or employee).', 'warning');
-        const rawCount = String(count ?? '').trim();
-        const ruleEl = document.getElementById('halfLeaveRuleValue');
-        if ((ruleEl?.validity && ruleEl.validity.badInput) || !rawCount || !/^\d+$/.test(rawCount) || Number(rawCount) < 1 || Number(rawCount) > 31) {
-          return toast('Times per month must be a whole number from 1 to 31.', 'warning');
+        if (!validateHalfLeaveSpecificRuleForm({ forceShow: true })) {
+          const errText = document.getElementById('halfLeaveRuleValueError')?.textContent;
+          if (errText) return toast(errText, 'warning');
+          return toast('Please select a target and enter a valid Times per month (1–31).', 'warning');
         }
         try {
           const res = await fetch('/api/payroll-settings/scoped-rules/half-leave', {
@@ -24886,9 +24946,14 @@ async function fetchMultiLiveDetections() {
           if (res.ok && data.success) {
             toast(data.message || 'Rule saved successfully.', 'success');
             const valueInput = document.getElementById('halfLeaveRuleValue');
-            if (valueInput) valueInput.value = '';
+            if (valueInput) {
+              valueInput.value = '';
+              delete valueInput.dataset.touched;
+              valueInput.classList.remove('is-invalid', 'is-valid');
+            }
             const targetSelect = document.getElementById('halfLeaveRuleTarget');
             if (targetSelect) targetSelect.value = '';
+            validateHalfLeaveSpecificRuleForm();
             await loadHalfLeaveSpecificRules();
           } else if (res.status === 409 || data.duplicate) {
             toast(data.error || 'Duplicate rule: A rule already exists for this target.', 'warning');
@@ -27793,6 +27858,7 @@ async function fetchMultiLiveDetections() {
       };
 
       function syncModalPayLinesSelect() {
+        const sectionEl = document.getElementById('modalSalaryPayLinesSection');
         const select = document.getElementById('modalSalaryComponentType');
         const amtInput = document.getElementById('modalSalaryComponentAmount');
         const pctInput = document.getElementById('modalSalaryComponentPercent');
@@ -27805,6 +27871,9 @@ async function fetchMultiLiveDetections() {
           'enable_named_components', 'enable_bonuses', 'enable_individual_adjustments',
           'enable_tax', 'enable_loans', 'enable_advances', 'enable_provident', 'enable_insurance'
         ].some((flag) => isPayrollFeatureFlagOn(flag));
+        if (sectionEl) {
+          sectionEl.style.display = anyFeatureOn ? '' : 'none';
+        }
         const hasSelectable = enabledTypes.length > 0;
         if (select) {
           const prevVal = select.value;
@@ -28500,33 +28569,191 @@ async function fetchMultiLiveDetections() {
       function resetPayrollRuleForm() {
         document.getElementById('payrollRuleForm').reset();
         document.getElementById('payrollRuleId').value = '';
-        document.getElementById('payrollRuleActive').checked = true;
+        const activeEl = document.getElementById('payrollRuleActive');
+        if (activeEl) activeEl.checked = true;
         document.getElementById('payrollRuleBasis').value = 'absence';
         document.getElementById('payrollRuleType').value = 'percentage';
+        ['payrollRuleMin', 'payrollRuleMax', 'payrollRulePercent', 'payrollRuleFixed'].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) {
+            delete el.dataset.touched;
+            el.classList.remove('is-invalid', 'is-valid');
+          }
+        });
         updatePayrollRuleBasis();
         updatePayrollRuleFields();
         document.getElementById('payrollRuleSaveButton').innerHTML = '<i class="fa-solid fa-plus me-1"></i> Add Rule';
         document.getElementById('payrollRuleCancelButton').style.display = 'none';
+        validatePayrollRuleForm();
       }
 
       function updatePayrollRuleBasis() {
         const isHalfLeave = document.getElementById('payrollRuleBasis').value === 'half_leave';
         const countLabel = isHalfLeave ? 'half-leave occurrences' : 'absent days';
+        const maxLimit = isHalfLeave ? 62 : 31;
         document.getElementById('payrollRuleMinLabel').textContent = `Minimum ${countLabel}`;
         document.getElementById('payrollRuleMaxLabel').textContent = `Maximum ${countLabel}`;
+        const minEl = document.getElementById('payrollRuleMin');
+        const maxEl = document.getElementById('payrollRuleMax');
+        if (minEl) minEl.max = String(maxLimit);
+        if (maxEl) maxEl.max = String(maxLimit);
+        if (typeof validatePayrollRuleForm === 'function') validatePayrollRuleForm();
       }
 
       function updatePayrollRuleFields() {
         const isFixed = document.getElementById('payrollRuleType').value === 'fixed';
+        const percentField = document.getElementById('payrollRulePercentField');
+        const fixedField = document.getElementById('payrollRuleFixedField');
         const percentageInput = document.getElementById('payrollRulePercent');
         const fixedInput = document.getElementById('payrollRuleFixed');
-        document.getElementById('payrollRulePercentField').style.display = isFixed ? 'none' : 'grid';
-        document.getElementById('payrollRuleFixedField').style.display = isFixed ? 'grid' : 'none';
-        percentageInput.required = !isFixed;
-        percentageInput.disabled = isFixed;
-        fixedInput.required = isFixed;
-        fixedInput.disabled = !isFixed;
+        if (percentField) {
+          percentField.hidden = isFixed;
+          percentField.style.display = isFixed ? 'none' : 'flex';
+        }
+        if (fixedField) {
+          fixedField.hidden = !isFixed;
+          fixedField.style.display = isFixed ? 'flex' : 'none';
+        }
+        if (percentageInput) {
+          percentageInput.required = !isFixed;
+          percentageInput.disabled = isFixed;
+          if (isFixed) {
+            percentageInput.classList.remove('is-invalid', 'is-valid');
+            const pErr = document.getElementById('payrollRulePercentError');
+            if (pErr) { pErr.textContent = ''; pErr.style.display = 'none'; }
+          }
+        }
+        if (fixedInput) {
+          fixedInput.required = isFixed;
+          fixedInput.disabled = !isFixed;
+          if (!isFixed) {
+            fixedInput.classList.remove('is-invalid', 'is-valid');
+            const fErr = document.getElementById('payrollRuleFixedError');
+            if (fErr) { fErr.textContent = ''; fErr.style.display = 'none'; }
+          }
+        }
+        if (typeof validatePayrollRuleForm === 'function') validatePayrollRuleForm();
       }
+
+      function _setPayrollRuleFieldState(inputId, errorId, msg, showMsg) {
+        const el = document.getElementById(inputId);
+        const err = document.getElementById(errorId);
+        if (!el) return;
+        const hasVal = String(el.value ?? '').trim() !== '';
+        el.classList.toggle('is-invalid', Boolean(msg) && showMsg);
+        el.classList.toggle('is-valid', !msg && hasVal);
+        if (err) {
+          err.textContent = showMsg ? (msg || '') : '';
+          err.style.display = (msg && showMsg) ? 'block' : 'none';
+        }
+      }
+
+      function validatePayrollRuleForm(opts = {}) {
+        const forceShow = Boolean(opts && opts.forceShow);
+        const isHalfLeave = document.getElementById('payrollRuleBasis')?.value === 'half_leave';
+        const maxLimit = isHalfLeave ? 62 : 31;
+        const minEl = document.getElementById('payrollRuleMin');
+        const maxEl = document.getElementById('payrollRuleMax');
+        const typeVal = document.getElementById('payrollRuleType')?.value || 'percentage';
+        const isFixed = typeVal === 'fixed';
+        const pctEl = document.getElementById('payrollRulePercent');
+        const fixedEl = document.getElementById('payrollRuleFixed');
+        const saveBtn = document.getElementById('payrollRuleSaveButton');
+
+        let minMsg = '';
+        let minNum = null;
+        if (minEl) {
+          const rawMin = String(minEl.value ?? '').trim();
+          if (minEl.validity && minEl.validity.badInput) {
+            minMsg = `Enter a whole number from 1 to ${maxLimit}.`;
+          } else if (!rawMin) {
+            minMsg = 'Minimum value is required.';
+          } else {
+            minNum = Number(rawMin);
+            if (!Number.isFinite(minNum) || minNum < 0) {
+              minMsg = 'Negative values are not allowed.';
+            } else if (!/^\d+$/.test(rawMin) || !Number.isInteger(minNum)) {
+              minMsg = 'Enter a whole number (no decimals).';
+            } else if (minNum < 1 || minNum > maxLimit) {
+              minMsg = `Must be between 1 and ${maxLimit}.`;
+            }
+          }
+          _setPayrollRuleFieldState('payrollRuleMin', 'payrollRuleMinError', minMsg, Boolean(minMsg) && (forceShow || minEl.dataset.touched === '1'));
+        }
+
+        let maxMsg = '';
+        if (maxEl) {
+          const rawMax = String(maxEl.value ?? '').trim();
+          if (maxEl.validity && maxEl.validity.badInput) {
+            maxMsg = `Enter a whole number from 1 to ${maxLimit}.`;
+          } else if (rawMax) {
+            const maxNum = Number(rawMax);
+            if (!Number.isFinite(maxNum) || maxNum < 0) {
+              maxMsg = 'Negative values are not allowed.';
+            } else if (!/^\d+$/.test(rawMax) || !Number.isInteger(maxNum)) {
+              maxMsg = 'Enter a whole number (no decimals).';
+            } else if (maxNum < 1 || maxNum > maxLimit) {
+              maxMsg = `Must be between 1 and ${maxLimit}.`;
+            } else if (minNum !== null && !minMsg && maxNum < minNum) {
+              maxMsg = 'Maximum cannot be less than Minimum.';
+            }
+          }
+          _setPayrollRuleFieldState('payrollRuleMax', 'payrollRuleMaxError', maxMsg, Boolean(maxMsg) && (forceShow || maxEl.dataset.touched === '1'));
+        }
+
+        let pctMsg = '';
+        if (!isFixed && pctEl) {
+          const rawPct = String(pctEl.value ?? '').trim();
+          if (pctEl.validity && pctEl.validity.badInput) {
+            pctMsg = 'Enter a valid percentage from 0 to 100.';
+          } else if (!rawPct) {
+            pctMsg = 'Deduction percentage is required.';
+          } else {
+            const pctNum = Number(rawPct);
+            if (!Number.isFinite(pctNum) || pctNum < 0) {
+              pctMsg = 'Negative values are not allowed.';
+            } else if (pctNum > 100) {
+              pctMsg = 'Deduction percentage cannot exceed 100%.';
+            }
+          }
+          _setPayrollRuleFieldState('payrollRulePercent', 'payrollRulePercentError', pctMsg, Boolean(pctMsg) && (forceShow || pctEl.dataset.touched === '1'));
+        }
+
+        let fixedMsg = '';
+        if (isFixed && fixedEl) {
+          const rawFixed = String(fixedEl.value ?? '').trim();
+          if (fixedEl.validity && fixedEl.validity.badInput) {
+            fixedMsg = 'Enter a valid amount (0 to 10,000,000).';
+          } else if (!rawFixed) {
+            fixedMsg = 'Deduction amount is required.';
+          } else {
+            const fixedNum = Number(rawFixed);
+            if (!Number.isFinite(fixedNum) || fixedNum < 0) {
+              fixedMsg = 'Negative values are not allowed.';
+            } else if (fixedNum > 10000000) {
+              fixedMsg = 'Deduction amount cannot exceed 10,000,000.';
+            }
+          }
+          _setPayrollRuleFieldState('payrollRuleFixed', 'payrollRuleFixedError', fixedMsg, Boolean(fixedMsg) && (forceShow || fixedEl.dataset.touched === '1'));
+        }
+
+        const isValid = !minMsg && !maxMsg && (isFixed ? !fixedMsg : !pctMsg);
+        if (saveBtn) saveBtn.disabled = !isValid;
+        return isValid;
+      }
+      window.validatePayrollRuleForm = validatePayrollRuleForm;
+
+      function onPayrollRuleFieldInput(which) {
+        const map = { min: 'payrollRuleMin', max: 'payrollRuleMax', percent: 'payrollRulePercent', fixed: 'payrollRuleFixed' };
+        const el = document.getElementById(map[which]);
+        if (el) el.dataset.touched = '1';
+        validatePayrollRuleForm();
+      }
+      window.onPayrollRuleFieldInput = onPayrollRuleFieldInput;
+      document.addEventListener('DOMContentLoaded', () => {
+        if (document.getElementById('payrollRuleType')) updatePayrollRuleFields();
+        if (document.getElementById('halfLeaveRuleValue')) validateHalfLeaveSpecificRuleForm();
+      });
 
       function editPayrollRule(ruleId) {
         const rule = cachedPayrollRules.find(item => Number(item.id) === Number(ruleId));
@@ -28540,16 +28767,22 @@ async function fetchMultiLiveDetections() {
         document.getElementById('payrollRuleFixed').value = rule.fixed_amount ?? '';
         updatePayrollRuleBasis();
         updatePayrollRuleFields();
-        document.getElementById('payrollRuleActive').checked = Number(rule.active) === 1;
+        const activeEl = document.getElementById('payrollRuleActive');
+        if (activeEl) activeEl.checked = Number(rule.active) === 1;
         document.getElementById('payrollRuleSaveButton').innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i> Save Rule';
         document.getElementById('payrollRuleCancelButton').style.display = 'inline-block';
         document.getElementById('payrollRulesMessage').innerHTML = '';
+        validatePayrollRuleForm();
         document.getElementById('payrollRuleMin').focus();
       }
 
       async function savePayrollRule() {
+        if (!validatePayrollRuleForm({ forceShow: true })) {
+          return;
+        }
         const id = document.getElementById('payrollRuleId').value;
         const deductionType = document.getElementById('payrollRuleType').value;
+        const activeEl = document.getElementById('payrollRuleActive');
         const data = {
           rule_basis: document.getElementById('payrollRuleBasis').value,
           min_absent_days: document.getElementById('payrollRuleMin').value,
@@ -28557,7 +28790,7 @@ async function fetchMultiLiveDetections() {
           deduction_type: deductionType,
           deduction_percent: deductionType === 'percentage' ? document.getElementById('payrollRulePercent').value : 0,
           fixed_amount: deductionType === 'fixed' ? document.getElementById('payrollRuleFixed').value : 0,
-          active: document.getElementById('payrollRuleActive').checked
+          active: activeEl ? activeEl.checked : true
         };
         const message = document.getElementById('payrollRulesMessage');
         try {
