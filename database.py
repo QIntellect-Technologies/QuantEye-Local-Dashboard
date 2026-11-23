@@ -13871,6 +13871,24 @@ def update_payroll_settings(
                 )
             if mode in ('category', 'company') and conversion_count > 0:
                 _ensure_half_leave_allowance_repaired(cur, org)
+            # PR-33: Invalidate non-finalized draft payroll snapshots for this tenant/branch
+            # so Payroll and Payslip immediately reflect updated Extra Pay feature toggles.
+            draft_ids = [
+                r[0]
+                for r in cur.execute(
+                    """
+                    SELECT id FROM payroll_runs
+                     WHERE LOWER(COALESCE(status, '')) != 'finalized'
+                       AND COALESCE(organization_id, 'DEFAULT_ORG') = ?
+                       AND COALESCE(branch_id, 'DEFAULT_BRANCH') = ?
+                    """,
+                    (org, branch),
+                ).fetchall()
+            ]
+            if draft_ids:
+                placeholders = ",".join("?" for _ in draft_ids)
+                cur.execute(f"DELETE FROM payroll_records WHERE payroll_run_id IN ({placeholders})", draft_ids)
+                cur.execute(f"DELETE FROM payroll_runs WHERE id IN ({placeholders})", draft_ids)
             conn.commit()
             month_key = date.today().isoformat()[:7]
             previous_mode = _normalize_attendance_pay_mode(current.get('attendance_pay_mode'))

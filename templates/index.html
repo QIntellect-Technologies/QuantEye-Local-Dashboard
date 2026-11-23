@@ -16203,7 +16203,10 @@ async function fetchMultiLiveDetections() {
               <label class="payroll-rule-field">Effective from
                 <input id="modalSalaryComponentFrom" class="form-control" type="date" required>
               </label>
-              <button type="button" class="btn btn-outline-primary btn-sm" onclick="assignEmployeePayLine()">Assign</button>
+              <button id="modalSalaryAssignPayLineBtn" type="button" class="btn btn-outline-primary btn-sm" onclick="assignEmployeePayLine()">Assign</button>
+            </div>
+            <div id="modalSalaryPayLinesDisabledNotice" style="display:none; margin-top:8px; padding:8px 10px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; font-size:0.8em; color:#64748b;">
+              All Extra Pay features are currently disabled in Settings → Payroll Rules → Extra Pay.
             </div>
             <div id="modalSalaryPrecedenceHelp" style="font-size:0.75em; color:#0d9488; margin-top:4px; font-weight:600;"><i class="fa-solid fa-circle-info me-1"></i>Precedence: If both Amount and Percent of basic are entered, Percent of basic is used and calculated from basic salary (fixed Amount is ignored).</div>
             <div class="log-table-wrapper" style="margin-top:8px;">
@@ -24554,6 +24557,11 @@ async function fetchMultiLiveDetections() {
           alert("This settings section is not included in your organization's subscription.");
           return false;
         }
+        if (tabId === 'mobile-app-tab') {
+          const sidebarMobileBtn = document.querySelector('.sidebar-item[onclick*="mobile-app-view"]');
+          switchTab('mobile-app-view', sidebarMobileBtn);
+          return;
+        }
         currentSettingsTab = tabId;
         document.querySelectorAll('.settings-nav-btn').forEach(b => {
           b.classList.remove('active');
@@ -24950,7 +24958,38 @@ async function fetchMultiLiveDetections() {
       }
       window.updatePayrollComponentCategoryDropdown = updatePayrollComponentCategoryDropdown;
 
+      function isPayrollFeatureFlagOn(flagName) {
+        const el = document.getElementById(`flag_${flagName}`);
+        if (el) return Boolean(el.checked);
+        const s = window._payrollSettings;
+        if (s && typeof s[flagName] !== 'undefined') return Boolean(Number(s[flagName] || 0));
+        return flagName === 'enable_bonuses';
+      }
+      window.isPayrollFeatureFlagOn = isPayrollFeatureFlagOn;
+
+      function isPayrollCategoryEnabled(category) {
+        const cat = String(category || '').trim().toLowerCase();
+        if (cat === 'other') {
+          return isPayrollFeatureFlagOn('enable_named_components') || isPayrollFeatureFlagOn('enable_individual_adjustments');
+        }
+        const map = {
+          allowance: 'enable_named_components',
+          bonus: 'enable_bonuses',
+          tax: 'enable_tax',
+          loan: 'enable_loans',
+          advance: 'enable_advances',
+          provident: 'enable_provident',
+          insurance: 'enable_insurance',
+        };
+        const flag = map[cat] || 'enable_named_components';
+        return isPayrollFeatureFlagOn(flag);
+      }
+      window.isPayrollCategoryEnabled = isPayrollCategoryEnabled;
+
       function updatePayrollFeatureSectionsVisibility(settings) {
+        if (settings && typeof settings === 'object') {
+          window._payrollSettings = Object.assign({}, window._payrollSettings || {}, settings);
+        }
         const flags = [
           'enable_named_components', 'enable_bonuses', 'enable_individual_adjustments',
           'enable_salary_revisions', 'enable_tax', 'enable_loans', 'enable_advances',
@@ -24976,6 +25015,9 @@ async function fetchMultiLiveDetections() {
         updatePayrollComponentCategoryDropdown();
         if (typeof renderPayLineItemsCheckboxes === 'function') {
           renderPayLineItemsCheckboxes();
+        }
+        if (typeof syncModalPayLinesSelect === 'function') {
+          syncModalPayLinesSelect();
         }
       }
       window.updatePayrollFeatureSectionsVisibility = updatePayrollFeatureSectionsVisibility;
@@ -26962,14 +27004,9 @@ async function fetchMultiLiveDetections() {
               `<option value="${row.id}">${payrollEscape(row.name)}</option>`).join('');
             if (typeof updatePayLineAssignInputs === 'function') updatePayLineAssignInputs();
           }
-          // QA-64: Also keep the Named pay lines modal dropdown in sync
-          const modalCompSelect = document.getElementById('modalSalaryComponentType');
-          if (modalCompSelect) {
-            const currentVal = modalCompSelect.value;
-            modalCompSelect.innerHTML = types.map((row) =>
-              `<option value="${row.id}">${payrollEscape(row.name)} (${payrollEscape(row.kind)})</option>`).join('');
-            if (currentVal) modalCompSelect.value = currentVal;
-            if (typeof updateModalSalaryComponentInputs === 'function') updateModalSalaryComponentInputs();
+          // QA-64 / PR-34: Also keep the Named pay lines modal dropdown in sync with Extra Pay feature toggles
+          if (typeof syncModalPayLinesSelect === 'function') {
+            syncModalPayLinesSelect();
           }
           tbody.innerHTML = types.length ? types.map((row) => {
             const mode = String(row.calc_mode || 'fixed');
@@ -27755,19 +27792,66 @@ async function fetchMultiLiveDetections() {
         }
       };
 
+      function syncModalPayLinesSelect() {
+        const select = document.getElementById('modalSalaryComponentType');
+        const amtInput = document.getElementById('modalSalaryComponentAmount');
+        const pctInput = document.getElementById('modalSalaryComponentPercent');
+        const fromInput = document.getElementById('modalSalaryComponentFrom');
+        const assignBtn = document.getElementById('modalSalaryAssignPayLineBtn');
+        const noticeEl = document.getElementById('modalSalaryPayLinesDisabledNotice');
+        const allTypes = window._payrollComponentTypes || [];
+        const enabledTypes = allTypes.filter((row) => isPayrollCategoryEnabled(row.category));
+        const anyFeatureOn = [
+          'enable_named_components', 'enable_bonuses', 'enable_individual_adjustments',
+          'enable_tax', 'enable_loans', 'enable_advances', 'enable_provident', 'enable_insurance'
+        ].some((flag) => isPayrollFeatureFlagOn(flag));
+        const hasSelectable = enabledTypes.length > 0;
+        if (select) {
+          const prevVal = select.value;
+          if (hasSelectable) {
+            select.innerHTML = enabledTypes.map((row) =>
+              `<option value="${row.id}">${payrollEscape(row.name)} (${payrollEscape(row.kind)})</option>`).join('');
+            if (prevVal && enabledTypes.some((r) => String(r.id) === String(prevVal))) {
+              select.value = prevVal;
+            }
+          } else {
+            select.innerHTML = `<option value="">${anyFeatureOn ? 'No enabled pay lines configured' : 'All Extra Pay features disabled'}</option>`;
+          }
+          select.disabled = !hasSelectable;
+        }
+        [amtInput, pctInput, fromInput, assignBtn].forEach((el) => {
+          if (el) el.disabled = !hasSelectable;
+        });
+        if (noticeEl) {
+          noticeEl.style.display = !anyFeatureOn ? 'block' : 'none';
+        }
+        if (typeof updateModalSalaryComponentInputs === 'function') updateModalSalaryComponentInputs();
+        return enabledTypes;
+      }
+      window.syncModalPayLinesSelect = syncModalPayLinesSelect;
+
       async function loadEmployeePayLines(userId) {
         const tbody = document.getElementById('modalSalaryComponentBody');
-        const select = document.getElementById('modalSalaryComponentType');
         if (!tbody) return;
         try {
-          if (!window._payrollComponentTypes) await loadPayrollComponentTypes();
-          if (select) {
-            select.innerHTML = (window._payrollComponentTypes || []).map((row) => `<option value="${row.id}">${payrollEscape(row.name)} (${payrollEscape(row.kind)})</option>`).join('');
-            updateModalSalaryComponentInputs();
+          if (!window._payrollSettings) {
+            try {
+              const sResp = await fetch(`${API_BASE}/settings/payroll`, { cache: 'no-store' });
+              if (sResp.ok) {
+                const sData = await sResp.json();
+                window._payrollSettings = sData;
+                if (typeof updatePayrollFeatureSectionsVisibility === 'function') {
+                  updatePayrollFeatureSectionsVisibility(sData);
+                }
+              }
+            } catch (_) {}
           }
+          if (!window._payrollComponentTypes) await loadPayrollComponentTypes();
+          syncModalPayLinesSelect();
           const response = await fetch(`${API_BASE}/payroll/employee-components/${userId}`);
           const result = await response.json();
-          const rows = result.components || [];
+          const allRows = result.components || [];
+          const rows = allRows.filter((row) => isPayrollCategoryEnabled(row.category));
           tbody.innerHTML = rows.length ? rows.map((row) => {
             const isPercent = (row.calc_mode && String(row.calc_mode).startsWith('percent')) || Number(row.percent || 0) > 0;
             let valStr = '';
@@ -27791,7 +27875,7 @@ async function fetchMultiLiveDetections() {
               <td><span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd;">From ${escapeSalaryHtml(effFrom)}</span>${effTo}</td>
               <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteEmployeePayLine(${row.id}, ${userId})">Remove</button></td>
             </tr>`;
-          }).join('') : '<tr><td colspan="5" class="text-muted text-center p-2">No named lines.</td></tr>';
+          }).join('') : '<tr><td colspan="5" class="text-muted text-center p-2">No active named lines.</td></tr>';
         } catch (error) {
           tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center p-2">${payrollEscape(error.message)}</td></tr>`;
         }
@@ -27802,6 +27886,10 @@ async function fetchMultiLiveDetections() {
         if (!uid) return;
         const typeId = Number(document.getElementById('modalSalaryComponentType')?.value);
         const comp = (window._payrollComponentTypes || []).find(t => Number(t.id) === typeId);
+        if (!comp || !isPayrollCategoryEnabled(comp.category)) {
+          showAppToast('This pay line category is disabled in Settings → Payroll Rules → Extra Pay.', 'error');
+          return;
+        }
         const isPercent = comp && (comp.calc_mode === 'percent_basic' || comp.calc_mode === 'percent_gross');
 
 
@@ -28835,6 +28923,17 @@ async function fetchMultiLiveDetections() {
               console.warn("Could not fetch fresh user salary config, using cache:", e);
               return null;
             }),
+          fetch(`${API_BASE}/settings/payroll`, { cache: 'no-store' })
+            .then(r => (r.ok ? r.json() : null))
+            .then(s => {
+              if (s) {
+                window._payrollSettings = s;
+                if (typeof updatePayrollFeatureSectionsVisibility === 'function') {
+                  updatePayrollFeatureSectionsVisibility(s);
+                }
+              }
+            })
+            .catch(() => {}),
           loadEmployeePayLines(userId).catch(() => {})
         ]);
         if (seq !== _salaryModalOpenSeq) return;

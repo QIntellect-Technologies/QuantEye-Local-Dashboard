@@ -56,6 +56,7 @@ VALID_ADJ_TYPES = ("rest_day", "bonus", "earning", "deduction", "overtime", "arr
 VALID_ADJ_MODES = ("multiplier", "fixed")
 
 CATEGORY_FLAG = {
+    "allowance": "enable_named_components",
     "tax": "enable_tax",
     "loan": "enable_loans",
     "advance": "enable_advances",
@@ -413,9 +414,12 @@ def prorate_packages(
 
 
 def category_allowed(category: str, settings: Any) -> bool:
-    flag = CATEGORY_FLAG.get(str(category or "").strip().lower())
+    cat = str(category or "").strip().lower()
+    if cat == "other":
+        return flag_on(settings, "enable_named_components") or flag_on(settings, "enable_individual_adjustments")
+    flag = CATEGORY_FLAG.get(cat)
     if not flag:
-        return True
+        return flag_on(settings, "enable_named_components")
     return flag_on(settings, flag)
 
 
