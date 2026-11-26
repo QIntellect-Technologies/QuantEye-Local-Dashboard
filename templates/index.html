@@ -10878,13 +10878,13 @@
                 </div>
                 {% if not is_client_session or client_module_entitlements.payroll %}
                 <div class="col-md-6 payroll-only-ui">
-                  <label class="form-label" for="enrollSalary">Basic Salary (PKR)</label>
+                  <label class="form-label" for="enrollSalary">Basic Salary (PKR) *</label>
                   <input type="number" class="form-control payroll-amount-input" id="enrollSalary" placeholder="10000" min="10000" step="0.01" required />
                 </div>
                 {% endif %}
                 <div class="col-md-6">
-                  <label class="form-label" for="enrollJoinDate">Joining Date</label>
-                  <input type="date" class="form-control" id="enrollJoinDate" />
+                  <label class="form-label" for="enrollJoinDate">Joining Date *</label>
+                  <input type="date" class="form-control" id="enrollJoinDate" required />
                 </div>
                 <div class="col-md-6">
                   <label class="form-label" for="enrollEmploymentStatus">Employment status</label>
@@ -18285,9 +18285,10 @@ async function fetchMultiLiveDetections() {
           return loadOvertimeRecords();
         }
 
-        // Reload staff directory if switching to enroll view
+        // Reload staff directory, shifts, and camera dropdowns when switching to enroll view
         if (viewId === "enroll-view") {
           loadStaffDirectory();
+          if (typeof loadEnrollDropdowns === 'function') loadEnrollDropdowns();
         }
 
         // Initialize dynamic cameras & ticker when switching to live-view
@@ -18802,7 +18803,7 @@ async function fetchMultiLiveDetections() {
           enrollNational.addEventListener('blur', runPhone);
         }
         wire('enrollCNIC', 'enrollCNICError', validateStaffCnicValue, { formatCnic: true, onSync: syncEnrollSubmitEnabled });
-        ['enrollDepartment', 'enrollPosition', 'enrollJoinDate', 'enrollEmploymentStatus', 'enrollPeriodEndDate'].forEach(id => {
+        ['enrollDepartment', 'enrollPosition', 'enrollSalary', 'enrollJoinDate', 'enrollEmploymentStatus', 'enrollPeriodEndDate'].forEach(id => {
           const el = document.getElementById(id);
           if (el && el.dataset.liveValidationBound !== '1') {
             el.dataset.liveValidationBound = '1';
@@ -22430,12 +22431,33 @@ async function fetchMultiLiveDetections() {
 
       async function loadCameraAssignmentDropdowns() {
         try {
-          const res = await fetch(`${API_BASE}/cameras?active_only=true`);
+          const res = await fetch(`${API_BASE}/cameras?active_only=true`, { cache: 'no-store' });
           const data = await res.json();
-          cachedActiveCameras = data || [];
-          populateCameraAssignmentDropdowns();
+          cachedActiveCameras = Array.isArray(data) ? data : (Array.isArray(data?.cameras) ? data.cameras : []);
         } catch (e) {
           console.error("Failed to load active cameras for assignment:", e);
+        }
+        populateCameraAssignmentDropdowns();
+      }
+
+      async function loadEnrollDropdowns() {
+        try {
+          if (typeof populateCameraAssignmentDropdowns === 'function') populateCameraAssignmentDropdowns();
+          await loadCameraAssignmentDropdowns();
+        } catch (e) {
+          console.warn("Enroll camera dropdown init warning:", e);
+        }
+        try {
+          const resp = await fetch(`${API_BASE}/shifts`, { cache: 'no-store' });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (Array.isArray(data?.shifts)) {
+              allShiftsCache = data.shifts;
+              populateShiftDropdowns(data.shifts);
+            }
+          }
+        } catch (e) {
+          console.warn("Enroll shift dropdown init warning:", e);
         }
       }
 
@@ -23786,7 +23808,8 @@ async function fetchMultiLiveDetections() {
         }
       }
 
-      function populateShiftDropdowns(shifts) {
+      function populateShiftDropdowns(shifts = allShiftsCache || []) {
+        if (!Array.isArray(shifts) || !shifts.length) return;
         const dropdownIds = ["enrollShiftId", "editShiftId", "bulkShiftTargetSelect", "shiftFilterCurrentShift"];
         dropdownIds.forEach((id) => {
           const select = document.getElementById(id);
@@ -30421,6 +30444,7 @@ async function fetchMultiLiveDetections() {
           desigSelect.innerHTML = '<option value="">Error loading designations</option>';
         }
         if (typeof upgradeSelectToCameraStyle === 'function') upgradeSelectToCameraStyle(desigSelect);
+        if (typeof syncEnrollSubmitEnabled === 'function') syncEnrollSubmitEnabled();
       }
 
       async function onEditDeptChange(deptName, selectTitle = '') {
@@ -30740,6 +30764,7 @@ async function fetchMultiLiveDetections() {
           const matchingBtn = document.querySelector(`.menu-item[onclick*="${targetTab}"]`);
           switchTab(targetTab, matchingBtn);
         }
+        if (typeof loadEnrollDropdowns === 'function') loadEnrollDropdowns();
       });
       window.addEventListener('pageshow', () => {
         const reportSearch = document.getElementById('mainReportSearch');
